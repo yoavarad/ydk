@@ -1,0 +1,18 @@
+checks:
+  - name: has-catalog
+    description: Must include catalog.yaml with pack metadata
+    path: catalog.yaml
+  - name: has-manifest
+    description: Must include manifest.yaml with generator execution order
+    path: manifest.yaml
+  - name: has-generators
+    description: Must include at least one generator script
+    glob: "generators/*.py"
+    min_count: 1
+  - name: has-templates
+    description: Must include at least one Jinja2 template
+    glob: "templates/**/*.j2"
+    min_count: 1
+  - name: e2e-generation-test
+    description: Generate from sample components, verify app starts, DI resolves, tests pass
+    command: "python -m pytest ../../tests/integration/test_generator_e2e.py -v --tb=short -x"

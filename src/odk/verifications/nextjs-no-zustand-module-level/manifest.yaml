@@ -1,0 +1,7 @@
+name: nextjs-no-zustand-module-level
+description: Enforce Zustand stores use factory pattern, not module-level singletons
+  (SSR safety)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

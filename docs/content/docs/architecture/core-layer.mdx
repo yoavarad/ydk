@@ -1,0 +1,95 @@
+---
+title: Core Layer
+description: All core modules and their roles
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Core Layer
+
+The core layer at `src/odk/core/` contains all of ODK's business logic. It is the largest layer by module count (30+ files) and the most important architectural boundary in the codebase: core never imports from the CLI layer. This means every module in core can be tested with unit tests that instantiate the class directly, pass in mock dependencies via protocol-based DI, and verify behavior without launching a CLI process.
+
+## Module Overview
+
+The core modules naturally group into five functional areas:
+
+### Specification and Components
+
+- **`spec_checker.py`** -- AI-powered spec quality evaluation with 18 built-in criteria across 5 groups. The `SpecChecker` class sends spec content to an LLM, parses structured scores, and compares against configurable thresholds.
+- **`spec_evolution.py`** -- The `SpecEvolutionEngine` managing the propose/list/status/diff/archive lifecycle for spec changes.
+- **`delta_parser.py`** -- Parses ADDED/MODIFIED/REMOVED operations from delta spec markdown and applies them to canonical spec files.
+- **`component_registry.py`** -- Central registry that loads schemas, resolves component IDs to file paths, validates manifests against schemas, and scaffolds new components.
+- **`component_linker.py`** -- Deterministic reference validation (Layer A): scans specs for bracket references and validates them against the component directory.
+- **`component_scanner.py`** -- LLM-powered prose scanning (Layer B): identifies unlinked mentions in narrative text.
+
+### Task Management
+
+- **`task_lifecycle.py`** -- The `TaskLifecycle` class orchestrating start/plan/progress/block/done/discover with dependency checking, gate validation, worktree creation, and verification.
+- **`task_validator.py`** -- DAG validation using Kahn's algorithm: cycle detection, parallel wave computation, critical path finding, fan-out analysis, and spec coverage checking.
+- **`scheduler.py`** -- Greedy topological scheduling with resource constraints: assigns tasks to agents in waves, computes utilization.
+- **`buffer_manager.py`** -- Green/yellow/red zone buffer calculation for schedule health tracking.
+- **`gate_checker.py`** -- Evaluates four gate types (PR merged, CI passed, timer elapsed, human approval) using the `gh` CLI and timestamps.
+- **`complexity_scorer.py`** -- LLM-based 1-10 scoring with deterministic fallback to 5.
+- **`compaction.py`** -- Summarizes completed tasks into compact representations for context efficiency.
+
+### Verification
+
+- **`verifier.py`** -- Plugin discovery, layer execution, parallel/serial scheduling, content-hash caching, and proof saving. This is the central verification orchestrator.
+- **`verification_cache.py`** -- SHA256-based content hash computation and cache lookup/storage for verification results.
+- **`auto_repair.py`** -- Structured error formatting for the repair loop. Does not call LLMs -- formats errors for the coding agent.
+- **`pr_commenter.py`** -- Marker-based idempotent PR commenting using `<!-- odk-verification -->` HTML markers.
+
+### Memory and Learning
+
+- **`memory.py`** -- The `MemoryEngine`: ChromaDB + Bedrock embeddings + BM25 hybrid search + RRF fusion + 4-factor scoring + progressive retrieval.
+- **`bm25_index.py`** -- JSON-persisted BM25 keyword index with k1=1.5, b=0.75 tuning.
+- **`extractor.py`** -- LLM-based knowledge extraction from Claude Code session transcripts.
+- **`transcript_parser.py`** -- Parses Claude Code JSONL session format into structured exchanges.
+- **`decision_store.py`** -- Topic-keyed, append-only YAML decision files with automatic versioning.
+- **`contradiction_detector.py`** -- Concept overlap (Jaccard similarity) + LLM judgment for finding conflicting memories.
+- **`memory_consolidation.py`** -- Duplicate detection and merging across memory collections.
+- **`procedural_memory.py`** -- Tracks prompt outcomes for extraction effectiveness measurement.
+
+### Infrastructure
+
+- **`config.py`** -- `load_config()`, `save_config()`, `init_config()` with dot-separated key access and Pydantic validation.
+- **`events.py`** -- `EventBus` with 5 event types (TaskStarted, TaskPlanPosted, TaskProgress, TaskBlocked, TaskDone) on daemon threads.
+- **`git_worktree.py`** -- `WorktreeManager` for creating, listing, and cleaning up git worktrees.
+- **`scaffold.py`** -- Jinja2 template rendering for project scaffolding.
+- **`navigation.py`** -- Stage detection (empty/initialized/specified/tasked/in-progress/reviewing) and next-action recommendations.
+- **`quickdev.py`** -- Fast path for small changes: generates QD task IDs, creates branches, auto-detects relevant components.
+- **`doctor.py`** -- 10+ environment health checks for Python version, git, ruff, pytest, ty, and optional tools.
+- **`visual.py`** -- Vite dev server session management and annotation overlay injection.
+- **`checkpoint.py`** -- Git diff parsing into structured review guides with intent, concerns, and blast radius.
+- **`stacks.py`** -- Technology stack definitions mapping stack names to enabled plugins and config overrides.
+
+## Key Design Patterns
+
+### Protocol-Based DI
+
+Every core class that depends on an external service uses a protocol:
+
+```python
+class ComplexityScorer:
+    def __init__(self, llm_provider: LLMProvider | None = None) -> None:
+        self._llm = llm_provider
+```
+
+The same pattern appears in `ComponentScanner`, `TaskCompactor`, `ContradictionDetector`, `ProceduralMemory`, and `SpecChecker`. The protocol is defined in the services or repositories layer, and the concrete implementation is injected by the CLI layer or test fixtures.
+
+### Deterministic Fallbacks
+
+Every LLM-powered class provides a non-LLM path:
+
+```python
+if self._llm is None:
+    return ComplexityScore(
+        task_id=task_id,
+        score=5,
+        reasoning="No LLM provider configured -- returning default score.",
+        should_expand=False,
+        suggested_splits=[],
+    )
+```
+
+This ensures that ODK is fully functional without AI credentials. The LLM features are enhancements, not requirements.

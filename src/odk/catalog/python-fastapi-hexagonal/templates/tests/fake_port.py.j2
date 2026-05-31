@@ -1,0 +1,30 @@
+{{ import_block }}
+{% if needs_list_alias %}
+
+# Alias prevents ty from resolving ``list`` as the method on this class.
+_List = list
+{% endif %}
+
+
+class Fake{{ bare_name }}:
+    """In-memory fake {{ port_name }} for unit and integration tests."""
+
+    def __init__(self) -> None:
+        self._calls: list[tuple[str, tuple, dict]] = []
+
+{% for m in methods %}
+    {{ m.prefix }} {{ m.name }}(self{{ m.arg_str }}) -> {{ m.returns }}:
+        self._calls.append(("{{ m.name }}", (), {}))
+        return {{ m.default }}
+
+{% endfor %}
+    # Test helpers — not part of the port
+    def call_count(self, method: str | None = None) -> int:
+        """Return the number of times a method (or any method) was called."""
+        if method is None:
+            return len(self._calls)
+        return sum(1 for name, _, _ in self._calls if name == method)
+
+    def reset(self) -> None:
+        """Clear recorded calls."""
+        self._calls.clear()

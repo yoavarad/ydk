@@ -1,0 +1,6 @@
+name: sample-guard
+description: Blocks edits to files under blocked/ directory
+trigger: "guard:edit"
+parallel: true
+timeout: 5
+requires: []

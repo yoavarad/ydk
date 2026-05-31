@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from typing import Any, cast
+
+import httpx
+from fastapi import HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+
+from app.config import get_settings
+
+security = cast(Any, HTTPBearer(auto_error=False))
+
+_jwks_cache: dict | None = None
+
+
+async def _get_jwks() -> dict:
+    global _jwks_cache
+    if _jwks_cache is None:
+        settings = get_settings()
+        region = getattr(settings, "{{ auth_cognito.region_env | lower if auth_cognito else 'cognito_region' }}", "us-east-1")
+        pool_id = getattr(settings, "{{ auth_cognito.user_pool_id_env | lower if auth_cognito else 'cognito_user_pool_id' }}", "")
+        url = f"https://cognito-idp.{region}.amazonaws.com/{pool_id}/.well-known/jwks.json"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            _jwks_cache = resp.json()
+    return _jwks_cache
+
+
+async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = security,
+) -> dict:
+    settings = get_settings()
+    # Dev mode: bypass auth when environment=development and no token
+    if credentials is None:
+        if settings.environment == "development":
+            return {"sub": "dev-user", "email": "dev@localhost", "dev_mode": True}
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        jwks = await _get_jwks()
+        client_id = getattr(settings, "{{ auth_cognito.client_id_env | lower if auth_cognito else 'cognito_client_id' }}", "")
+        claims = jwt.decode(
+            credentials.credentials,
+            jwks,
+            algorithms=["RS256"],
+            audience=client_id,
+            options={"verify_at_hash": False},
+        )
+        return dict(claims)
+    except (JWTError, Exception) as err:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from err

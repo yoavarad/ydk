@@ -1,0 +1,6 @@
+name: nextjs-no-query-key-strings
+description: Enforce TanStack Query keys use typed factories, not inline string literals
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

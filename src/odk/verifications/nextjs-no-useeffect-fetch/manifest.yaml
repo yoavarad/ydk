@@ -1,0 +1,6 @@
+name: nextjs-no-useeffect-fetch
+description: Enforce no data fetching inside useEffect -- use TanStack Query instead
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

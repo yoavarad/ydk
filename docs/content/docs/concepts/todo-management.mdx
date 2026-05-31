@@ -1,0 +1,86 @@
+---
+title: TODO Management
+description: Tracked NotImplementedError placeholders and their lifecycle from ignition to resolution
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# TODO Management
+
+TODOs in ODK are not comments. They are tracked `NotImplementedError` placeholders generated during ignition, each with a unique identifier, a known file location, and a lifecycle that connects code generation to task execution.
+
+## What TODOs Are
+
+When ignition runs generators against your component manifests, the generated code contains method stubs where business logic belongs. Each stub raises `NotImplementedError` with a comment referencing its TODO ID:
+
+```python
+def create_user(self, data: CreateUserRequest) -> User:
+    """Create a new user with validation."""
+    raise NotImplementedError  # ODK-TODO-001
+```
+
+These are not aspirational notes. They are precise markers that ODK tracks, assigns to tasks, and verifies upon completion.
+
+## The ODK-TODO-NNN Format
+
+Every TODO gets a sequential identifier in the format `ODK-TODO-NNN` (zero-padded to three digits). The registry lives in `.odk/todos.yaml` and stores:
+
+- The TODO ID
+- File path and line number
+- Function or method name
+- A human-readable description
+- Current status (open, in-progress, done)
+- Assigned task ID (if any)
+
+## Lifecycle
+
+```
+Ignition registers TODOs --> Stage 02 assigns TODOs to tasks --> Stage 03 resolves TODOs
+(ODK-TODO-001..N)            (odk todo assign)                   (odk task done verifies)
+```
+
+### 1. Registration (Stage 01.5 - Ignition)
+
+When `odk ignite` runs, every `NotImplementedError` in generated code is registered in `.odk/todos.yaml` with status `open`. The TODO count depends on how many method stubs the generators produce -- typically one per business logic method per entity and route.
+
+### 2. Assignment (Stage 02 - Decomposition)
+
+During task decomposition, each TODO is assigned to a task using `odk todo assign <todo-id> <task-id>`. A task usually maps to several related TODOs (for example, all TODOs in the user service might go to a single "implement user CRUD" task).
+
+### 3. Resolution (Stage 03 - Execution)
+
+When an agent runs `odk task done`, the system checks all TODOs assigned to that task. For each one, it performs AST-based verification on the file and line window to confirm the `NotImplementedError` has been replaced with actual implementation.
+
+<Callout type="warn">
+`odk task done` will fail if any assigned TODO still contains a `NotImplementedError`. The agent must implement all assigned business logic before marking the task complete.
+</Callout>
+
+## How verify_done Works
+
+The verification is AST-based, not text-based. When checking whether a TODO is resolved:
+
+1. Parse the source file into an AST
+2. Locate the function/method at the registered line window
+3. Walk the AST nodes within that function
+4. Check for any `Raise` node where the exception is `NotImplementedError`
+5. If found, the TODO is unresolved. If not found, it is resolved.
+
+This approach is robust against formatting changes, comment modifications, and line number drift from edits elsewhere in the file.
+
+## Integration with Stages
+
+| Stage | TODO Role |
+|---|---|
+| Stage 01.5 (Ignition) | TODOs are created -- one per business logic placeholder |
+| Stage 02 (Decomposition) | TODOs are assigned to tasks, scoping what each task must implement |
+| Stage 03 (Execution) | TODOs are resolved by implementing business logic; `odk task done` verifies |
+
+## CLI Commands
+
+```bash
+odk todo list [--status open|in-progress|done]   # List TODOs with optional filter
+odk todo show <id>                               # Show full details for a TODO
+odk todo assign <todo-id> <task-id>              # Link a TODO to a task
+odk todo done <todo-id>                          # Mark resolved (verifies first)
+odk todo coverage                                # Show resolution statistics
+```

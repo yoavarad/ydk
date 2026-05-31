@@ -1,0 +1,5 @@
+name: test-greeting
+description: "Test template that generates a greeting module and test."
+variables:
+  greeting_name: "Name to greet"
+  module_name: "Module filename (without .py)"

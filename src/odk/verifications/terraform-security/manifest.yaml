@@ -1,0 +1,7 @@
+name: terraform-security
+description: Comprehensive security scanning via checkov for critical AWS misconfigurations
+trigger: git:pre-push
+parallel: true
+timeout: 120
+requires:
+- checkov

@@ -1,0 +1,131 @@
+---
+title: "odk component"
+description: "CLI reference for odk component"
+---
+
+# `odk component`
+
+```text
+                                                                                
+ Usage: odk component [OPTIONS] COMMAND [ARGS]...                               
+                                                                                
+ Component manifest management                                                  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ list          List all components, optionally filtered by type.              │
+│ show          Show a component manifest.                                     │
+│ create        Create a new component from a schema template.                 │
+│ validate      Validate ALL components (schema + linker + cross-refs).        │
+│ list-schemas  List available schemas.                                        │
+│ show-schema   Show a schema definition.                                      │
+│ init-schemas  Copy default schemas to project's .odk/schemas/ directory.     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk component list`
+
+```text
+                                                                                
+ Usage: odk component list [OPTIONS]                                            
+                                                                                
+ List all components, optionally filtered by type.                              
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --type        TEXT  Filter by component type                                 │
+│ --help              Show this message and exit.                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk component show`
+
+```text
+                                                                                
+ Usage: odk component show [OPTIONS] COMPONENT_ID                               
+                                                                                
+ Show a component manifest.                                                     
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    component_id      TEXT  Full component ID (odk:type:namespace/name)     │
+│                              [required]                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk component create`
+
+```text
+                                                                                
+ Usage: odk component create [OPTIONS] TYPE_NAME NAMESPACE_NAME                 
+                                                                                
+ Create a new component from a schema template.                                 
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    type_name           TEXT  Component type (e.g. route, entity)           │
+│                                [required]                                    │
+│ *    namespace_name      TEXT  Namespace/name (e.g. orders/create)           │
+│                                [required]                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk component validate`
+
+```text
+                                                                                
+ Usage: odk component validate [OPTIONS]                                        
+                                                                                
+ Validate ALL components (schema + linker + cross-refs).                        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk component list-schemas`
+
+```text
+                                                                                
+ Usage: odk component list-schemas [OPTIONS]                                    
+                                                                                
+ List available schemas.                                                        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk component show-schema`
+
+```text
+                                                                                
+ Usage: odk component show-schema [OPTIONS] TYPE_NAME                           
+                                                                                
+ Show a schema definition.                                                      
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    type_name      TEXT  Schema type name (e.g. route, entity) [required]   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk component init-schemas`
+
+```text
+                                                                                
+ Usage: odk component init-schemas [OPTIONS]                                    
+                                                                                
+ Copy default schemas to project's .odk/schemas/ directory.                     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

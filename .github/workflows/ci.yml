@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  branch-name:
+    name: Branch name
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check branch naming convention
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if ! echo "$BRANCH" | grep -qE '^(feat|fix|docs|chore|refactor|test|ci|perf|release)/[a-z0-9-]+$'; then
+            echo "ERROR: branch '$BRANCH' does not follow convention: type/description"
+            echo "Valid types: feat fix docs chore refactor test ci perf release"
+            echo "Example: feat/add-telemetry"
+            exit 1
+          fi
+
+  commit-messages:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install commitizen
+        run: uv tool install commitizen
+      - name: Check all commits are conventional
+        run: cz check --rev-range origin/main...HEAD
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+      - name: ruff check
+        run: uv run ruff check src/ tests/
+      - name: ty check
+        run: uv run ty check src/odk/ --python-version 3.13 --exclude "src/odk/catalog/*/generators/"
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+      - name: Run unit tests
+        run: uv run pytest tests/ -q --tb=short -x --ignore=tests/fixtures

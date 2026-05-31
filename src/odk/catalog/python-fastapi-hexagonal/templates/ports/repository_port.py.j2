@@ -1,0 +1,20 @@
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+from app.core.models.{{ snake_name }} import {{ name }}Model
+
+# Alias prevents ty from resolving ``list`` as the method on this class.
+_List = list
+
+
+@runtime_checkable
+class {{ name }}RepositoryPort(Protocol):
+    """Repository interface for {{ name }} persistence."""
+
+    def get(self, id: {{ pk_type }}) -> {{ name }}Model | None: ...
+    def list(self{% for p in list_params %}, {{ p.name }}: {{ p.type }} = {{ p.default }}{% endfor %}) -> _List[{{ name }}Model]: ...
+    def create(self, **kwargs) -> {{ name }}Model: ...
+    def update(self, id: {{ pk_type }}, **kwargs) -> {{ name }}Model: ...
+    def delete(self, id: {{ pk_type }}) -> None: ...
+    def exists(self, id: {{ pk_type }}) -> bool: ...

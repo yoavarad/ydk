@@ -1,0 +1,7 @@
+name: terraform-tagging
+description: Verify all Terraform resources have required tags (Environment, Project,
+  ManagedBy)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

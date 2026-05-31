@@ -1,0 +1,87 @@
+"""Commands for the {{ group.name }} group."""
+
+from __future__ import annotations
+
+import json
+import sys
+from typing import Optional
+
+import typer
+
+from ..client import ApiClient
+
+app = typer.Typer(no_args_is_help=True)
+
+
+def _get_client() -> ApiClient:
+    """Create an API client instance."""
+    return ApiClient()
+
+
+def _output(data: object, pretty: bool = False) -> None:
+    """Output data as JSON (default) or formatted."""
+    if data is None:
+        return
+    if pretty:
+        typer.echo(json.dumps(data, indent=2, default=str))
+    else:
+        typer.echo(json.dumps(data, default=str))
+
+{% for cmd in group.commands %}
+
+
+@app.command("{{ cmd.name }}")
+def {{ cmd.name | to_snake }}(
+{%- for arg in cmd.get("arguments", []) %}
+    {{ arg.name | to_snake }}: str = typer.Argument(help="{{ arg.description }}"),
+{%- endfor %}
+{%- for opt in cmd.get("options", []) %}
+{%- if opt.get("required") %}
+    {{ opt.name | to_snake }}: {{ opt.type | python_type }} = typer.Option(..., "--{{ opt.name }}", help="{{ opt.description }}"),
+{%- elif opt.default is none %}
+    {{ opt.name | to_snake }}: Optional[{{ opt.type | python_type }}] = typer.Option(None, "--{{ opt.name }}", help="{{ opt.description }}"),
+{%- else %}
+    {{ opt.name | to_snake }}: {{ opt.type | python_type }} = typer.Option({{ opt.default | typer_default(opt.type) }}, "--{{ opt.name }}", help="{{ opt.description }}"),
+{%- endif %}
+{%- endfor %}
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print output"),
+    output_json: bool = typer.Option(True, "--json/--no-json", help="Output as JSON"),
+) -> None:
+    """{{ cmd.description }}"""
+    from ..client.http_client import ApiError
+
+    client = _get_client()
+    try:
+{%- set endpoint = cmd.endpoint %}
+{%- set path_expr = cmd.endpoint %}
+{%- for arg in cmd.get("arguments", []) %}
+{%- set path_expr = path_expr.replace("{" + arg.name + "}", '" + ' + arg.name|to_snake + ' + "') %}
+{%- endfor %}
+{%- if cmd.method == "GET" %}
+        params = {}
+{%- for opt in cmd.get("options", []) %}
+        if {{ opt.name | to_snake }} is not None:
+            params["{{ opt.name }}"] = {{ opt.name | to_snake }}
+{%- endfor %}
+        result = client.request("GET", f"{{ cmd.endpoint }}"{% for arg in cmd.get("arguments", []) %}.replace("{{ '{' + arg.name + '}' }}", {{ arg.name | to_snake }}){% endfor %}, params=params or None)
+{%- elif cmd.method in ("POST", "PUT", "PATCH") %}
+        body = {}
+{%- for opt in cmd.get("options", []) %}
+        if {{ opt.name | to_snake }} is not None:
+            body["{{ opt.name }}"] = {{ opt.name | to_snake }}
+{%- endfor %}
+        result = client.request("{{ cmd.method }}", f"{{ cmd.endpoint }}"{% for arg in cmd.get("arguments", []) %}.replace("{{ '{' + arg.name + '}' }}", {{ arg.name | to_snake }}){% endfor %}, json_body=body or None)
+{%- else %}
+        result = client.request("{{ cmd.method }}", f"{{ cmd.endpoint }}"{% for arg in cmd.get("arguments", []) %}.replace("{{ '{' + arg.name + '}' }}", {{ arg.name | to_snake }}){% endfor %})
+{%- endif %}
+{%- if cmd.response_type == "empty" %}
+        typer.echo("Done.")
+{%- else %}
+        _output(result, pretty=pretty)
+{%- endif %}
+    except ApiError as e:
+        typer.echo(f"Error: {e.message}", err=True)
+        raise typer.Exit(code=1)
+    finally:
+        client.close()
+{%- endfor %}

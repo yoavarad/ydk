@@ -1,0 +1,177 @@
+---
+title: Task Lifecycle
+description: States, dependencies, gates, complexity, and scheduling
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Task Lifecycle
+
+A task in ODK is not just a ticket with a title and description. It is a node in a dependency graph with typed edges, a state machine with well-defined transitions, a container for gates that control when work can begin, and a target for complexity analysis that determines whether it should be split. Understanding the full lifecycle -- from creation through completion -- is essential for working with ODK effectively.
+
+## The State Machine
+
+Every task follows a state machine with seven states and six transitions. The states are not arbitrary labels -- each one triggers specific behaviors in the CLI and reflects a specific reality about the work.
+
+```
+open --> in-progress --> in-review --> done --> closed
+  |          |
+  |          v
+  |     blocked-by-code
+  |     blocked-by-decision
+  |          |
+  |          v
+  |     in-progress (unblock)
+```
+
+**`open`** is the initial state. The task exists, has been created with a title, description, dependencies, and acceptance criteria, but no one has started working on it. A task can only leave `open` by being started, which requires all blocking dependencies to be resolved and all gates to be satisfied.
+
+**`in-progress`** means an agent is actively working on the task. A worktree has been created (if worktree isolation is enabled), the branch exists, and implementation is underway. From here, the task can be blocked (moving to one of the blocked states), or completed (moving to `in-review`).
+
+**`blocked-by-code`** means the agent encountered a technical obstacle that prevents further progress -- a circular import, a missing upstream dependency, a bug in a library. The block is recorded with a detail message, and the task returns to `in-progress` when the blocker is resolved.
+
+**`blocked-by-decision`** means the agent needs a human decision before continuing -- which auth strategy to use, whether to normalize a table, how to handle a specific edge case. This is fundamentally different from a code block because the resolution requires human judgment, not just debugging.
+
+**`in-review`** means verification has passed and a PR has been created. The task is waiting for human review and merge. The PR body contains the verification proof, so the reviewer has everything they need.
+
+**`done`** means the PR has been merged and the work is complete. Memories can be extracted from the session transcript, and the task can be compacted (summarized to reduce context overhead for future searches).
+
+**`closed`** is the terminal state. The task is archived and no longer appears in active listings.
+
+## ID Generation
+
+Task IDs use a collision-resistant format: `T-<uuid4().hex[:8]>`, producing IDs like `T-a1b2c3d4`. Stories use `S-<hex>` and epics use `E-<hex>`. The UUID4 hex approach provides sufficient uniqueness for any project size while keeping IDs short enough to type and remember. These IDs are stable across repository backends -- the same task has the same ID whether it is stored locally, in a GitHub Issue, or in a GitLab Issue.
+
+## The PM Hierarchy
+
+ODK uses a three-level hierarchy that maps to how real projects are organized:
+
+```
+Release
+  Epic (E-xxxxxxxx)    -- Major feature or milestone
+    Story (S-xxxxxxxx) -- User-visible capability
+      Task (T-xxxxxxxx) -- Atomic unit of work
+```
+
+Epics group stories around a release or major feature. Stories group tasks around a user-visible capability. Tasks are the atomic unit -- each one should be completable in a single coding session by a single agent. The granularity matters because AI agents have context windows, and tasks that span multiple sessions lose context and accumulate drift.
+
+## Typed Dependencies
+
+The dependency system is one of ODK's most important features. Eight dependency types capture the different relationships between tasks, and the distinction between blocking and non-blocking types determines the execution DAG.
+
+Three types create execution edges (blocking):
+
+- **`blocks`** -- Task A must complete before Task B can start. This is the default and most common type.
+- **`conditional-blocks`** -- Task A blocks Task B unless a specific condition is met. Used for feature flags or optional prerequisites.
+- **`waits-for`** -- Task A waits for an external event (deployment, CI pipeline, third-party approval) before starting.
+
+Five types are tracked for traceability only (non-blocking):
+
+- **`validates`** -- A test task that validates the output of another task. The dependency goes from test to implementation, but it does not block implementation.
+- **`caused-by`** -- Root cause link. This task exists because of a bug found in another task.
+- **`discovered-from`** -- Found during implementation. This task was not in the original plan but was discovered while working on another task.
+- **`supersedes`** -- Replaces a previous task that was cancelled or rethought.
+- **`related`** -- Informational link for context, with no scheduling impact.
+
+## DAG Validation
+
+Before starting execution, ODK validates the dependency DAG using Kahn's algorithm. The validation produces four critical metrics:
+
+**Cycle detection** catches impossible execution orders. If Task A blocks Task B, which blocks Task C, which blocks Task A, no task in the cycle can ever start. Kahn's algorithm detects this by performing a topological sort -- if not all nodes are visited, a cycle exists.
+
+**Parallel execution waves** group tasks into sets that can run simultaneously. Wave 1 contains all tasks with zero blocking dependencies (zero in-degree). Wave 2 contains tasks whose only dependencies were in Wave 1. This directly tells you how many agents you can productively use in each phase.
+
+**Critical path** is the longest chain of blocking dependencies, computed via longest-path dynamic programming. This is your minimum project duration regardless of how many agents you throw at it. If the critical path has 12 tasks and each takes an hour, you are looking at at least 12 hours of wall-clock time.
+
+**Fan-out** measures how many tasks depend on each task. A task with fan-out of 8 is a bottleneck -- it blocks 8 other tasks, so completing it unblocks the most downstream work. ODK's `task ready` command ranks ready tasks by fan-out so you always start with the highest-impact work.
+
+## Gates
+
+Gates are external conditions that must be satisfied before a task can start. They extend the dependency system beyond task-to-task relationships to include real-world conditions:
+
+**`pr-merged`** gates check whether a specific GitHub PR has been merged. This is auto-resolved by running `gh pr view` and checking the state. Use this when a task depends on another task's PR being merged (not just the task being done).
+
+**`ci-passed`** gates check whether a GitHub Actions run has completed successfully. Auto-resolved via `gh run view`. Use this when a task depends on a deployment or integration test pipeline.
+
+**`timer`** gates check whether enough time has elapsed since a specific timestamp. Auto-resolved by comparing the current time against `created_at + duration_minutes`. Use this for soak tests, cooling-off periods, or staged rollouts.
+
+**`human`** gates are never auto-resolved. They require a manual `odk task resolve-gate` command. Use this for stakeholder approvals, legal review, or any condition that requires human judgment.
+
+## Complexity Scoring
+
+ODK uses an LLM to analyze task complexity on a 1-10 scale. The scorer sends the task's title, description, acceptance criteria, dependencies, and spec references to an LLM with a structured prompt that asks for a score, reasoning, and expansion recommendations.
+
+The scale is designed to be actionable:
+
+- **1-3 (Simple)** -- Single file change, clear implementation path, no design ambiguity. These tasks are ideal for AI agents.
+- **4-6 (Moderate)** -- Multiple files, some design decisions, moderate risk. Most tasks fall here.
+- **7-10 (Complex)** -- Cross-cutting changes, high ambiguity, significant design risk. Should likely be split into smaller tasks.
+
+Tasks scoring 8 or above get `should_expand=True` with suggested splits. When no LLM provider is configured, the scorer returns a default score of 5 -- the deterministic fallback that every LLM-powered feature in ODK provides.
+
+## Scheduling
+
+For teams running multiple agents in parallel, ODK provides a greedy topological scheduler. Given a task DAG and a number of available agents, the scheduler:
+
+1. Starts with all zero-degree tasks in a ready queue
+2. Assigns up to N tasks per wave (N = available agents)
+3. After each wave completes, decrements in-degrees and adds newly ready tasks
+4. Computes utilization per agent and identifies idle time
+
+Buffer management tracks schedule health using green (under 33% buffer consumed), yellow (33-66%), and red (over 66%) zones. This gives you early warning when the project is falling behind schedule.
+
+## Starting Tasks
+
+The `odk task start` command transitions a task from `open` to `in-progress` and sets up the working environment:
+
+```bash
+odk task start T-a1b2c3d4
+```
+
+### `--base` Flag
+
+By default, task branches are created from `main`. Use `--base` to branch from a different base:
+
+```bash
+odk task start T-a1b2c3d4 --base feature/api-v2
+```
+
+This is essential when tasks depend on work that has not yet been merged to main. The task branches from the specified branch, giving it access to the prerequisite code.
+
+### `--force` Flag
+
+If a task was previously started but its worktree is stale or corrupted, use `--force` to clean up and restart:
+
+```bash
+odk task start T-a1b2c3d4 --force
+```
+
+This removes the existing worktree and branch, then creates fresh ones. Use this when a task needs to be restarted from scratch after a failed attempt.
+
+## Completing Tasks
+
+The `odk task done` command runs verification and creates a PR:
+
+```bash
+odk task done T-a1b2c3d4
+```
+
+On completion, it prints a structured results table showing pass/fail status for each verification check:
+
+```
+┌─────────────────────┬────────┬──────────┐
+│ Check               │ Status │ Duration │
+├─────────────────────┼────────┼──────────┤
+│ lint-ruff           │ PASS   │ 0.8s     │
+│ types-ty            │ PASS   │ 2.1s     │
+│ pytest              │ PASS   │ 4.3s     │
+│ architecture-check  │ PASS   │ 1.2s     │
+│ ai-code-review      │ PASS   │ 8.5s     │
+└─────────────────────┴────────┴──────────┘
+```
+
+Verification is scoped to changed files where possible (e.g., `ty` only checks files modified in the branch), keeping feedback fast even in large codebases.
+
+<Callout type="info">
+Use `odk task ready` at any time to see which tasks have all blocking dependencies resolved and all gates satisfied. Tasks are ranked by fan-out (number of dependents), so you always know which task to start next for maximum impact.
+</Callout>

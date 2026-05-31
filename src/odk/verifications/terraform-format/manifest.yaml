@@ -1,0 +1,7 @@
+name: terraform-format
+description: Check that all .tf files are properly formatted with terraform fmt
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires:
+- terraform

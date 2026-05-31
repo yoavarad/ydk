@@ -1,0 +1,6 @@
+name: guard-no-noqa
+description: Block lint suppressions — violations must be fixed, not silenced
+trigger: "guard:edit"
+parallel: true
+timeout: 5
+requires: []

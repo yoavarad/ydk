@@ -1,0 +1,36 @@
+"""Unit tests for {{ name }}Service. Uses fakes — no DB or external services."""
+from __future__ import annotations
+
+import pytest
+
+{% if has_not_found_error %}
+from app.core.services.{{ snake_name }}_service import {{ name }}NotFoundError, {{ name }}Service  # noqa: F401
+{% else %}
+from app.core.services.{{ snake_name }}_service import {{ name }}Service
+{% endif %}
+{% for fake_imp in fake_imports %}
+{{ fake_imp }}
+{% endfor %}
+
+
+{% for dep in dependencies %}
+@pytest.fixture
+def {{ dep.fixture_name }}() -> {{ dep.fake_class }}:
+    return {{ dep.fake_class }}()
+
+
+{% endfor %}
+@pytest.fixture
+def service({% for dep in dependencies %}{{ dep.fixture_name }}: {{ dep.fake_class }}, {% endfor %}) -> {{ name }}Service:
+    return {{ name }}Service({% for dep in dependencies %}{{ dep.param_name }}={{ dep.fixture_name }}, {% endfor %})
+
+
+class Test{{ name }}Service:
+    {% for method in methods %}
+    {% for todo_line in method.todo_lines %}
+    {{ todo_line }}
+    {% endfor %}
+    def test_{{ method.name }}(self, service: {{ name }}Service) -> None:
+        raise NotImplementedError
+
+    {% endfor %}

@@ -1,0 +1,9 @@
+{
+  "title": "Extending ODK",
+  "pages": [
+    "new-verification-plugin",
+    "new-component-schema",
+    "new-cli-command",
+    "new-repository-backend"
+  ]
+}

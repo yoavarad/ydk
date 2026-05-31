@@ -1,0 +1,6 @@
+name: guard-no-mock-internals
+description: Block mocking of internal classes — use fakes and DI overrides instead
+trigger: "guard:edit"
+parallel: true
+timeout: 5
+requires: []

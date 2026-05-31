@@ -1,0 +1,6 @@
+name: terraform-public-ami
+description: Detect AMI usage without owner restrictions
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

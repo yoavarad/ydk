@@ -1,0 +1,7 @@
+name: fastapi-route-delegation
+description: Verify API routes delegate to services via Depends(), no direct adapter/session
+  imports
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

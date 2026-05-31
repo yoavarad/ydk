@@ -1,0 +1,68 @@
+---
+title: "odk ignite"
+description: "CLI reference for skeleton generation from installed packs"
+---
+
+# `odk ignite`
+
+Generate a runnable project skeleton from the installed ignition pack and component manifests.
+
+```text
+ Usage: odk ignite [OPTIONS]
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│    --dry-run        Preview generated files without writing                  │
+│    --force          Regenerate all files ignoring content hashes             │
+│    --help           Show this message and exit.                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk ignite`
+
+Runs all generators from the installed ignition pack against component manifests in `.odk/components/`. Each generator runs as a subprocess (env vars in, JSON stdout out). Content hashes are stored in `.odk/ignition-hashes.json` for idempotency.
+
+```bash
+$ odk ignite
+Reading pack: python-fastapi-hexagonal
+Reading components: 4 entities, 3 routes, 2 errors, 1 contract
+
+Running generators:
+  entity_generator     -> 4 domain models, 4 repositories, 4 migrations
+  route_generator      -> 3 route handlers, 3 schema files
+  error_generator      -> 2 exception classes
+  contract_generator   -> 1 request/response schema
+  test_generator       -> 14 test stubs
+
+Generated 32 files
+Registered 18 TODOs (ODK-TODO-001 through ODK-TODO-018)
+Post-checks: syntax OK, no circular imports, formatted with ruff
+```
+
+## `odk ignite --dry-run`
+
+Preview what would be generated without writing any files to disk.
+
+```bash
+$ odk ignite --dry-run
+[DRY RUN] Would generate:
+  src/domain/models/user.py (new)
+  src/domain/models/order.py (new)
+  src/domain/repositories/user_repository.py (new)
+  src/adapters/api/routes/users.py (new)
+  tests/unit/domain/test_user.py (new)
+  ... (27 more files)
+
+Would register 18 TODOs
+No files written.
+```
+
+## `odk ignite --force`
+
+Regenerate all files, ignoring content hashes. Use with caution -- this overwrites manual changes.
+
+```bash
+$ odk ignite --force
+WARNING: Force mode will overwrite developer-owned files.
+Regenerating all files...
+Generated 32 files (4 were developer-owned, now overwritten)
+```

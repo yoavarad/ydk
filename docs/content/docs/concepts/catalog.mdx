@@ -1,0 +1,64 @@
+---
+title: Catalog System
+description: Searchable registry for ignition packs, schemas, and reusable ODK components
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Catalog System
+
+The catalog is a searchable registry of reusable ODK components -- ignition packs, component schemas, verification plugins, and reviewer configurations. It exists because every project needs roughly the same foundation (entity schemas, route schemas, quality plugins), but with enough variation that a one-size-fits-all approach fails. The catalog lets you search for what you need, install it, and customize it for your project.
+
+## What Lives in the Catalog
+
+The catalog ships with eight built-in items:
+
+| Item | Type | Description |
+|---|---|---|
+| `odk-core-schemas` | schemas | The 13 default component schemas (entity, route, error, contract, etc.) |
+| `odk-default-reviewers` | reviewers | The 10 spec reviewers (N01-N10) for quality evaluation |
+| `python-quality` | verification plugins | Ruff, ty, and pytest verification plugins |
+| `hexagonal-architecture` | verification plugins | Hexagonal architecture conformance checks |
+| `python-fastapi-hexagonal` | ignition pack | FastAPI + SQLAlchemy hexagonal layout generators |
+| `nextjs-fsd-shadcn` | ignition pack | Next.js with Feature-Sliced Design and shadcn/ui |
+| `python-typer-cli` | ignition pack | Typer CLI application skeleton |
+| `aws-terraform-fullstack` | ignition pack | AWS infrastructure with Terraform + application layer |
+
+You can publish your own items to the catalog for reuse across projects.
+
+## How Search Works
+
+The catalog uses ChromaDB for semantic search. When you run `odk catalog search "fastapi hexagonal"`, the query is embedded and matched against catalog item descriptions, tags, and metadata. This means you do not need to know the exact name of what you are looking for -- a query like "python web API skeleton" will find relevant ignition packs.
+
+The local catalog backend stores items at `~/.odk/catalog/`. The ChromaDB index lives at `~/.odk/catalog/chroma/`.
+
+## Ignition Packs
+
+An ignition pack is the most important catalog item type. It contains generators that transform component manifests into a runnable project skeleton. Each pack declares which component types it consumes (entities, routes, errors, etc.) and what code it produces (domain models, repository interfaces, API routes, test stubs, migrations).
+
+When you install an ignition pack, it becomes the blueprint for Stage 01.5 (Ignition). Your component manifests should be designed toward the pack's requirements -- the field names, types, and structure in your manifests should match what the pack's generators expect.
+
+<Callout type="info">
+The catalog is local-first. All items are stored on your machine, and search runs locally via ChromaDB. There is no central registry or network dependency. This means catalog operations are fast and work offline.
+</Callout>
+
+## CLI Reference
+
+```bash
+odk catalog search <query>       # Semantic search for catalog items
+odk catalog install <name>       # Install a catalog item into the project
+odk catalog list                 # List installed catalog items
+odk catalog info <name>          # Show details (consumed types, generated files, TODOs)
+odk catalog publish <path>       # Publish a local item to the catalog
+odk catalog uninstall <name>     # Remove an installed catalog item
+```
+
+## Configuration
+
+```yaml
+# .odk/config.yaml
+catalog:
+  backend: local                 # Currently only "local" is supported
+  local_path: ~/.odk/catalog     # Path to local catalog store
+  chroma_path: ~/.odk/catalog/chroma  # ChromaDB index for semantic search
+```

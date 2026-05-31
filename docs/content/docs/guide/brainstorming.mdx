@@ -1,0 +1,93 @@
+---
+title: Brainstorming (Stage 01)
+description: How to run the brainstorming stage -- specs, components, and visual design
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Brainstorming (Stage 01)
+
+Stage 01 is human-owned by design. Coding agents do not participate in brainstorming, and this boundary exists for a reason that becomes clear after watching AI-assisted projects fail: when an LLM writes or heavily influences a specification, the resulting spec reflects the LLM's assumptions about what you want, not what you actually need. The spec ends up comprehensive-looking but shallow, covering obvious cases while missing the domain-specific edge cases that only someone who understands the business can identify.
+
+Your role in Stage 01 is to write specs that are precise enough for an AI agent to implement without asking questions. That means specifying not just the happy path but the error cases, not just the data model but the state transitions, not just the API routes but the authentication requirements and rate limits. ODK provides the tools to structure this thinking and validate the result.
+
+## Writing Narrative Specs
+
+Create markdown files in `docs/specs/` that describe what you are building and why. A good spec starts with the problem -- not the solution. What user need are you addressing? What is broken or missing today? What does success look like? The problem statement anchors everything that follows and prevents scope creep during implementation.
+
+After the problem, define success criteria that are specific and testable. "Users can place orders" is vague. "Users can create orders with one or more items, see the calculated total, and receive a 201 response with the created order including a server-generated UUID" is testable. When the agent implements this, it knows exactly what the acceptance criteria are.
+
+Scope boundaries are equally important. Explicitly state what is out of scope. If payment processing is handled by a separate service, say so. If inventory management is future work, say so. Without explicit scope boundaries, agents will attempt to implement everything they think is related, wasting time on code that will never be used.
+
+## Defining Component Manifests
+
+For each technical building block mentioned in your spec, create a component manifest:
+
+```bash
+odk component create entity orders/Order
+odk component create route orders/create
+odk component create error orders/insufficient-balance
+```
+
+Then reference each component in your spec with bracket syntax: `[odk:entity:orders/Order]`. This reference is not decorative -- it is a machine-readable link that ODK validates. Every bracket reference must resolve to an actual YAML file, and every YAML file should be referenced by at least one spec.
+
+Fill in the manifest with the precise details: for entities, define every field with its type, whether it is required, default values, and validation constraints. For routes, specify the HTTP method, path, request schema, response schemas, and authentication requirements. The more precise the manifest, the more useful it is for the agent during implementation.
+
+## Validating References
+
+Run the deterministic linker to catch structural issues:
+
+```bash
+odk component validate
+```
+
+This catches three categories of problems: bracket references that point to nonexistent manifests (you forgot to create the component), manifests that no spec references (orphaned components), and cross-references between manifests that do not resolve (a foreign key pointing to a nonexistent entity).
+
+## Evaluating Spec Quality
+
+The AI-powered spec checker provides a deeper quality assessment:
+
+```bash
+odk spec verify --all
+odk spec results
+```
+
+The checker evaluates 18 criteria across 5 groups. The default thresholds are:
+
+| Group | Criteria | Default Threshold |
+|-------|---------|------------------|
+| Completeness | Problem Statement, Success Criteria, Scope, User Stories | 8 |
+| Clarity | Terminology, Ambiguity, Diagrams, Audience | 8 |
+| Architecture | Components, Interfaces, Data Model, Dependencies | 8 |
+| Robustness | Error Handling, Security, Testing, YAGNI | 7 |
+| Quality | Information Density, Implementation Leakage | 7 |
+
+Specs routinely fail the first check. The most common failures are missing error handling analysis (what happens when the database is down?), vague scope boundaries ("and other related features"), and implementation details leaking into what should be a design document (specifying database column names in a spec that should describe business concepts).
+
+You can add project-specific criteria in your config:
+
+```yaml
+spec_check:
+  custom:
+    - id: "CX01"
+      rubric: "domain"
+      name: "Trading Semantics"
+      prompt: "Are trading terms used correctly and consistently?"
+      threshold: 8
+```
+
+## Using the Visual Companion
+
+For UI-heavy projects, the visual companion provides browser-based design annotation during brainstorming:
+
+```bash
+odk visual start --project-dir .
+odk visual push wireframe.html --filename index.html --session-id abc
+odk visual feedback --session-id abc
+```
+
+The companion starts a Vite dev server with an annotation overlay injected into the page. Users can make selection choices, annotate specific DOM elements (identified by CSS selector, XPath, or text anchor), and draw rectangle regions with comments. This feedback is captured as structured events that inform the spec without requiring the user to describe visual layouts in prose.
+
+<Callout type="info">
+The spec checker uses Amazon Bedrock (Claude Sonnet by default). Configure the model and thresholds in your `.odk/config.yaml` under the `spec_check` section.
+</Callout>

@@ -1,0 +1,33 @@
+$schema: "odk:schema:route"
+id: "odk:route:items/create"
+description: "Create a new item"
+method: POST
+path: /items
+auth: required
+tag: items
+request:
+  body:
+    name:
+      type: string
+      required: true
+    description:
+      type: text
+      required: false
+    price:
+      type: Decimal
+      required: true
+    is_active:
+      type: boolean
+      required: true
+    category_id:
+      type: integer
+      required: false
+  path_params: {}
+  query_params: {}
+responses:
+  success:
+    status: 201
+    schema: ItemResponse
+  errors:
+    - status: 400
+      error_ref: "odk:error:sample/validation-failed"

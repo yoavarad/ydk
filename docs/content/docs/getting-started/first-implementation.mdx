@@ -1,0 +1,150 @@
+---
+title: Your First Implementation
+description: Start a task, implement with TDD, verify, and ship
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Your First Implementation
+
+This is where the rubber meets the road. Stages 01 and 02 were about planning -- writing specs, defining components, creating tasks. Stage 03 is about execution, and ODK's execution model is built on a simple principle: every claim must have machine-verifiable proof. When a coding agent says "all tests pass", that is not proof. The actual pytest output, captured and stored as an artifact, attached to the PR -- that is proof.
+
+The execution flow follows a structured path: start the task, post a plan, implement with TDD, run verification, and complete with proof. Each step has guardrails that prevent the common failure modes of AI-assisted development.
+
+## Starting a Task
+
+Pick a ready task from your backlog and start it:
+
+```bash
+odk task start T-abc12345
+```
+
+This single command does several things, and each one matters. First, it checks all blocking dependencies -- if this task depends on another task that is not done, the start command refuses with a clear error listing the unresolved dependencies. Second, it checks all gates -- if the task requires a PR to be merged or a CI pipeline to pass before work can begin, the gate checker validates those conditions. Third, it creates an isolated git worktree (when `execution.worktree_isolation` is enabled, which is the default), giving the agent a clean workspace that does not interfere with other in-progress tasks. Fourth, it updates the task status to `in-progress` and assigns it to the agent. Fifth, if the memory system is configured, it bootstraps relevant memories -- searching for knowledge related to the task's description and spec references so the agent starts with context from past work.
+
+The worktree isolation deserves special attention. Without it, two agents working on different tasks would both be modifying the same working directory, leading to merge conflicts, broken test suites, and general chaos. With worktree isolation, each task gets its own directory with its own branch, its own working tree, and its own index. The agents can work completely independently.
+
+You can optionally pass a session ID for traceability:
+
+```bash
+odk task start T-abc12345 --session-id sess-xyz789
+```
+
+This links the Claude Code session to the task, enabling memory extraction from the session transcript after the task is complete.
+
+## Posting a Plan
+
+Before writing code, post an implementation plan:
+
+```bash
+odk task comment T-abc12345 --plan "1. Write Order model tests for field validation and state transitions
+2. Implement Order model
+3. Write integration tests for POST /orders
+4. Implement POST /orders route with validation
+5. Run full verification pipeline"
+```
+
+The plan is posted as a comment on the task issue (whether that is a local file, a GitHub Issue, or a GitLab Issue). It serves two purposes: it forces the agent to think through the implementation sequence before starting, and it creates a record that reviewers can compare against the actual changes.
+
+## Implementing with TDD
+
+ODK enforces test-driven development through the `python-tdd-guard` verification plugin. This plugin checks that every staged source file has a corresponding test file. If you add `src/orders/model.py` without also adding `tests/test_model.py` (or `tests/orders/test_model.py`), verification fails. This is not a suggestion -- it is a gate that prevents untested code from being submitted.
+
+The workflow is straightforward: write tests that describe the behavior you want, then write the implementation that makes those tests pass. Post progress updates as you complete each phase:
+
+```bash
+odk task comment T-abc12345 "Order model tests written and passing. Starting route tests."
+```
+
+Progress updates are posted as comments on the task issue, creating a timeline of the implementation that reviewers can follow.
+
+## Completing the Task
+
+When the implementation is done and tests are passing locally, run the completion command:
+
+```bash
+odk task done T-abc12345
+```
+
+This triggers the full verification pipeline -- all three layers, executed sequentially, with layer failures stopping subsequent layers:
+
+**Layer 1 (Format and Lint)** runs fast, deterministic checks. The `lint-ruff` plugin runs `ruff format --check` and `ruff check`. The `types-ty` plugin runs the type checker. The `python-quality` plugin checks for common quality issues. These checks typically complete in under 5 seconds.
+
+**Layer 2 (Architecture and Structure)** enforces project conventions. The `python-tdd-guard` plugin verifies that every source file has tests. The `python-file-length` plugin enforces file size limits. Framework-specific plugins check import isolation, route delegation, adapter boundaries, and other architectural rules. These checks take 5-15 seconds.
+
+**Layer 3 (AI-Powered)** runs LLM-based analysis. The `ai-code-review` plugin sends the diff to an LLM for security, quality, and design review. The `spec-alignment` plugin checks that the implementation matches the spec across six dimensions. These checks take 15-60 seconds and require the `ai` extras.
+
+If all checks pass, ODK saves the verification report as a proof artifact at `.odk/proofs/T-abc12345/verification.json`, creates a PR with the full proof embedded in the body, and posts a proof summary to the task issue. The PR body includes the actual output from every verification check -- not just "passed" or "failed", but the exact console output that proves it.
+
+If any check fails, ODK does not create a PR. Instead, it formats the failures as structured JSON that the coding agent can read and act on:
+
+```json
+{
+  "all_passed": false,
+  "failed_checks": [
+    {
+      "name": "lint-ruff",
+      "output": "src/orders/model.py:42:1: E302 expected 2 blank lines",
+      "duration_seconds": 0.3
+    }
+  ]
+}
+```
+
+## When Things Go Wrong
+
+Not every task proceeds smoothly. ODK provides structured ways to handle obstacles:
+
+**Blocked by code** -- when you discover a technical blocker like a circular import or a missing upstream dependency:
+
+```bash
+odk task block T-abc12345 --reason code --detail "Circular import between orders and users modules"
+```
+
+**Blocked by decision** -- when you need a design decision from a human before proceeding:
+
+```bash
+odk task block T-abc12345 --reason decision --detail "Need to decide between event sourcing and CRUD for order state management"
+```
+
+**Unblock and resume** -- once the blocker is resolved:
+
+```bash
+odk task unblock T-abc12345
+```
+
+**Discovered new work** -- when implementation reveals tasks that were not in the original decomposition:
+
+```bash
+odk task add-subtask T-abc12345 --title "Add order total recalculation on item changes" \
+  --body "Found during order creation implementation -- when items are added or removed, the total must be recalculated with proper decimal precision"
+```
+
+The discover command creates a new task linked to the current one via a `discovered-from` dependency. This is a non-blocking relationship -- it tracks provenance without affecting the current task's execution.
+
+## Auto-Repair
+
+If verification fails on fixable issues (like formatting problems), you can use the repair loop:
+
+```bash
+odk verify run --trigger pre-push --auto-fix --repair --max-retries 3
+```
+
+The `--auto-fix` flag tells plugins that support it (like `lint-ruff`) to fix violations before checking -- running `ruff format` and `ruff check --fix` automatically. The `--repair` flag enables the retry loop: if checks still fail after auto-fix, the structured error JSON is emitted for the agent to read and fix, and verification runs again, up to `--max-retries` times.
+
+<Callout type="info">
+Verification results are cached by content hash. If you run verification on code that has not changed since the last successful check, the cached result is returned instantly. This means re-running `odk task done` after fixing a single file only re-checks the affected plugins, not the entire pipeline.
+</Callout>
+
+## The Proof in the PR
+
+When verification passes and ODK creates the PR, the body contains three sections that distinguish ODK PRs from typical PRs:
+
+1. **Task reference** -- Links to the task issue, story, and spec refs
+2. **Files changed** -- List of modified files from `git diff`
+3. **Verification proof** -- For each check, the actual console output inside a code block. A reviewer can read the proof and independently verify that tests passed, linting is clean, and types check out -- without running anything locally.
+
+This is what proof-based development means in practice. The PR is not a claim that things work; it is evidence that things work.
+
+## Next Steps
+
+Congratulations -- you have completed the full ODK lifecycle. Explore the [Concepts](/docs/concepts/four-stages) section for a deeper understanding of each stage, or jump to the [Developer Guide](/docs/guide/brainstorming) for detailed how-to guides on each workflow.

@@ -1,0 +1,23 @@
+"""{{ app_name }} — CLI entry point."""
+
+from __future__ import annotations
+
+import typer
+
+{% for group in groups %}
+from .commands.{{ group.name | to_snake }} import app as {{ group.name | to_snake }}_app
+{% endfor %}
+
+app = typer.Typer(
+    name="{{ app_name }}",
+    help="{{ app_name }} command-line interface",
+    no_args_is_help=True,
+)
+
+{% for group in groups %}
+app.add_typer({{ group.name | to_snake }}_app, name="{{ group.name }}", help="{{ group.description }}")
+{% endfor %}
+
+
+if __name__ == "__main__":
+    app()

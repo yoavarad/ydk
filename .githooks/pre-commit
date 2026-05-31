@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""odk pre-commit hook — ruff format, ruff lint."""
+
+import subprocess, sys, time
+
+RESET      = "\033[0m"
+BOLD       = "\033[1m"
+DIM        = "\033[2m"
+FG_BLACK   = "\033[30m"
+FG_RED     = "\033[31m"
+FG_GREEN   = "\033[32m"
+FG_YELLOW  = "\033[33m"
+FG_GRAY    = "\033[37m"
+BG_GREEN   = "\033[42m"
+BG_RED     = "\033[41m"
+BG_YELLOW  = "\033[43m"
+BG_BLUE    = "\033[44m"
+BG_GRAY    = "\033[48;5;236m"
+
+def header(title):
+    print(f"\n  {BG_BLUE}{FG_BLACK}{BOLD} {title} {RESET}\n", flush=True)
+
+def step(name):
+    print(f"  {DIM}>{RESET} {name} ", end="", flush=True)
+    return time.monotonic()
+
+def step_pass(t0):
+    elapsed = time.monotonic() - t0
+    print(f"{BG_GREEN}{FG_BLACK}{BOLD} PASS {RESET} {FG_GRAY}{elapsed:.1f}s{RESET}", flush=True)
+
+def step_fail(t0, output=""):
+    elapsed = time.monotonic() - t0
+    print(f"{BG_RED}{FG_BLACK}{BOLD} FAIL {RESET} {FG_GRAY}{elapsed:.1f}s{RESET}", flush=True)
+    if output.strip():
+        for line in output.strip().splitlines()[:20]:
+            print(f"    {FG_RED}{line}{RESET}", flush=True)
+
+def step_skip(reason=""):
+    print(f"{BG_YELLOW}{FG_BLACK}{BOLD} SKIP {RESET} {FG_GRAY}{reason}{RESET}", flush=True)
+
+def run(cmd, **kwargs):
+    return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+
+def finish_ok():
+    print(f"\n  {BG_GREEN}{FG_BLACK}{BOLD} ALL CHECKS PASSED {RESET}\n", flush=True)
+
+def finish_fail():
+    print(f"\n  {BG_RED}{FG_BLACK}{BOLD} CHECKS FAILED {RESET}\n", flush=True)
+    sys.exit(1)
+
+
+header("PRE-COMMIT CHECKS")
+failed = False
+
+t0 = step("ruff format")
+result = run(["uv", "run", "ruff", "format", "--check", "src/", "tests/"])
+if result.returncode != 0:
+    step_fail(t0, result.stdout + result.stderr)
+    failed = True
+else:
+    step_pass(t0)
+
+t0 = step("ruff lint")
+result = run(["uv", "run", "ruff", "check", "src/", "tests/"])
+if result.returncode != 0:
+    step_fail(t0, result.stdout + result.stderr)
+    failed = True
+else:
+    step_pass(t0)
+
+# Step: Catalog protection — block direct edits without publish
+import os
+t0 = step("catalog protection")
+result = run(["git", "diff", "--cached", "--name-only"])
+catalog_changes = [f for f in result.stdout.strip().splitlines() if f.startswith("src/odk/catalog/")]
+if catalog_changes and not os.environ.get('ODK_CATALOG_PUBLISH'):
+    step_fail(t0, "Direct catalog edits blocked. Use: odk catalog publish <path>")
+    failed = True
+else:
+    step_pass(t0)
+
+if failed:
+    finish_fail()
+finish_ok()

@@ -1,0 +1,86 @@
+name: aws-terraform-fullstack
+version: "1.0.0"
+description: "Terraform infrastructure generation for fullstack AWS apps (ECS Fargate, Aurora, CloudFront, Cognito)"
+tags: [ignition-pack, aws, terraform, infrastructure, ecs, aurora, cloudfront, cognito]
+
+stack:
+  language: hcl
+  type: infrastructure
+  frameworks: [terraform, aws]
+  database: aurora-serverless-v2
+
+init_questions:
+  - id: auth_provider
+    prompt: "Authentication provider?"
+    type: choice
+    choices: [cognito, none]
+    default: none
+  - id: nat_gateway_mode
+    prompt: "NAT Gateway mode (single = cheaper, ha = high availability)?"
+    type: choice
+    choices: [single, ha]
+    default: single
+
+generators:
+  - id: tf-state
+    description: "Generate S3 backend + DynamoDB lock table for Terraform state"
+    script: generators/tf_state.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: tf-networking
+    description: "Generate VPC, subnets, NAT gateway, security groups"
+    script: generators/tf_networking.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: tf-compute
+    description: "Generate ECS Fargate task definitions, service, ALB"
+    script: generators/tf_compute.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: tf-database
+    description: "Generate Aurora Serverless v2 cluster"
+    script: generators/tf_database.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: tf-cdn
+    description: "Generate CloudFront distribution + S3 bucket for frontend"
+    script: generators/tf_cdn.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: tf-auth
+    description: "Generate Cognito user pool (only when auth.provider is cognito)"
+    script: generators/tf_auth.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: tf-variables
+    description: "Generate variables.tf and terraform.tfvars"
+    script: generators/tf_variables.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: tf-outputs
+    description: "Generate outputs.tf"
+    script: generators/tf_outputs.py
+    inputs: [infrastructure]
+    output_dir: infra/
+    interpreter: python3
+
+  - id: deploy-script
+    description: "Generate deploy.sh (plan, apply, docker build, push, cache invalidation)"
+    script: generators/deploy_script.py
+    inputs: [infrastructure]
+    output_dir: ./
+    interpreter: python3

@@ -1,0 +1,76 @@
+---
+title: Pydantic Models
+description: All ODK models with strict validation
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Pydantic Models
+
+ODK's model layer uses Pydantic v2 with a strict validation philosophy: every model uses `ConfigDict(extra="forbid")`, meaning any unexpected field in the input causes an immediate validation error. This catches typos, schema drift, and stale data at the boundary where data enters the system, rather than deep in business logic where the root cause is harder to trace.
+
+The models are organized into domain-specific modules, each containing related models that form a cohesive API surface.
+
+## Project Management Models (`models/pm.py`)
+
+The PM models define the data structures for ODK's three-level hierarchy and their relationships.
+
+**`DependencyType`** is a `StrEnum` with 8 values: `blocks`, `validates`, `caused-by`, `conditional-blocks`, `waits-for`, `discovered-from`, `supersedes`, and `related`. The constant `BLOCKING_DEPENDENCY_TYPES` is a `frozenset` containing the three types that create execution edges: `blocks`, `conditional-blocks`, and `waits-for`. This distinction drives the entire DAG validation and scheduling system.
+
+**`TaskStatus`** is a `StrEnum` with 7 lifecycle states: `open`, `in-progress`, `blocked-by-code`, `blocked-by-decision`, `in-review`, `done`, and `closed`. These map to labels in GitHub/GitLab and to frontmatter values in local task files.
+
+**`TaskCreate`** and **`TaskDetail`** are the creation payload and full representation for tasks. `TaskDetail` extends `TaskCreate` with runtime fields like `status`, `assignee`, `session_id`, and `url`. Both carry typed dependencies (as `list[str | Dependency]`), acceptance criteria (as `list[str | AcceptanceCriterion]`), and gates.
+
+**`StoryCreate/Detail/Summary`** and **`EpicCreate/Detail`** follow the same create/detail pattern for the higher levels of the hierarchy.
+
+## Configuration Models (`models/config.py`)
+
+`OdkConfig` is the top-level configuration model with nested sub-models for each configuration section. Every field has a default value, making the model usable even when the config file is minimal. The nested structure is:
+
+- **`ProjectConfig`** -- name, spec_location, adrs_location, research_location, remote, stack
+- **`HooksConfig`** -- pre_push settings (spec_check, task_check), commit_msg_check
+- **`SpecCheckConfig`** -- model ID, timeout, global_timeout, concurrency, results_path, thresholds (per-group), custom criteria
+- **`TaskManagementConfig`** -- dag_validation and coverage_check booleans
+- **`ExecutionConfig`** -- max_parallel_agents, task_timeout_minutes, worktree_isolation
+- **`AwsConfig`** -- profile and region for Bedrock access
+- **`MemoryConfig`** -- embedding_model, auto_bootstrap, auto_extract, chroma_path
+- **`VerificationFilterConfig`** -- enabled plugin whitelist (empty = all)
+- **`ComponentConfig`** -- schemas_path and components_path
+
+The `config.py` core module validates every set operation against this model, rolling back changes that would produce an invalid configuration.
+
+## Memory Models (`models/memory.py`)
+
+**`ExtractedMemoryModel`** represents a piece of knowledge extracted from an agent session: memory_type, content, concepts, importance, source_type, verified flag, and temporal bounds (valid_from, valid_until).
+
+**`MemoryScore`** encapsulates the 4-factor scoring formula with computed properties: `category_weight * 0.50 + provenance_score * 0.15 + recency_score * 0.25 + access_score * 0.10`. The `total` property computes the final score, and the model is attached to search results for ranking.
+
+## Component Models (`models/component.py`)
+
+**`ComponentId`** parses and represents the `odk:<type>:<namespace>/<name>` format with validation. The `parse()` classmethod handles both namespaced IDs (with `/`) and flat IDs (without `/`).
+
+**`SchemaField`** and **`SchemaDefinition`** represent the schema system. A schema definition has a name, description, version, and a map of field names to `SchemaField` instances with type, required flag, pattern, allowed values, reference type, and other constraints.
+
+**`ComponentManifest`** uses `ConfigDict(extra="allow")` -- the only model that permits extra fields -- because the fields on a manifest are defined by the schema, not by the model. The model validates the structural requirements (`$schema` and `id`) while allowing schema-defined fields to pass through.
+
+**`LinkerResult`** and **`ScannerResult`** capture the output of Layer A and Layer B validation respectively. `LinkerResult` has deterministic categories (undefined_refs, orphaned_components, broken_cross_refs, valid_refs). `ScannerResult` has LLM-produced suggestions (unlinked_mentions with confidence scores).
+
+## Other Models
+
+The remaining model modules are smaller and focused:
+
+- **`gate.py`** -- `Gate`, `GateType` (pr-merged, ci-passed, timer, human), `GateStatus` (pending, resolved, failed)
+- **`buffer.py`** -- `BufferStatus` and `BufferZone` for schedule health tracking
+- **`complexity.py`** -- `ComplexityScore` with score, reasoning, should_expand, and suggested_splits
+- **`evaluation.py`** -- `CriterionResult` and `EvalReport` for spec check results
+- **`verification.py`** -- `CheckResult` (single plugin result) and `VerificationReport` (full pipeline result)
+- **`decision.py`** -- `Decision` for the topic-keyed decision store
+- **`consolidation.py`** -- `DuplicateGroup` and `ConsolidationResult` for memory merging
+- **`procedural.py`** -- `PromptOutcome` and `ProceduralReport` for prompt effectiveness tracking
+- **`checkpoint.py`** -- `CheckpointPreview`, `ReviewConcern`, `BlastRadiusSpot` for structured review guides
+- **`quickdev.py`** -- `QuickDevContext` for the fast-path workflow
+- **`compaction.py`** -- `CompactedTask` for context-efficient task summaries
+- **`schedule.py`** -- Models for resource-constrained scheduling output
+- **`navigation.py`** -- Stage detection results and recommendations
+- **`visual.py`** -- Annotation event types (selection, element, rectangle)
+- **`change.py`** -- Spec evolution change metadata

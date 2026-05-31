@@ -1,0 +1,6 @@
+name: cli-error-handling
+description: Enforce HTTP errors are caught in CLI command files (try/except ApiError)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

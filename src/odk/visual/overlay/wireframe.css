@@ -1,0 +1,163 @@
+/* ── ODK Visual Companion — Wireframe CSS Vocabulary ─── */
+
+body {
+  margin: 0;
+  padding-top: 40px; /* space for toolbar */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #333;
+  background: #fafafa;
+}
+
+/* ── Layout primitives ─── */
+.mock-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e5e5e5;
+  min-height: 48px;
+}
+
+.mock-sidebar {
+  width: 240px;
+  min-height: calc(100vh - 100px);
+  background: #f5f5f5;
+  border-right: 1px solid #e5e5e5;
+  padding: 16px;
+  float: left;
+}
+
+.mock-content {
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.mock-footer {
+  padding: 16px 24px;
+  background: #f5f5f5;
+  border-top: 1px solid #e5e5e5;
+  text-align: center;
+  color: #888;
+  font-size: 13px;
+}
+
+.mock-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.mock-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.mock-col {
+  flex: 1;
+}
+
+/* ── Components ─── */
+.mock-card {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.mock-button {
+  display: inline-block;
+  padding: 8px 16px;
+  background: #3B82F6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.mock-button:hover { background: #2563EB; }
+.mock-button.secondary {
+  background: #fff;
+  color: #333;
+  border: 1px solid #ddd;
+}
+.mock-button.secondary:hover { background: #f5f5f5; }
+
+.mock-input {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.mock-input:focus { outline: none; border-color: #3B82F6; }
+
+.mock-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #EFF6FF;
+  color: #3B82F6;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mock-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #ddd;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #666;
+}
+
+.mock-divider {
+  border: none;
+  border-top: 1px solid #e5e5e5;
+  margin: 16px 0;
+}
+
+/* ── Typography ─── */
+.mock-h1 { font-size: 28px; font-weight: 700; margin: 0 0 8px; }
+.mock-h2 { font-size: 22px; font-weight: 600; margin: 0 0 8px; }
+.mock-h3 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+.mock-text { font-size: 14px; line-height: 1.6; color: #555; }
+.mock-label { font-size: 13px; font-weight: 500; color: #666; margin-bottom: 4px; }
+
+/* ── Placeholder ─── */
+.placeholder {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f0f0f0,
+    #f0f0f0 8px,
+    #e8e8e8 8px,
+    #e8e8e8 16px
+  );
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 13px;
+}
+
+/* ── Selection cards ─── */
+[data-choice] {
+  cursor: pointer;
+  transition: outline 0.15s, box-shadow 0.15s;
+}
+[data-choice]:hover {
+  outline: 2px solid #93C5FD;
+  outline-offset: 2px;
+}

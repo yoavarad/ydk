@@ -1,0 +1,11 @@
+name: hexagonal-architecture
+version: "0.1.0"
+description: Hexagonal architecture verification set — adapter isolation, core purity, route delegation
+tags:
+  - verification
+  - architecture
+  - fastapi
+  - hexagonal
+publish_checks:
+  - name: has-check
+    description: Must include verification plugins

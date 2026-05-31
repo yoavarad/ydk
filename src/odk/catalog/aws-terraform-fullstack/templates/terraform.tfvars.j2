@@ -1,0 +1,9 @@
+# Terraform Variables
+# WARNING: Do not commit secrets. Use environment variables or AWS Secrets Manager.
+
+app_name    = "{{ app_name }}"
+environment = "{{ environment }}"
+region      = "{{ region }}"
+vpc_cidr    = "{{ vpc_cidr }}"
+
+# db_password = "" # Set via TF_VAR_db_password environment variable

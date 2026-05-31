@@ -1,0 +1,7 @@
+name: nextjs-page-purity
+description: Enforce app/ routing shells contain no hooks (useState, useEffect, useQuery,
+  etc.)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

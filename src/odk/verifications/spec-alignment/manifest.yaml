@@ -1,0 +1,7 @@
+name: spec-alignment
+description: Check implementation matches spec using AI evaluation (6 dimensions)
+trigger: git:pre-push
+parallel: true
+timeout: 120
+requires:
+- strands-agents

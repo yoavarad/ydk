@@ -1,0 +1,103 @@
+---
+title: "odk change"
+description: "CLI reference for odk change"
+---
+
+# `odk change`
+
+```text
+                                                                                
+ Usage: odk change [OPTIONS] COMMAND [ARGS]...                                  
+                                                                                
+ Spec evolution — propose, track, and archive changes                           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ propose  Create a new change proposal with templates.                        │
+│ list     List changes filtered by status.                                    │
+│ status   Show artifact completeness for a change.                            │
+│ archive  Archive a change: merge delta specs into canonical specs.           │
+│ diff     Preview what archiving would do (without applying).                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk change propose`
+
+```text
+                                                                                
+ Usage: odk change propose [OPTIONS] NAME                                       
+                                                                                
+ Create a new change proposal with templates.                                   
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Change name (kebab-case) [required]                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --mode  -m      TEXT  Change mode: major or small [default: small]           │
+│ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk change list`
+
+```text
+                                                                                
+ Usage: odk change list [OPTIONS]                                               
+                                                                                
+ List changes filtered by status.                                               
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --status  -s      TEXT  Filter: active, archived, or all [default: active]   │
+│ --help                  Show this message and exit.                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk change status`
+
+```text
+                                                                                
+ Usage: odk change status [OPTIONS] NAME                                        
+                                                                                
+ Show artifact completeness for a change.                                       
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Change name [required]                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk change archive`
+
+```text
+                                                                                
+ Usage: odk change archive [OPTIONS] NAME                                       
+                                                                                
+ Archive a change: merge delta specs into canonical specs.                      
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Change name to archive [required]                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk change diff`
+
+```text
+                                                                                
+ Usage: odk change diff [OPTIONS] NAME                                          
+                                                                                
+ Preview what archiving would do (without applying).                            
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Change name [required]                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

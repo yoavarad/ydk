@@ -1,0 +1,22 @@
+name: fullstack-fastapi-nextjs
+version: "1.0.0"
+description: "Phased ignition: FastAPI backend + Next.js frontend with artifact passing"
+
+phases:
+  - id: backend
+    pack_ref: "python-fastapi-hexagonal"
+    output_prefix: "backend/"
+    exports:
+      openapi: "backend/dist/openapi.json"
+
+  - id: frontend
+    pack_ref: "nextjs-fsd-shadcn"
+    output_prefix: "frontend/"
+    depends_on: [backend]
+    artifacts:
+      openapi: "${backend.openapi}"
+
+  - id: infra
+    generators:
+      - script: generators/infra/docker_compose.py
+      - script: generators/infra/env_example.py

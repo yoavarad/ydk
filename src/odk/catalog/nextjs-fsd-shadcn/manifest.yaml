@@ -1,0 +1,88 @@
+name: nextjs-fsd-shadcn
+version: "1.0.0"
+description: "Production Next.js 16 frontend with Feature-Sliced Design, ShadCN v4, TanStack Query v5, SSE real-time events, Cognito PKCE auth, react-hook-form + Zod forms, MSW testing, and toast notifications"
+tags: [ignition-pack, typescript, nextjs, react, fsd, shadcn, frontend, sse, hey-api]
+
+stack:
+  language: typescript
+  type: frontend
+  frameworks: [nextjs, react, shadcn]
+
+generators:
+  - id: derive-features
+    description: "Derive frontend-features.yaml from openapi.json + pages.yaml"
+    script: generators/derive_features.py
+    interpreter: python3
+    order: 1
+
+  - id: typescript-types
+    description: "Generate TypeScript entity types from OpenAPI spec components"
+    script: generators/typescript_types.py
+    interpreter: python3
+    order: 2
+
+  - id: openapi-sdk
+    description: "Generate typed TypeScript SDK from OpenAPI spec using @hey-api/openapi-ts"
+    script: generators/openapi_sdk.py
+    interpreter: python3
+    order: 3
+
+  - id: nextjs-features
+    description: "Generate FSD feature slices from frontend-features"
+    script: generators/nextjs_features.py
+    interpreter: python3
+    order: 4
+
+  - id: page-scaffolding
+    description: "Generate 3-tier page scaffold (routing shell + smart container + hook) from pages.yaml"
+    script: generators/page_scaffolding.py
+    interpreter: python3
+    order: 5
+
+  - id: query-hooks
+    description: "Generate TanStack Query hooks from openapi-spec"
+    script: generators/query_hooks.py
+    interpreter: python3
+    order: 6
+
+  - id: page-shells
+    description: "Generate Next.js App Router routing shells from pages.yaml"
+    script: generators/page_shells.py
+    interpreter: python3
+    order: 7
+
+  - id: page-containers
+    description: "Generate smart container components from pages.yaml"
+    script: generators/page_containers.py
+    interpreter: python3
+    order: 8
+
+  - id: widget-stubs
+    description: "Generate typed widget shells from frontend-features.yaml"
+    script: generators/widget_stubs.py
+    interpreter: python3
+    order: 9
+
+  - id: navigation-config
+    description: "Generate navigation configuration from pages.yaml"
+    script: generators/navigation_config.py
+    interpreter: python3
+    order: 10
+
+  - id: auth-provider
+    description: "Generate Cognito PKCE auth provider from app-config.yaml"
+    script: generators/auth_provider.py
+    interpreter: python3
+    order: 11
+
+  - id: msw-handlers
+    description: "Generate MSW mock API handlers from openapi.json"
+    script: generators/msw_handlers.py
+    interpreter: python3
+    order: 12
+
+  - id: nextjs-api-client
+    description: "Generate typed Next.js API client from api-contracts.yaml"
+    script: generators/nextjs_api_client.py
+    interpreter: python3
+    order: 13

@@ -1,0 +1,26 @@
+"""Contract test: Postgres{{ name }}Repository must satisfy {{ name }}RepositoryPort."""
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+from app.adapters.database.repos.{{ snake_name }}_repository import Postgres{{ name }}Repository
+from app.core.ports.{{ snake_name }}_repository import {{ name }}RepositoryPort
+
+
+def test_postgres_{{ snake_name }}_repo_satisfies_port() -> None:
+    """Structural subtype check — runtime_checkable Protocol."""
+    mock_session = MagicMock()
+    repo = Postgres{{ name }}Repository(mock_session)
+    assert isinstance(repo, {{ name }}RepositoryPort), (
+        "Postgres{{ name }}Repository does not satisfy {{ name }}RepositoryPort. "
+        "Check that all port methods are implemented."
+    )
+
+
+def test_postgres_{{ snake_name }}_repo_has_all_methods() -> None:
+    """All required port methods must be present and callable."""
+    mock_session = MagicMock()
+    repo = Postgres{{ name }}Repository(mock_session)
+    for method_name in ["get", "list", "create", "update", "delete", "exists"]:
+        assert hasattr(repo, method_name), f"Missing method: {method_name}"
+        assert callable(getattr(repo, method_name))

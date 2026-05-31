@@ -1,0 +1,46 @@
+---
+title: "odk test"
+description: "CLI reference for odk test"
+---
+
+# `odk test`
+
+```text
+ Usage: odk test [OPTIONS] COMMAND [ARGS]...
+
+ Generate tests and check coverage
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ generate  Generate tests from a component manifest.                          │
+│ coverage  Show test coverage report for all components.                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk test generate`
+
+```text
+ Usage: odk test generate [OPTIONS]
+
+ Generate tests from a component manifest.
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --from            TEXT  Component ID to generate tests for [required]     │
+│    --output  -o      PATH  Output file path (default: stdout)                │
+│    --help                  Show this message and exit.                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk test coverage`
+
+```text
+ Usage: odk test coverage [OPTIONS]
+
+ Show test coverage report for all components.
+
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

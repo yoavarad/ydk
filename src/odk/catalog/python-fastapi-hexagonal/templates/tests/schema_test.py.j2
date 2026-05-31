@@ -1,0 +1,31 @@
+"""Pydantic schema validation tests for {{ domain }} schemas."""
+from __future__ import annotations
+
+{% if schemas | selectattr('required_fields') | list %}
+import pytest
+from pydantic import ValidationError
+
+{% endif %}
+{% for imp in imports %}
+{{ imp }}
+{% endfor %}
+
+
+{% for schema in schemas %}
+{% if schema.required_fields %}
+def test_{{ schema.name | lower }}_requires_{{ schema.required_fields[0].name }}() -> None:
+    """{{ schema.name }} must require '{{ schema.required_fields[0].name }}'."""
+    with pytest.raises(ValidationError):
+        {{ schema.name }}()  # missing required field
+
+{% endif %}
+{% if schema.defaults %}
+def test_{{ schema.name | lower }}_defaults() -> None:
+    """{{ schema.name }} default values are correct."""
+    obj = {{ schema.name }}({% for f in schema.required_fields %}{{ f.name }}="{{ f.test_value }}", {% endfor %})
+    {% for d in schema.defaults %}
+    assert obj.{{ d.name }} {{ "is True" if d.expected == "True" else ("is False" if d.expected == "False" else "== " + d.expected) }}
+    {% endfor %}
+
+{% endif %}
+{% endfor %}

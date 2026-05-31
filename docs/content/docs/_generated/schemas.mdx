@@ -1,0 +1,740 @@
+---
+title: "Component Schemas"
+description: "All built-in component schema definitions"
+---
+
+# Component Schemas
+
+These schemas define the structure of ODK component manifests.
+Each component YAML file in `.odk/components/` must conform to its schema.
+
+## `component` (v1)
+
+A reusable UI component with props, state, and rendering rules
+
+```yaml
+name: component
+description: "A reusable UI component with props, state, and rendering rules"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:component:.+"
+    description: "Unique component identifier in odk:component:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "What this UI component renders and its purpose"
+  type:
+    type: enum
+    values: [table, form, card, modal, chart, layout, input, display]
+    required: true
+    description: "Component archetype"
+  framework:
+    type: enum
+    values: [react, vue, svelte, angular, agnostic]
+    required: true
+    description: "Target frontend framework"
+  props:
+    type: map
+    required: true
+    description: "Component props/inputs keyed by prop name"
+    items:
+      type:
+        type: string
+        required: true
+        description: "TypeScript type signature"
+      required:
+        type: boolean
+        description: "Whether this prop is required"
+      default:
+        type: any
+        description: "Default value if not provided"
+      description:
+        type: string
+        required: true
+        description: "What this prop controls"
+  columns:
+    type: list
+    description: "For table components: column definitions"
+  data_source:
+    type: ref
+    ref_type: route
+    description: "API route this component fetches data from"
+  pagination:
+    type: string
+    description: "Pagination strategy (cursor-based, offset, none)"
+  default_sort:
+    type: map
+    description: "Default sort configuration"
+  emits:
+    type: list
+    description: "Events this component emits (for parent components to handle)"
+```
+
+## `contract` (v1)
+
+An interface or protocol contract that defines method signatures for a service
+
+```yaml
+name: contract
+description: "An interface or protocol contract that defines method signatures for a service"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:contract:.+"
+    description: "Unique component identifier in odk:contract:namespace/Name format"
+  description:
+    type: text
+    required: true
+    description: "What this service contract represents"
+  methods:
+    type: map
+    required: true
+    description: "Service methods keyed by method name"
+    items:
+      description:
+        type: string
+        required: true
+        description: "What this method does"
+      params:
+        type: map
+        required: true
+        description: "Method parameters keyed by param name"
+      returns:
+        type: map
+        required: true
+        description: "Return type with type and description"
+      raises:
+        type: ref_list
+        description: "Error components this method can raise"
+```
+
+## `crosscut` (v1)
+
+A cross-cutting concern that applies uniformly across the system
+
+```yaml
+name: crosscut
+description: "A cross-cutting concern that applies uniformly across the system"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:crosscut:.+"
+    description: "Unique component identifier in odk:crosscut:name format"
+  description:
+    type: text
+    required: true
+    description: "What this cross-cutting concern defines"
+  specification:
+    type: text
+    required: true
+    description: "The exact specification of this concern (format, rules, behavior)"
+  applies_to:
+    type: string
+    required: true
+    description: "Which parts of the system this applies to"
+  implementation_notes:
+    type: list
+    description: "Guidance for implementing this concern"
+  related:
+    type: ref_list
+    description: "Related components (hooks, routes, errors)"
+```
+
+## `entity` (v1)
+
+A domain model / data object with fields, relationships, and lifecycle
+
+```yaml
+name: entity
+description: "A domain model / data object with fields, relationships, and lifecycle"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:entity:.+"
+    description: "Unique component identifier in odk:entity:namespace/Name format"
+  description:
+    type: text
+    required: true
+    description: "What this entity represents in the domain"
+  fields:
+    type: map
+    required: true
+    description: "All fields on this entity, keyed by field name"
+    items:
+      type:
+        type: string
+        required: true
+        description: "Data type (UUID, string, integer, Decimal, datetime, enum, boolean)"
+      required:
+        type: boolean
+        description: "Whether the field is required on creation"
+      nullable:
+        type: boolean
+        description: "Whether the field can be null"
+      primary_key:
+        type: boolean
+        description: "Whether this field is the primary key"
+      generated:
+        type: boolean
+        description: "Whether the value is server-generated"
+      fk:
+        type: ref
+        ref_type: entity
+        description: "Foreign key reference to another entity"
+      max_length:
+        type: integer
+        description: "Maximum string length"
+      precision:
+        type: list
+        description: "Decimal precision as [total_digits, decimal_places]"
+      default:
+        type: any
+        description: "Default value if not provided"
+      constraints:
+        type: string
+        description: "Additional validation constraints in human-readable form"
+      values:
+        type: list
+        description: "Allowed values for enum fields"
+      auto:
+        type: boolean
+        description: "Whether the value is automatically set (e.g., timestamps)"
+      description:
+        type: string
+        required: true
+        description: "What this field represents"
+  state_transitions:
+    type: map
+    description: "Valid state transitions keyed by source state, values are lists of target states"
+  relationships:
+    type: list
+    description: "Relationships to other entities"
+    items:
+      entity:
+        type: ref
+        ref_type: entity
+        required: true
+        description: "The related entity ID"
+      type:
+        type: enum
+        values: [one-to-one, one-to-many, many-to-one, many-to-many]
+        required: true
+        description: "Cardinality of the relationship"
+      fk:
+        type: string
+        required: true
+        description: "Foreign key field name on this entity"
+      description:
+        type: string
+        required: true
+        description: "What this relationship represents"
+  indexes:
+    type: list
+    description: "Database indexes for query optimization"
+    items:
+      fields:
+        type: list
+        required: true
+        description: "Fields included in this index"
+      order:
+        type: list
+        description: "Sort order per field (ASC or DESC)"
+      unique:
+        type: boolean
+        description: "Whether this is a unique index"
+      description:
+        type: string
+        required: true
+        description: "Why this index exists (which query pattern it supports)"
+  crud:
+    type: list
+    description: "Required CRUD operations for this entity's repository"
+```
+
+## `error` (v1)
+
+An error response definition with status code, machine-readable code, and response shape
+
+```yaml
+name: error
+description: "An error response definition with status code, machine-readable code, and response shape"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:error:.+"
+    description: "Unique component identifier in odk:error:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "When and why this error is returned"
+  status_code:
+    type: integer
+    required: true
+    description: "HTTP status code (e.g. 400, 401, 404, 409, 422, 500, 503)"
+  code:
+    type: string
+    required: true
+    description: "Machine-readable error code, e.g. INSUFFICIENT_BALANCE"
+  detail_template:
+    type: string
+    required: true
+    description: "Human-readable detail with ${variable} placeholders"
+  response_shape:
+    type: map
+    required: true
+    description: "Fields in the error response body"
+  triggers:
+    type: list
+    required: true
+    description: "Conditions that produce this error"
+  related:
+    type: ref_list
+    description: "Components related to this error (routes that return it, entities involved)"
+```
+
+## `event` (v1)
+
+A domain event emitted when something significant happens in the system
+
+```yaml
+name: event
+description: "A domain event emitted when something significant happens in the system"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:event:.+"
+    description: "Unique component identifier in odk:event:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "When this event is emitted and what it signifies"
+  payload:
+    type: map
+    required: true
+    description: "Event payload fields with types and descriptions"
+  producers:
+    type: ref_list
+    required: true
+    description: "Components that emit this event"
+  consumers:
+    type: list
+    required: true
+    description: "What reacts to this event (component refs or prose descriptions)"
+  ordering:
+    type: string
+    required: true
+    description: "Ordering guarantees (per-user, global, none)"
+  idempotency:
+    type: string
+    required: true
+    description: "Deduplication strategy (which field is the idempotency key)"
+```
+
+## `ext` (v1)
+
+An external system dependency with API details, rate limits, and error handling
+
+```yaml
+name: ext
+description: "An external system dependency with API details, rate limits, and error handling"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:ext:.+"
+    description: "Unique component identifier in odk:ext:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "What this external dependency provides"
+  base_url:
+    type: string
+    required: true
+    description: "Base URL for API calls"
+  auth:
+    type: string
+    required: true
+    description: "Authentication method (none, api_key, oauth2, bearer)"
+  endpoints:
+    type: map
+    required: true
+    description: "API endpoints we use, keyed by logical name"
+    items:
+      method:
+        type: enum
+        values: [GET, POST, PUT, PATCH, DELETE]
+        required: true
+        description: "HTTP method"
+      path:
+        type: string
+        required: true
+        description: "URL path relative to base_url"
+      params:
+        type: map
+        description: "Request parameters"
+      response:
+        type: any
+        required: true
+        description: "Response shape"
+      description:
+        type: string
+        required: true
+        description: "What this endpoint returns"
+  rate_limits:
+    type: map
+    required: true
+    description: "Rate limiting details with our projected usage"
+  error_handling:
+    type: map
+    required: true
+    description: "How to handle each error status code"
+  retry_strategy:
+    type: map
+    required: true
+    description: "Retry configuration (max_retries, backoff, timeout)"
+```
+
+## `hook` (v1)
+
+A lifecycle hook or middleware that intercepts requests/events
+
+```yaml
+name: hook
+description: "A lifecycle hook or middleware that intercepts requests/events"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:hook:.+"
+    description: "Unique component identifier in odk:hook:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "What this hook does"
+  type:
+    type: enum
+    values: [middleware, pre-handler, post-handler, event-listener, scheduled]
+    required: true
+    description: "When this hook fires in the request/event lifecycle"
+  trigger:
+    type: enum
+    values: [request, response, event, schedule]
+    required: true
+    description: "What triggers this hook"
+  position:
+    type: enum
+    values: [before, after, around]
+    required: true
+    description: "Where in the pipeline this hook runs"
+  applies_to:
+    type: map
+    required: true
+    description: "URL patterns or event types this hook matches"
+    items:
+      pattern:
+        type: string
+        required: true
+        description: "URL pattern or event type"
+      exclude:
+        type: list
+        description: "Paths or events explicitly excluded"
+  behavior:
+    type: map
+    required: true
+    description: "What happens on success and each failure mode"
+  configuration:
+    type: map
+    description: "Configurable parameters for this hook"
+```
+
+## `nfr` (v1)
+
+A non-functional requirement with quantified target and measurement method
+
+```yaml
+name: nfr
+description: "A non-functional requirement with quantified target and measurement method"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:nfr:.+"
+    description: "Unique component identifier in odk:nfr:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "What this NFR constrains"
+  category:
+    type: enum
+    values: [performance, scalability, reliability, security, observability]
+    required: true
+    description: "NFR category"
+  target:
+    type: string
+    required: true
+    description: "Quantified target with units (e.g. P95 < 200ms)"
+  measurement:
+    type: text
+    required: true
+    description: "How to measure this NFR"
+  test_method:
+    type: text
+    required: true
+    description: "How to test this NFR (tool, scenario, duration)"
+  monitoring:
+    type: string
+    description: "Production monitoring setup (metric name, alert threshold)"
+  applies_to:
+    type: ref_list
+    description: "Components this NFR applies to"
+```
+
+## `page` (v1)
+
+A frontend page or view with layout, data sources, and wireframe
+
+```yaml
+name: page
+description: "A frontend page or view with layout, data sources, and wireframe"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:page:.+"
+    description: "Unique component identifier in odk:page:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "What this page shows and its primary purpose"
+  route:
+    type: string
+    required: true
+    description: "Frontend route path, e.g. /dashboard"
+  auth:
+    type: enum
+    values: [required, optional, none]
+    required: true
+    description: "Whether this page requires authentication"
+  layout:
+    type: string
+    required: true
+    description: "Layout template to use (e.g. main, auth, landing)"
+  sections:
+    type: list
+    required: true
+    description: "Sections on this page"
+    items:
+      name:
+        type: string
+        required: true
+        description: "Section identifier"
+      description:
+        type: string
+        required: true
+        description: "What this section displays"
+      data_sources:
+        type: ref_list
+        description: "API routes this section calls for data"
+      component:
+        type: ref
+        ref_type: component
+        description: "UI component that renders this section"
+  wireframe:
+    type: text
+    description: "ASCII wireframe of the page layout"
+```
+
+## `req` (v1)
+
+A business requirement or rule that must be implemented
+
+```yaml
+name: req
+description: "A business requirement or rule that must be implemented"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:req:.+"
+    description: "Unique component identifier in odk:req:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "What this requirement mandates"
+  type:
+    type: enum
+    values: [business-rule, validation, constraint, policy]
+    required: true
+    description: "Category of requirement"
+  priority:
+    type: enum
+    values: [critical, high, medium, low]
+    required: true
+    description: "Implementation priority"
+  rule:
+    type: text
+    required: true
+    description: "The rule in precise, testable language"
+  failure_behavior:
+    type: string
+    required: true
+    description: "What happens when the rule is violated (reference to error component)"
+  related_components:
+    type: ref_list
+    required: true
+    description: "Components that participate in or are affected by this requirement"
+  acceptance_criteria:
+    type: list
+    required: true
+    description: "Testable criteria that prove this requirement is met"
+```
+
+## `route` (v1)
+
+An API endpoint with method, path, request/response shapes, and auth rules
+
+```yaml
+name: route
+description: "An API endpoint with method, path, request/response shapes, and auth rules"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:route:.+"
+    description: "Unique component identifier in odk:route:namespace/name format"
+  description:
+    type: text
+    required: true
+    description: "What this endpoint does"
+  method:
+    type: enum
+    values: [GET, POST, PUT, PATCH, DELETE]
+    required: true
+    description: "HTTP method"
+  path:
+    type: string
+    required: true
+    pattern: "^/"
+    description: "URL path relative to API base, e.g. /api/v1/orders"
+  request:
+    type: map
+    description: "Request shape including body, query params, and path params"
+    items:
+      body:
+        type: map
+        description: "Request body fields"
+      query:
+        type: map
+        description: "Query string parameters"
+      path_params:
+        type: map
+        description: "URL path parameters"
+  responses:
+    type: map
+    required: true
+    description: "Response shapes keyed by HTTP status code"
+    items:
+      description:
+        type: string
+        required: true
+        description: "When this response is returned"
+      ref:
+        type: ref
+        description: "Reference to an entity or error component"
+      refs:
+        type: ref_list
+        description: "Multiple component references (for 4xx with multiple error types)"
+      shape:
+        type: map
+        description: "Inline response shape if not referencing a component"
+  auth:
+    type: enum
+    values: [required, optional, none]
+    required: true
+    description: "Authentication requirement for this endpoint"
+  rate_limit:
+    type: string
+    description: "Rate limiting rule, e.g. '10 req/sec per user'"
+  idempotency:
+    type: string
+    description: "Idempotency strategy for non-GET requests"
+```
+
+## `test` (v1)
+
+A test specification with cases, stubs, and constraints
+
+```yaml
+name: test
+description: "A test specification with cases, stubs, and constraints"
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    pattern: "^odk:test:.+"
+    description: "Unique component identifier in odk:test:namespace/name.level format"
+  description:
+    type: text
+    required: true
+    description: "What this test spec covers"
+  level:
+    type: enum
+    values: [unit, integration, e2e]
+    required: true
+    description: "Testing level (unit=isolated, integration=with DB, e2e=full stack)"
+  target:
+    type: ref
+    required: true
+    description: "The component being tested"
+  cases:
+    type: list
+    required: true
+    description: "Individual test cases"
+    items:
+      name:
+        type: string
+        required: true
+        description: "Short test name"
+      description:
+        type: string
+        required: true
+        description: "What this test validates"
+      given:
+        type: string
+        required: true
+        description: "Preconditions"
+      when:
+        type: string
+        required: true
+        description: "Action being tested"
+      then:
+        type: string
+        required: true
+        description: "Expected outcome"
+  stubs:
+    type: list
+    description: "What is stubbed/faked in this test"
+  never_mock:
+    type: list
+    description: "What must NOT be mocked (real implementations required)"
+```

@@ -1,0 +1,8 @@
+name: python-quality
+description: Run ruff format check, ruff lint, and ty type checking
+trigger: git:pre-commit
+parallel: true
+timeout: 60
+requires:
+- ruff
+- ty

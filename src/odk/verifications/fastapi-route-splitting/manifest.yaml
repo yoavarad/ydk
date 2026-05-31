@@ -1,0 +1,7 @@
+name: fastapi-route-splitting
+description: Enforce route files are split by domain -- no single route file over
+  150 lines
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

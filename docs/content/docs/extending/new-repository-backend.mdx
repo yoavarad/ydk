@@ -1,0 +1,96 @@
+---
+title: New Repository Backend
+description: Step-by-step guide to adding a custom repository backend
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Adding a Repository Backend
+
+ODK ships with three backends -- local file storage, GitHub Issues, and GitLab Issues -- but the protocol-based architecture makes adding new ones straightforward. You might want a Jira backend, a Linear backend, or a custom backend that stores tasks in a database. The protocol defines exactly what methods you need to implement, and the factory dispatch makes registration a single line.
+
+## Step 1: Understand the Protocols
+
+The protocols are defined in `src/odk/repositories/protocols.py`. For a complete backend, you need to implement three protocols:
+
+**`LifecycleTaskRepository`** is the most important -- it has 11 methods covering the full task lifecycle:
+
+```python
+class LifecycleTaskRepository(Protocol):
+    def get_task(self, task_id: str) -> TaskDetail: ...
+    def create_task(self, task: TaskCreate) -> TaskDetail: ...
+    def update_status(self, task_id: str, status: str) -> None: ...
+    def add_comment(self, task_id: str, comment: str) -> None: ...
+    def assign(self, task_id: str, assignee: str) -> None: ...
+    def add_label(self, task_id: str, label: str) -> None: ...
+    def remove_label(self, task_id: str, label: str) -> None: ...
+    def check_dependencies(self, task_id: str) -> list[DependencyStatus]: ...
+    def list_tasks(self, state: str = "open") -> list: ...
+    def update_gates(self, task_id: str, gates: list[Gate]) -> None: ...
+    def list_ready(self) -> list: ...
+```
+
+**`StoryRepository`** has 2 methods: `create_story` and `list_stories`.
+
+**`EpicRepository`** has 1 method: `create_epic`.
+
+## Step 2: Implement the Backend
+
+Create a module in `src/odk/repositories/<backend>/tasks.py`. Study the existing backends for patterns. The local backend (`repositories/local/tasks.py`) is the simplest reference implementation.
+
+Key implementation considerations:
+
+**ID mapping.** ODK uses `T-<hex>` format IDs internally. Your backend might use integer IDs (like GitHub/GitLab) or UUIDs (like Jira). You need to handle the mapping between ODK IDs and backend IDs, typically using labels or metadata fields.
+
+**Metadata serialization.** ODK tasks carry structured data (typed dependencies, acceptance criteria, gates) that most issue trackers do not natively support. The existing backends use a structured markdown format with `**Key**: value` pairs and `### Section` headings. You can use the same approach or implement a JSON metadata field if your backend supports it.
+
+**Status mapping.** ODK has 7 lifecycle states. Map them to your backend's status system -- using labels, workflow states, or custom fields depending on what the backend supports.
+
+**Comment threading.** Plan posts, progress updates, and proof summaries are added as comments. Your backend needs to support appending structured text to an issue.
+
+## Step 3: Register in the Factory
+
+Add your backend to the registry in `src/odk/repositories/factory.py`:
+
+```python
+_REGISTRY = {
+    # ... existing entries ...
+    ("jira", "task"): ("odk.repositories.jira.tasks", "JiraTaskRepository"),
+    ("jira", "story"): ("odk.repositories.jira.stories", "JiraStoryRepository"),
+    ("jira", "epic"): ("odk.repositories.jira.epics", "JiraEpicRepository"),
+}
+```
+
+The factory uses lazy imports -- it imports the class only when it is needed -- so adding a backend does not add import overhead for users who do not use it.
+
+## Step 4: Write Tests
+
+Test your backend against the protocol methods using the same test patterns as the existing backends. The key tests are:
+
+- Create a task and verify all fields are preserved
+- Update status and verify it persists
+- Add dependencies and verify `check_dependencies` resolves them
+- List tasks with different filters
+- Verify `list_ready` correctly filters by dependency status
+
+```python
+def test_create_and_get_task(backend):
+    task_create = TaskCreate(title="Test task", description="A test")
+    created = backend.create_task(task_create)
+    retrieved = backend.get_task(created.id)
+    assert retrieved.title == "Test task"
+```
+
+## Step 5: Configure
+
+Users activate your backend by setting `project.remote` in their config:
+
+```bash
+odk config set project.remote jira
+```
+
+The factory reads this value and dispatches to your backend automatically.
+
+<Callout type="info">
+You do not need to implement all three protocols to start. If your backend only handles tasks (not stories or epics), implement `LifecycleTaskRepository` first and add the others later.
+</Callout>

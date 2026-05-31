@@ -1,0 +1,89 @@
+"""Generated tests for entity: {{ component_id }}."""
+
+import pytest
+
+
+class Test{{ class_name }}RequiredFields:
+    """Test required field validation for {{ component_id }}."""
+{% for field in required_fields %}
+
+    def test_{{ field.name }}_is_required(self):
+        """{{ field.name }} must be present."""
+        data = {{ valid_data | tojson }}
+        data.pop("{{ field.name }}", None)
+        assert "{{ field.name }}" not in data, "Field should be absent after removal"
+{% endfor %}
+{% if not required_fields %}
+
+    def test_no_required_fields(self):
+        """Entity has no required fields beyond id."""
+        assert True
+{% endif %}
+
+
+class Test{{ class_name }}TypeConstraints:
+    """Test type constraints for {{ component_id }}."""
+{% for field in type_constrained_fields %}
+
+    def test_{{ field.name }}_type_{{ field.constraint_type }}(self):
+        """{{ field.name }} must satisfy {{ field.constraint_type }} constraint."""
+{% if field.constraint_type == "max_length" %}
+        value = "x" * ({{ field.constraint_value }} + 1)
+        assert len(value) > {{ field.constraint_value }}
+{% elif field.constraint_type == "enum" %}
+        valid_values = {{ field.constraint_value }}
+        invalid = "__INVALID__"
+        assert invalid not in valid_values
+{% elif field.constraint_type == "min" %}
+        assert {{ field.constraint_value }} - 1 < {{ field.constraint_value }}
+{% elif field.constraint_type == "max" %}
+        assert {{ field.constraint_value }} + 1 > {{ field.constraint_value }}
+{% endif %}
+{% endfor %}
+{% if not type_constrained_fields %}
+
+    def test_no_type_constraints(self):
+        """Entity has no type constraints."""
+        assert True
+{% endif %}
+
+{% if states %}
+
+class Test{{ class_name }}StateTransitions:
+    """Test state transitions for {{ component_id }}."""
+{% for transition in transitions %}
+
+    def test_transition_{{ transition.from_state }}_to_{{ transition.to_state }}(self):
+        """Transition from {{ transition.from_state }} to {{ transition.to_state }} is valid."""
+        valid_states = {{ states | tojson }}
+        assert "{{ transition.from_state }}" in valid_states
+        assert "{{ transition.to_state }}" in valid_states
+{% endfor %}
+{% endif %}
+
+{% if nullable_fields %}
+
+class Test{{ class_name }}NullableFields:
+    """Test nullable vs required fields for {{ component_id }}."""
+{% for field in nullable_fields %}
+
+    def test_{{ field.name }}_is_nullable(self):
+        """{{ field.name }} can be None."""
+        data = {{ valid_data | tojson }}
+        data["{{ field.name }}"] = None
+        assert data["{{ field.name }}"] is None
+{% endfor %}
+{% endif %}
+
+{% if default_fields %}
+
+class Test{{ class_name }}DefaultValues:
+    """Test default values for {{ component_id }}."""
+{% for field in default_fields %}
+
+    def test_{{ field.name }}_default_is_{{ field.default_repr }}(self):
+        """{{ field.name }} defaults to {{ field.default_value | tojson }}."""
+        default = {{ field.default_value | tojson }}
+        assert default == {{ field.default_value | tojson }}
+{% endfor %}
+{% endif %}

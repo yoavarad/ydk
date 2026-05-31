@@ -1,0 +1,98 @@
+"""HTTP client for {{ app_name }}."""
+
+from __future__ import annotations
+
+import os
+import sys
+from typing import Any
+
+import httpx
+
+from .auth import apply_auth
+
+
+class ApiError(Exception):
+    """Base API error."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        self.status_code = status_code
+        self.message = message
+        super().__init__(f"HTTP {status_code}: {message}")
+
+
+class NotFoundError(ApiError):
+    """Resource not found (404)."""
+
+    def __init__(self, message: str = "Resource not found") -> None:
+        super().__init__(404, message)
+
+
+class AuthError(ApiError):
+    """Authentication or authorization failure (401/403)."""
+
+    def __init__(self, message: str = "Authentication failed") -> None:
+        super().__init__(401, message)
+
+
+class ServerError(ApiError):
+    """Server-side error (5xx)."""
+
+    def __init__(self, status_code: int = 500, message: str = "Server error") -> None:
+        super().__init__(status_code, message)
+
+
+class ApiClient:
+    """HTTP client for the {{ app_name }} REST API."""
+
+    def __init__(self, base_url: str | None = None, timeout: float = 30.0) -> None:
+        self.base_url = base_url or os.environ.get("{{ base_url_env }}", "http://localhost:8000")
+        self.timeout = timeout
+        self._client: httpx.Client | None = None
+
+    @property
+    def client(self) -> httpx.Client:
+        """Lazy-initialize the httpx client."""
+        if self._client is None:
+            self._client = httpx.Client(
+                base_url=self.base_url,
+                timeout=self.timeout,
+                event_hooks={"request": [apply_auth]},
+            )
+        return self._client
+
+    def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def _handle_response(self, response: httpx.Response) -> Any:
+        """Handle HTTP response, raising typed errors for failures."""
+        if response.status_code == 404:
+            raise NotFoundError(response.text)
+        if response.status_code in (401, 403):
+            raise AuthError(response.text)
+        if response.status_code >= 500:
+            raise ServerError(response.status_code, response.text)
+        if response.status_code >= 400:
+            raise ApiError(response.status_code, response.text)
+        if response.status_code == 204 or not response.content:
+            return None
+        return response.json()
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> Any:
+        """Make an HTTP request and return parsed response."""
+        response = self.client.request(
+            method,
+            path,
+            params=params,
+            json=json_body,
+        )
+        return self._handle_response(response)

@@ -1,0 +1,57 @@
+"""Tests for the {{ group.name }} command group."""
+
+from __future__ import annotations
+
+import respx
+from httpx import Response
+from typer.testing import CliRunner
+
+from src.main import app
+
+runner = CliRunner()
+
+BASE_URL = "http://localhost:8000"
+
+{% for cmd in group.commands %}
+
+@respx.mock
+def test_{{ group.name | to_snake }}_{{ cmd.name | to_snake }}_success():
+    """Test {{ group.name }} {{ cmd.name }} — happy path."""
+{%- if cmd.response_type == "list" %}
+    respx.{{ cmd.method | lower }}(f"{BASE_URL}{{ cmd.endpoint }}").mock(
+        return_value=Response(200, json=[{"id": "1"}])
+    )
+{%- elif cmd.response_type == "object" %}
+{%- set mock_endpoint = cmd.endpoint %}
+{%- for arg in cmd.get("arguments", []) %}
+{%- set mock_endpoint = mock_endpoint.replace("{" + arg.name + "}", "test-id") %}
+{%- endfor %}
+    respx.{{ cmd.method | lower }}(f"{BASE_URL}{{ mock_endpoint }}").mock(
+        return_value=Response(200, json={"id": "test-id"})
+    )
+{%- else %}
+{%- set mock_endpoint = cmd.endpoint %}
+{%- for arg in cmd.get("arguments", []) %}
+{%- set mock_endpoint = mock_endpoint.replace("{" + arg.name + "}", "test-id") %}
+{%- endfor %}
+    respx.{{ cmd.method | lower }}(f"{BASE_URL}{{ mock_endpoint }}").mock(
+        return_value=Response(204)
+    )
+{%- endif %}
+    result = runner.invoke(app, ["{{ group.name }}", "{{ cmd.name }}"{% for arg in cmd.get("arguments", []) %}, "test-id"{% endfor %}{% for opt in cmd.get("options", []) %}{% if opt.get("required") %}, "--{{ opt.name }}", "test-value"{% endif %}{% endfor %}])
+    assert result.exit_code == 0
+
+
+@respx.mock
+def test_{{ group.name | to_snake }}_{{ cmd.name | to_snake }}_not_found():
+    """Test {{ group.name }} {{ cmd.name }} — 404 error handling."""
+{%- set mock_endpoint = cmd.endpoint %}
+{%- for arg in cmd.get("arguments", []) %}
+{%- set mock_endpoint = mock_endpoint.replace("{" + arg.name + "}", "missing-id") %}
+{%- endfor %}
+    respx.{{ cmd.method | lower }}(f"{BASE_URL}{{ mock_endpoint }}").mock(
+        return_value=Response(404, text="Not found")
+    )
+    result = runner.invoke(app, ["{{ group.name }}", "{{ cmd.name }}"{% for arg in cmd.get("arguments", []) %}, "missing-id"{% endfor %}{% for opt in cmd.get("options", []) %}{% if opt.get("required") %}, "--{{ opt.name }}", "test-value"{% endif %}{% endfor %}])
+    assert result.exit_code == 1
+{% endfor %}

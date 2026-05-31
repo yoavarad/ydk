@@ -1,0 +1,17 @@
+"""Shared pytest fixtures — all fake repositories pre-wired."""
+from __future__ import annotations
+
+import pytest
+
+{% for fake_imp in fake_imports %}
+{{ fake_imp }}
+{% endfor %}
+
+
+{% for entity in entities %}
+@pytest.fixture
+def fake_{{ entity.snake_name }}_repository() -> Fake{{ entity.name }}Repository:
+    """Fresh in-memory {{ entity.name }}Repository for each test."""
+    return Fake{{ entity.name }}Repository()
+
+{% endfor %}

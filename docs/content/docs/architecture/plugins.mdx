@@ -1,0 +1,101 @@
+---
+title: Verification Plugins
+description: Plugin discovery, manifest schema, check contract, and YAML-based spec reviewers
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Verification Plugins
+
+ODK's verification system is built on a plugin architecture that prioritizes simplicity and extensibility. A plugin is a directory with two files: a manifest declaring what the plugin does, and a Python script that does the actual checking. There is no registration step, no base class to inherit from, no complex API to learn. Drop the directory in the right place and ODK discovers it on the next run.
+
+The 40 built-in plugins are standalone Python scripts that read JSON from stdin, run their checks, and write JSON to stdout. Anyone who can write a Python script can write a verification plugin.
+
+## Discovery
+
+ODK discovers plugins by scanning two directories in order:
+
+1. **`.odk/verifications/`** -- Project-specific plugins that take priority
+2. **`src/odk/verifications/`** (within ODK's package) -- The 40 built-in plugins
+
+For each subdirectory found, ODK looks for `manifest.yaml` and `check.py`. If both exist, the plugin is loaded. When a project plugin has the same name as a built-in plugin, the project version wins.
+
+## The Manifest
+
+```yaml
+name: my-check
+description: "What this check enforces"
+layer: 2
+trigger:
+  - pre-commit
+  - pre-push
+parallel: true
+timeout: 30
+requires: []
+supports_auto_fix: false
+```
+
+The `layer` field determines execution order (1 runs first, then 2, then 3). The `trigger` field controls when the plugin runs. The `parallel` field indicates whether concurrent execution with other plugins is safe. The `timeout` prevents runaway plugins. The `supports_auto_fix` field enables the auto-fix workflow.
+
+## The Check Contract
+
+**Input** (piped to stdin as JSON):
+```json
+{
+  "project_root": "/path/to/project",
+  "auto_fix": false
+}
+```
+
+**Output** (written to stdout as JSON):
+```json
+{
+  "name": "my-check",
+  "passed": true,
+  "output": "All checks passed",
+  "duration_seconds": 1.5,
+  "detail": {}
+}
+```
+
+Three fields are required in the output: `name`, `passed`, and `output`. The `output` field is the proof -- the actual tool output that substantiates the result. Exit code 0 means the check completed (pass or fail per the JSON). Exit code 2 means an error occurred and triggers a `VerificationContractError`.
+
+## The 40 Built-in Plugins
+
+### Layer 1: Format and Lint
+`lint-ruff` (auto-fix capable), `python-quality`, `types-ty`
+
+### Layer 2: Architecture and Structure
+
+**Python**: `python-tdd-guard`, `python-file-length`, `python-no-future-annotations`, `tests-pytest`
+
+**FastAPI**: `fastapi-adapter-isolation`, `fastapi-core-purity`, `fastapi-no-mocks-e2e`, `fastapi-no-mocks-integration`, `fastapi-route-delegation`, `fastapi-route-splitting`, `fastapi-service-sync`
+
+**Next.js/React**: `nextjs-file-sizes`, `nextjs-fsd-imports`, `nextjs-fsd-layers`, `nextjs-module-density`, `nextjs-no-direct-env`, `nextjs-no-direct-fetch`, `nextjs-no-direct-ui-imports`, `nextjs-no-query-key-strings`, `nextjs-no-useeffect-fetch`, `nextjs-no-zustand-module-level`, `nextjs-page-purity`, `nextjs-server-client-boundary`, `nextjs-sse-abort-controller`, `react-fsd-imports`
+
+**Terraform**: `terraform-dangling-resources`, `terraform-external-iam`, `terraform-format`, `terraform-glacier-public`, `terraform-paravirt-ec2`, `terraform-public-ami`, `terraform-security`, `terraform-tagging`
+
+**CLI**: `cli-error-handling`, `cli-output-format`
+
+### Layer 3: AI-Powered
+`ai-code-review`, `spec-alignment`
+
+## YAML-Based Spec Reviewers
+
+Separate from the code verification plugins, ODK also has a **spec reviewer** system that evaluates narrative spec quality. This is an entirely different architecture:
+
+- **10 YAML reviewer configs** in `src/odk/spec_reviewers/` (copied to `.odk/spec-reviewers/` on `odk init`)
+- Each reviewer has: id (N01-N10), name, group, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric
+- Reviewers run as **parallel Bedrock Converse API calls** with forced structured output (`toolChoice`)
+- **Prompt caching**: spec content cached after first call, remaining reviewers hit cache (90% cost savings)
+- **Model tiers**: `smart` and `fast` (both default to Sonnet 4), `reasoning` (Opus) -- configured via `ai.model_tiers` in config
+- **Anti-hallucination rules**: LLM must quote exact text, cannot invent findings
+- **LLM score is authoritative** -- deterministic tools provide evidence but do not override LLM judgment
+- Only **4 high-value tools** remain: `scan_url_paths`, `scan_type_annotations` (N08), `scan_filler_phrases` (N07), `scan_unlinked_mentions` (N09)
+- **Orphaned components are errors** (not warnings)
+
+The spec reviewers run via `odk spec verify`, not `odk verify run`. They are complementary systems: plugins check code quality, reviewers check spec quality.
+
+<Callout type="info">
+You can write a custom code verification plugin in under five minutes: create a directory with `manifest.yaml` and `check.py`, read JSON from stdin, run your check, write JSON to stdout. For custom spec reviewers, add a YAML file to `.odk/spec-reviewers/` following the format of the built-in reviewers.
+</Callout>

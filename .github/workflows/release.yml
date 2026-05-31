@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # Future: uncomment to build and publish to PyPI when ready for public distribution
+      # - uses: astral-sh/setup-uv@v7
+      #   with:
+      #     enable-cache: true
+      # - name: Build
+      #   run: uv build --no-sources
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          # Future: attach dist/ artifacts once build step is enabled
+          # files: dist/*

@@ -1,0 +1,79 @@
+# Authentication: Cognito User Pool
+
+resource "aws_cognito_user_pool" "main" {
+  name = "{{ app_name }}-{{ environment }}"
+
+  password_policy {
+    minimum_length    = {{ minimum_length }}
+    require_uppercase = {{ require_uppercase | lower }}
+    require_lowercase = {{ require_lowercase | lower }}
+    require_numbers   = {{ require_numbers | lower }}
+    require_symbols   = {{ require_symbols | lower }}
+  }
+
+  {% if mfa == "required" %}
+  mfa_configuration = "ON"
+  {% elif mfa == "optional" %}
+  mfa_configuration = "OPTIONAL"
+  {% else %}
+  mfa_configuration = "OFF"
+  {% endif %}
+
+  {% if mfa != "off" %}
+  software_token_mfa_configuration {
+    enabled = true
+  }
+  {% endif %}
+
+  account_recovery_setting {
+    recovery_mechanism {
+      name     = "verified_email"
+      priority = 1
+    }
+  }
+
+  auto_verified_attributes = ["email"]
+
+  schema {
+    attribute_data_type = "String"
+    name                = "email"
+    required            = true
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 256
+    }
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-user-pool"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+resource "aws_cognito_user_pool_client" "main" {
+  name         = "{{ app_name }}-{{ environment }}-client"
+  user_pool_id = aws_cognito_user_pool.main.id
+
+  generate_secret = false
+
+  explicit_auth_flows = [
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+  ]
+
+  supported_identity_providers = ["COGNITO"]
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+
+  access_token_validity  = 1
+  id_token_validity      = 1
+  refresh_token_validity = 30
+}

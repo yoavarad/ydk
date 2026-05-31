@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+{% for imp in imports %}
+{{ imp }}
+{% endfor %}
+{% for schema in schemas %}
+
+
+class {{ schema.name }}(BaseModel):
+    {% if schema.fields %}
+    {% for field in schema.fields %}
+    {{ field.name }}: {{ field.py_type ~ (" = " ~ field.default if field.default is not none else "") }}
+    {% endfor %}
+    {% else %}
+    pass
+    {% endif %}
+    {% if schema.from_attributes %}
+
+    model_config = {"from_attributes": True}
+    {% endif %}
+{% endfor %}

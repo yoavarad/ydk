@@ -1,0 +1,7 @@
+name: python-no-future-annotations
+description: Block 'from __future__ import annotations' in FastAPI route files (breaks
+  runtime type resolution)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

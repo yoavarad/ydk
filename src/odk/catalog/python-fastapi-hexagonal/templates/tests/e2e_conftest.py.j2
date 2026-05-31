@@ -1,0 +1,145 @@
+"""E2E test conftest — full-stack HTTP client with TRUNCATE cleanup between tests."""
+from __future__ import annotations
+
+import asyncio
+import os
+from collections.abc import AsyncGenerator, Generator
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.core.models.base import Base
+from {{ app_module }} import create_app
+{% for adapter in external_adapters %}
+from app.api.dependencies import get_{{ adapter.snake_name }}
+{% endfor %}
+
+DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/test_db",
+)
+
+{% if entities %}
+_TABLES_TO_TRUNCATE = [
+{% for entity in entities %}
+    "{{ entity.table_name }}",
+{% endfor %}
+]
+{% else %}
+_TABLES_TO_TRUNCATE: list[str] = []
+{% endif %}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _create_tables() -> Generator[None, None, None]:
+    """Create all tables once for the test session using a dedicated engine and loop.
+
+    Each fixture creates its own engine inside its own event loop to avoid the
+    'Task got Future attached to a different loop' error (ERR-7).
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        async def _setup() -> None:
+            engine = create_async_engine(DATABASE_URL, echo=False)
+            try:
+                async with engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.create_all)
+            finally:
+                await engine.dispose()
+
+        loop.run_until_complete(_setup())
+    finally:
+        loop.close()
+
+    yield
+
+    loop = asyncio.new_event_loop()
+    try:
+        async def _teardown() -> None:
+            engine = create_async_engine(DATABASE_URL, echo=False)
+            try:
+                async with engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.drop_all)
+            finally:
+                await engine.dispose()
+
+        loop.run_until_complete(_teardown())
+    finally:
+        loop.close()
+
+
+@pytest.fixture(autouse=True)
+def _truncate_tables() -> Generator[None, None, None]:
+    """Truncate all tables between E2E tests using a dedicated engine and loop."""
+    yield
+    if not _TABLES_TO_TRUNCATE:
+        return
+    tables = ", ".join(_TABLES_TO_TRUNCATE)
+
+    async def _do_truncate() -> None:
+        engine = create_async_engine(DATABASE_URL, echo=False)
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(
+                    text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE")
+                )
+                await conn.commit()
+        finally:
+            await engine.dispose()
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_do_truncate())
+    finally:
+        loop.close()
+
+
+{% if external_adapters %}
+
+class _AsyncStub:
+    """No-op async stub for external adapters in E2E tests.
+
+    Returns None for any attribute access and any call (sync or async).
+    """
+
+    def __getattr__(self, _name: str) -> "_AsyncStub":
+        return self
+
+    def __call__(self, *_args: object, **_kwargs: object) -> "_AsyncStub":
+        return self
+
+    def __await__(self):  # noqa: ANN204
+        return self._noop().__await__()
+
+    async def _noop(self) -> None:
+        return None
+
+
+{% endif %}
+@pytest_asyncio.fixture
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    """Full-stack async HTTP client against the real FastAPI app.
+{% if external_adapters %}
+
+    External adapter dependencies are overridden with no-op stubs so that
+    E2E tests do not attempt to reach real third-party services (ERR-9).
+{% endif %}
+    """
+    app = create_app()
+{% if external_adapters %}
+
+    # Override external (non-repository) adapter dependencies with stubs
+{% for adapter in external_adapters %}
+    app.dependency_overrides[get_{{ adapter.snake_name }}] = _AsyncStub
+{% endfor %}
+{% endif %}
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as c:
+        yield c
+{% if external_adapters %}
+    app.dependency_overrides.clear()
+{% endif %}

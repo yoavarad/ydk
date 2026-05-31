@@ -1,0 +1,7 @@
+name: nextjs-server-client-boundary
+description: Enforce 'use client' files do not import Server Components or Server
+  Actions directly
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

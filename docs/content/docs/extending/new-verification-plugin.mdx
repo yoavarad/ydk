@@ -1,0 +1,122 @@
+---
+title: New Verification Plugin
+description: Step-by-step guide to creating a custom verification plugin
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Creating a Verification Plugin
+
+ODK's verification system is designed to be extended. The plugin contract is deliberately simple -- a directory with two files, JSON in, JSON out -- because verification rules are specific to each project and team. The 40 built-in plugins cover common patterns, but your project almost certainly has rules that are unique to your domain, architecture, or team standards.
+
+This guide walks through creating a custom plugin from scratch, explaining the design decisions at each step.
+
+## Step 1: Create the Plugin Directory
+
+Plugins live in `.odk/verifications/` for project-specific checks. Create a directory with a descriptive name:
+
+```bash
+mkdir -p .odk/verifications/no-print-statements
+```
+
+The directory name is not used for identification -- the `name` field in the manifest is what matters -- but keeping them consistent avoids confusion.
+
+## Step 2: Write the Manifest
+
+Create `.odk/verifications/no-print-statements/manifest.yaml`:
+
+```yaml
+name: no-print-statements
+description: "Ensure no bare print() calls exist in production code"
+layer: 1
+trigger:
+  - pre-commit
+  - pre-push
+parallel: true
+timeout: 10
+requires: []
+supports_auto_fix: false
+```
+
+The `layer` field determines when your plugin runs relative to others. Layer 1 is for fast, deterministic checks (formatting, linting). Layer 2 is for architectural rules. Layer 3 is for AI-powered analysis. Choose the layer that matches the cost and complexity of your check.
+
+The `trigger` field controls when your plugin is invoked. `pre-commit` runs on `odk verify run --trigger pre-commit`. `pre-push` runs on `odk verify run --trigger pre-push` and also during `odk task done`.
+
+The `parallel` field should be `true` unless your plugin modifies files (in which case set it to `false` to avoid race conditions with other plugins).
+
+## Step 3: Write the Check Script
+
+Create `.odk/verifications/no-print-statements/check.py`:
+
+```python
+import json
+import sys
+import time
+from pathlib import Path
+
+def main():
+    start = time.time()
+    context = json.loads(sys.stdin.read())
+    project_root = Path(context["project_root"])
+
+    violations = []
+    for py_file in sorted(project_root.rglob("*.py")):
+        # Skip test files and virtual environments
+        rel = str(py_file.relative_to(project_root))
+        if rel.startswith(("tests/", ".venv/", ".odk/")):
+            continue
+
+        for i, line in enumerate(py_file.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("print(") and not stripped.startswith("print(f"):
+                violations.append(f"{rel}:{i}: {stripped}")
+
+    passed = len(violations) == 0
+    output = "No print statements found" if passed else "\n".join(violations)
+
+    result = {
+        "name": "no-print-statements",
+        "passed": passed,
+        "output": output,
+        "duration_seconds": round(time.time() - start, 2),
+    }
+    print(json.dumps(result))
+
+if __name__ == "__main__":
+    main()
+```
+
+The check script follows a straightforward pattern: read context from stdin, perform the check, write the result to stdout. The `output` field should contain the actual evidence -- if the check fails, show exactly what failed and where, so the agent (or human) can fix it without guessing.
+
+## Step 4: Test Your Plugin
+
+Run the plugin directly to verify it works:
+
+```bash
+echo '{"project_root": "."}' | python .odk/verifications/no-print-statements/check.py
+```
+
+Then run it through ODK's verification system:
+
+```bash
+odk verify run --plugin no-print-statements
+```
+
+## Step 5: Adding Auto-Fix Support
+
+If your plugin can fix violations automatically, set `supports_auto_fix: true` in the manifest and check for the `auto_fix` key in the context:
+
+```python
+if context.get("auto_fix"):
+    # Fix the violations before checking
+    for py_file in project_root.rglob("*.py"):
+        content = py_file.read_text()
+        fixed = content.replace("print(", "logger.debug(")
+        py_file.write_text(fixed)
+```
+
+When a user runs `odk verify run --auto-fix`, your plugin receives `"auto_fix": true` in the context and can perform fixes before running the check.
+
+<Callout type="info">
+Project-specific plugins in `.odk/verifications/` override built-in plugins with the same name. This lets you customize any built-in check without modifying ODK itself.
+</Callout>

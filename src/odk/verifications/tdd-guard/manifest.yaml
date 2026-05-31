@@ -1,0 +1,6 @@
+name: tdd-guard
+description: Enforce test-driven development — test must exist before source modification
+trigger: "guard:edit"
+parallel: false
+timeout: 5
+requires: []

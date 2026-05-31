@@ -1,0 +1,187 @@
+---
+title: Your First Spec
+description: Write your first specification with narratives and component manifests
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Your First Spec
+
+Every failed software project starts with a vague specification. When you hand a vague spec to an LLM, it produces vague code, and you spend more time debugging the ambiguity than you saved by using AI in the first place. ODK's specification system exists to eliminate that ambiguity before a single line of code is written.
+
+The key insight is that specifications need to serve two audiences simultaneously. Humans need narrative prose that explains the *why* -- problem statements, success criteria, design rationale, scope boundaries. Machines need structured data that can be validated, cross-referenced, and used for coverage analysis. Most tools force you to choose one or the other. ODK uses both: narrative markdown files for the story, and component manifests in YAML for the exact structure.
+
+## Writing the Narrative
+
+Specs live in `docs/specs/` as markdown files. Each spec tells the story of what you are building. Start with the problem, not the solution:
+
+```bash
+mkdir -p docs/specs
+```
+
+Write `docs/specs/orders.md`:
+
+```markdown
+# Orders System
+
+## Problem Statement
+Users need to place, track, and cancel orders. The current system
+has no order management -- users can browse products but cannot
+purchase them. This is the core commerce functionality that every
+other feature depends on.
+
+## Success Criteria
+- Users can place orders with one or more items
+- Orders follow a lifecycle: created -> confirmed -> shipped -> delivered
+- Users can cancel orders before shipment
+- Order totals are calculated with proper decimal precision
+
+## Scope
+### In Scope
+- Order CRUD operations
+- Order lifecycle state machine
+- Order item line management
+
+### Out of Scope
+- Payment processing (external service, separate spec)
+- Inventory management (separate system)
+- Shipping carrier integration (future work)
+
+## Components
+
+### Order Entity
+The core domain model representing a customer order.
+[odk:entity:orders/Order]
+
+### Order Item Entity
+A line item within an order, linking to a product with quantity and price.
+[odk:entity:orders/OrderItem]
+
+### Create Order Route
+API endpoint for placing a new order.
+[odk:route:orders/create]
+
+### Get Order Route
+API endpoint for retrieving order details.
+[odk:route:orders/get]
+
+### Cancel Order Route
+API endpoint for cancelling an order before shipment.
+[odk:route:orders/cancel]
+
+### Insufficient Balance Error
+Returned when the order total exceeds available balance.
+[odk:error:orders/insufficient-balance]
+```
+
+Notice the bracket references like `[odk:entity:orders/Order]`. These are not decorative -- they are machine-readable links between the narrative and the component manifests. ODK's deterministic linker scans your specs for these references and validates that every one resolves to an actual YAML manifest file. If you reference something that does not exist, the linker catches it. If you have a manifest that no spec references, the linker flags it as orphaned.
+
+## Creating Component Manifests
+
+For each bracket reference in your spec, you need a corresponding YAML manifest. ODK provides a scaffolding command that creates the file with the correct schema and all required fields:
+
+```bash
+odk component create entity orders/Order
+odk component create entity orders/OrderItem
+odk component create route orders/create
+odk component create route orders/get
+odk component create route orders/cancel
+odk component create error orders/insufficient-balance
+```
+
+Each command creates a YAML file in `.odk/components/` following the type-based directory structure. For example, `odk component create entity orders/Order` creates `.odk/components/entity/orders/Order.yaml` with a template you fill in:
+
+```yaml
+$schema: odk:schema:entity
+id: odk:entity:orders/Order
+description: "A customer order with items, status, and lifecycle management"
+fields:
+  id:
+    type: UUID
+    required: true
+    primary_key: true
+    generated: true
+    description: "Unique order identifier"
+  customer_id:
+    type: UUID
+    required: true
+    fk: odk:entity:users/User
+    description: "Customer who placed the order"
+  status:
+    type: enum
+    values: [created, confirmed, shipped, delivered, cancelled]
+    required: true
+    default: created
+    description: "Current lifecycle state"
+  total:
+    type: Decimal
+    precision: [10, 2]
+    required: true
+    description: "Order total with 2 decimal places"
+  created_at:
+    type: datetime
+    auto: true
+    description: "When the order was placed"
+state_transitions:
+  created: [confirmed, cancelled]
+  confirmed: [shipped, cancelled]
+  shipped: [delivered]
+  delivered: []
+  cancelled: []
+```
+
+The `$schema` field tells ODK which schema to validate against. The `id` field must match the component ID format: `odk:<type>:<namespace>/<name>`. Every other field is defined by the schema for that type -- entity schemas have fields, state transitions, and relationships; route schemas have methods, paths, request parameters, and responses; error schemas have status codes, error codes, and triggers.
+
+## Why Two Layers
+
+This split between narrative and manifests exists because each solves a problem the other cannot.
+
+Narrative prose captures context that structured data cannot -- the reasoning behind design decisions, the scope boundaries that prevent feature creep, the problem statement that keeps everyone aligned. An LLM reading the narrative understands the intent behind the system. But prose is fragile for machine processing. You cannot reliably determine from a paragraph of English whether every entity mentioned in a spec has a corresponding task.
+
+Component manifests capture structure that prose cannot -- exact field types, precise relationship cardinalities, specific HTTP methods and status codes. When ODK checks spec coverage (does every component have at least one task?), it can do so deterministically because the manifests are structured YAML, not ambiguous English.
+
+Together, they give you the best of both worlds: human-readable documentation that tells the story, and machine-readable definitions that enable automated validation.
+
+## Validating Your Spec
+
+With narratives written and manifests created, validate the entire system:
+
+```bash
+# Run the deterministic linker (Layer A)
+odk component validate
+```
+
+The linker checks three things:
+1. **Undefined references** -- bracket references in your spec that have no corresponding YAML manifest
+2. **Orphaned components** -- YAML manifests that exist but are not referenced by any spec
+3. **Broken cross-references** -- component-to-component references (like foreign keys in entity manifests) that do not resolve
+
+This validation is deterministic and fast -- it does not call an LLM. It parses your markdown for bracket references, resolves them against the file system, and reports errors. Run it every time you change a spec or add a component.
+
+For a deeper quality evaluation, use the AI-powered spec checker:
+
+```bash
+# AI-powered spec quality evaluation (requires AI extras)
+odk spec verify --all
+odk spec results
+```
+
+The spec checker sends your spec content to an LLM (Claude Sonnet by default, configurable in `spec_check.model`) which evaluates 18 criteria across 5 groups. Each criterion gets a 1-10 score compared against configurable thresholds. The five groups are completeness (problem statement, success criteria, scope, user stories), clarity (terminology, ambiguity, diagrams, audience), architecture (components, interfaces, data model, dependencies), robustness (error handling, security, testing, YAGNI), and quality (information density, implementation leakage).
+
+<Callout type="warn">
+Every `[odk:...]` reference in your spec must resolve to an actual component manifest. The deterministic linker catches dangling references immediately -- do not skip this validation step.
+</Callout>
+
+## The LLM Prose Scanner (Layer B)
+
+Beyond the deterministic linker, ODK offers an LLM-powered prose scanner that finds *unlinked mentions* -- places where your spec describes something that should be a component but is not referenced:
+
+```bash
+odk component scan
+```
+
+For example, if your spec mentions "the notification service sends an email when an order ships" but you have not created an event component for `order-shipped` or a contract component for the notification service, the scanner flags these as potential gaps. It produces suggestions with confidence levels, not hard errors -- the final decision is always yours.
+
+## Next Steps
+
+With your spec written and validated, proceed to [decompose it into tasks](/docs/getting-started/first-task) -- breaking the spec down into epics, stories, and individually executable tasks with dependency tracking.

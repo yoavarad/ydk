@@ -1,0 +1,13 @@
+{
+  "title": "Architecture",
+  "pages": [
+    "overview",
+    "core-layer",
+    "models",
+    "repositories",
+    "plugins",
+    "schemas",
+    "config",
+    "ci-cd"
+  ]
+}

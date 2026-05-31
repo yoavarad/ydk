@@ -1,0 +1,98 @@
+"""FastAPI dependency injection container.
+
+This is the ONLY file that imports from app/adapters/.
+All adapters are instantiated here and injected via FastAPI Depends().
+"""
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends
+{% if need_async %}
+from sqlalchemy.ext.asyncio import AsyncSession
+{% endif %}
+{% if need_sync %}
+from sqlalchemy.orm import Session
+{% endif %}
+
+{% for adapter in adapters %}
+from {{ adapter.module_path }} import {{ adapter.class_name }}
+{% endfor %}
+{% for port_import in port_imports %}
+{{ port_import }}
+{% endfor %}
+{% if entities %}
+{% for entity in entities %}
+from app.adapters.database.repos.{{ entity.snake_name }}_repository import Postgres{{ entity.name }}Repository
+{% endfor %}
+{% for entity in entities %}
+from app.core.ports.{{ entity.snake_name }}_repository import {{ entity.name }}RepositoryPort
+{% endfor %}
+{% endif %}
+{% if use_cases %}
+{% for uc in use_cases %}
+from app.core.services.{{ uc.snake_svc }} import {{ uc.svc_class }}
+{% endfor %}
+{% endif %}
+{% if need_async %}
+from app.database import get_async_session
+{% endif %}
+{% if need_sync %}
+from app.database import get_db_sync
+{% endif %}
+
+{% for adapter in adapters %}
+{% if adapter.is_singleton %}
+_{{ adapter.func_snake }}_instance: {{ adapter.port_name }} = {{ adapter.class_name }}()
+
+def get_{{ adapter.func_snake }}() -> {{ adapter.port_name }}:
+    """Singleton: returns the same instance for every request."""
+    return _{{ adapter.func_snake }}_instance
+{% else %}
+def get_{{ adapter.func_snake }}() -> {{ adapter.port_name }}:
+    return {{ adapter.class_name }}()
+{% endif %}
+
+{% if adapter.emit_port_dep %}
+{{ adapter.port_name }}Dep = Annotated[{{ adapter.port_name }}, Depends(get_{{ adapter.func_snake }})]
+{% endif %}
+
+{% endfor %}
+{% if need_async %}
+DbSessionDep = Annotated[AsyncSession, Depends(get_async_session)]
+{% endif %}
+{% if need_sync %}
+DbSyncSessionDep = Annotated[Session, Depends(get_db_sync)]
+{% endif %}
+
+{% if entities %}
+# --- Repository providers ---
+
+{% for entity in entities %}
+def get_{{ entity.snake_name }}_repository(db: {{ session_dep }}) -> {{ entity.name }}RepositoryPort:
+    return Postgres{{ entity.name }}Repository(db)
+
+{{ entity.name }}RepoDep = Annotated[{{ entity.name }}RepositoryPort, Depends(get_{{ entity.snake_name }}_repository)]
+
+{% endfor %}
+{% endif %}
+
+{% if use_cases %}
+# --- Service providers ---
+
+{% for uc in use_cases %}
+def get_{{ uc.snake_svc }}(
+    {% for dep in uc.deps %}
+    {{ dep.param }}: {{ dep.dep_type }},
+    {% endfor %}
+) -> {{ uc.svc_class }}:
+    return {{ uc.svc_class }}(
+        {% for dep in uc.deps %}
+        {{ dep.kwarg }}={{ dep.param }},
+        {% endfor %}
+    )
+
+{{ uc.svc_class }}Dep = Annotated[{{ uc.svc_class }}, Depends(get_{{ uc.snake_svc }})]
+
+{% endfor %}
+{% endif %}

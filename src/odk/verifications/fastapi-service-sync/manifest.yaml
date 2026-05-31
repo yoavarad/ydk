@@ -1,0 +1,7 @@
+name: fastapi-service-sync
+description: 'Verify services are synchronous -- no async def allowed (escape hatch:
+  # odk:allow-async)'
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

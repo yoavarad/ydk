@@ -1,0 +1,6 @@
+name: guard-stage-gate
+description: Block actions inappropriate for the current development stage
+trigger: guard:edit
+parallel: false
+timeout: 5
+requires: []

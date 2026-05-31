@@ -1,0 +1,56 @@
+{% if has_updated_at %}
+from datetime import datetime, timezone
+
+{% endif %}
+from sqlalchemy.orm import Session
+
+from app.core.models.{{ snake_name }} import {{ name }}Model
+
+# Alias prevents ty from resolving ``list`` as the method on this class.
+_List = list
+
+
+class Postgres{{ name }}Repository:
+    """PostgreSQL implementation of {{ name }}RepositoryPort."""
+
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def get(self, id: {{ pk_type }}) -> {{ name }}Model | None:
+        return self._db.get({{ name }}Model, id)
+
+    def list(self{% for p in list_params %}, {{ p.name }}: {{ p.type }} = {{ p.default }}{% endfor %}) -> _List[{{ name }}Model]:
+        q = self._db.query({{ name }}Model)  # type: ignore[attr-defined]
+        {% for p in list_params %}
+        if {{ p.name }} is not None:
+            q = q.filter({{ name }}Model.{{ p.name }} == {{ p.name }})
+        {% endfor %}
+        return q.all()  # type: ignore[return-value]
+
+    def create(self, **kwargs) -> {{ name }}Model:
+        obj = {{ name }}Model(**kwargs)
+        self._db.add(obj)
+        self._db.flush()
+        self._db.refresh(obj)
+        return obj
+
+    def update(self, id: {{ pk_type }}, **kwargs) -> {{ name }}Model:
+        obj = self._db.get({{ name }}Model, id)
+        assert obj is not None, f"{{ name }} with id={id} not found"
+        for k, v in kwargs.items():
+            setattr(obj, k, v)
+        {% if has_updated_at %}
+        obj.updated_at = datetime.now(timezone.utc)
+        {% endif %}
+        self._db.flush()
+        self._db.refresh(obj)
+        return obj
+
+    def delete(self, id: {{ pk_type }}) -> None:
+        obj = self._db.get({{ name }}Model, id)
+        if obj:
+            self._db.delete(obj)
+            self._db.flush()
+
+    def exists(self, id: {{ pk_type }}) -> bool:
+        return self._db.get({{ name }}Model, id) is not None

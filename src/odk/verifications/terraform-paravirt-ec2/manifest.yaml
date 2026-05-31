@@ -1,0 +1,6 @@
+name: terraform-paravirt-ec2
+description: Detect paravirtualized EC2 instance types (t1, m1, c1, m2)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

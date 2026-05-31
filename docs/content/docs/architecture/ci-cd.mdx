@@ -1,0 +1,55 @@
+---
+title: CI/CD Pipeline
+description: GitHub Actions workflows for linting, testing, bumping, and releasing
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# CI/CD Pipeline
+
+ODK uses three GitHub Actions workflows that enforce the same quality standards in CI that the local verification plugins enforce on the developer's machine. The philosophy is simple: if code passes local verification, it should pass CI, and vice versa. The CI pipeline is not a separate quality gate -- it is the same gate, running in a controlled environment.
+
+## ci.yml: PR and Push Validation
+
+This workflow runs on every pull request and every push to main. It has four jobs:
+
+**Branch name validation** (PRs only) ensures that branch names follow the convention `^(feat|fix|docs|chore|refactor|test|ci|perf|release)/[a-z0-9-]+$`. This is not cosmetic -- the branch naming convention feeds into the conventional commit system, which drives automatic versioning and changelog generation.
+
+**Commit message validation** (PRs only) runs `cz check --rev-range origin/main...HEAD` to validate that every commit follows the conventional commit format. Types are `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `perf`, and `release`. This validation catches malformed commits before they are merged, preventing versioning confusion.
+
+**Lint** installs all dependencies with `uv sync --locked --all-extras --dev` and runs `ruff check src/ tests/` followed by `ty check src/ --python-version 3.13`. These are the same checks that ODK's Layer 1 verification plugins run locally.
+
+**Test** installs all dependencies and runs `pytest tests/ -q --tb=short -x --ignore=tests/fixtures`. The `-x` flag stops on first failure for fast feedback. The `--ignore=tests/fixtures` flag excludes test fixture files that are not actual test files.
+
+## bump.yml: Automatic Version Bumping
+
+Triggered on pushes to main (skipping commits that start with `bump:`), this workflow handles automatic versioning:
+
+1. Checks out the repository with full git history (needed for commitizen to analyze all commits)
+2. Runs `cz bump --yes` which reads the conventional commits since the last tag, determines the version increment (patch for fixes, minor for features, major for breaking changes), and updates the version
+3. Runs `uv lock` to update the lockfile with the new version
+4. Amends the bump commit to include the lockfile changes
+5. Pushes the commit and the new version tag
+
+This means every merge to main that includes conventional commits automatically produces a new version tag. There is no manual version management.
+
+## release.yml: GitHub Releases
+
+Triggered when a `v*` tag is pushed (which happens automatically from the bump workflow):
+
+1. Creates a GitHub Release with the tag name as the release title
+2. Auto-generates release notes from the commits since the previous tag
+
+This produces a clean release history where each release links to the commits that comprise it.
+
+## Local Git Hooks
+
+ODK also provides git hooks in `.githooks/` that run the same checks locally before they reach CI:
+
+| Hook | What it does |
+|------|-------------|
+| `commit-msg` | Validates conventional commit format using `cz check` |
+| `pre-commit` | Runs `ruff format` + `ruff check` to catch formatting and lint issues |
+| `pre-push` | Validates branch name pattern and runs `pytest` |
+
+Configure the hooks with `git config core.hooksPath .githooks`. The pre-push hook respects ODK's `.verified` flag -- if `odk task done` ran verification within the last 5 minutes, the pre-push hook skips re-running checks to avoid double verification.

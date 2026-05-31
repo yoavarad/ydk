@@ -1,0 +1,101 @@
+#!/bin/bash
+# Deploy script for {{ app_name }} ({{ environment }})
+# Usage: ./deploy.sh [plan|apply|build|all]
+
+set -euo pipefail
+
+APP_NAME="{{ app_name }}"
+ENVIRONMENT="{{ environment }}"
+REGION="{{ region }}"
+ACTION="${1:-all}"
+
+INFRA_DIR="infra"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${APP_NAME}-${ENVIRONMENT}-backend"
+
+echo "=== Deploying ${APP_NAME} (${ENVIRONMENT}) ==="
+echo ""
+
+terraform_plan() {
+  echo "--- Terraform Plan ---"
+  cd "$INFRA_DIR"
+  terraform init -input=false
+  terraform plan -out=tfplan
+  cd ..
+  echo ""
+}
+
+terraform_apply() {
+  echo "--- Terraform Apply ---"
+  cd "$INFRA_DIR"
+  terraform init -input=false
+  terraform apply -auto-approve tfplan
+  cd ..
+  echo ""
+}
+
+docker_build_push() {
+  echo "--- Docker Build & Push ---"
+  aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+
+  DOCKERFILE_PATH="${DOCKERFILE_PATH:-../backend/Dockerfile}"
+  DOCKER_CONTEXT="${DOCKER_CONTEXT:-../backend}"
+  docker build -t "${APP_NAME}-backend" -f "$DOCKERFILE_PATH" "$DOCKER_CONTEXT"
+  docker tag "${APP_NAME}-backend:latest" "${ECR_REPO}:latest"
+  docker tag "${APP_NAME}-backend:latest" "${ECR_REPO}:$(git rev-parse --short HEAD)"
+  docker push "${ECR_REPO}:latest"
+  docker push "${ECR_REPO}:$(git rev-parse --short HEAD)"
+
+  # Force new deployment
+  aws ecs update-service \
+    --cluster "${APP_NAME}-${ENVIRONMENT}" \
+    --service "${APP_NAME}-${ENVIRONMENT}-backend" \
+    --force-new-deployment \
+    --region "$REGION"
+
+  echo "Waiting for service stability..."
+  aws ecs wait services-stable \
+    --cluster "${APP_NAME}-${ENVIRONMENT}" \
+    --services "${APP_NAME}-${ENVIRONMENT}-backend" \
+    --region "$REGION"
+
+  echo ""
+}
+
+{% if has_cdn %}
+invalidate_cdn() {
+  echo "--- CloudFront Cache Invalidation ---"
+  DISTRIBUTION_ID=$(cd "$INFRA_DIR" && terraform output -raw cloudfront_distribution_id)
+  aws cloudfront create-invalidation \
+    --distribution-id "$DISTRIBUTION_ID" \
+    --paths "/*" \
+    --region "$REGION"
+  echo ""
+}
+{% endif %}
+
+case "$ACTION" in
+  plan)
+    terraform_plan
+    ;;
+  apply)
+    terraform_apply
+    ;;
+  build)
+    docker_build_push
+    ;;
+  all)
+    terraform_plan
+    terraform_apply
+    docker_build_push
+    {% if has_cdn %}
+    invalidate_cdn
+    {% endif %}
+    ;;
+  *)
+    echo "Usage: $0 [plan|apply|build|all]"
+    exit 1
+    ;;
+esac
+
+echo "=== Deployment complete ==="

@@ -1,0 +1,10 @@
+name: python-quality
+version: "0.1.0"
+description: Python verification set — ruff lint, ruff format, ty type checking
+tags:
+  - verification
+  - python
+  - quality
+publish_checks:
+  - name: has-check
+    description: Must include a check.py or manifest.yaml

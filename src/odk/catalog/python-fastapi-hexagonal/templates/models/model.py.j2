@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+{{ imports | join('\n') }}
+
+
+class {{ name }}Model(Base):
+    __tablename__ = "{{ table_name }}"
+{% if not fields %}
+
+    pass
+{% else %}
+{% for field in fields %}
+    {{ field.attr_name }}: Mapped[{{ field.mapped_type }}] = mapped_column({{ field.col_args }}){{ ("  # noqa: " ~ field.noqa) if field.noqa else "" }}
+{% endfor %}
+{% if relationships %}
+
+{% for rel in relationships %}
+    {{ rel.attr_name }}: Mapped[{{ rel.mapped_type }}] = relationship(  # noqa: F821
+        "{{ rel.target_model }}",
+{% if rel.back_ref %}        back_populates="{{ rel.back_ref }}",
+{% endif %}    )
+{% endfor %}
+{% endif %}
+{% if table_args %}
+
+    __table_args__ = (
+{% for arg in table_args %}
+        {{ arg }},
+{% endfor %}
+    )
+{% endif %}
+{% endif %}

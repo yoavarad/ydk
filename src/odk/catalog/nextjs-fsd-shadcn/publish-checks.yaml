@@ -1,0 +1,7 @@
+checks:
+  - name: has-generators
+    description: Must include all 13 generator scripts
+  - name: has-templates
+    description: Must include all Jinja2 template files
+  - name: has-context-utils
+    description: Must include _context/ shared utility modules

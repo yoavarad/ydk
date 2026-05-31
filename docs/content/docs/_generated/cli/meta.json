@@ -1,0 +1,23 @@
+{
+  "title": "CLI Commands",
+  "pages": [
+    "init",
+    "catalog",
+    "component",
+    "ignite",
+    "task",
+    "todo",
+    "spec",
+    "verify",
+    "watch",
+    "memory",
+    "change",
+    "scaffold",
+    "visual",
+    "test",
+    "doctor",
+    "quickdev",
+    "status",
+    "checkpoint"
+  ]
+}

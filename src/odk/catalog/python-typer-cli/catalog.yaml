@@ -1,0 +1,29 @@
+name: python-typer-cli
+version: "1.0.0"
+description: "Python CLI tool backed by a REST API — Typer, httpx, rich output formatting"
+tags:
+  - ignition-pack
+  - python
+  - typer
+  - cli
+  - rich
+
+inputs:
+  contract:
+    schema_ref: odk-core-schemas/contract
+    version: ">=1.0.0"
+    required: true
+  entity:
+    schema_ref: odk-core-schemas/entity
+    version: ">=1.0.0"
+    required: false
+
+verification_sets:
+  - name: python-quality
+    version: ">=1.0.0"
+spec_reviewers:
+  - name: odk-default-reviewers
+    version: ">=1.0.0"
+component_schemas:
+  - name: odk-core-schemas
+    version: ">=1.0.0"

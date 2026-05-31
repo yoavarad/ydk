@@ -1,0 +1,6 @@
+name: nextjs-fsd-imports
+description: FSD layer isolation enforcement -- imports must only go to lower layers
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

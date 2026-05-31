@@ -1,0 +1,60 @@
+# Database: Aurora Serverless v2 (PostgreSQL)
+
+resource "aws_db_subnet_group" "aurora" {
+  name       = "{{ app_name }}-{{ environment }}-aurora"
+  subnet_ids = [aws_subnet.private_0.id, aws_subnet.private_1.id]
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-aurora-subnet-group"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+resource "aws_rds_cluster" "aurora" {
+  cluster_identifier = "{{ app_name }}-{{ environment }}"
+  engine             = "aurora-postgresql"
+  engine_mode        = "provisioned"
+  engine_version     = "{{ engine_version }}"
+  database_name      = "{{ app_name | replace('-', '_') }}"
+  master_username    = "dbadmin"
+  master_password    = var.db_password
+
+  db_subnet_group_name   = aws_db_subnet_group.aurora.name
+  vpc_security_group_ids = [aws_security_group.aurora.id]
+
+  storage_encrypted   = true
+  deletion_protection = {{ deletion_protection | lower }}
+  skip_final_snapshot = {{ (not deletion_protection) | lower }}
+
+  backup_retention_period = {{ backup_retention_days }}
+
+  serverlessv2_scaling_configuration {
+    min_capacity = {{ min_acu }}
+    max_capacity = {{ max_acu }}
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-aurora"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+resource "aws_rds_cluster_instance" "aurora" {
+  count              = 1
+  identifier         = "{{ app_name }}-{{ environment }}-instance-${count.index}"
+  cluster_identifier = aws_rds_cluster.aurora.id
+  instance_class     = "db.serverless"
+  engine             = aws_rds_cluster.aurora.engine
+  engine_version     = aws_rds_cluster.aurora.engine_version
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-aurora-instance"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}

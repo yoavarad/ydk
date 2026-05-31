@@ -1,0 +1,197 @@
+---
+title: Execution (Stage 03)
+description: Start, plan, implement, verify, and ship with deterministic proof capture
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Execution (Stage 03)
+
+Stage 03 is where coding agents do the implementation, guided by task specifications, component manifests, and memories from past work. The human's role shifts from creator to reviewer -- unblocking tasks that hit obstacles, approving PRs, and making architectural decisions when agents encounter ambiguity.
+
+## The Execution Flow
+
+Every task follows the same structured flow: start, plan, implement, verify, done. This is not ceremony for its own sake -- each step catches a specific category of failure before it compounds.
+
+### Starting a Task
+
+```bash
+odk task start T-abc12345 --session-id sess-xyz789
+```
+
+The start command validates preconditions: are all blocking dependencies resolved? Are all gates satisfied? If either check fails, the command refuses to proceed with a clear error. This prevents agents from starting work on tasks whose inputs do not exist yet.
+
+When preconditions pass, ODK creates an isolated git worktree (a separate working directory with its own branch), updates the task status to `in-progress`, and optionally bootstraps relevant memories so the agent starts with context from past work on related components.
+
+### Planning
+
+```bash
+odk task comment T-abc12345 -p "1. Write tests for Order model field validation
+2. Implement Order model with state transitions
+3. Write integration tests for POST /orders
+4. Implement route with request validation
+5. Run full verification pipeline"
+```
+
+The plan is posted as a comment on the task issue. It creates accountability (the agent committed to a sequence) and a review artifact (the reviewer can compare the plan against the actual changes).
+
+### Implementing TODOs with TDD
+
+The implementation phase is where tests are written first, then code to resolve assigned TODOs. After ignition, every task has specific `ODK-TODO-NNN` identifiers pointing to `NotImplementedError` placeholders that need real business logic. ODK enforces TDD through the `python-tdd-guard` verification plugin, which checks that every staged source file has a corresponding test file.
+
+Before implementing, check which TODOs are assigned to the current task:
+
+```bash
+odk todo list --task T-abc12345
+```
+
+Each TODO shows the file, line number, and description of the business logic needed. Replace the `NotImplementedError` with real implementation, guided by TDD.
+
+Post progress updates as you complete phases:
+
+```bash
+odk task comment T-abc12345 "Model tests passing, starting route implementation"
+```
+
+### Completing the Task
+
+```bash
+odk task done T-abc12345
+```
+
+This triggers the `ProofCapture` system, which deterministically runs all quality gates and captures their output. Before running verifications, `odk task done` checks that all TODOs assigned to the task have been resolved -- if any `NotImplementedError` remains for an assigned TODO, the command fails with a clear error listing the unresolved TODOs. The subagent owns the full lifecycle -- it calls `odk task done` from inside its worktree, and the proof capture runs commands against the worktree's files.
+
+## Deterministic Proof Capture
+
+When `odk task done` runs, the `ProofCapture` class captures verification output deterministically -- the agent does **not** write the proof sections:
+
+1. The subagent runs `odk task done --summary "Agent narrative here"` in its worktree
+2. `ProofCapture` runs each quality gate (`ruff check`, `ruff format --check`, `ty check`, `pytest`) via `capture_command()` and saves raw stdout+stderr to `.odk/proofs/<task-id>/`
+3. The agent's `--summary` writes `summary.md` -- the **only** agent-authored content
+4. `PRBodyBuilder` assembles the PR body from a deterministic template + proof files + agent summary
+5. The PR is created with proof sections reflecting **actual command output**, not agent claims
+
+### Proof File Layout
+
+```
+.odk/proofs/T-abc123/
+├── summary.md          # Agent-authored narrative (only agent-written file)
+├── ruff-check.txt      # Actual ruff check output
+├── ruff-format.txt     # Actual ruff format --check output
+├── ty-check.txt        # Actual ty check output
+├── pytest.txt          # Actual pytest output
+├── verification.json   # Structured verification report
+├── screenshots/        # Playwright screenshots (if captured)
+│   └── after-submit.png
+└── session.webm        # Playwright video recording (if captured)
+```
+
+### Video Capture for E2E Flows
+
+For tasks involving UI changes, `VideoCapture` uses Playwright to record the browser session:
+
+```bash
+odk visual record --url http://localhost:3000 --actions-file actions.json --output .odk/proofs/T-abc123/
+```
+
+Videos are included in the PR body as links. The actions file specifies browser interactions (fill, click, wait, screenshot).
+
+## Handling Obstacles
+
+When agents hit blockers, ODK provides structured ways to communicate them:
+
+```bash
+# Technical blocker
+odk task block T-abc12345 --reason code --detail "Circular import between orders and auth modules"
+
+# Decision needed
+odk task block T-abc12345 --reason decision --detail "Auth strategy undecided -- JWT vs session tokens"
+
+# Resume after resolution
+odk task unblock T-abc12345
+```
+
+The distinction between code blocks and decision blocks matters because they have different resolution paths. Code blocks are resolved by the agent or another developer. Decision blocks require human judgment and cannot be unblocked until a decision is made.
+
+## Discovering New Work
+
+Implementation often reveals tasks that were not in the original decomposition:
+
+```bash
+odk task add-subtask T-abc12345 --title "Add rate limiting to order creation" \
+  --body "Found during POST /orders implementation -- high-volume users could flood the endpoint"
+```
+
+The new task is linked to the current one via a `discovered-from` dependency (non-blocking) and added to the backlog for future scheduling.
+
+## Worktree Isolation
+
+When `execution.worktree_isolation` is enabled (the default), each task gets its own git worktree. Two agents working on different tasks cannot create merge conflicts because they are not modifying the same files in the same working tree. The subagent dispatched for a task owns everything from `odk task start` through `odk task done` inside its worktree.
+
+## Auto-Fix and Repair
+
+For fixable verification failures:
+
+```bash
+odk verify run --trigger pre-push --auto-fix --repair --max-retries 3
+```
+
+The `--auto-fix` flag runs fixable plugins (like `lint-ruff` which runs `ruff format` and `ruff check --fix`) before checking. The `--repair` flag enables the retry loop for remaining failures.
+
+<Callout type="info">
+Verification results are content-hash cached. If your code has not changed since the last successful check, the cached result is returned instantly. This makes iterating on fixes efficient -- you only re-run the checks that might give different results.
+</Callout>
+
+## Watch System and PR Feedback Loop
+
+After a PR is created, the human may not review it for hours or days. The watch system bridges this gap by polling GitHub for new review comments and resuming the agent session automatically.
+
+### Installing the Watch
+
+```bash
+odk watch install
+```
+
+This creates a macOS launchd plist that runs `odk watch poll` every 30 seconds. The poll checks all PRs tracked in `.odk/sessions.yaml` for new review comments. When it finds one, it reacts with a 👀 emoji (so the reviewer knows the agent saw it) and resumes the corresponding Claude Code session.
+
+### The Feedback Flow
+
+1. The agent creates a PR via `odk task done` -- never via `gh pr create` directly, because `odk task done` captures deterministic proof and assembles the collapsible PR body
+2. `odk watch install` starts background polling
+3. Hours later, a human leaves a review comment on the PR
+4. The watch detects the comment, reacts 👀, and resumes the agent's Claude Code session
+5. The agent reads the comment, makes changes, runs verification, pushes, and replies with proof
+6. The watch skips the agent's reply (it starts with `<!-- odk-agent-reply -->`) to prevent infinite loops
+7. The human sees 👀 on their comment and a detailed reply with verification output
+
+### Agent Reply Format
+
+When responding to PR review comments, the agent posts a structured reply:
+
+```markdown
+<!-- odk-agent-reply -->
+> <quoted original comment>
+
+**Addressed.** <what was changed or why no change needed>
+
+Changed files:
+- `path/to/file.py` (line N: description)
+
+<details>
+<summary>Verification</summary>
+<ruff + pytest output>
+</details>
+
+Pushed: `<commit-hash>` on `<branch>`
+```
+
+The `<!-- odk-agent-reply -->` marker on the first line is critical -- it tells the watch system this is an agent reply, not a new human comment requiring action.
+
+### Managing the Watch
+
+```bash
+odk watch status     # Show installed state, last poll time, active sessions
+odk watch uninstall  # Remove the launchd plist
+```
+
+Session state is tracked in `.odk/sessions.yaml`, which maps each task to its branch, PR number, worktree path, and current status. A lock file (`.odk/watch.lock`) prevents concurrent polls.

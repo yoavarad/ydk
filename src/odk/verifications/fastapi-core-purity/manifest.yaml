@@ -1,0 +1,7 @@
+name: fastapi-core-purity
+description: Verify app/core/ has no imports from app/adapters/ or app/api/ (hexagonal
+  architecture)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

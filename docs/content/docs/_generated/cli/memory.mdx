@@ -1,0 +1,218 @@
+---
+title: "odk memory"
+description: "CLI reference for odk memory"
+---
+
+# `odk memory`
+
+```text
+                                                                                
+ Usage: odk memory [OPTIONS] COMMAND [ARGS]...                                  
+                                                                                
+ Knowledge management and memory                                                
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ index             Build/rebuild ChromaDB index from project knowledge files. │
+│ search            Semantic search across all project knowledge.              │
+│ bootstrap         Assemble relevant memories for a task.                     │
+│ extract           Extract learnings from a completed task's transcript.      │
+│ get               Retrieve full details for a specific memory by ID.         │
+│ record-decision   Show the current (latest) decision for a topic.            │
+│ decision-history  Show all versions of a decision for a topic (newest        │
+│                   first).                                                    │
+│ retrospective     Sprint retrospective — aggregate learnings across tasks    │
+│                   using LLM analysis.                                        │
+│ audit             Comprehensive memory health audit -- stale research,       │
+│                   duplicates, and procedural reports.                        │
+│ consolidate       Find and merge duplicate memories.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory index`
+
+```text
+                                                                                
+ Usage: odk memory index [OPTIONS]                                              
+                                                                                
+ Build/rebuild ChromaDB index from project knowledge files.                     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory search`
+
+```text
+                                                                                
+ Usage: odk memory search [OPTIONS] QUERY                                       
+                                                                                
+ Semantic search across all project knowledge.                                  
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    query      TEXT  Search query [required]                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --verified-only          Only show verified memories                         │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory bootstrap`
+
+```text
+                                                                                
+ Usage: odk memory bootstrap [OPTIONS] TASK_ID                                  
+                                                                                
+ Assemble relevant memories for a task.                                         
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory extract`
+
+```text
+                                                                                
+ Usage: odk memory extract [OPTIONS] TASK_ID                                    
+                                                                                
+ Extract learnings from a completed task's transcript.                          
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --jsonl        PATH  Path to Claude Code session JSONL                       │
+│ --help               Show this message and exit.                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory get`
+
+```text
+                                                                                
+ Usage: odk memory get [OPTIONS] MEMORY_ID                                      
+                                                                                
+ Retrieve full details for a specific memory by ID.                             
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    memory_id      TEXT  Memory ID to retrieve [required]                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory record-decision`
+
+```text
+                                                                                
+ Usage: odk memory record-decision [OPTIONS] TOPIC                              
+                                                                                
+ Show the current (latest) decision for a topic.                                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    topic      TEXT  Decision topic [required]                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory decision-history`
+
+```text
+                                                                                
+ Usage: odk memory decision-history [OPTIONS] TOPIC                             
+                                                                                
+ Show all versions of a decision for a topic (newest first).                    
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    topic      TEXT  Decision topic [required]                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory first).`
+
+```text
+Usage: odk memory [OPTIONS] COMMAND [ARGS]...
+Try 'odk memory --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'first).'.                                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory retrospective`
+
+```text
+                                                                                
+ Usage: odk memory retrospective [OPTIONS]                                      
+                                                                                
+ Sprint retrospective — aggregate learnings across tasks using LLM analysis.    
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --sprint        TEXT  Sprint/milestone to review                             │
+│ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory using`
+
+```text
+Usage: odk memory [OPTIONS] COMMAND [ARGS]...
+Try 'odk memory --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'using'.                                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory audit`
+
+```text
+                                                                                
+ Usage: odk memory audit [OPTIONS]                                              
+                                                                                
+ Comprehensive memory health audit -- stale research, duplicates, and           
+ procedural reports.                                                            
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --prompt-id        TEXT  Prompt ID to report on (procedural report)          │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory duplicates,`
+
+```text
+Usage: odk memory [OPTIONS] COMMAND [ARGS]...
+Try 'odk memory --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'duplicates,'.                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk memory consolidate`
+
+```text
+                                                                                
+ Usage: odk memory consolidate [OPTIONS]                                        
+                                                                                
+ Find and merge duplicate memories.                                             
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --dry-run                 Show what would be merged without merging          │
+│ --threshold        FLOAT  Similarity threshold for duplicate detection       │
+│                           [default: 0.9]                                     │
+│ --help                    Show this message and exit.                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

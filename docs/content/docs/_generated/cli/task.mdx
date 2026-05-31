@@ -1,0 +1,529 @@
+---
+title: "odk task"
+description: "CLI reference for odk task"
+---
+
+# `odk task`
+
+```text
+                                                                                
+ Usage: odk task [OPTIONS] COMMAND [ARGS]...                                    
+                                                                                
+ Task management and validation                                                 
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ create              Create a new task.                                       │
+│ create-batch        Create epics, stories, and tasks from a YAML file using  │
+│                     two-pass dependency resolution.                          │
+│ start               Start a task: create worktree, claim, explore.           │
+│ comment             Post comment to task issue (replaces plan and progress). │
+│ block               Mark task as blocked.                                    │
+│ unblock             Resume a blocked task.                                   │
+│ done                Complete task: verify, create PR, post proof.            │
+│ add-gate            Add an external event gate to a task.                    │
+│ check-gates         Check all gates on a task.                               │
+│ resolve-gate        Manually resolve a human gate.                           │
+│ add-subtask         Create discovered subtask linked to parent.              │
+│ ready               List all actionable tasks with satisfied dependencies,   │
+│                     ranked by priority.                                      │
+│ list                List tasks with optional filters, grouped by status.     │
+│ validate-dag        Validate task dependency graph (DAG) -- reads tasks from │
+│                     repository.                                              │
+│ component-coverage  Check that every component manifest is referenced by at  │
+│                     least one task.                                          │
+│ plan-waves          Display resource-constrained schedule as a table --      │
+│                     reads tasks from repository.                             │
+│ coverage            Check spec-to-story coverage.                            │
+│ analyze-complexity  Score task complexity (1-10) using LLM analysis.         │
+│ archive-done        Archive completed tasks into context-efficient           │
+│                     summaries.                                               │
+│ create-epic         Create a new epic.                                       │
+│ create-story        Create a new story.                                      │
+│ quick               Set up a lightweight workspace for a small change.       │
+│ tdd                 Set TDD phase on task (stored in frontmatter).           │
+│ review-comments     Fetch unresolved PR review comments for a task.          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task create`
+
+```text
+                                                                                
+ Usage: odk task create [OPTIONS]                                               
+                                                                                
+ Create a new task.                                                             
+                                                                                
+ Use --depends-on T-001:validates to specify dependency type.                   
+ Default type is 'blocks'. Supported types: blocks, validates,                  
+ caused-by, conditional-blocks, waits-for, discovered-from,                     
+ supersedes, related.                                                           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --title                   TEXT  [required]                                │
+│ *  --story                   TEXT  [required]                                │
+│    --description             TEXT                                            │
+│    --description-file        TEXT  Read description from file (mutually      │
+│                                    exclusive with --description)             │
+│    --spec-refs               TEXT                                            │
+│    --component-refs          TEXT                                            │
+│    --acceptance              TEXT                                            │
+│    --depends-on              TEXT  Dependencies as "ID:type,ID:type". Type   │
+│                                    defaults to blocks. Supported: blocks,    │
+│                                    validates, caused-by, conditional-blocks, │
+│                                    waits-for, discovered-from, supersedes,   │
+│                                    related.                                  │
+│    --test-strategy           TEXT                                            │
+│    --dry-run                       Validate and show what would be created   │
+│                                    without calling the API                   │
+│    --help                          Show this message and exit.               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task create-batch`
+
+```text
+                                                                                
+ Usage: odk task create-batch [OPTIONS]                                         
+                                                                                
+ Create epics, stories, and tasks from a YAML file using two-pass dependency    
+ resolution.                                                                    
+                                                                                
+ The YAML file supports top-level ``epics``, ``stories``, and ``tasks`` keys.   
+ Each entity has an ``id`` field used for cross-referencing within the file.    
+ Task dependencies are resolved to real IDs after all issues are created.       
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --from           TEXT  YAML file with batch definitions [required]        │
+│    --dry-run              Validate and show what would be created without    │
+│                           calling the API                                    │
+│    --help                 Show this message and exit.                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task two-pass`
+
+```text
+Usage: odk task [OPTIONS] COMMAND [ARGS]...
+Try 'odk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'two-pass'.                                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task start`
+
+```text
+                                                                                
+ Usage: odk task start [OPTIONS] TASK_ID                                        
+                                                                                
+ Start a task: create worktree, claim, explore.                                 
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID to start [required]                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --base              TEXT  Base branch to create worktree from                │
+│                           [default: main]                                    │
+│ --force                   Remove existing worktree and restart fresh         │
+│ --session-id        TEXT  Claude Code session ID                             │
+│ --help                    Show this message and exit.                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task comment`
+
+```text
+                                                                                
+ Usage: odk task comment [OPTIONS] TASK_ID MESSAGE                              
+                                                                                
+ Post comment to task issue (replaces plan and progress).                       
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+│ *    message      TEXT  Comment message [required]                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task block`
+
+```text
+                                                                                
+ Usage: odk task block [OPTIONS] TASK_ID                                        
+                                                                                
+ Mark task as blocked.                                                          
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --reason        TEXT  Block reason (code or decision) [required]          │
+│ *  --detail        TEXT  Block detail [required]                             │
+│    --help                Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task unblock`
+
+```text
+                                                                                
+ Usage: odk task unblock [OPTIONS] TASK_ID                                      
+                                                                                
+ Resume a blocked task.                                                         
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID to unblock [required]                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task done`
+
+```text
+                                                                                
+ Usage: odk task done [OPTIONS] TASK_ID                                         
+                                                                                
+ Complete task: verify, create PR, post proof.                                  
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID to complete [required]                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --summary        TEXT  Agent narrative summary for the PR body               │
+│ --help                 Show this message and exit.                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task add-gate`
+
+```text
+                                                                                
+ Usage: odk task add-gate [OPTIONS] TASK_ID                                     
+                                                                                
+ Add an external event gate to a task.                                          
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --type               TEXT  Gate type [required]                           │
+│    --config             TEXT  Key=value config pairs                         │
+│    --description        TEXT  Gate description                               │
+│    --help                     Show this message and exit.                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task check-gates`
+
+```text
+                                                                                
+ Usage: odk task check-gates [OPTIONS] TASK_ID                                  
+                                                                                
+ Check all gates on a task.                                                     
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task resolve-gate`
+
+```text
+                                                                                
+ Usage: odk task resolve-gate [OPTIONS] TASK_ID GATE_ID                         
+                                                                                
+ Manually resolve a human gate.                                                 
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+│ *    gate_id      TEXT  Gate ID to resolve [required]                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task add-subtask`
+
+```text
+                                                                                
+ Usage: odk task add-subtask [OPTIONS] TASK_ID                                  
+                                                                                
+ Create discovered subtask linked to parent.                                    
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Parent task ID [required]                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --title        TEXT  New subtask title [required]                         │
+│    --body         TEXT  New subtask body                                     │
+│    --help               Show this message and exit.                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task ready`
+
+```text
+                                                                                
+ Usage: odk task ready [OPTIONS]                                                
+                                                                                
+ List all actionable tasks with satisfied dependencies, ranked by priority.     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task ranked`
+
+```text
+Usage: odk task [OPTIONS] COMMAND [ARGS]...
+Try 'odk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'ranked'.                                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task list`
+
+```text
+                                                                                
+ Usage: odk task list [OPTIONS]                                                 
+                                                                                
+ List tasks with optional filters, grouped by status.                           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --sprint        TEXT  Filter by sprint/milestone                             │
+│ --epic          TEXT  Filter by epic ID                                      │
+│ --story         TEXT  Filter by story ID                                     │
+│ --status        TEXT  Filter by status: open|done|in-progress|all            │
+│ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task validate-dag`
+
+```text
+                                                                                
+ Usage: odk task validate-dag [OPTIONS]                                         
+                                                                                
+ Validate task dependency graph (DAG) -- reads tasks from repository.           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task repository.`
+
+```text
+Usage: odk task [OPTIONS] COMMAND [ARGS]...
+Try 'odk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'repository.'. Did you mean 'create-story'?                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task component-coverage`
+
+```text
+                                                                                
+ Usage: odk task component-coverage [OPTIONS]                                   
+                                                                                
+ Check that every component manifest is referenced by at least one task.        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --exclude        TEXT  Glob patterns to exclude (e.g. 'odk:page:*')          │
+│ --strict               Exit with code 1 if any uncovered components          │
+│ --help                 Show this message and exit.                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task least`
+
+```text
+Usage: odk task [OPTIONS] COMMAND [ARGS]...
+Try 'odk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'least'. Did you mean 'list'?                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task plan-waves`
+
+```text
+                                                                                
+ Usage: odk task plan-waves [OPTIONS]                                           
+                                                                                
+ Display resource-constrained schedule as a table -- reads tasks from           
+ repository.                                                                    
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --agents        INTEGER  Number of available agents [default: 1]             │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task reads`
+
+```text
+Usage: odk task [OPTIONS] COMMAND [ARGS]...
+Try 'odk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'reads'. Did you mean 'ready'?                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task coverage`
+
+```text
+                                                                                
+ Usage: odk task coverage [OPTIONS]                                             
+                                                                                
+ Check spec-to-story coverage.                                                  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --spec-dir         TEXT  Spec directory [default: docs/specs]                │
+│ --milestone        TEXT  Filter by milestone                                 │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task analyze-complexity`
+
+```text
+                                                                                
+ Usage: odk task analyze-complexity [OPTIONS]                                   
+                                                                                
+ Score task complexity (1-10) using LLM analysis.                               
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --task-id        TEXT  Score a single task (default: all open)               │
+│ --help                 Show this message and exit.                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task archive-done`
+
+```text
+                                                                                
+ Usage: odk task archive-done [OPTIONS]                                         
+                                                                                
+ Archive completed tasks into context-efficient summaries.                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --task-id         TEXT  Compact a specific task                              │
+│ --all-done              Compact all done tasks                               │
+│ --dry-run               Show what would be compacted                         │
+│ --help                  Show this message and exit.                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task summaries.`
+
+```text
+Usage: odk task [OPTIONS] COMMAND [ARGS]...
+Try 'odk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'summaries.'.                                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task create-epic`
+
+```text
+                                                                                
+ Usage: odk task create-epic [OPTIONS]                                          
+                                                                                
+ Create a new epic.                                                             
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --title              TEXT  [required]                                     │
+│    --description        TEXT                                                 │
+│    --release            TEXT                                                 │
+│    --spec-refs          TEXT                                                 │
+│    --dry-run                  Validate and show what would be created        │
+│                               without calling the API                        │
+│    --help                     Show this message and exit.                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task create-story`
+
+```text
+                                                                                
+ Usage: odk task create-story [OPTIONS]                                         
+                                                                                
+ Create a new story.                                                            
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --title                 TEXT  [required]                                  │
+│ *  --epic                  TEXT  [required]                                  │
+│    --description           TEXT                                              │
+│    --spec-refs             TEXT                                              │
+│    --component-refs        TEXT                                              │
+│    --acceptance            TEXT                                              │
+│    --dry-run                     Validate and show what would be created     │
+│                                  without calling the API                     │
+│    --help                        Show this message and exit.                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task quick`
+
+```text
+                                                                                
+ Usage: odk task quick [OPTIONS] DESCRIPTION                                    
+                                                                                
+ Set up a lightweight workspace for a small change.                             
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    description      TEXT  Short description of the change [required]       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task tdd`
+
+```text
+                                                                                
+ Usage: odk task tdd [OPTIONS] TASK_ID                                          
+                                                                                
+ Set TDD phase on task (stored in frontmatter).                                 
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID [required]                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --stage        TEXT  TDD phase: red|green|refactor [required]             │
+│    --help               Show this message and exit.                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk task review-comments`
+
+```text
+                                                                                
+ Usage: odk task review-comments [OPTIONS] TASK_ID                              
+                                                                                
+ Fetch unresolved PR review comments for a task.                                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID to fetch review comments for [required]      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

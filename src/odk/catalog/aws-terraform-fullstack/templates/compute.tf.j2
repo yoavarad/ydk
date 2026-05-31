@@ -1,0 +1,277 @@
+# Compute: ECS Fargate, ALB, ECR, IAM Roles
+
+# ECR Repository
+resource "aws_ecr_repository" "backend" {
+  name                 = "{{ app_name }}-{{ environment }}-backend"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-backend"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# ECS Cluster
+resource "aws_ecs_cluster" "main" {
+  name = "{{ app_name }}-{{ environment }}"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-cluster"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# CloudWatch Log Group
+resource "aws_cloudwatch_log_group" "ecs" {
+  name              = "/ecs/{{ app_name }}-{{ environment }}"
+  retention_in_days = {{ log_retention_days }}
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-ecs-logs"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# ECS Task Execution Role
+resource "aws_iam_role" "ecs_execution" {
+  name = "{{ app_name }}-{{ environment }}-ecs-execution"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-ecs-execution"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# ECS Task Role
+resource "aws_iam_role" "ecs_task" {
+  name = "{{ app_name }}-{{ environment }}-ecs-task"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-ecs-task"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# ECS Task Definition
+resource "aws_ecs_task_definition" "backend" {
+  family                   = "{{ app_name }}-{{ environment }}-backend"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = {{ cpu }}
+  memory                   = {{ memory }}
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name  = "backend"
+      image = "${aws_ecr_repository.backend.repository_url}:latest"
+
+      portMappings = [
+        {
+          containerPort = {{ container_port }}
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "ENVIRONMENT"
+          value = "{{ environment }}"
+        },
+        {
+          name  = "PORT"
+          value = "{{ container_port }}"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+          "awslogs-region"        = "{{ region }}"
+          "awslogs-stream-prefix" = "backend"
+        }
+      }
+
+      essential = true
+    }
+  ])
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-backend-task"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# Application Load Balancer
+resource "aws_lb" "main" {
+  name               = "{{ app_name }}-{{ environment }}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = [aws_subnet.public_0.id, aws_subnet.public_1.id]
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-alb"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+resource "aws_lb_target_group" "backend" {
+  name        = "{{ app_name }}-{{ environment }}-tg"
+  port        = {{ container_port }}
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "{{ health_check_path }}"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 3
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-tg"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-http-listener"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# ECS Service
+resource "aws_ecs_service" "backend" {
+  name            = "{{ app_name }}-{{ environment }}-backend"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.backend.arn
+  desired_count   = {{ desired_count }}
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = [aws_subnet.private_0.id, aws_subnet.private_1.id]
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.backend.arn
+    container_name   = "backend"
+    container_port   = {{ container_port }}
+  }
+
+  depends_on = [aws_lb_listener.http]
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-backend-service"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# Auto Scaling
+resource "aws_appautoscaling_target" "ecs" {
+  max_capacity       = {{ max_count }}
+  min_capacity       = {{ min_count }}
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.backend.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "cpu" {
+  name               = "{{ app_name }}-{{ environment }}-cpu-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value = {{ cpu_threshold }}
+  }
+}

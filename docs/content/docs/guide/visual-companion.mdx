@@ -1,0 +1,66 @@
+---
+title: Visual Companion
+description: Browser-based design annotation for brainstorming
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Visual Companion
+
+For projects with significant UI components, specifications written purely in prose can miss important design details. The visual companion bridges this gap by providing browser-based design annotation during the brainstorming stage. You push wireframes or prototypes to a local dev server, annotate them in the browser, and the feedback is captured as structured events that inform your specification.
+
+## Starting a Session
+
+```bash
+odk visual start --project-dir .
+```
+
+This starts a Vite dev server with an annotation overlay injected into the page. The overlay provides tools for making design selections, annotating specific DOM elements, and drawing rectangle regions with comments. The Vite server auto-reloads when content changes, so you can iterate on wireframes while the annotation session is active.
+
+## Pushing Content
+
+Load your wireframes or prototypes into the session:
+
+```bash
+odk visual push wireframe.html --filename index.html --session-id abc
+```
+
+This writes the HTML content to the session's content directory. Vite detects the change and reloads the browser automatically. You can push multiple files to build up a multi-page wireframe that covers different user flows.
+
+## Collecting Feedback
+
+After annotating in the browser, collect the structured feedback:
+
+```bash
+odk visual feedback --session-id abc
+```
+
+Three types of feedback events are captured:
+
+**`SelectionEvent`** -- The user chose between design options. For example, choosing between a card layout and a table layout for displaying orders. The event records which option was selected and optionally includes a rationale.
+
+**`ElementAnnotationEvent`** -- A comment attached to a specific DOM element. The element is identified by CSS selector, XPath, or text anchor, ensuring that the annotation survives minor HTML changes. This is useful for comments like "this button needs a loading state" or "the order total should be right-aligned."
+
+**`RectangleAnnotationEvent`** -- A comment attached to a drawn rectangle region on the page. This is useful for annotating empty areas ("add a sidebar here") or groups of elements ("this entire section needs to be collapsible").
+
+## Screenshots
+
+Capture screenshots using Playwright for inclusion in PRs and documentation:
+
+```bash
+odk visual screenshot --url http://localhost:5173 --output screenshot.png
+```
+
+Screenshots can also be saved to `.odk/proofs/<task_id>/screenshots/` for automatic inclusion in PR bodies when the task is completed.
+
+## Session Management
+
+```bash
+# List all active sessions
+odk visual list
+
+# Stop a session
+odk visual stop session-id
+```
+
+Each session maintains its own state -- content files, annotations, and screenshots -- isolated from other sessions. This supports parallel brainstorming on different features.

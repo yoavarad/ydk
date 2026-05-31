@@ -1,0 +1,41 @@
+# Variables
+
+variable "app_name" {
+  description = "Application name"
+  type        = string
+  default     = "{{ app_name }}"
+}
+
+variable "environment" {
+  description = "Environment (dev, staging, prod)"
+  type        = string
+  default     = "{{ environment }}"
+}
+
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "{{ region }}"
+}
+
+variable "vpc_cidr" {
+  description = "VPC CIDR block"
+  type        = string
+  default     = "{{ vpc_cidr }}"
+}
+
+variable "db_password" {
+  description = "Database master password"
+  type        = string
+  sensitive   = true
+}
+
+variable "tags" {
+  description = "Common tags for all resources"
+  type        = map(string)
+  default = {
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}

@@ -1,0 +1,6 @@
+name: terraform-external-iam
+description: Detect wildcard IAM principals in Terraform files
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

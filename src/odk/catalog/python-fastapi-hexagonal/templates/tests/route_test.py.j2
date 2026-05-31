@@ -1,0 +1,71 @@
+"""Integration tests for {{ tag }} routes using FastAPI TestClient."""
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.api.middleware.auth import get_current_user
+from app.main import create_app
+
+
+@pytest.fixture
+def client() -> TestClient:
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "test-user"}
+    return TestClient(app)
+
+
+class Test{{ tag | title | replace(" ", "") }}Routes:
+    {% for route in routes %}
+    @pytest.mark.xfail(reason="{{ route.xfail_reason }}")
+    def test_{{ route.func_name }}(self, client: TestClient) -> None:
+        {% if route.method == "POST" %}
+        response = client.post("{{ route.path }}", json={{ route.request_body }})
+        assert response.status_code == {{ route.expected_status }}
+        {% if route.response_fields %}
+        data = response.json()
+        {% for field in route.response_fields %}
+        assert "{{ field }}" in data
+        {% endfor %}
+        {% endif %}
+        {% elif route.method == "GET" %}
+        response = client.get("{{ route.path }}")
+        assert response.status_code == {{ route.expected_status }}
+        {% if route.response_fields %}
+        data = response.json()
+        {% for field in route.response_fields %}
+        assert "{{ field }}" in data or isinstance(data, list)
+        {% endfor %}
+        {% endif %}
+        {% elif route.method == "PUT" %}
+        response = client.put("{{ route.path }}", json={{ route.request_body }})
+        assert response.status_code == {{ route.expected_status }}
+        {% elif route.method == "PATCH" %}
+        response = client.patch("{{ route.path }}", json={{ route.request_body }})
+        assert response.status_code == {{ route.expected_status }}
+        {% elif route.method == "DELETE" %}
+        response = client.delete("{{ route.path }}")
+        assert response.status_code == {{ route.expected_status }}
+        {% else %}
+        response = client.{{ route.method | lower }}("{{ route.path }}")
+        assert response.status_code == {{ route.expected_status }}
+        {% endif %}
+
+    {% endfor %}
+    {% if roundtrip_tests %}
+    {% for rt in roundtrip_tests %}
+    @pytest.mark.xfail(reason="{{ rt.xfail_reason }}")
+    def test_{{ rt.func_name }}_roundtrip(self, client: TestClient) -> None:
+        # Create
+        create_resp = client.post("{{ rt.create_path }}", json={{ rt.request_body }})
+        assert create_resp.status_code == {{ rt.create_status }}
+        data = create_resp.json()
+        assert "id" in data
+
+        # Read back
+        get_resp = client.get(f"{{ rt.get_path_template }}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["id"] == data["id"]
+
+    {% endfor %}
+    {% endif %}

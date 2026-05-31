@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+{% set all_types = methods | map(attribute='return_type') | join(' ') %}
+{% if 'AsyncGenerator' in all_types %}
+from collections.abc import AsyncGenerator
+
+{% endif %}
+{% for imp in imports %}
+{{ imp }}
+{% endfor %}
+
+
+class {{ name }}{% if parent_class %}({{ parent_class }}){% endif %}:
+    """
+    {{ description }}
+    Technology: {{ technology }}
+{% if reference %}
+    Reference: {{ reference }}
+{% endif %}
+    """
+
+    def __init__(self) -> None:
+        {% for todo_line in init_todo_lines %}
+        {{ todo_line }}
+        {% endfor %}
+        {% if technology | lower == 'apscheduler' %}
+        self._scheduler = None  # Initialized via lifespan — see LIFECYCLE comments above
+        {% endif %}
+        pass
+{% for method in methods %}
+
+    {% for todo_line in method.todo_lines %}
+    {{ todo_line }}
+    {% endfor %}
+    {{ "async " if method.is_async else "" }}def {{ method.name }}(self{% for p in method.params %}, {{ p.name }}: {{ p.type }}{% endfor %}) -> {{ method.return_type }}:
+        raise NotImplementedError
+{% endfor %}

@@ -1,0 +1,108 @@
+---
+title: Configuration Reference
+description: Complete OdkConfig reference with all options
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Configuration Reference
+
+All ODK configuration lives in `.odk/config.yaml` and is validated against the `OdkConfig` Pydantic model on every read. This means you cannot have an invalid configuration -- any value that does not pass validation is rejected with a clear error, and the `odk config set` command rolls back changes that would produce an invalid state.
+
+## Managing Config
+
+```bash
+odk config show                                    # Show full config
+odk config get spec_check.thresholds.completeness  # Get a value via dot notation
+odk config set aws.region eu-west-1                # Set a value with validation
+odk config validate                                # Validate the current config
+```
+
+The dot notation system supports arbitrary nesting depth. Under the hood, `config get` traverses the config dictionary following the dot-separated path. `config set` modifies the value at the path, validates the entire config against the Pydantic model, and rolls back on failure. This means setting `spec_check.thresholds.completeness` to `"abc"` is rejected because the model expects an integer.
+
+## ProjectConfig
+
+Controls core project identity and repository settings.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | str | (required) | Project name, used in task IDs, PR titles, and memory collections |
+| `spec_location` | str | `"docs/specs"` | Directory containing specification markdown files |
+| `adrs_location` | str | `"docs/adrs"` | Directory containing architecture decision records |
+| `research_location` | str | `"docs/research"` | Directory containing research documents |
+| `remote` | str | `"local"` | Repository backend: `local`, `github`, or `gitlab` |
+| `stack` | str | `""` | Technology stack identifier for pre-configured verification plugins |
+
+## SpecCheckConfig
+
+Controls the AI-powered specification quality evaluator.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `model` | str | `"us.anthropic.claude-sonnet-4-6"` | Amazon Bedrock model ID for spec evaluation |
+| `timeout` | int | `60` | Per-criterion evaluation timeout in seconds |
+| `global_timeout` | int | `120` | Total evaluation timeout across all criteria |
+| `concurrency` | int | `10` | Maximum concurrent criterion evaluations |
+| `results_path` | str | `".odk/spec-check-results.json"` | Where to save evaluation results |
+
+### SpecCheckThresholds
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `completeness` | 8 | Minimum passing score for completeness criteria (problem, success, scope, stories) |
+| `clarity` | 8 | Minimum passing score for clarity criteria (terminology, ambiguity, diagrams, audience) |
+| `architecture` | 8 | Minimum passing score for architecture criteria (components, interfaces, data model, deps) |
+| `robustness` | 7 | Minimum passing score for robustness criteria (errors, security, testing, YAGNI) |
+| `quality` | 7 | Minimum passing score for quality criteria (information density, implementation leakage) |
+
+## TaskManagementConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `dag_validation` | bool | `True` | Enable DAG validation on task creation |
+| `coverage_check` | bool | `True` | Enable spec coverage checking |
+
+## ExecutionConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_parallel_agents` | int | `5` | Maximum agents running concurrently |
+| `task_timeout_minutes` | int | `30` | Maximum time per task before timeout warning |
+| `worktree_isolation` | bool | `True` | Create separate git worktrees for each task |
+
+## AwsConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `profile` | str | `""` | AWS profile name for Bedrock access (empty = default credentials) |
+| `region` | str | `"us-east-1"` | AWS region for Bedrock API calls |
+
+## MemoryConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `embedding_model` | str | `"amazon.titan-embed-text-v2:0"` | Bedrock embedding model for ChromaDB |
+| `auto_bootstrap` | bool | `True` | Automatically load relevant memories when starting a task |
+| `auto_extract` | bool | `True` | Automatically extract knowledge after task completion |
+| `chroma_path` | str | `".odk/memory/chroma"` | Directory for ChromaDB persistent storage |
+
+## HooksConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `pre_push.spec_check` | bool | `False` | Run spec check in pre-push hook |
+| `pre_push.task_check` | bool | `False` | Run task validation in pre-push hook |
+| `commit_msg_check` | bool | `True` | Validate conventional commit format in commit-msg hook |
+
+## VerificationFilterConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | list[str] | `[]` | Plugin whitelist. Empty list means all plugins run. |
+
+## ComponentConfig
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `schemas_path` | str | `".odk/schemas"` | Directory containing component type schemas |
+| `components_path` | str | `".odk/components"` | Directory containing component manifests |

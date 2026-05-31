@@ -1,0 +1,88 @@
+---
+title: "odk scaffold"
+description: "CLI reference for odk scaffold"
+---
+
+# `odk scaffold`
+
+```text
+                                                                                
+ Usage: odk scaffold [OPTIONS] COMMAND [ARGS]...                                
+                                                                                
+ Generate files from templates                                                  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ list    List all available templates.                                        │
+│ info    Show template manifest (description + variables).                    │
+│ apply   Generate files from a template.                                      │
+│ create  Create a new project-specific template.                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk scaffold list`
+
+```text
+                                                                                
+ Usage: odk scaffold list [OPTIONS]                                             
+                                                                                
+ List all available templates.                                                  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk scaffold info`
+
+```text
+                                                                                
+ Usage: odk scaffold info [OPTIONS] NAME                                        
+                                                                                
+ Show template manifest (description + variables).                              
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Template name [required]                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk scaffold apply`
+
+```text
+                                                                                
+ Usage: odk scaffold apply [OPTIONS] NAME                                       
+                                                                                
+ Generate files from a template.                                                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Template name [required]                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --var                 TEXT  Variable as key=value                            │
+│ --var-file            PATH  YAML file with variables                         │
+│ --output-dir  -o      PATH  Output base directory [default: .]               │
+│ --help                      Show this message and exit.                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk scaffold create`
+
+```text
+                                                                                
+ Usage: odk scaffold create [OPTIONS] NAME                                      
+                                                                                
+ Create a new project-specific template.                                        
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Template name [required]                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --description  -d      TEXT                                                  │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

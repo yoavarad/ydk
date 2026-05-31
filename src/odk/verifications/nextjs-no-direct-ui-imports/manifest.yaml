@@ -1,0 +1,7 @@
+name: nextjs-no-direct-ui-imports
+description: Enforce no direct @/components/ui/ imports -- use @/shared/ui barrel
+  instead
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

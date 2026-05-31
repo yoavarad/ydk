@@ -1,0 +1,6 @@
+name: terraform-dangling-resources
+description: Detect dangling Route53 and CloudFront origins that could be hijacked
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

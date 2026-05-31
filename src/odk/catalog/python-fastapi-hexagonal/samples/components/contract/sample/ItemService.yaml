@@ -1,0 +1,69 @@
+$schema: "odk:schema:contract"
+id: "odk:contract:sample/ItemService"
+name: ItemService
+description: "CRUD operations for items"
+methods:
+  create_item:
+    description: "Create a new item"
+    params:
+      name:
+        type: string
+        description: "Item name"
+      description:
+        type: text
+        description: "Optional description"
+      price:
+        type: Decimal
+        description: "Item price"
+      is_active:
+        type: boolean
+        description: "Active flag"
+    returns:
+      type: Item
+      description: "Created item"
+    raises:
+      - "odk:error:sample/validation-failed"
+  get_item:
+    description: "Get item by ID"
+    params:
+      item_id:
+        type: integer
+        description: "Item primary key"
+    returns:
+      type: Item
+      description: "Found item"
+    raises:
+      - "odk:error:sample/not-found"
+  list_items:
+    description: "List items with optional category filter"
+    params:
+      category_id:
+        type: integer
+        description: "Optional category filter"
+    returns:
+      type: "list[Item]"
+      description: "List of items"
+    raises: []
+ports:
+  - name: ItemRepositoryPort
+    type: repository
+    entity: "odk:entity:sample/Item"
+    methods:
+      create:
+        params:
+          data:
+            type: dict
+        returns:
+          type: Item
+      get_by_id:
+        params:
+          item_id:
+            type: integer
+        returns:
+          type: "Item | None"
+      list_all:
+        params:
+          category_id:
+            type: "integer | None"
+        returns:
+          type: "list[Item]"

@@ -1,0 +1,8 @@
+name: nextjs-fsd-layers
+description: Enforce FSD import boundaries using eslint-plugin-boundaries (re-export
+  chains, barrel files)
+trigger: git:pre-push
+parallel: true
+timeout: 60
+requires:
+- eslint

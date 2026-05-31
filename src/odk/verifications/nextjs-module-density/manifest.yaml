@@ -1,0 +1,6 @@
+name: nextjs-module-density
+description: 'Advisory: warn when directories have more than 12 component files'
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

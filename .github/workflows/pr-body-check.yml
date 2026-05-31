@@ -1,0 +1,41 @@
+name: PR Body Check
+on:
+  pull_request:
+    types: [opened, edited]
+
+jobs:
+  check-body:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body has proof
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          ERRORS=0
+
+          # Check for console/text/bash code blocks (proof of command output)
+          if ! echo "$PR_BODY" | grep -qE '```(console|text|bash)'; then
+            echo "::error::PR body must contain actual command output in \`\`\`console, \`\`\`text, or \`\`\`bash code blocks"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Check for ## Summary section
+          if ! echo "$PR_BODY" | grep -qiE '^## Summary'; then
+            echo "::error::PR body must contain a ## Summary section"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Check for ## Test Plan section
+          if ! echo "$PR_BODY" | grep -qiE '^## Test [Pp]lan'; then
+            echo "::error::PR body must contain a ## Test Plan section"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo ""
+            echo "PR body validation failed with $ERRORS error(s)."
+            echo "See https://github.com/${{ github.repository }}/blob/main/src/odk/verifications/pr-body-validation/check.py for requirements."
+            exit 1
+          fi
+
+          echo "PR body validation passed."

@@ -1,0 +1,6 @@
+name: terraform-glacier-public
+description: Detect Glacier vault public access via wildcard principals
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

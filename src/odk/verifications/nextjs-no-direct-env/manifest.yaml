@@ -1,0 +1,6 @@
+name: nextjs-no-direct-env
+description: Enforce no direct process.env usage outside src/shared/config/env.ts
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

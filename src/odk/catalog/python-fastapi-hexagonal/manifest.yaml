@@ -1,0 +1,68 @@
+runtime_dependencies:
+  python:
+    - fastapi>=0.115
+    - uvicorn>=0.34
+    - sqlalchemy>=2.0
+    - pydantic-settings>=2.0
+    - python-jose>=3.3
+    - httpx>=0.27
+    - alembic>=1.14
+
+generators:
+  - id: sqlalchemy-models
+    script: generators/sqlalchemy_models.py
+    inputs: [entity]
+  - id: repository-ports
+    script: generators/repository_ports.py
+    inputs: [entity]
+  - id: protocol-ports
+    script: generators/protocol_ports.py
+    inputs: [contract]
+  - id: db-postgres-repos
+    script: generators/db_postgres_repos.py
+    inputs: [entity]
+  - id: pydantic-schemas
+    script: generators/pydantic_schemas.py
+    inputs: [route, entity, contract]
+  - id: service-stubs
+    script: generators/fastapi_service_stubs.py
+    inputs: [contract, route, entity]
+  - id: adapter-stubs
+    script: generators/adapter_stubs.py
+    inputs: [contract, ext, adapter]
+  - id: fastapi-routes
+    script: generators/fastapi_routes.py
+    inputs: [route, contract]
+  - id: fastapi-dependencies
+    script: generators/fastapi_dependencies.py
+    inputs: [contract, entity, route, ext]
+  - id: app-factory
+    script: generators/app_factory.py
+    inputs: []
+  - id: alembic-initial
+    script: generators/alembic_initial.py
+    inputs: [entity]
+  - id: fake-repos
+    script: generators/fake_repos.py
+    inputs: [entity]
+  - id: fake-ports
+    script: generators/fake_ports.py
+    inputs: [contract]
+  - id: conftest
+    script: generators/conftest_generator.py
+    inputs: [entity]
+  - id: unit-test-stubs
+    script: generators/unit_test_stubs.py
+    inputs: [contract, entity]
+  - id: route-test-stubs
+    script: generators/route_test_stubs.py
+    inputs: [route]
+  - id: contract-tests
+    script: generators/contract_tests.py
+    inputs: [entity]
+  - id: value-object-stubs
+    script: generators/value_object_stubs.py
+    inputs: [contract, entity]
+  - id: integration-conftest
+    script: generators/integration_conftest.py
+    inputs: [entity]

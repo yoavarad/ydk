@@ -1,0 +1,46 @@
+---
+title: Quick Dev
+description: Fast path for small changes that skip full ceremony
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Quick Dev
+
+Not every change needs the full epic/story/task ceremony. A typo fix, a style adjustment, or a single-file bug fix with an obvious cause does not benefit from dependency tracking, complexity scoring, or DAG validation. For these cases, ODK provides Quick Dev -- a fast path that creates a lightweight task and branch without the overhead of the full hierarchy.
+
+## How It Works
+
+```bash
+odk task quick "fix login button alignment"
+```
+
+This single command does four things:
+
+1. **Generates a task ID** in `QD-<hex>` format (distinct from regular `T-` IDs so they are immediately recognizable as quick fixes)
+2. **Creates a branch** named `quickdev/<task_id>-<slug>` from the current HEAD
+3. **Auto-detects relevant components** based on the description, so the agent has context about what parts of the system are affected
+4. **Returns a `QuickDevContext`** with the task ID, branch name, description, relevant components, and testing guidance
+
+The context object is designed to give a coding agent everything it needs to make the fix quickly: what to fix, where it likely lives, and what to test afterward.
+
+## When to Use Quick Dev
+
+Quick Dev is appropriate for changes that are:
+
+- **Single-file** -- the fix is contained to one or two files
+- **Self-evident** -- the cause and fix are obvious, requiring no design decisions
+- **Low-risk** -- the change cannot break unrelated functionality
+- **Independent** -- the change has no dependencies on other work and no other work depends on it
+
+Good candidates: typo corrections, CSS/style adjustments, fixing off-by-one errors with obvious causes, updating error messages, adjusting configuration values.
+
+## When NOT to Use Quick Dev
+
+If the change touches multiple subsystems, requires spec updates, affects the public API, needs dependency tracking, or involves any design decisions, use the full task workflow. Quick Dev deliberately skips validation that catches these issues, so using it for complex changes bypasses safety guardrails.
+
+The rule of thumb: if you would not merge the change without a code review, it is too complex for Quick Dev.
+
+<Callout type="info">
+Quick Dev tasks still go through verification when you run `odk verify run`. The ceremony that is skipped is task management (epics, stories, dependencies, gates), not quality checks.
+</Callout>

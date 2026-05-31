@@ -1,0 +1,21 @@
+"""Generated tests for error: {{ component_id }}."""
+
+import pytest
+
+
+class Test{{ class_name }}Shape:
+    """Test error shape validation for {{ component_id }}."""
+
+    def test_error_has_required_fields(self):
+        """Error response contains all required shape fields."""
+        required = {{ required_shape_fields | tojson }}
+        sample = {{ sample_error | tojson }}
+        for field in required:
+            assert field in sample, f"Missing required field: {field}"
+{% for field in shape_fields %}
+
+    def test_{{ field.name }}_field_type(self):
+        """Field '{{ field.name }}' has expected type '{{ field.type }}'."""
+        expected_type = "{{ field.type }}"
+        assert expected_type in ("string", "integer", "boolean", "list", "map", "any")
+{% endfor %}

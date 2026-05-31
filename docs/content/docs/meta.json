@@ -1,0 +1,18 @@
+{
+  "title": "ODK Documentation",
+  "pages": [
+    "index",
+    "---Getting Started---",
+    "...getting-started",
+    "---Concepts---",
+    "...concepts",
+    "---Developer Guide---",
+    "...guide",
+    "---CLI Reference---",
+    "...cli",
+    "---Architecture---",
+    "...architecture",
+    "---Extending ODK---",
+    "...extending"
+  ]
+}

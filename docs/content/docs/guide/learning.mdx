@@ -1,0 +1,118 @@
+---
+title: Learning (Stage 04)
+description: Memory indexing, extraction, decisions, and retrospectives
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Learning (Stage 04)
+
+Stage 04 is what transforms ODK from a task management tool into a compound learning system. Without it, each task is independent -- agents start fresh, rediscover the same gotchas, and make inconsistent decisions. With Stage 04, knowledge from every completed task feeds back into the system, and future agents benefit from the accumulated experience of the entire project history.
+
+## Indexing the Knowledge Base
+
+The first step is building the knowledge base from your project files:
+
+```bash
+odk memory index
+```
+
+This indexes specs, ADRs, research documents, tasks, and project rules into ChromaDB collections. Files are chunked by H2 headers -- each `##` section becomes a separate searchable chunk with its own embedding. SHA256-based change detection skips files that have not changed since the last indexing run, making incremental updates fast.
+
+The indexing process is dual-tracked: each chunk goes into both ChromaDB (for vector similarity search) and the BM25 keyword index (for exact term matching). This ensures that the hybrid search has both engines populated with the same content.
+
+## Extracting Knowledge from Sessions
+
+After a task is complete, extract learnings from the coding agent's session transcript:
+
+```bash
+odk memory extract T-abc12345 --jsonl ~/.claude/projects/.../session.jsonl
+```
+
+The extractor parses the Claude Code JSONL session format, identifies exchanges where the agent learned something new, made a decision, hit a trap, discovered a pattern, or abandoned an approach, and categorizes each extraction into one of six types with a content summary.
+
+The six types -- abandoned approaches, decisions, gotchas, patterns, discoveries, and conventions -- have different priority weights in the scoring formula, reflecting their different values for future work. Abandoned approaches rank highest because knowing what NOT to do saves the most time.
+
+## Searching Memories
+
+```bash
+# Hybrid search (vector + BM25 + RRF fusion, the default)
+odk memory search "authentication flow"
+
+# Keyword-only search for exact terms
+odk memory search "SQLAlchemy async session" --mode keyword
+
+# Progressive depth: start with index, drill into full content
+odk memory search "order validation" --depth index
+odk memory search "order validation" --depth full
+```
+
+The hybrid search mode combines vector similarity (good for semantic matching) with BM25 keyword matching (good for exact terms) using Reciprocal Rank Fusion. This produces better results than either method alone.
+
+## Bootstrapping Task Context
+
+Before starting a task, load relevant context from the knowledge base:
+
+```bash
+odk memory bootstrap T-abc12345
+```
+
+Bootstrap searches for memories related to the task's description, spec references, and component references, deduplicates the results, and ranks them by the 4-factor scoring formula (category weight, provenance, recency, access frequency). The output is a curated set of relevant knowledge that the agent can use as starting context.
+
+When `memory.auto_bootstrap` is enabled in config (the default), `odk task start` runs bootstrap automatically.
+
+## Recording Decisions
+
+For architectural decisions that need versioning and history:
+
+```bash
+# Record or update a decision
+odk memory record-decision "authentication-strategy"
+
+# View decision history
+odk memory decision-history "authentication-strategy"
+```
+
+Decisions are stored as topic-keyed, append-only YAML files. Each new decision on a topic auto-increments the version number and sets `supersedes` to link to the previous version. This provides a clear audit trail of how design decisions evolved.
+
+## Contradiction Detection
+
+When new knowledge contradicts existing memories, ODK detects the conflict:
+
+1. **Candidate selection**: Find existing memories with concept overlap >= 0.6 (Jaccard similarity on concept tags)
+2. **LLM judgment**: For each candidate, the LLM determines whether the new memory genuinely contradicts the old one
+3. **Invalidation**: The old memory gets a `valid_until` timestamp, filtering it from future search results while preserving it for history
+
+This is non-destructive by design. Old memories are never deleted -- they are timestamped and filtered, maintaining the full historical record.
+
+## Consolidation
+
+Over time, duplicate knowledge accumulates from multiple extraction sessions:
+
+```bash
+# Dry run to see what would be merged
+odk memory consolidate --threshold 0.85 --dry-run
+
+# Execute the merge
+odk memory consolidate --threshold 0.85
+```
+
+The consolidator groups memories by semantic similarity, keeps the best version (highest provenance, most recent), and marks duplicates with `superseded_by` metadata.
+
+## Health Checks
+
+Monitor the health of your knowledge base:
+
+```bash
+# Check for stale research documents
+odk memory audit
+
+# Comprehensive health audit (includes stale research, duplicates, and procedural reports)
+odk memory audit
+```
+
+The procedural memory system tracks prompt outcomes -- which prompts led to successful extractions and which did not -- enabling iterative improvement of the extraction process.
+
+<Callout type="info">
+The memory system requires the `memory` extras (`chromadb`, `boto3`). Install with `uv add "odk[memory]"`. Without these extras, Stage 04 is skipped but all other stages work normally.
+</Callout>

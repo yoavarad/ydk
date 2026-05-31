@@ -1,0 +1,48 @@
+"""Generated tests for route: {{ component_id }}."""
+
+import pytest
+
+
+class Test{{ class_name }}HappyPath:
+    """Test happy path for {{ component_id }}."""
+
+    def test_valid_request_returns_{{ expected_status }}(self):
+        """Valid request to {{ method }} {{ path }} returns {{ expected_status }}."""
+        expected_status = {{ expected_status }}
+        assert 200 <= expected_status < 600
+
+{% if auth_required %}
+
+class Test{{ class_name }}Auth:
+    """Test authentication for {{ component_id }}."""
+
+    def test_missing_token_returns_401(self):
+        """Request without auth token returns 401."""
+        expected = 401
+        assert expected == 401
+{% endif %}
+
+{% if error_responses %}
+
+class Test{{ class_name }}ErrorResponses:
+    """Test error responses for {{ component_id }}."""
+{% for error in error_responses %}
+
+    def test_error_{{ error.status }}_{{ error.slug }}(self):
+        """{{ method }} {{ path }} returns {{ error.status }} for {{ error.description }}."""
+        assert {{ error.status }} >= 400
+{% endfor %}
+{% endif %}
+
+{% if required_request_fields %}
+
+class Test{{ class_name }}RequestValidation:
+    """Test request field validation for {{ component_id }}."""
+{% for field in required_request_fields %}
+
+    def test_missing_{{ field }}_returns_error(self):
+        """Missing required field '{{ field }}' should cause validation error."""
+        required_fields = {{ required_request_fields | tojson }}
+        assert "{{ field }}" in required_fields
+{% endfor %}
+{% endif %}

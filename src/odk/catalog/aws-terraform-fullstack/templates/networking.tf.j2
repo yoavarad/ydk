@@ -1,0 +1,302 @@
+# Networking: VPC, Subnets, NAT Gateway, Security Groups
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-vpc"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# Public subnets (ALB, NAT Gateway)
+{% for i in range(availability_zones) %}
+resource "aws_subnet" "public_{{ i }}" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, {{ i }})
+  availability_zone       = data.aws_availability_zones.available.names[{{ i }}]
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-public-{{ i }}"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+{% endfor %}
+
+# Private subnets (ECS, Aurora)
+{% for i in range(availability_zones) %}
+resource "aws_subnet" "private_{{ i }}" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, {{ i + 10 }})
+  availability_zone = data.aws_availability_zones.available.names[{{ i }}]
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-private-{{ i }}"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+{% endfor %}
+
+# Internet Gateway
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-igw"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+# Elastic IP for NAT Gateway
+{% if nat_gateway_mode == "ha" %}
+{% for i in range(availability_zones) %}
+resource "aws_eip" "nat_{{ i }}" {
+  domain = "vpc"
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-nat-eip-{{ i }}"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+{% endfor %}
+{% else %}
+resource "aws_eip" "nat" {
+  domain = "vpc"
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-nat-eip"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+{% endif %}
+
+# NAT Gateway
+{% if nat_gateway_mode == "ha" %}
+{% for i in range(availability_zones) %}
+resource "aws_nat_gateway" "main_{{ i }}" {
+  allocation_id = aws_eip.nat_{{ i }}.id
+  subnet_id     = aws_subnet.public_{{ i }}.id
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-nat-{{ i }}"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+{% endfor %}
+{% else %}
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_0.id
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-nat"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+{% endif %}
+
+# Public route table
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-public-rt"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+{% for i in range(availability_zones) %}
+resource "aws_route_table_association" "public_{{ i }}" {
+  subnet_id      = aws_subnet.public_{{ i }}.id
+  route_table_id = aws_route_table.public.id
+}
+{% endfor %}
+
+# Private route table
+{% if nat_gateway_mode == "ha" %}
+{% for i in range(availability_zones) %}
+resource "aws_route_table" "private_{{ i }}" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main_{{ i }}.id
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-private-rt-{{ i }}"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+resource "aws_route_table_association" "private_{{ i }}" {
+  subnet_id      = aws_subnet.private_{{ i }}.id
+  route_table_id = aws_route_table.private_{{ i }}.id
+}
+{% endfor %}
+{% else %}
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main.id
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-private-rt"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+}
+
+{% for i in range(availability_zones) %}
+resource "aws_route_table_association" "private_{{ i }}" {
+  subnet_id      = aws_subnet.private_{{ i }}.id
+  route_table_id = aws_route_table.private.id
+}
+{% endfor %}
+{% endif %}
+
+# Security Groups
+
+resource "aws_security_group" "alb" {
+  name_prefix = "{{ app_name }}-{{ environment }}-alb-"
+  vpc_id      = aws_vpc.main.id
+  description = "Security group for Application Load Balancer"
+
+  ingress {
+    description = "HTTP from anywhere"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTPS from anywhere"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-alb-sg"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "ecs" {
+  name_prefix = "{{ app_name }}-{{ environment }}-ecs-"
+  vpc_id      = aws_vpc.main.id
+  description = "Security group for ECS tasks"
+
+  ingress {
+    description     = "Traffic from ALB"
+    from_port       = {{ container_port }}
+    to_port         = {{ container_port }}
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-ecs-sg"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "aurora" {
+  name_prefix = "{{ app_name }}-{{ environment }}-aurora-"
+  vpc_id      = aws_vpc.main.id
+  description = "Security group for Aurora database"
+
+  ingress {
+    description     = "PostgreSQL from ECS"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "{{ app_name }}-{{ environment }}-aurora-sg"
+    Environment = "{{ tags.Environment }}"
+    Project     = "{{ tags.Project }}"
+    ManagedBy   = "{{ tags.ManagedBy }}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}

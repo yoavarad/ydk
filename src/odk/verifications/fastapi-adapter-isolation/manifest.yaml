@@ -1,0 +1,7 @@
+name: fastapi-adapter-isolation
+description: Verify app/adapters/ has no imports from app/api/ (adapters must not
+  depend on HTTP layer)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

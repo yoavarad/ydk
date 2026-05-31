@@ -1,0 +1,19 @@
+{{ import_block }}
+{% if needs_list_alias %}
+
+# Alias prevents ty from resolving ``list`` as the method on this class.
+_List = list
+{% endif %}
+
+# Ports use structural subtyping (Protocol) -- no inheritance required in adapters
+
+
+@runtime_checkable
+class {{ name }}(Protocol):
+{% if methods %}
+{% for m in methods %}
+    {{ m.prefix }} {{ m.name }}(self{{ m.arg_str }}) -> {{ m.returns }}: ...
+{% endfor %}
+{% else %}
+    pass
+{% endif %}

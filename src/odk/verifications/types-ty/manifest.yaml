@@ -1,0 +1,7 @@
+name: types-ty
+description: Run ty check (type checking)
+trigger: git:pre-commit
+parallel: true
+timeout: 30
+requires:
+- ty

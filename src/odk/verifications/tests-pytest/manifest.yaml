@@ -1,0 +1,7 @@
+name: tests-pytest
+description: Run pytest test suite
+trigger: git:pre-push
+parallel: false
+timeout: 300
+requires:
+- pytest

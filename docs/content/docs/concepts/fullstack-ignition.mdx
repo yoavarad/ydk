@@ -1,0 +1,135 @@
+---
+title: Fullstack Ignition
+description: Phased ignition for multi-pack compositions with artifact passing between phases
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Fullstack Ignition
+
+When a project spans multiple technology layers (backend API + frontend app + infrastructure), a single ignition pack cannot cover everything. Fullstack ignition solves this by composing multiple packs in ordered phases, where each phase can consume artifacts produced by a previous phase.
+
+## Why Phased Ignition
+
+A fullstack application has inherent dependencies between layers:
+
+- The frontend needs the backend's API contract (OpenAPI spec) to generate typed clients
+- Infrastructure needs to know which services exist and their port mappings
+- The frontend routing structure depends on the backend's resource model
+
+Running all generators simultaneously would miss these dependencies. Phased ignition runs packs in a defined order and passes artifacts between them.
+
+## How It Works
+
+```
+Phase 1: Backend Pack        --> Generates app + exports openapi.json
+Phase 2: Frontend Pack       --> Consumes openapi.json, generates typed client + pages
+Phase 3: Infrastructure Pack --> Consumes service list, generates IaC
+```
+
+Each phase:
+
+1. Runs the pack's generators against the component manifests
+2. Produces output files in the project
+3. Exports named artifacts (files that downstream phases can reference)
+
+Downstream phases declare which artifacts they consume using `pack_ref` in their configuration.
+
+## `pack_ref` — Cross-Pack References
+
+A pack can reference artifacts from another installed pack:
+
+```yaml
+# In the frontend pack's config
+consumes:
+  - pack_ref: "backend-fastapi"
+    artifact: "openapi.json"
+    target: "src/lib/api/openapi.json"
+```
+
+This tells ignition: "Before running this pack's generators, copy `openapi.json` from the backend pack's output into the specified target path." The frontend generators then read that file to produce typed API clients, route stubs, and form components.
+
+## The Fullstack FastAPI + Next.js Pack
+
+ODK ships a reference fullstack pack (`fullstack-fastapi-nextjs`) that demonstrates phased ignition:
+
+**Phase 1 — Backend (FastAPI)**:
+- Generates data models, repository interfaces, service stubs, route handlers
+- Produces `openapi.json` from the generated route definitions
+- Installs runtime dependencies (FastAPI, SQLAlchemy, Alembic)
+
+**Phase 2 — Frontend (Next.js)**:
+- Consumes `openapi.json` from Phase 1
+- Generates typed API client using the OpenAPI spec
+- Produces page components, form components, and layout files
+- Installs runtime dependencies (Next.js, React, TanStack Query)
+
+**Phase 3 — Infrastructure (Terraform)**:
+- Consumes service definitions from both phases
+- Generates Terraform modules for deployment
+- No Dockerfile generation (containers are handled by the platform)
+
+## Artifact Passing in Detail
+
+Artifacts are files declared in a pack's `exports` section:
+
+```yaml
+# backend-fastapi pack manifest
+exports:
+  - name: "openapi.json"
+    path: "openapi.json"
+    description: "Generated OpenAPI 3.1 specification"
+```
+
+During ignition, after Phase 1 completes:
+
+1. ODK reads the pack's `exports` declarations
+2. Copies each exported artifact to a staging area
+3. Before Phase 2 runs, resolves all `pack_ref` entries and places consumed artifacts at their target paths
+4. Phase 2 generators can then read those files as inputs
+
+## Running Fullstack Ignition
+
+```bash
+# Install packs (order matters for phase assignment)
+odk catalog install fullstack-fastapi-nextjs
+
+# Run ignition — phases execute in order automatically
+odk ignite
+```
+
+Ignition detects that the installed pack has multiple phases and runs them sequentially. Progress output shows which phase is active:
+
+```
+[Phase 1/3] Running backend-fastapi generators...
+  ✓ 12 files generated
+  ✓ Exported: openapi.json
+[Phase 2/3] Running frontend-nextjs generators...
+  ✓ 18 files generated
+[Phase 3/3] Running infra-terraform generators...
+  ✓ 6 files generated
+```
+
+## Post-Ignition Guarantees
+
+After fullstack ignition completes, the project must satisfy:
+
+1. **App starts**: Both backend and frontend can start without errors
+2. **Runtime deps installed**: All dependencies declared by each pack are installed
+3. **No GENERATED headers**: Generated files do not carry ownership markers (they are developer-owned from the start in fullstack packs)
+4. **Types align**: The frontend's typed client matches the backend's API contract
+
+<Callout type="info">
+Phased ignition is idempotent like single-pack ignition. Re-running `odk ignite` skips unchanged files based on content hashes. If only a backend component changed, only Phase 1 regenerates (and Phase 2 if the OpenAPI spec changed).
+</Callout>
+
+## When to Use Fullstack vs Single Pack
+
+| Scenario | Approach |
+|---|---|
+| Backend-only API | Single pack (`backend-fastapi`) |
+| Frontend-only SPA | Single pack (`frontend-nextjs`) |
+| Full application with API + UI | Fullstack pack (`fullstack-fastapi-nextjs`) |
+| Monorepo with shared types | Fullstack pack with artifact passing |
+
+Fullstack packs add complexity but solve the real problem of cross-layer consistency. Use them when your project genuinely spans multiple deployment units that share contracts.

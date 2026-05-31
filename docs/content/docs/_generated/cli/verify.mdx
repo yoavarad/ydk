@@ -1,0 +1,106 @@
+---
+title: "odk verify"
+description: "CLI reference for odk verify"
+---
+
+# `odk verify`
+
+```text
+                                                                                
+ Usage: odk verify [OPTIONS] COMMAND [ARGS]...                                  
+                                                                                
+ Run verification checks                                                        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ run          Run verification plugins.                                       │
+│ list         List all discovered verification plugins.                       │
+│ create       Create a new project-specific verification plugin.              │
+│ clear-cache  Clear the verification result cache.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk verify run`
+
+```text
+                                                                                
+ Usage: odk verify run [OPTIONS]                                                
+                                                                                
+ Run verification plugins.                                                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --name              TEXT     Run only this plugin                            │
+│ --trigger           TEXT     Filter by trigger ID (e.g. git:pre-commit)      │
+│ --auto-fix                   Auto-fix violations before checking             │
+│ --no-cache                   Bypass the verification cache                   │
+│ --retry             INTEGER  Retry verification up to N times on failure     │
+│ --repair                     Alias for --retry 3                             │
+│ --save-proof                                                                 │
+│ --task-id           TEXT                                                     │
+│ --pr                TEXT     PR URL — post results as a PR comment           │
+│ --capture                    Capture verification output to proof files      │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk verify list`
+
+```text
+                                                                                
+ Usage: odk verify list [OPTIONS]                                               
+                                                                                
+ List all discovered verification plugins.                                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk verify create`
+
+```text
+                                                                                
+ Usage: odk verify create [OPTIONS] NAME                                        
+                                                                                
+ Create a new project-specific verification plugin.                             
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Plugin name [required]                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --trigger        TEXT  Trigger ID (e.g. git:pre-commit)                      │
+│                        [default: git:pre-commit]                             │
+│ --help                 Show this message and exit.                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk verify check-guard`
+
+```text
+                                                                                
+ Usage: odk verify check-guard [OPTIONS]                                        
+                                                                                
+ Check guard status and report any active violations.                           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --name              TEXT     Check only this guard                           │
+│ --verbose                    Show detailed guard state                       │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk verify clear-cache`
+
+```text
+                                                                                
+ Usage: odk verify clear-cache [OPTIONS]                                        
+                                                                                
+ Clear the verification result cache.                                           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --plugin        TEXT  Clear cache for a specific plugin only                 │
+│ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

@@ -1,0 +1,7 @@
+name: fastapi-no-mocks-integration
+description: Enforce no mock imports in tests/integration/ -- use app.dependency_overrides
+  instead
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

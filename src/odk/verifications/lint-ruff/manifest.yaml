@@ -1,0 +1,8 @@
+name: lint-ruff
+description: Run ruff format check + ruff lint
+trigger: git:pre-commit
+parallel: true
+timeout: 30
+requires:
+- ruff
+supports_auto_fix: true

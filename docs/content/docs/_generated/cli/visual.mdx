@@ -1,0 +1,142 @@
+---
+title: "odk visual"
+description: "CLI reference for odk visual"
+---
+
+# `odk visual`
+
+```text
+                                                                                
+ Usage: odk visual [OPTIONS] COMMAND [ARGS]...                                  
+                                                                                
+ Browser-based design annotation companion                                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ start       Start a new visual companion session.                            │
+│ stop        Stop a running visual companion session.                         │
+│ push        Push content to a visual companion session.                      │
+│ feedback    Read feedback events from a visual companion session.            │
+│ screenshot  Capture a screenshot of a visual companion page.                 │
+│ list        List all visual companion sessions.                              │
+│ record      Record a video of a page or browser flow using Playwright.       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk visual start`
+
+```text
+                                                                                
+ Usage: odk visual start [OPTIONS]                                              
+                                                                                
+ Start a new visual companion session.                                          
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --project-dir  -p      PATH  Project root directory [default: .]             │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk visual stop`
+
+```text
+                                                                                
+ Usage: odk visual stop [OPTIONS] SESSION_ID                                    
+                                                                                
+ Stop a running visual companion session.                                       
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    session_id      TEXT  Session ID to stop [required]                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --project-dir  -p      PATH  Project root directory [default: .]             │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk visual push`
+
+```text
+                                                                                
+ Usage: odk visual push [OPTIONS] CONTENT                                       
+                                                                                
+ Push content to a visual companion session.                                    
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    content      TEXT  HTML content string or file path [required]          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --filename     -f      TEXT  Filename in content dir [default: index.html]   │
+│ --session-id   -s      TEXT  Session ID (uses latest if empty)               │
+│ --project-dir  -p      PATH  Project root directory [default: .]             │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk visual feedback`
+
+```text
+                                                                                
+ Usage: odk visual feedback [OPTIONS]                                           
+                                                                                
+ Read feedback events from a visual companion session.                          
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --session-id   -s      TEXT  Session ID (uses latest if empty)               │
+│ --project-dir  -p      PATH  Project root directory [default: .]             │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk visual screenshot`
+
+```text
+                                                                                
+ Usage: odk visual screenshot [OPTIONS]                                         
+                                                                                
+ Capture a screenshot of a visual companion page.                               
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --url          -u      TEXT  URL to capture (defaults to session URL)        │
+│ --output       -o      PATH  Output file path [default: screenshot.png]      │
+│ --session-id   -s      TEXT  Session ID                                      │
+│ --project-dir  -p      PATH  Project root directory [default: .]             │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk visual list`
+
+```text
+                                                                                
+ Usage: odk visual list [OPTIONS]                                               
+                                                                                
+ List all visual companion sessions.                                            
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --project-dir  -p      PATH  Project root directory [default: .]             │
+│ --help                       Show this message and exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk visual record`
+
+```text
+                                                                                
+ Usage: odk visual record [OPTIONS]                                             
+                                                                                
+ Record a video of a page or browser flow using Playwright.                     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --url           -u      TEXT     URL to record [required]                 │
+│    --actions-file  -a      PATH     JSON actions list                        │
+│    --output        -o      PATH     Output dir for video                     │
+│                                     [default: .odk/proofs/latest]            │
+│    --wait                  INTEGER  Wait time in ms (used when no actions    │
+│                                     file)                                    │
+│                                     [default: 3000]                          │
+│    --help                           Show this message and exit.              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

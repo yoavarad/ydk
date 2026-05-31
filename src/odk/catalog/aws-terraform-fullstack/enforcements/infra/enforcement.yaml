@@ -1,0 +1,17 @@
+triggers:
+  - file_write
+  - file_create
+  - pre_commit
+  - on_demand
+paths:
+  - "infra/**/*.tf"
+  - "*.sh"
+scripts:
+  - file: check_tf_format.sh
+  - file: check_security.sh
+  - file: check_tagging.sh
+  - file: check_paravirt_ec2.sh
+  - file: check_external_iam.sh
+  - file: check_public_ami.sh
+  - file: check_dangling_resources.sh
+  - file: check_glacier_public.sh

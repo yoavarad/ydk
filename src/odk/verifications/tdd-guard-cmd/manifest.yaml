@@ -1,0 +1,6 @@
+name: tdd-guard-cmd
+description: Track pytest execution for TDD state machine transitions
+trigger: "guard:command"
+parallel: false
+timeout: 5
+requires: []

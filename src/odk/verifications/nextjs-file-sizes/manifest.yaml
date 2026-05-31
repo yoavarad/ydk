@@ -1,0 +1,7 @@
+name: nextjs-file-sizes
+description: Enforce per-FSD-layer file size limits (app=20, _pages=100, widgets=150,
+  features=100, entities=80, shared=120)
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

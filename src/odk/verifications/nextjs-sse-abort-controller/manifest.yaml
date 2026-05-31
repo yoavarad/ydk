@@ -1,0 +1,6 @@
+name: nextjs-sse-abort-controller
+description: Enforce SSE connections have cleanup (AbortController or source.close())
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

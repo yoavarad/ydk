@@ -1,0 +1,7 @@
+name: fastapi-no-mocks-e2e
+description: Enforce no mock imports in tests/e2e/ -- E2E tests must exercise real
+  behavior
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

@@ -1,0 +1,131 @@
+---
+title: Component Manifests
+description: The narrative/component split, ID system, schemas, and validation layers
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Component Manifests
+
+Today, most software specs are prose documents. When a tool needs to check whether every entity described in a spec has a corresponding implementation task, it must parse markdown -- searching for headings that look like entity definitions, using heuristics to distinguish an entity from a concept mentioned in passing, and hoping the author used consistent formatting. This approach is fragile, lossy, and non-deterministic. Different parsers produce different results. Edge cases are everywhere.
+
+The component manifest system solves this by splitting specifications into two complementary layers. The narrative layer remains prose -- markdown files that tell the story of what you are building and why. The component layer is structured YAML -- machine-readable definitions that capture the exact structure of every building block in your system. The narrative references components using bracket syntax (`[odk:entity:orders/Order]`), and ODK's deterministic linker validates that every reference resolves to an actual manifest file.
+
+This dual-representation approach means that when ODK needs to answer "does every entity in the spec have an implementation task?", it does not need to parse English. It reads the YAML manifests, extracts their IDs, and checks them against the task metadata. The answer is deterministic, reproducible, and fast.
+
+## The ID System
+
+Every component has a unique identifier following a strict format:
+
+```
+odk:<type>:<namespace>/<name>
+```
+
+The three parts serve distinct purposes. The **type** identifies what kind of component this is -- `entity`, `route`, `error`, `event`, `contract`, `component`, `page`, `req`, `ext`, `hook`, `nfr`, `crosscut`, or `test`. The **namespace** provides organizational grouping, typically matching your domain boundaries (like `orders`, `auth`, `payments`). The **name** identifies the specific component within its namespace.
+
+Examples:
+- `odk:entity:orders/Order` -- the Order domain model
+- `odk:route:auth/login` -- the login API endpoint
+- `odk:error:orders/insufficient-balance` -- an error response
+- `odk:event:orders/order-shipped` -- a domain event
+- `odk:contract:payments/PaymentGateway` -- a service interface
+- `odk:nfr:performance/api-latency` -- a non-functional requirement
+
+The ID format is validated by a regex pattern that ensures consistency across the entire project. IDs are used for file path resolution (the registry converts `odk:entity:orders/Order` to `.odk/components/entity/orders/Order.yaml`), cross-referencing between components (an entity can declare a foreign key to another entity by its ID), and linking between narratives and manifests (the bracket reference `[odk:entity:orders/Order]` in a spec resolves to the manifest file).
+
+## The 13 Built-in Schema Types
+
+ODK ships with 13 schema types that cover the most common patterns in software systems. Each schema defines the fields that manifests of that type must contain, their types, whether they are required, and validation patterns. Here is what each type represents and when to use it:
+
+**`entity`** defines domain models -- the core data objects in your system. Entity schemas include fields with types, foreign keys to other entities, state transition maps, and relationship declarations. Use this for anything that gets stored in a database.
+
+**`route`** defines API endpoints -- HTTP or CLI commands with methods, paths, request parameters, response schemas, authentication requirements, and error references. Use this for every endpoint your system exposes.
+
+**`error`** defines error responses -- status codes, error code strings, human-readable messages, trigger conditions, and recovery suggestions. Use this for every error your API can return.
+
+**`event`** defines domain events -- the signals your system emits when something happens. Events have payloads, producers (who emits them), consumers (who handles them), and ordering guarantees.
+
+**`contract`** defines service interfaces -- the methods, parameters, return types, and raised errors for a service. This is the Protocol in Python terms, the Interface in TypeScript terms. Use this for every service boundary in your architecture.
+
+**`component`** defines UI components -- props, state, rendering framework, data sources, emitted events. Use this in frontend projects for reusable UI building blocks.
+
+**`page`** defines frontend pages -- routes, layouts, sections, and the components they compose. Use this for page-level structure in frontend projects.
+
+**`req`** defines business requirements -- rules, acceptance criteria, and priority levels. Use this for capturing requirements that do not map directly to a technical component.
+
+**`ext`** defines external dependencies -- third-party APIs, services, and libraries with their endpoints, rate limits, and authentication requirements. Use this for every external system you integrate with.
+
+**`hook`** defines lifecycle hooks -- trigger conditions and behaviors that execute at specific points in a process. Use this for cross-cutting behaviors like audit logging or notification triggers.
+
+**`nfr`** defines non-functional requirements -- performance targets, availability SLAs, scalability bounds with specific metrics and measurement methods. Use this for quality attributes that apply across the system.
+
+**`crosscut`** defines cross-cutting concerns -- specifications that apply uniformly across multiple parts of the system, like consistent error formatting or pagination conventions.
+
+**`test`** defines test specifications -- given/when/then scenarios with setup, actions, and expected outcomes. Use this for documenting test strategies at the spec level.
+
+## Two Validation Layers
+
+The component system has two validation layers that catch different classes of problems.
+
+### Layer A: The Deterministic Linker
+
+Layer A is fast, deterministic, and always available. It scans your narrative spec files for bracket references (`[odk:...]`), parses each one to extract the component ID, and checks whether the corresponding YAML manifest file exists. It also scans all manifest files and checks whether each one is referenced by at least one spec.
+
+The linker reports three categories of findings:
+
+**Undefined references** are bracket references in your spec that point to a component that does not exist. This usually means you forgot to run `odk component create` or you have a typo in the ID.
+
+**Orphaned components** are YAML manifests that exist but are not referenced by any spec. This might be intentional (the component is used internally) or it might mean you forgot to add the bracket reference in your narrative.
+
+**Broken cross-references** are references between components that do not resolve. For example, an entity manifest that declares a foreign key `fk: odk:entity:users/User` when no such entity exists.
+
+```bash
+odk component validate
+```
+
+### Layer B: The LLM Prose Scanner
+
+Layer B uses an LLM to find gaps that the deterministic linker cannot detect. It reads your narrative prose and the schema definitions, then identifies places where you describe something that should be a component but have not formalized it. For example, if your spec says "the notification service sends an email when an order is confirmed" but you have not created an event component for `order-confirmed` or a contract component for the notification service, the scanner flags these as unlinked mentions.
+
+```bash
+odk component scan
+```
+
+The scanner produces suggestions with confidence levels, not hard errors. It is a second pair of eyes that catches things you might have overlooked, but the final decision on whether to create a component is always yours.
+
+<Callout type="warn">
+Layer A is deterministic and always runs. Layer B requires the AI extras and produces suggestions rather than hard errors. Always run Layer A first -- fix the deterministic issues before spending LLM tokens on the scanner.
+</Callout>
+
+## How Resolution Works
+
+When ODK encounters a component ID, it resolves it to a file path using a deterministic algorithm. Given `odk:entity:orders/Order`:
+
+1. Parse the ID into parts: type = `entity`, namespace = `orders`, name = `Order`
+2. Construct the path: `.odk/components/entity/orders/Order.yaml`
+3. Read and validate the YAML against the `entity` schema
+
+This resolution is bidirectional -- given a file path, ODK can reconstruct the component ID. This means the file system is the source of truth for what components exist, and IDs are a naming convention layered on top of the directory structure.
+
+## Schema Validation
+
+When you create or modify a component manifest, ODK validates it against the schema for its type. The validation checks:
+
+- **Required fields** -- every field marked `required: true` in the schema must be present
+- **Type checking** -- string fields must contain strings, integer fields must contain integers, enum fields must contain one of the allowed values
+- **Pattern matching** -- fields with regex patterns (like the ID field) are validated against the pattern
+- **Reference resolution** -- fields with `ref_type` declarations (like foreign keys) are checked to ensure the referenced component exists
+
+This validation runs during `odk component validate` and catches structural errors before they cause problems downstream.
+
+## Creating Components
+
+The `odk component create` command scaffolds a new manifest from a schema template:
+
+```bash
+odk component create entity orders/Order
+```
+
+This creates `.odk/components/entity/orders/Order.yaml` with all fields from the entity schema pre-populated with sensible defaults (empty strings for text fields, empty maps for map fields, first enum value for enum fields). You then fill in the actual values for your specific component.
+
+The command refuses to overwrite existing components (use `--force` if you really want to), and it validates that the schema type exists before creating the file.

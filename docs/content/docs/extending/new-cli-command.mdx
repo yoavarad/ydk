@@ -1,0 +1,132 @@
+---
+title: New CLI Command
+description: Step-by-step guide to adding a CLI command or command group
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Adding a CLI Command
+
+ODK's CLI is built with Typer, which provides automatic help generation, type validation for parameters, and a clean subcommand structure. Adding a new command follows the same pattern used by all existing commands: write the core logic in the core layer, write the CLI wrapper in the CLI layer, and register the command group in the main app.
+
+This separation matters because core logic should be testable without a CLI context. If your command's business logic lives in the CLI function itself, you can only test it by spawning a subprocess and parsing stdout. If it lives in a core module, you can test it by calling the function directly with mock dependencies.
+
+## Step 1: Write the Core Logic
+
+Create a module in `src/odk/core/` that contains the business logic:
+
+```python
+"""Core logic for the new feature."""
+from __future__ import annotations
+from pathlib import Path
+from pydantic import BaseModel
+
+class MyResult(BaseModel):
+    """Result of the operation."""
+    success: bool
+    message: str
+    details: dict[str, str]
+
+def run_my_feature(project_root: Path, option: str) -> MyResult:
+    """Execute the feature logic.
+
+    This function has no CLI dependencies -- it takes typed parameters
+    and returns a typed result. The CLI layer handles rendering.
+    """
+    # ... business logic here ...
+    return MyResult(success=True, message="Done", details={})
+```
+
+If your feature needs an LLM, use the protocol pattern:
+
+```python
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class LLMProvider(Protocol):
+    def invoke(self, prompt: str) -> str: ...
+
+class MyFeature:
+    def __init__(self, llm: LLMProvider | None = None):
+        self._llm = llm
+
+    def run(self, input_data: str) -> MyResult:
+        if self._llm is None:
+            return self._deterministic_fallback(input_data)
+        return self._llm_powered_path(input_data)
+```
+
+## Step 2: Write the CLI Command
+
+Create a command module in `src/odk/cli/`:
+
+```python
+"""CLI commands for my-feature."""
+from __future__ import annotations
+from pathlib import Path
+
+import typer
+
+from odk.core.my_feature import run_my_feature
+from odk.output.console import console
+
+app = typer.Typer(help="My feature description")
+
+@app.command()
+def run(
+    option: str = typer.Option("default", "--option", "-o", help="Feature option"),
+) -> None:
+    """Run the feature."""
+    result = run_my_feature(Path("."), option)
+    if result.success:
+        console.print(f"[green]Success:[/green] {result.message}")
+    else:
+        console.print(f"[red]Failed:[/red] {result.message}")
+        raise typer.Exit(code=1)
+```
+
+The CLI layer handles three things: argument parsing (via Typer decorators), calling the core logic, and rendering the output (via the console module). It does not contain business logic.
+
+## Step 3: Register the Command Group
+
+Add your command group to `src/odk/cli/__init__.py`:
+
+```python
+from odk.cli.my_feature_cmd import app as my_feature_app
+app.add_typer(my_feature_app, name="my-feature")
+```
+
+## Step 4: Write Tests
+
+Write tests for the core logic in `tests/core/test_my_feature.py`:
+
+```python
+from odk.core.my_feature import run_my_feature
+
+def test_my_feature_success(tmp_path):
+    result = run_my_feature(tmp_path, option="test")
+    assert result.success
+    assert "Done" in result.message
+```
+
+The core logic tests do not need a CLI context, a real project directory, or subprocess calls. They instantiate the core class or function directly with test inputs.
+
+## Step 5: Add Output Formatting
+
+ODK supports three output formats: `human` (rich console), `json`, and `yaml`. If your command should support all three, use the formatter pattern from `src/odk/output/formatters.py`:
+
+```python
+from odk.output.formatters import format_output
+
+@app.command()
+def run(
+    option: str = typer.Option("default"),
+    format: str = typer.Option("human", "--format", "-f"),
+) -> None:
+    result = run_my_feature(Path("."), option)
+    format_output(result.model_dump(), format)
+```
+
+<Callout type="info">
+Always write the core logic first, test it independently, then write the CLI wrapper. This order ensures the business logic is testable and the CLI layer remains thin.
+</Callout>

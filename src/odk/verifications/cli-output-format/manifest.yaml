@@ -1,0 +1,6 @@
+name: cli-output-format
+description: Enforce all CLI command functions support --json output flag
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

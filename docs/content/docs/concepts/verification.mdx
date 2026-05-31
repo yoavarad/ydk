@@ -1,0 +1,176 @@
+---
+title: Verification System
+description: Plugin-based code verification, YAML-based spec reviewers, auto-fix, caching, and structured output
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Verification System
+
+ODK has two complementary verification systems: **verification plugins** for code-level checks (lint, types, tests, architecture) and **spec reviewers** for narrative spec quality. They share no code path -- plugins run via `odk verify run`, reviewers run via `odk spec verify`.
+
+## Code Verification (Plugins)
+
+ODK ships with 40 verification plugins, designed so that passing all checks gives genuine confidence in the code. Each plugin enforces a specific rule or quality standard, and together they cover formatting, linting, type checking, architecture, structure, test coverage, and AI-powered review.
+
+A plugin is a directory containing a `manifest.yaml` (metadata) and a `check.py` (the actual check). ODK discovers plugins by scanning directories, reads their manifests to understand when and how to run them, and executes them by piping JSON context to stdin and reading JSON results from stdout.
+
+### Plugin Discovery
+
+Plugins are discovered from two directories, in priority order:
+
+1. **Project-specific**: `.odk/verifications/` -- plugins specific to your project
+2. **Global**: Ships with ODK at `src/odk/verifications/` -- the 40 built-in plugins
+
+When a project plugin has the same name as a global plugin, the project plugin takes precedence.
+
+### The Plugin Contract
+
+Every plugin follows the same JSON-in, JSON-out contract. ODK passes a context object to the plugin's stdin:
+
+```json
+{
+  "project_root": "/path/to/project",
+  "auto_fix": false
+}
+```
+
+The plugin writes a result to stdout:
+
+```json
+{
+  "name": "my-check",
+  "passed": true,
+  "output": "All 42 tests passed in 3.21s",
+  "duration_seconds": 3.21,
+  "detail": {}
+}
+```
+
+Exit code 0 means the check completed (pass or fail indicated by the `passed` field). Exit code 2 means an error occurred (plugin itself broke).
+
+### The Three Layers
+
+**Layer 1: Format and Lint** -- fastest checks (under 5 seconds). `lint-ruff`, `python-quality`, `types-ty`.
+
+**Layer 2: Architecture and Structure** -- enforces design rules. Python, FastAPI, Next.js/React, Terraform, and CLI plugins.
+
+**Layer 3: AI-Powered** -- LLM-based analysis. `ai-code-review` and `spec-alignment`.
+
+Layers run sequentially. Within a layer, plugins with `parallel: true` run simultaneously. If any plugin in a layer fails, subsequent layers are skipped.
+
+### Content-Hash Caching
+
+Verification results are cached by SHA256 hash over all Python files. If code has not changed since the last successful run, the cached result is returned instantly.
+
+### Auto-Repair Loop
+
+The `RepairLoop` class formats failures as structured JSON for machine consumption. Coding agents parse it, understand which checks failed, and make targeted fixes. The loop coordinates between verification and the agent, up to `max_retries` times.
+
+## Spec Verification (Reviewers)
+
+The spec verification system evaluates narrative spec quality using 10 YAML-based reviewers that run as parallel Bedrock Converse API calls. This is a completely separate system from the code verification plugins.
+
+### How It Works
+
+1. `odk spec verify` detects which spec files changed (or use `--all-files` for all)
+2. Reads all spec content (narratives + component manifests)
+3. Sends spec content as a **cached system prompt prefix** to Bedrock
+4. Fans out 10 parallel Bedrock Converse API calls, one per reviewer
+5. Each call uses **forced `toolChoice`** for guaranteed structured JSON output (score, reasoning, suggestions, findings)
+6. All scores >= threshold = PASS, any below = FAIL with detailed report
+
+### Prompt Caching
+
+The spec content is sent once as a cached system prompt prefix. The first reviewer primes the cache; the remaining 9 hit the cached prefix for approximately 90% cost savings on the spec portion.
+
+### The 10 Reviewers
+
+Each reviewer is a YAML config file with: id, name, group, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric.
+
+| ID | Name | Group | Tools |
+|---|---|---|---|
+| N01 | Problem Statement | completeness | -- |
+| N02 | Success Criteria | completeness | -- |
+| N03 | Scope Boundaries | completeness | -- |
+| N04 | Terminology Consistency | clarity | -- |
+| N05 | Ambiguity | clarity | -- |
+| N06 | Flow Completeness | architecture | -- |
+| N07 | Information Density | clarity | `scan_filler_phrases` |
+| N08 | No Technical Specs in Prose | architecture | `scan_type_annotations` |
+| N09 | Component References | architecture | `scan_unlinked_mentions`, `scan_url_paths` |
+| N10 | YAGNI | robustness | -- |
+
+### Deterministic Tools
+
+Only 4 high-value inline Python tools remain. They provide evidence for the LLM scorer but do not override its judgment:
+
+- **`scan_filler_phrases`** -- detects vague phrases ("robust", "scalable", "industry-standard")
+- **`scan_type_annotations`** -- detects technical specs in prose (type hints, field defs, JSON shapes)
+- **`scan_unlinked_mentions`** -- finds entity/route mentions lacking `[odk:...]` references
+- **`scan_url_paths`** -- finds URL paths that should be in route component manifests
+
+### Anti-Hallucination Rules
+
+Every reviewer's system prompt requires the LLM to quote exact text from the spec when citing findings. The LLM cannot invent findings not present in the source material. The LLM score is authoritative -- deterministic tools provide evidence but do not override LLM judgment.
+
+### Model Tiers
+
+Reviewers declare a `model_tier` (not a model ID). The tier maps to a Bedrock model via `ai.model_tiers` in config:
+
+| Tier | Default | Purpose |
+|---|---|---|
+| `smart` | Sonnet 4 | Most reviewers |
+| `fast` | Sonnet 4 | Lightweight reviewers |
+| `reasoning` | Opus | Complex reasoning tasks |
+
+### Structured Report Output
+
+The verify command produces:
+
+- **Summary table** with color-coded scores (red 0-3, yellow 4-6, green 7-10)
+- **Deterministic tool findings** breakdown table
+- **Full per-criterion detail** (no truncation)
+- **File dump** to `.odk/reports/spec-verify-{timestamp}.txt` and `.json`
+
+### Orphaned Components
+
+Components in `.odk/components/` not referenced by any narrative are treated as **errors**, not warnings. Every component must be referenced from at least one narrative.
+
+<Callout type="info">
+Reviewer YAML configs live in `src/odk/spec_reviewers/` (shipped with ODK) and are copied to `.odk/spec-reviewers/` on `odk init`. Projects can customize reviewers by editing the copies or adding new YAML files.
+</Callout>
+
+## Guard Triggers
+
+In addition to verification plugins that run on demand, ODK has real-time guards that trigger on every agent action. Guards use two trigger types:
+
+- **`guard:edit`** -- fires when a file is created or modified. Used by guards like `tdd`, `no-noqa`, `no-mock`, and `no-proof-tamper`.
+- **`guard:command`** -- fires when a shell command is executed. Used by guards like `no-manual-pr`.
+
+Guards run in milliseconds (pattern matching and AST checks) and block the action before it completes. See [Guard System](/docs/concepts/guard-system) for full details.
+
+### `odk verify check-guard`
+
+Check the status of all guards and whether they would pass for the current project state:
+
+```bash
+odk verify check-guard
+```
+
+This reports which guards are enabled, their current state (e.g., TDD phase), and any active violations.
+
+## Scoped Verification
+
+Not all checks need to scan the entire project. ODK scopes expensive checks to changed files for faster feedback:
+
+- **`ty` (type checking)** -- scoped to files changed in the current branch. This avoids flagging pre-existing type issues in unrelated code.
+- **Proof capture** -- pulls from the full plugin report output (structured JSON), not hardcoded strings. This ensures proof files reflect actual verification results.
+
+## Screenshot Requirement
+
+For tasks that involve UI changes, verification requires a screenshot as proof. The screenshot must show the rendered UI in its final state. This is enforced by the `ui-screenshot` verification plugin, which checks for the presence of a screenshot file in the proof directory when the task's component refs include any UI components (pages, layouts, forms).
+
+## Structured Logging
+
+ODK writes structured logs to `~/.odk/logs/odk.log` with a rotating file handler (10MB max, 5 backups). Per-reviewer timing is included in spec verify output. Use `--verbose` to see DEBUG-level logs, cache metrics, and detailed timing.

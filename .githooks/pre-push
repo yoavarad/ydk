@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""odk pre-push hook — branch rules, unit tests."""
+
+import subprocess, sys, time
+
+RESET      = "\033[0m"
+BOLD       = "\033[1m"
+DIM        = "\033[2m"
+FG_BLACK   = "\033[30m"
+FG_RED     = "\033[31m"
+FG_GREEN   = "\033[32m"
+FG_YELLOW  = "\033[33m"
+FG_GRAY    = "\033[37m"
+BG_GREEN   = "\033[42m"
+BG_RED     = "\033[41m"
+BG_YELLOW  = "\033[43m"
+BG_BLUE    = "\033[44m"
+BG_GRAY    = "\033[48;5;236m"
+
+def header(title):
+    print(f"\n  {BG_BLUE}{FG_BLACK}{BOLD} {title} {RESET}\n", flush=True)
+
+def step(name):
+    print(f"  {DIM}>{RESET} {name} ", end="", flush=True)
+    return time.monotonic()
+
+def step_pass(t0):
+    elapsed = time.monotonic() - t0
+    print(f"{BG_GREEN}{FG_BLACK}{BOLD} PASS {RESET} {FG_GRAY}{elapsed:.1f}s{RESET}", flush=True)
+
+def step_fail(t0, output=""):
+    elapsed = time.monotonic() - t0
+    print(f"{BG_RED}{FG_BLACK}{BOLD} FAIL {RESET} {FG_GRAY}{elapsed:.1f}s{RESET}", flush=True)
+    if output.strip():
+        for line in output.strip().splitlines()[:20]:
+            print(f"    {FG_RED}{line}{RESET}", flush=True)
+
+def step_skip(reason=""):
+    print(f"{BG_YELLOW}{FG_BLACK}{BOLD} SKIP {RESET} {FG_GRAY}{reason}{RESET}", flush=True)
+
+def run(cmd, **kwargs):
+    return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+
+def finish_ok():
+    print(f"\n  {BG_GREEN}{FG_BLACK}{BOLD} ALL CHECKS PASSED {RESET}\n", flush=True)
+
+def finish_fail():
+    print(f"\n  {BG_RED}{FG_BLACK}{BOLD} CHECKS FAILED {RESET}\n", flush=True)
+    sys.exit(1)
+
+import re
+
+header("PRE-PUSH CHECKS")
+failed = False
+
+# 1. Branch name
+t0 = step("branch name convention")
+result = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+branch = result.stdout.strip()
+if branch == "main":
+    step_fail(t0, "Direct push to main is not allowed. Open a PR instead.")
+    finish_fail()
+pattern = r"^(feat|fix|docs|chore|refactor|test|ci|perf|release)/[a-z0-9-]+$|^(main|rewrite/.*)$"
+if not re.match(pattern, branch):
+    step_fail(t0, f"Branch '{branch}' does not follow convention: type/description\nValid: feat fix docs chore refactor test ci perf release")
+    finish_fail()
+step_pass(t0)
+
+# 2. Docs freshness
+t0 = step("docs freshness")
+DOCS_PATHS = [
+    "skills/odk",
+    "docs/content",
+    "CLAUDE.md",
+]
+SOURCE_PATHS = [
+    "src/odk/cli/",
+    "src/odk/core/",
+    "src/odk/models/",
+    "src/odk/catalog/python-fastapi-hexagonal/generators/",
+    "src/odk/verifications/",
+]
+
+# Find last commit that touched documentation
+last_docs_result = run(["git", "log", "-1", "--format=%H", "--"] + DOCS_PATHS)
+last_docs_commit = last_docs_result.stdout.strip()
+
+if not last_docs_commit:
+    step_skip("no docs commits found")
+else:
+    # Find source files changed since last docs commit
+    source_result = run(["git", "diff", "--name-only", last_docs_commit, "HEAD", "--"] + SOURCE_PATHS)
+    source_changes = [
+        f for f in source_result.stdout.strip().splitlines()
+        if f and "__pycache__" not in f and not f.endswith(".pyc")
+    ]
+
+    if not source_changes:
+        step_pass(t0)
+    else:
+        # Check if docs were also changed in commits since last docs commit
+        docs_result = run(["git", "diff", "--name-only", last_docs_commit, "HEAD", "--"] + DOCS_PATHS)
+        docs_changes = [f for f in docs_result.stdout.strip().splitlines() if f]
+
+        if docs_changes:
+            step_pass(t0)
+        else:
+            changed_list = "\n".join(f"  {f}" for f in source_changes[:10])
+            extra = f"\n  ... and {len(source_changes) - 10} more" if len(source_changes) > 10 else ""
+            step_fail(t0, (
+                f"Source changed since last docs update:\n{changed_list}{extra}\n"
+                "Update docs (skills/odk, docs/content, CLAUDE.md) and commit.\n"
+                "Bypass (emergency): git push --no-verify"
+            ))
+            failed = True
+
+# 3. Unit tests
+t0 = step("unit tests")
+result = run(["uv", "run", "pytest", "tests/", "-q", "--tb=short"])
+if result.returncode != 0:
+    lines = (result.stdout + result.stderr).strip().splitlines()
+    step_fail(t0, "\n".join(lines[-10:]))
+    failed = True
+else:
+    last_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    step_pass(t0)
+    if "passed" in last_line:
+        print(f"    {FG_GRAY}{last_line}{RESET}", flush=True)
+
+if failed:
+    finish_fail()
+finish_ok()

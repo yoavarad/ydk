@@ -1,0 +1,7 @@
+name: ai-code-review
+description: External AI code review (security, quality, spec compliance)
+trigger: git:pre-push
+parallel: true
+timeout: 120
+requires:
+- strands-agents

@@ -1,0 +1,13 @@
+{
+  "title": "Developer Guide",
+  "pages": [
+    "brainstorming",
+    "ignition",
+    "task-management",
+    "execution",
+    "learning",
+    "spec-evolution",
+    "visual-companion",
+    "quick-dev"
+  ]
+}

@@ -1,0 +1,6 @@
+name: pr-body-validation
+description: Validates PR body contains required proof artifacts
+trigger: git:pre-push
+parallel: true
+timeout: 10
+requires: []

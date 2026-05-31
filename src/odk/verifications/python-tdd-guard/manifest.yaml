@@ -1,0 +1,6 @@
+name: python-tdd-guard
+description: Ensure all staged source files have corresponding test files
+trigger: git:pre-commit
+parallel: true
+timeout: 30
+requires: []

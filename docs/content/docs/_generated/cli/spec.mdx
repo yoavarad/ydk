@@ -1,0 +1,63 @@
+---
+title: "odk spec"
+description: "CLI reference for odk spec"
+---
+
+# `odk spec`
+
+```text
+                                                                                
+ Usage: odk spec [OPTIONS] COMMAND [ARGS]...                                    
+                                                                                
+ Spec management and quality checks                                             
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ verify         Run unified quality verification: components, references, and │
+│                reviewer agents.                                              │
+│ list-criteria  List the reviewer criteria with thresholds.                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk spec verify`
+
+```text
+                                                                                
+ Usage: odk spec verify [OPTIONS]                                               
+                                                                                
+ Run unified quality verification: components, references, and reviewer agents. 
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --rubric     -r      TEXT  Run specific rubric                               │
+│ --all-files                Check all spec files                              │
+│ --base-ref           TEXT  Git ref to diff against [default: main]           │
+│ --format     -f      TEXT  Output format: human or json [default: human]     │
+│ --verbose    -v                                                              │
+│ --help                     Show this message and exit.                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk spec reviewer`
+
+```text
+Usage: odk spec [OPTIONS] COMMAND [ARGS]...
+Try 'odk spec --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'reviewer'.                                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `odk spec list-criteria`
+
+```text
+                                                                                
+ Usage: odk spec list-criteria [OPTIONS]                                        
+                                                                                
+ List the reviewer criteria with thresholds.                                    
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

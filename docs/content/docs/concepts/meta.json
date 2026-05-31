@@ -1,0 +1,16 @@
+{
+  "title": "Concepts",
+  "pages": [
+    "four-stages",
+    "catalog",
+    "ignition",
+    "fullstack-ignition",
+    "component-manifests",
+    "guard-system",
+    "proof-based-development",
+    "task-lifecycle",
+    "memory-system",
+    "verification",
+    "todo-management"
+  ]
+}

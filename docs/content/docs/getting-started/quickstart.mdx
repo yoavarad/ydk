@@ -1,0 +1,105 @@
+---
+title: Quickstart
+description: Initialize your first ODK project and understand what gets created
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Quickstart
+
+Every ODK project begins with `odk init`. This single command creates the directory structure that ODK uses to manage your entire development lifecycle -- from specifications through task management, verification, and knowledge capture. Understanding what gets created and why each piece exists will save you from confusion later, so this guide walks through initialization step by step with explanations at every turn.
+
+## Initializing a Project
+
+Start with a git repository. ODK requires git because it uses worktree isolation for parallel task execution, branch management for PRs, and diff analysis for checkpoint reviews.
+
+```bash
+mkdir my-project && cd my-project
+git init
+odk init --name "my-project" --remote local --stack python
+```
+
+The `--name` flag sets the project identifier used in task IDs, PR titles, and memory collections. The `--remote` flag tells ODK which repository backend to use for issue tracking -- `local` stores everything as files in `.odk/tasks/`, while `github` and `gitlab` use their respective issue trackers via the `gh` and `glab` CLIs. The `--stack` flag pre-configures verification plugins appropriate for your technology stack. For a Python project, this enables `lint-ruff`, `types-ty`, `tests-pytest`, `python-tdd-guard`, and `python-file-length` out of the box.
+
+## Understanding What Was Created
+
+After initialization, your project has a new `.odk/` directory. This is the nerve center of your ODK project -- everything ODK needs to track, verify, and remember lives here.
+
+```
+.odk/
+  config.yaml       # Project configuration (the single source of truth)
+  schemas/           # Component type schemas (13 built-in types)
+  components/        # Component manifest directories (empty at init)
+```
+
+**`config.yaml`** is the most important file. It controls every aspect of ODK's behavior: which repository backend to use, what verification plugins are enabled, what thresholds your specs must meet, how many agents can run in parallel, where your specs and ADRs live, and whether features like memory auto-bootstrapping are turned on. Every `odk` command reads this file to determine how to behave. You can inspect it at any time with `odk config show` and modify individual values with `odk config set`.
+
+**`schemas/`** contains 13 YAML files that define the structure of component manifests. These schemas are the vocabulary ODK uses to understand your system design. When you create a component manifest for an entity, route, error, event, or any other type, ODK validates it against the corresponding schema. The built-in types cover the most common patterns in software systems: `entity` for domain models, `route` for API endpoints, `error` for error responses, `event` for domain events, `contract` for service interfaces, `component` for UI elements, `page` for frontend pages, `req` for business requirements, `ext` for external dependencies, `hook` for lifecycle hooks, `nfr` for non-functional requirements, `crosscut` for cross-cutting concerns, and `test` for test specifications.
+
+**`components/`** starts empty. As you write specs and define the building blocks of your system, component manifests accumulate here in a type-based directory structure. An entity component for an Order model would live at `.odk/components/entity/orders/Order.yaml`. This path is deterministic -- ODK can resolve any component ID to a file path and back, which is what makes the deterministic linker possible.
+
+## Verifying Your Setup
+
+After initialization, run two commands to confirm everything is working:
+
+```bash
+odk doctor
+```
+
+The doctor validates your environment -- Python version, git availability, linting tools, and optional dependencies. Fix anything it reports as missing before proceeding.
+
+```bash
+odk doctor
+```
+
+The doctor command validates your environment -- Python version, git availability, linting tools, and optional dependencies. It also detects your current project stage and recommends what to do next. ODK tracks six stages internally:
+
+| Stage | What it means | What to do next |
+|-------|--------------|-----------------|
+| `empty` | No `.odk/config.yaml` exists | Run `odk init` |
+| `initialized` | Config exists but no specs written | Write specs in `docs/specs/` |
+| `specified` | Specs exist but no tasks created | Create epics, stories, and tasks |
+| `tasked` | Tasks exist but none started | Run `odk task start` on a ready task |
+| `in-progress` | Tasks are being worked on | Continue implementation |
+| `reviewing` | Tasks are in review | Review and merge PRs |
+
+After a fresh `odk init`, you will be in the `initialized` stage with a recommendation to write your first spec.
+
+## Configuring Your Project
+
+The default configuration works for most projects, but you will likely want to customize a few settings. ODK provides a CLI interface for configuration that validates every change against the Pydantic model, so you cannot set an invalid value:
+
+```bash
+# View the full configuration
+odk config show
+
+# Read a specific value using dot notation
+odk config get spec_check.thresholds.completeness
+
+# Change a value
+odk config set aws.region eu-west-1
+
+# Validate the current config
+odk config validate
+```
+
+The most common early customizations are setting your AWS region and profile for AI features, adjusting spec check thresholds if the defaults are too strict or lenient for your project, and changing the execution settings to match your team's parallel capacity.
+
+<Callout type="info">
+Configuration changes are validated in real-time. If you try to set an invalid value -- like a non-existent field or a wrong type -- ODK rolls back the change and reports the validation error. You cannot corrupt your config through the CLI.
+</Callout>
+
+## Technology Stacks
+
+When you pass `--stack` to `odk init`, ODK pre-configures verification plugins and settings appropriate for that stack. The available stacks are:
+
+- **`python-fastapi`** -- Enables FastAPI-specific plugins (adapter isolation, core purity, route delegation, no-mock rules) alongside the standard Python checks
+- **`python-cli`** -- Enables CLI-specific plugins (error handling, output format) with standard Python checks
+- **`nextjs-fsd`** -- Enables Next.js and Feature-Sliced Design plugins (FSD imports, server/client boundary, page purity, module density)
+- **`terraform`** -- Enables Terraform plugins (security, tagging, format, dangling resources)
+
+You can always customize which plugins are enabled after initialization by editing the `verification.enabled` list in your config.
+
+## Next Steps
+
+Your project is initialized and configured. The next step is to write your [first spec](/docs/getting-started/first-spec) -- a narrative document combined with machine-readable component manifests that describe what you are building and why.

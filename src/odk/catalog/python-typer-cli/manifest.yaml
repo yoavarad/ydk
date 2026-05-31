@@ -1,0 +1,41 @@
+name: python-typer-cli
+version: "1.0.0"
+description: "Python CLI tool backed by a REST API — Typer, httpx, rich output formatting"
+tags: [ignition-pack, python, cli, typer, httpx, rest-api, rich]
+
+stack:
+  language: python
+  type: cli
+  frameworks: [typer, httpx, rich]
+
+variables:
+  - id: auth_strategy
+    prompt: "Authentication strategy for the REST API?"
+    type: choice
+    choices: [api_key, oauth_token, none]
+    default: none
+
+generators:
+  - id: resolve-commands
+    description: "Resolve cli-intent + openapi into full cli-commands"
+    script: generators/resolve_commands.py
+
+  - id: cli-client
+    description: "Generate the httpx-based HTTP client with auth and error handling"
+    script: generators/cli_client.py
+
+  - id: cli-main
+    description: "Generate the Typer app entry point with group registration"
+    script: generators/cli_main.py
+
+  - id: cli-commands
+    description: "Generate per-group command files with Typer commands"
+    script: generators/cli_commands.py
+
+  - id: cli-tests
+    description: "Generate test files using CliRunner and respx for HTTP mocking"
+    script: generators/cli_tests.py
+
+  - id: cli-pyproject
+    description: "Generate pyproject.toml with all dependencies"
+    script: generators/cli_pyproject.py

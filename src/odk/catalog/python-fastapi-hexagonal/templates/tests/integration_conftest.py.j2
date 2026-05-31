@@ -1,0 +1,141 @@
+{% if use_postgres %}
+"""Integration test conftest — real PostgreSQL via asyncpg, session-scoped engine."""
+from __future__ import annotations
+
+import os
+from collections.abc import AsyncGenerator
+
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+from {{ app_module }} import create_app
+from app.core.models.base import Base
+
+DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/test_db",
+)
+
+
+@pytest_asyncio.fixture(scope="session")
+async def engine():
+    """Create all tables once for the test session, drop on teardown."""
+    _engine = create_async_engine(DATABASE_URL, echo=False)
+    async with _engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield _engine
+    async with _engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await _engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def session(engine) -> AsyncGenerator[AsyncSession, None]:
+    """Provide a transactional test session — rolls back after each test."""
+    async with AsyncSession(engine, expire_on_commit=False) as _session:
+        async with _session.begin():
+            yield _session
+            await _session.rollback()
+
+
+@pytest_asyncio.fixture
+async def client(session: AsyncSession):
+    """AsyncClient with get_db overridden to the test session."""
+    from httpx import AsyncClient, ASGITransport
+    from app.database import get_db
+
+    app = create_app()
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
+{% else %}
+"""Integration test conftest — SQLite in-memory database with StaticPool."""
+from __future__ import annotations
+
+from collections.abc import Generator
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+# Monkey-patch PostgreSQL-only types → SQLite-compatible equivalents
+try:
+    from sqlalchemy.dialects.postgresql.json import JSONB  # noqa: F401
+    from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+    SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: "JSON"
+except Exception:
+    pass
+try:
+    from sqlalchemy.dialects.postgresql.array import ARRAY  # noqa: F401
+    from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+    SQLiteTypeCompiler.visit_ARRAY = lambda self, type_, **kw: "JSON"
+except Exception:
+    pass
+
+from app.core.models.base import Base
+from app.database import get_db_sync
+from {{ app_module }} import create_app
+
+SQLALCHEMY_DATABASE_URL = "sqlite://"
+
+_engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _create_tables() -> Generator[None, None, None]:
+    """Create all tables once per test session."""
+    Base.metadata.create_all(bind=_engine)
+    yield
+    Base.metadata.drop_all(bind=_engine)
+
+
+@pytest.fixture(autouse=True)
+def _clear_lru_cache() -> Generator[None, None, None]:
+    """Clear all lru_cache'd callables before each test to prevent state leakage."""
+    yield
+    try:
+        from app.config import get_settings
+        get_settings.cache_clear()
+    except Exception:
+        pass
+
+
+@pytest.fixture
+def db_session() -> Generator[Session, None, None]:
+    """Provide a transactional test database session (SQLAlchemy 2.0-compatible)."""
+    with _engine.connect() as connection:
+        transaction = connection.begin()
+        # Use the connection-bound session to share the same in-memory database
+        session = Session(bind=connection, autocommit=False, autoflush=False)
+        try:
+            yield session
+        finally:
+            session.close()
+            transaction.rollback()
+
+
+@pytest.fixture
+def client(db_session: Session) -> Generator[TestClient, None, None]:
+    """TestClient with get_db_sync overridden to use the test SQLite session."""
+    app = create_app()
+
+    def override_get_db_sync() -> Generator[Session, None, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db_sync] = override_get_db_sync
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+{% endif %}

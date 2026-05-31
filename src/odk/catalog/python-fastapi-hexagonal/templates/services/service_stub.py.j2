@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+{% for imp in imports %}
+{{ imp }}
+{% endfor %}
+{% if needs_list_alias %}
+# Alias prevents ty from resolving ``list`` as the method on this class.
+_List = list
+{% endif %}
+{% if error_classes %}
+
+{% for error_class in error_classes %}
+
+class {{ error_class }}(Exception):
+    pass
+{% endfor %}
+{% endif %}
+
+
+class {{ service_name }}:
+    """{{ description }}"""
+
+    def __init__(
+        self,
+        {% for dep in dependencies %}
+        {{ dep.param_name }}: {{ dep.type }},
+        {% endfor %}
+    ) -> None:
+        {% if dependencies %}
+        {% for dep in dependencies %}
+        self._{{ dep.attr_name }} = {{ dep.param_name }}
+        {% endfor %}
+        {% else %}
+        pass
+        {% endif %}
+{% for method in methods %}
+
+    {% if method.crud_body %}
+    {{ "async " if method.is_async else "" }}def {{ method.name }}(
+        self,
+        {% for param in method.params %}
+        {{ param.name }}: {{ param.type }}{% if param.default is not none %} = {{ param.default }}{% endif %},
+        {% endfor %}
+    ) -> {{ method.return_type }}:
+        {% for line in method.crud_body %}
+        {{ line }}
+        {% endfor %}
+    {% else %}
+    {% for todo_line in method.todo_lines %}
+    {{ todo_line }}
+    {% endfor %}
+    {{ "async " if method.is_async else "" }}def {{ method.name }}(
+        self,
+        {% for param in method.params %}
+        {{ param.name }}: {{ param.type }}{% if param.default is not none %} = {{ param.default }}{% endif %},
+        {% endfor %}
+    ) -> {{ method.return_type }}:
+        raise NotImplementedError
+    {% endif %}
+{% endfor %}

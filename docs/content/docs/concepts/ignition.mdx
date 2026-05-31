@@ -1,0 +1,97 @@
+---
+title: Ignition
+description: One-command skeleton generation from component manifests
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+# Ignition
+
+Ignition is the process of generating a runnable project skeleton from an installed ignition pack and your component manifests. It bridges the gap between design (Stage 01) and implementation (Stage 03) by producing all the boilerplate code automatically, leaving only business logic as TODO placeholders for agents to implement.
+
+## Why Ignition Exists
+
+Before ignition, Stage 03 agents spent significant time writing boilerplate -- data models, repository interfaces, route stubs, test scaffolding, migration files. This was repetitive work that followed patterns directly derivable from component manifests. Ignition eliminates this by running generators that read your manifests and produce the structural code, letting agents focus on the parts that require actual thinking: business logic, validation rules, and service orchestration.
+
+## How It Works
+
+```
+Component Manifests ──> Ignition Pack Generators ──> Runnable Skeleton + TODOs
+(.odk/components/)      (subprocess per type)         (src/, tests/, migrations/)
+```
+
+1. **Read inputs**: Ignition reads the installed pack and all component manifests in `.odk/components/`
+2. **Run generators**: Each component type (entity, route, error, etc.) has a generator that runs as a subprocess, as subprocesses (env vars in, JSON stdout out)
+3. **Track hashes**: Every generated file's content hash is stored in `.odk/ignition-hashes.json` for idempotency -- re-running ignition skips unchanged files
+4. **Register TODOs**: Every `NotImplementedError` placeholder is registered as a tracked TODO with an `ODK-TODO-NNN` ID
+5. **Post-generation checks**: Syntax validation, circular import detection, and `ruff format` run automatically
+
+## TODO Tracking
+
+TODOs are the connective tissue between ignition and execution. Each `NotImplementedError` in generated code gets a unique `ODK-TODO-NNN` identifier, registered in `.odk/todos.yaml`. During Stage 02, TODOs are assigned to tasks via `odk todo assign`. During Stage 03, `odk task done` verifies that all assigned TODOs have been resolved -- no `NotImplementedError` remains for any TODO linked to that task.
+
+```
+Ignition registers TODOs ──> Stage 02 assigns TODOs to tasks ──> Stage 03 resolves TODOs
+(ODK-TODO-001..N)             (odk todo assign)                    (odk task done checks)
+```
+
+## Idempotency
+
+Ignition is designed to be re-run safely. The hash store tracks content hashes for every generated file. On subsequent runs:
+
+- **Unchanged components**: Generated files are skipped (hash matches)
+- **Changed components**: Only affected files are regenerated
+- **Force mode**: `odk ignite --force` ignores hashes and regenerates everything
+
+<Callout type="info">
+Ignition does not replace scaffolding entirely. Scaffolding (`odk scaffold apply`) still exists for ad-hoc code generation during Stage 03. Ignition is the bulk one-time generation that creates the project skeleton; scaffolding handles cases where you add a new component later and need to generate code for just that component.
+</Callout>
+
+## The New SDLC Flow
+
+With ignition, the development lifecycle becomes:
+
+```
+Stage 01: Brainstorm --> narratives + components (validated against installed schemas)
+Stage 01.5: Ignite  --> runnable skeleton with tracked TODOs
+Stage 02: Decompose --> tasks map to TODO IDs (business logic only)
+Stage 03: Execute   --> implement TODOs with TDD, verify, PR with proof
+Stage 04: Learn     --> extract, record, retrospect
+```
+
+The key difference is that Stage 02 tasks are now scoped to business logic only. Agents no longer need to create data models, route stubs, or test scaffolding -- that is all generated. Tasks are smaller, more focused, and less error-prone.
+
+## Beb-Quality Output
+
+Ignition packs produce production-grade code, not minimal stubs. The generated skeleton includes:
+
+- **Routes with dependency injection** -- FastAPI routes use `Depends()` for services and repositories, not inline logic
+- **Pydantic schemas** -- Request/response models with validation, separate from ORM models
+- **Full CRUD services** -- Create, read, update, delete, list operations with proper error handling
+- **Relationship handling** -- Foreign keys, back-references, and nested serialization for related entities
+- **Migrations** -- Alembic migration files generated from the data model
+
+The goal is that the generated code looks like an experienced developer wrote it by hand. Business logic placeholders (`NotImplementedError`) are the only parts that need implementation.
+
+## Runtime Dependencies
+
+Ignition automatically installs runtime dependencies declared by the pack. When `odk ignite` runs, it reads the pack's `dependencies` section and runs the appropriate package manager (`pip install`, `npm install`, etc.) to ensure the generated code can execute immediately. You should never need to manually install packages after ignition.
+
+## App Must Start
+
+A key invariant: after ignition completes, the application must start successfully. This means:
+
+- All imports resolve (no missing modules)
+- All dependency injection wires up (no unresolved dependencies)
+- The server boots and responds to health checks
+- Tests can be discovered and collected (even if they fail due to `NotImplementedError`)
+
+If the app does not start after ignition, that is a bug in the pack, not in your manifests.
+
+## No GENERATED Headers
+
+Unlike earlier versions of ODK, ignition packs no longer add `# GENERATED` headers to files. All generated files are developer-owned from the start. This simplifies the ownership model -- there is no "generated vs developer-owned" distinction to track. Re-running ignition uses content hashes (not headers) to determine which files to update.
+
+## Fullstack Ignition
+
+For projects spanning multiple layers (backend + frontend + infrastructure), ODK supports phased ignition where multiple packs run in sequence with artifact passing between phases. See [Fullstack Ignition](/docs/concepts/fullstack-ignition) for details.

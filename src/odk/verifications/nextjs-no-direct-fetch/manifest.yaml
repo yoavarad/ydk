@@ -1,0 +1,6 @@
+name: nextjs-no-direct-fetch
+description: Enforce no raw fetch/XHR/axios calls outside src/shared/api/
+trigger: git:pre-push
+parallel: true
+timeout: 30
+requires: []

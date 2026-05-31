@@ -1,0 +1,39 @@
+"""Service dependency providers for this domain group.
+
+NOTE: Do NOT add 'from __future__ import annotations' to this file.
+FastAPI resolves Annotated[X, Depends(Y)] at import time; lazy-string annotations
+(PEP 563) prevent FastAPI from seeing the Depends() object inside Annotated.
+"""
+from typing import Annotated
+
+from fastapi import Depends
+
+{% for uc in use_cases %}
+from app.core.services.{{ uc.snake_svc }} import {{ uc.svc_class }}
+{% endfor %}
+{% if repo_dep_imports %}
+
+from .adapters import (
+{% for dep_type in repo_dep_imports %}
+    {{ dep_type }},
+{% endfor %}
+)
+{% endif %}
+
+{% if use_cases %}
+{% for uc in use_cases %}
+def get_{{ uc.snake_svc }}(
+    {% for dep in uc.deps %}
+    {{ dep.param }}: {{ dep.dep_type }},
+    {% endfor %}
+) -> {{ uc.svc_class }}:
+    return {{ uc.svc_class }}(
+        {% for dep in uc.deps %}
+        {{ dep.kwarg }}={{ dep.param }},
+        {% endfor %}
+    )
+
+{{ uc.svc_class }}Dep = Annotated[{{ uc.svc_class }}, Depends(get_{{ uc.snake_svc }})]
+
+{% endfor %}
+{% endif %}
