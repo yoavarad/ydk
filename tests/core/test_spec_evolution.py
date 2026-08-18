@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 import yaml
 
-from odk.core.spec_evolution import SpecEvolutionEngine
-from odk.models.change import ChangeMode, ChangeStatus
+from ydk.core.spec_evolution import SpecEvolutionEngine
+from ydk.models.change import ChangeMode, ChangeStatus
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from odk.models.pm import Dependency, DependencyType, TaskCreate
+from ydk.models.pm import Dependency, DependencyType, TaskCreate
 
 if TYPE_CHECKING:
     from pathlib import Path
-from odk.repositories.local.tasks import LocalTaskRepository
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 
 def _make_task(**overrides: object) -> TaskCreate:

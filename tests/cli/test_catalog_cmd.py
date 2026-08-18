@@ -1,13 +1,13 @@
-"""Tests for the odk catalog CLI commands."""
+"""Tests for the ydk catalog CLI commands."""
 
 from pathlib import Path
 
 import yaml
 from typer.testing import CliRunner
 
-import odk.cli  # noqa: F401  # Register all commands
-from odk.cli.main import app
-from odk.core.catalog import LocalCatalogBackend
+import ydk.cli  # noqa: F401  # Register all commands
+from ydk.cli.main import app
+from ydk.core.catalog import LocalCatalogBackend
 
 runner = CliRunner()
 
@@ -30,13 +30,13 @@ def _create_catalog_item(
 
 
 class TestCatalogSearch:
-    """Test odk catalog search."""
+    """Test ydk catalog search."""
 
     def test_search_found(self, tmp_path: Path, monkeypatch: object) -> None:
         catalog_dir = tmp_path / "catalog"
         _create_catalog_item(catalog_dir, "python-quality", tags=["verification", "python"])
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
 
@@ -48,7 +48,7 @@ class TestCatalogSearch:
         catalog_dir = tmp_path / "catalog"
         catalog_dir.mkdir()
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
 
@@ -61,7 +61,7 @@ class TestCatalogSearch:
         _create_catalog_item(catalog_dir, "python-quality", tags=["verification", "python"])
         _create_catalog_item(catalog_dir, "java-quality", tags=["verification", "java"])
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
 
@@ -74,7 +74,7 @@ class TestCatalogSearch:
         catalog_dir = tmp_path / "catalog"
         _create_catalog_item(catalog_dir, "python-quality", tags=["verification"])
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
 
@@ -84,7 +84,7 @@ class TestCatalogSearch:
 
 
 class TestCatalogInstall:
-    """Test odk catalog install."""
+    """Test ydk catalog install."""
 
     def test_install_success(self, tmp_path: Path, monkeypatch: object) -> None:
         catalog_dir = tmp_path / "catalog"
@@ -92,7 +92,7 @@ class TestCatalogInstall:
         project_dir.mkdir()
         _create_catalog_item(catalog_dir, "python-quality", tags=["verification"])
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
         monkeypatch.setattr(cmd, "_project_root", lambda: project_dir)  # type: ignore[attr-defined]
@@ -105,7 +105,7 @@ class TestCatalogInstall:
         catalog_dir = tmp_path / "catalog"
         catalog_dir.mkdir()
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
         monkeypatch.setattr(cmd, "_project_root", lambda: tmp_path)  # type: ignore[attr-defined]
@@ -116,10 +116,10 @@ class TestCatalogInstall:
 
 
 class TestCatalogList:
-    """Test odk catalog list."""
+    """Test ydk catalog list."""
 
     def test_list_empty(self, tmp_path: Path, monkeypatch: object) -> None:
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: tmp_path)  # type: ignore[attr-defined]
         monkeypatch.setattr(cmd, "_project_root", lambda: tmp_path)  # type: ignore[attr-defined]
@@ -139,7 +139,7 @@ class TestCatalogList:
         backend.install("item-a", None, project_dir)
         backend.install("item-b", None, project_dir)
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
         monkeypatch.setattr(cmd, "_project_root", lambda: project_dir)  # type: ignore[attr-defined]
@@ -151,13 +151,13 @@ class TestCatalogList:
 
 
 class TestCatalogInfo:
-    """Test odk catalog info."""
+    """Test ydk catalog info."""
 
     def test_info_found(self, tmp_path: Path, monkeypatch: object) -> None:
         catalog_dir = tmp_path / "catalog"
         _create_catalog_item(catalog_dir, "my-item", tags=["verification"], description="A great tool")
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
 
@@ -169,7 +169,7 @@ class TestCatalogInfo:
         catalog_dir = tmp_path / "catalog"
         catalog_dir.mkdir()
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
 
@@ -178,7 +178,7 @@ class TestCatalogInfo:
 
 
 class TestCatalogPublish:
-    """Test odk catalog publish."""
+    """Test ydk catalog publish."""
 
     def test_publish_success(self, tmp_path: Path, monkeypatch: object) -> None:
         catalog_dir = tmp_path / "catalog"
@@ -187,7 +187,7 @@ class TestCatalogPublish:
         (source / "catalog.yaml").write_text(yaml.dump({"name": "my-item", "version": "1.0.0", "tags": []}))
         (source / "README.md").write_text("# My Item\n")
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
 
@@ -199,7 +199,7 @@ class TestCatalogPublish:
         source = tmp_path / "source" / "bad"
         source.mkdir(parents=True)
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: tmp_path / "catalog")  # type: ignore[attr-defined]
 
@@ -208,7 +208,7 @@ class TestCatalogPublish:
 
 
 class TestCatalogUninstall:
-    """Test odk catalog uninstall."""
+    """Test ydk catalog uninstall."""
 
     def test_uninstall_success(self, tmp_path: Path, monkeypatch: object) -> None:
         catalog_dir = tmp_path / "catalog"
@@ -219,7 +219,7 @@ class TestCatalogUninstall:
         backend = LocalCatalogBackend(catalog_dir=catalog_dir)
         backend.install("removable", None, project_dir)
 
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: catalog_dir)  # type: ignore[attr-defined]
         monkeypatch.setattr(cmd, "_project_root", lambda: project_dir)  # type: ignore[attr-defined]
@@ -229,7 +229,7 @@ class TestCatalogUninstall:
         assert "Uninstalled" in result.output
 
     def test_uninstall_not_installed(self, tmp_path: Path, monkeypatch: object) -> None:
-        import odk.cli.catalog_cmd as cmd
+        import ydk.cli.catalog_cmd as cmd
 
         monkeypatch.setattr(cmd, "_default_catalog_dir", lambda: tmp_path)  # type: ignore[attr-defined]
         monkeypatch.setattr(cmd, "_project_root", lambda: tmp_path)  # type: ignore[attr-defined]

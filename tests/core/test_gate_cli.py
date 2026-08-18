@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from odk.cli.task_cmd import task_app
-from odk.models.gate import Gate, GateStatus, GateType
-from odk.models.pm import TaskDetail
+from ydk.cli.task_cmd import task_app
+from ydk.models.gate import Gate, GateStatus, GateType
+from ydk.models.pm import TaskDetail
 
 runner = CliRunner()
 
@@ -18,7 +18,7 @@ def _task_with_gates(gates=None):
 
 
 class TestAddGateCommand:
-    @patch("odk.cli.task_cmd._get_repo")
+    @patch("ydk.cli.task_cmd._get_repo")
     def test_add_gate_success(self, mock_get_repo) -> None:
         repo = MagicMock()
         repo.get_task.return_value = _task_with_gates()
@@ -31,7 +31,7 @@ class TestAddGateCommand:
 
 
 class TestCheckGatesCommand:
-    @patch("odk.cli.task_cmd._get_repo")
+    @patch("ydk.cli.task_cmd._get_repo")
     def test_check_gates_no_gates(self, mock_get_repo) -> None:
         repo = MagicMock()
         repo.get_task.return_value = _task_with_gates([])
@@ -40,14 +40,14 @@ class TestCheckGatesCommand:
         assert result.exit_code == 0
         assert "No gates" in result.stdout
 
-    @patch("odk.cli.task_cmd._get_repo")
+    @patch("ydk.cli.task_cmd._get_repo")
     def test_check_gates_all_resolved(self, mock_get_repo) -> None:
         repo = MagicMock()
         repo.get_task.return_value = _task_with_gates(
             [Gate(id="G-001", type=GateType.HUMAN, description="Approved", status=GateStatus.RESOLVED)]
         )
         mock_get_repo.return_value = repo
-        with patch("odk.core.gate_checker.GateChecker") as mock_cls:
+        with patch("ydk.core.gate_checker.GateChecker") as mock_cls:
             mock_cls.return_value.check_gate.return_value = GateStatus.RESOLVED
             result = runner.invoke(task_app, ["check-gates", "T-001"])
             assert result.exit_code == 0
@@ -55,7 +55,7 @@ class TestCheckGatesCommand:
 
 
 class TestResolveGateCommand:
-    @patch("odk.cli.task_cmd._get_repo")
+    @patch("ydk.cli.task_cmd._get_repo")
     def test_resolve_gate_success(self, mock_get_repo) -> None:
         repo = MagicMock()
         repo.get_task.return_value = _task_with_gates([Gate(id="G-001", type=GateType.HUMAN, description="Approval")])
@@ -64,7 +64,7 @@ class TestResolveGateCommand:
         assert result.exit_code == 0
         assert "Resolved gate G-001" in result.stdout
 
-    @patch("odk.cli.task_cmd._get_repo")
+    @patch("ydk.cli.task_cmd._get_repo")
     def test_resolve_gate_not_found(self, mock_get_repo) -> None:
         repo = MagicMock()
         repo.get_task.return_value = _task_with_gates([Gate(id="G-001", type=GateType.HUMAN, description="Approval")])

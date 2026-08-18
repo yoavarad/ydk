@@ -7,13 +7,13 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Adding a CLI Command
 
-ODK's CLI is built with Typer, which provides automatic help generation, type validation for parameters, and a clean subcommand structure. Adding a new command follows the same pattern used by all existing commands: write the core logic in the core layer, write the CLI wrapper in the CLI layer, and register the command group in the main app.
+YDK's CLI is built with Typer, which provides automatic help generation, type validation for parameters, and a clean subcommand structure. Adding a new command follows the same pattern used by all existing commands: write the core logic in the core layer, write the CLI wrapper in the CLI layer, and register the command group in the main app.
 
 This separation matters because core logic should be testable without a CLI context. If your command's business logic lives in the CLI function itself, you can only test it by spawning a subprocess and parsing stdout. If it lives in a core module, you can test it by calling the function directly with mock dependencies.
 
 ## Step 1: Write the Core Logic
 
-Create a module in `src/odk/core/` that contains the business logic:
+Create a module in `src/ydk/core/` that contains the business logic:
 
 ```python
 """Core logic for the new feature."""
@@ -58,7 +58,7 @@ class MyFeature:
 
 ## Step 2: Write the CLI Command
 
-Create a command module in `src/odk/cli/`:
+Create a command module in `src/ydk/cli/`:
 
 ```python
 """CLI commands for my-feature."""
@@ -67,8 +67,8 @@ from pathlib import Path
 
 import typer
 
-from odk.core.my_feature import run_my_feature
-from odk.output.console import console
+from ydk.core.my_feature import run_my_feature
+from ydk.output.console import console
 
 app = typer.Typer(help="My feature description")
 
@@ -89,10 +89,10 @@ The CLI layer handles three things: argument parsing (via Typer decorators), cal
 
 ## Step 3: Register the Command Group
 
-Add your command group to `src/odk/cli/__init__.py`:
+Add your command group to `src/ydk/cli/__init__.py`:
 
 ```python
-from odk.cli.my_feature_cmd import app as my_feature_app
+from ydk.cli.my_feature_cmd import app as my_feature_app
 app.add_typer(my_feature_app, name="my-feature")
 ```
 
@@ -101,7 +101,7 @@ app.add_typer(my_feature_app, name="my-feature")
 Write tests for the core logic in `tests/core/test_my_feature.py`:
 
 ```python
-from odk.core.my_feature import run_my_feature
+from ydk.core.my_feature import run_my_feature
 
 def test_my_feature_success(tmp_path):
     result = run_my_feature(tmp_path, option="test")
@@ -113,10 +113,10 @@ The core logic tests do not need a CLI context, a real project directory, or sub
 
 ## Step 5: Add Output Formatting
 
-ODK supports three output formats: `human` (rich console), `json`, and `yaml`. If your command should support all three, use the formatter pattern from `src/odk/output/formatters.py`:
+YDK supports three output formats: `human` (rich console), `json`, and `yaml`. If your command should support all three, use the formatter pattern from `src/ydk/output/formatters.py`:
 
 ```python
-from odk.output.formatters import format_output
+from ydk.output.formatters import format_output
 
 @app.command()
 def run(

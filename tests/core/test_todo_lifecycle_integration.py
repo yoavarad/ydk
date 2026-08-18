@@ -10,17 +10,17 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.events import EventBus
-from odk.core.task_lifecycle import TaskLifecycle
-from odk.core.todo_manager import TodoManager
-from odk.models.pm import TaskDetail
-from odk.models.todo import TodoStatus
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.events import EventBus
+from ydk.core.task_lifecycle import TaskLifecycle
+from ydk.core.todo_manager import TodoManager
+from ydk.models.pm import TaskDetail
+from ydk.models.todo import TodoStatus
+from ydk.models.verification import CheckResult, VerificationReport
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    (tmp_path / ".odk").mkdir()
+    (tmp_path / ".ydk").mkdir()
     return tmp_path
 
 
@@ -50,7 +50,7 @@ def lifecycle(project: Path, passing_report: VerificationReport) -> TaskLifecycl
 
     verifier = MagicMock()
     verifier.run_all = AsyncMock(return_value=passing_report)
-    verifier.save_proof.return_value = project / ".odk" / "proofs" / "T-001" / "proof.json"
+    verifier.save_proof.return_value = project / ".ydk" / "proofs" / "T-001" / "proof.json"
 
     worktree = MagicMock()
     worktree.get_worktree_path.return_value = None
@@ -67,7 +67,7 @@ def lifecycle(project: Path, passing_report: VerificationReport) -> TaskLifecycl
     )
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_done_auto_resolves_todos(mock_subprocess: MagicMock, lifecycle: TaskLifecycle, project: Path) -> None:
     """When task done runs, assigned TODOs whose NotImplementedError is gone get marked done."""
     mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="", stderr="")
@@ -91,7 +91,7 @@ def test_done_auto_resolves_todos(mock_subprocess: MagicMock, lifecycle: TaskLif
     assert item.status == TodoStatus.DONE
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_done_warns_on_unresolved_todos(mock_subprocess: MagicMock, lifecycle: TaskLifecycle, project: Path) -> None:
     """When task done runs, TODOs still containing NotImplementedError produce warnings."""
     mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="", stderr="")
@@ -101,7 +101,7 @@ def test_done_warns_on_unresolved_todos(mock_subprocess: MagicMock, lifecycle: T
     # Source file still has NotImplementedError
     src = project / "app" / "service.py"
     src.parent.mkdir(parents=True)
-    src.write_text("def create(self):\n    raise NotImplementedError  # ODK-TODO-001: Impl\n")
+    src.write_text("def create(self):\n    raise NotImplementedError  # YDK-TODO-001: Impl\n")
 
     todo_id = todo_mgr.register(file="app/service.py", line=2, method="Service.create")
     todo_mgr.assign(todo_id, "T-001")

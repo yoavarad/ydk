@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # CI/CD Pipeline
 
-ODK uses three GitHub Actions workflows that enforce the same quality standards in CI that the local verification plugins enforce on the developer's machine. The philosophy is simple: if code passes local verification, it should pass CI, and vice versa. The CI pipeline is not a separate quality gate -- it is the same gate, running in a controlled environment.
+YDK uses three GitHub Actions workflows that enforce the same quality standards in CI that the local verification plugins enforce on the developer's machine. The philosophy is simple: if code passes local verification, it should pass CI, and vice versa. The CI pipeline is not a separate quality gate -- it is the same gate, running in a controlled environment.
 
 ## ci.yml: PR and Push Validation
 
@@ -17,7 +17,7 @@ This workflow runs on every pull request and every push to main. It has four job
 
 **Commit message validation** (PRs only) runs `cz check --rev-range origin/main...HEAD` to validate that every commit follows the conventional commit format. Types are `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `perf`, and `release`. This validation catches malformed commits before they are merged, preventing versioning confusion.
 
-**Lint** installs all dependencies with `uv sync --locked --all-extras --dev` and runs `ruff check src/ tests/` followed by `ty check src/ --python-version 3.13`. These are the same checks that ODK's Layer 1 verification plugins run locally.
+**Lint** installs all dependencies with `uv sync --locked --all-extras --dev` and runs `ruff check src/ tests/` followed by `ty check src/ --python-version 3.13`. These are the same checks that YDK's Layer 1 verification plugins run locally.
 
 **Test** installs all dependencies and runs `pytest tests/ -q --tb=short -x --ignore=tests/fixtures`. The `-x` flag stops on first failure for fast feedback. The `--ignore=tests/fixtures` flag excludes test fixture files that are not actual test files.
 
@@ -44,7 +44,7 @@ This produces a clean release history where each release links to the commits th
 
 ## Local Git Hooks
 
-ODK also provides git hooks in `.githooks/` that run the same checks locally before they reach CI:
+YDK also provides git hooks in `.githooks/` that run the same checks locally before they reach CI:
 
 | Hook | What it does |
 |------|-------------|
@@ -52,4 +52,4 @@ ODK also provides git hooks in `.githooks/` that run the same checks locally bef
 | `pre-commit` | Runs `ruff format` + `ruff check` to catch formatting and lint issues |
 | `pre-push` | Validates branch name pattern and runs `pytest` |
 
-Configure the hooks with `git config core.hooksPath .githooks`. The pre-push hook respects ODK's `.verified` flag -- if `odk task done` ran verification within the last 5 minutes, the pre-push hook skips re-running checks to avoid double verification.
+Configure the hooks with `git config core.hooksPath .githooks`. The pre-push hook respects YDK's `.verified` flag -- if `ydk task done` ran verification within the last 5 minutes, the pre-push hook skips re-running checks to avoid double verification.

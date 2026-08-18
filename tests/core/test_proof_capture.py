@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from odk.core.proof_capture import ProofCapture
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.proof_capture import ProofCapture
+from ydk.models.verification import CheckResult, VerificationReport
 
 
 @pytest.fixture
 def proof_dir(tmp_path: Path) -> Path:
-    d = tmp_path / ".odk" / "proofs" / "T-001"
+    d = tmp_path / ".ydk" / "proofs" / "T-001"
     return d
 
 

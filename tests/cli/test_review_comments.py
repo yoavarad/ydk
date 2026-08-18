@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from odk.cli.task_cmd import _fetch_review_comments, task_app
+from ydk.cli.task_cmd import _fetch_review_comments, task_app
 
 runner = CliRunner()
 
@@ -116,7 +116,7 @@ class TestFetchReviewComments:
 
 class TestReviewCommentsCommand:
     def test_no_comments_output(self) -> None:
-        with patch("odk.cli.task_cmd._fetch_review_comments", return_value=[]):
+        with patch("ydk.cli.task_cmd._fetch_review_comments", return_value=[]):
             result = runner.invoke(task_app, ["review-comments", "T-999"])
         assert result.exit_code == 0
         assert "No review comments found" in result.output
@@ -126,7 +126,7 @@ class TestReviewCommentsCommand:
             {"path": "src/config.py", "line": 12, "body": "Use SecretStr", "author": "oz", "resolved": False},
             {"path": "src/config.py", "line": 45, "body": "Add docs", "author": "oz", "resolved": False},
         ]
-        with patch("odk.cli.task_cmd._fetch_review_comments", return_value=mock_comments):
+        with patch("ydk.cli.task_cmd._fetch_review_comments", return_value=mock_comments):
             result = runner.invoke(task_app, ["review-comments", "T-001"])
         assert result.exit_code == 0
         assert "2 unresolved" in result.output
@@ -138,7 +138,7 @@ class TestReviewCommentsCommand:
             {"path": "src/a.py", "line": 1, "body": "Fix", "author": "oz", "resolved": True},
             {"path": "src/b.py", "line": 2, "body": "Fix too", "author": "oz", "resolved": False},
         ]
-        with patch("odk.cli.task_cmd._fetch_review_comments", return_value=mock_comments):
+        with patch("ydk.cli.task_cmd._fetch_review_comments", return_value=mock_comments):
             result = runner.invoke(task_app, ["review-comments", "T-001"])
         assert "1 unresolved" in result.output
         assert "1 resolved" in result.output

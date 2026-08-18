@@ -4,8 +4,8 @@ Only blocking types (blocks, conditional-blocks, waits-for) create execution edg
 Non-blocking types (validates, caused-by, discovered-from, supersedes, related) are metadata.
 """
 
-from odk.core.task_validator import validate_dag
-from odk.models.task import DependencyType, Task, TaskDependency
+from ydk.core.task_validator import validate_dag
+from ydk.models.task import DependencyType, Task, TaskDependency
 
 
 class TestDagBlockingTypes:

@@ -1,23 +1,23 @@
-"""Tests for odk.core.config — config loading, saving, and manipulation."""
+"""Tests for ydk.core.config — config loading, saving, and manipulation."""
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
-from odk.core.config import (
+from ydk.core.config import (
     DEFAULT_CONFIG,
     get_config_value,
     init_config,
     load_config,
     set_config_value,
 )
-from odk.models.config import OdkConfig
+from ydk.models.config import YdkConfig
 
 
 class TestLoadConfig:
     def test_returns_defaults_when_file_missing(self, tmp_path) -> None:
         cfg = load_config(tmp_path / "nonexistent" / "config.yaml")
-        assert isinstance(cfg, OdkConfig)
+        assert isinstance(cfg, YdkConfig)
         assert cfg.project.name == "my-project"
 
     def test_parses_valid_yaml(self, tmp_path) -> None:
@@ -37,7 +37,7 @@ class TestLoadConfig:
 
 class TestInitConfig:
     def test_creates_file_with_defaults(self, tmp_path) -> None:
-        config_path = tmp_path / ".odk" / "config.yaml"
+        config_path = tmp_path / ".ydk" / "config.yaml"
         cfg = init_config("new-project", config_path=config_path)
         assert cfg.project.name == "new-project"
         assert config_path.is_file()
@@ -71,22 +71,22 @@ class TestGetConfigValue:
 
 
 class TestAwsConfig:
-    def test_odk_config_with_aws_profile(self) -> None:
+    def test_ydk_config_with_aws_profile(self) -> None:
         data = {
             **DEFAULT_CONFIG,
             "project": {**DEFAULT_CONFIG["project"], "name": "x"},
             "aws": {"profile": "my-profile", "region": "us-west-2"},
         }
-        cfg = OdkConfig.model_validate(data)
+        cfg = YdkConfig.model_validate(data)
         assert cfg.aws.profile == "my-profile"
         assert cfg.aws.region == "us-west-2"
 
-    def test_odk_config_with_empty_aws_profile_is_default(self) -> None:
+    def test_ydk_config_with_empty_aws_profile_is_default(self) -> None:
         data = {
             **DEFAULT_CONFIG,
             "project": {**DEFAULT_CONFIG["project"], "name": "x"},
         }
-        cfg = OdkConfig.model_validate(data)
+        cfg = YdkConfig.model_validate(data)
         assert cfg.aws.profile == ""
         assert cfg.aws.region == "us-east-1"
 

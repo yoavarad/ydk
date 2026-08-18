@@ -1,4 +1,4 @@
-"""Tests for odk.output — formatters, console singleton, and live display."""
+"""Tests for ydk.output — formatters, console singleton, and live display."""
 
 import json
 import time
@@ -8,16 +8,16 @@ import yaml
 from pydantic import BaseModel
 from rich.table import Table
 
-from odk.models.evaluation import CriterionResult
-from odk.output.console import console, err_console
-from odk.output.formatters import (
+from ydk.models.evaluation import CriterionResult
+from ydk.output.console import console, err_console
+from ydk.output.formatters import (
     HumanFormatter,
     JsonFormatter,
     OutputFormat,
     YamlFormatter,
     get_formatter,
 )
-from odk.output.live import AgentStatus, LiveAgentDisplay
+from ydk.output.live import AgentStatus, LiveAgentDisplay
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Spec Evolution
 
-Specifications are living documents. Requirements change, designs evolve, and features get added or removed as the project progresses. Without a structured change management process, spec changes create silent drift -- the canonical spec says one thing, the implementation does another, and no one knows which is correct. ODK manages spec evolution through a structured workflow that tracks changes as explicit proposals with delta specs, reviews, and archiving.
+Specifications are living documents. Requirements change, designs evolve, and features get added or removed as the project progresses. Without a structured change management process, spec changes create silent drift -- the canonical spec says one thing, the implementation does another, and no one knows which is correct. YDK manages spec evolution through a structured workflow that tracks changes as explicit proposals with delta specs, reviews, and archiving.
 
 ## Proposing a Change
 
@@ -15,10 +15,10 @@ When requirements change, create a change proposal:
 
 ```bash
 # Minor change (no separate design document needed)
-odk change propose add-rate-limiting
+ydk change propose add-rate-limiting
 
 # Major change (requires a design document explaining the architectural impact)
-odk change propose new-auth-system --mode major
+ydk change propose new-auth-system --mode major
 ```
 
 This creates a `docs/changes/<name>/` directory with structured artifacts:
@@ -55,13 +55,13 @@ Track active changes through their lifecycle:
 
 ```bash
 # List all active change proposals
-odk change list
+ydk change list
 
 # Check status of a specific change (which artifacts exist, what is missing)
-odk change status add-rate-limiting
+ydk change status add-rate-limiting
 
 # Preview the diff against the canonical spec
-odk change diff add-rate-limiting
+ydk change diff add-rate-limiting
 ```
 
 The diff preview shows exactly how the canonical spec will change if the proposal is archived -- sections that will be added, sections that will be modified, and sections that will be removed.
@@ -71,10 +71,10 @@ The diff preview shows exactly how the canonical spec will change if the proposa
 When a change is approved and implemented:
 
 ```bash
-odk change archive add-rate-limiting
+ydk change archive add-rate-limiting
 ```
 
-Archiving is the key step. ODK parses the delta specs, applies each operation to the corresponding canonical spec file:
+Archiving is the key step. YDK parses the delta specs, applies each operation to the corresponding canonical spec file:
 
 - **ADDED** operations append new sections to the end of the target spec
 - **MODIFIED** operations find the matching `###` heading in the target spec and replace its content

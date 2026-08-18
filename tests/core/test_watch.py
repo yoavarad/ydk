@@ -1,4 +1,4 @@
-"""Tests for odk.core.watch — WatchManager session tracking, polling, and plist generation."""
+"""Tests for ydk.core.watch — WatchManager session tracking, polling, and plist generation."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from odk.core.watch import WatchManager
+from ydk.core.watch import WatchManager
 
 
 @pytest.fixture
 def project_root(tmp_path):
-    """Create a temp project root with .odk directory."""
-    odk_dir = tmp_path / ".odk"
-    odk_dir.mkdir()
+    """Create a temp project root with .ydk directory."""
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir()
     return tmp_path
 
 
@@ -31,7 +31,7 @@ class TestRecordSession:
     def test_creates_sessions_file(self, mgr, project_root):
         mgr.record_session("891", "abc123", "task/891-settings")
 
-        sessions_file = project_root / ".odk" / "sessions.yaml"
+        sessions_file = project_root / ".ydk" / "sessions.yaml"
         assert sessions_file.is_file()
 
         data = yaml.safe_load(sessions_file.read_text())
@@ -102,7 +102,7 @@ class TestPoll:
         results = mgr.poll()
         assert results == []
 
-    @patch("odk.core.watch.subprocess.run")
+    @patch("ydk.core.watch.subprocess.run")
     def test_detects_new_comments(self, mock_run, mgr):
         mgr.record_session("891", "abc123", "task/891")
         mgr.record_pr("891", 914)
@@ -143,7 +143,7 @@ class TestPoll:
         assert len(results[0]["comments"]) == 1
         assert results[0]["comments"][0]["path"] == "src/main.py"
 
-    @patch("odk.core.watch.subprocess.run")
+    @patch("ydk.core.watch.subprocess.run")
     def test_filters_old_comments(self, mock_run, mgr):
         mgr.record_session("891", "abc123", "task/891")
         mgr.record_pr("891", 914)
@@ -184,7 +184,7 @@ class TestPoll:
         results = mgr.poll()
         assert len(results) == 0
 
-    @patch("odk.core.watch.subprocess.run")
+    @patch("ydk.core.watch.subprocess.run")
     def test_updates_last_polled(self, mock_run, mgr):
         mgr.record_session("891", "abc123", "task/891")
         mgr.record_pr("891", 914)
@@ -199,7 +199,7 @@ class TestPoll:
         sessions = mgr.get_active_sessions()
         assert sessions["891"]["last_polled"] is not None
 
-    @patch("odk.core.watch.subprocess.run")
+    @patch("ydk.core.watch.subprocess.run")
     def test_includes_review_bodies(self, mock_run, mgr):
         mgr.record_session("891", "abc123", "task/891")
         mgr.record_pr("891", 914)
@@ -268,7 +268,7 @@ class TestLock:
 class TestPlist:
     def test_generates_valid_plist(self, mgr, project_root):
         plist = mgr.generate_plist()
-        assert "com.odk.watch." in plist
+        assert "com.ydk.watch." in plist
         assert str(project_root) in plist
         assert "<integer>30</integer>" in plist
         assert "watch-stdout.log" in plist
@@ -285,14 +285,14 @@ class TestPlist:
 
     def test_creates_log_directory(self, mgr, project_root):
         mgr.generate_plist()
-        assert (project_root / ".odk" / "logs").is_dir()
+        assert (project_root / ".ydk" / "logs").is_dir()
 
 
 # -- Agent triggering --
 
 
 class TestTriggerAgent:
-    @patch("odk.core.watch.subprocess.Popen")
+    @patch("ydk.core.watch.subprocess.Popen")
     def test_constructs_correct_command(self, mock_popen, mgr):
         mgr.trigger_agent("session-abc", "/path/to/project", "Fix the tests")
 

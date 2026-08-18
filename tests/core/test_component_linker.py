@@ -9,8 +9,8 @@ import yaml
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.component_linker import ComponentLinker
-from odk.core.component_registry import ComponentRegistry
+from ydk.core.component_linker import ComponentLinker
+from ydk.core.component_registry import ComponentRegistry
 
 
 def _write_schema(schemas_dir: Path, name: str) -> None:
@@ -28,10 +28,10 @@ def _write_schema(schemas_dir: Path, name: str) -> None:
 
 
 def _write_component(components_dir: Path, type_name: str, namespace: str, name: str, extra_content: str = "") -> Path:
-    component_id = f"odk:{type_name}:{namespace}/{name}"
+    component_id = f"ydk:{type_name}:{namespace}/{name}"
     rel_path = components_dir / type_name / namespace / f"{name}.yaml"
     rel_path.parent.mkdir(parents=True, exist_ok=True)
-    content = f"$schema: odk:schema:{type_name}\nid: {component_id}\ndescription: Test {name}\n"
+    content = f"$schema: ydk:schema:{type_name}\nid: {component_id}\ndescription: Test {name}\n"
     if extra_content:
         content += extra_content
     rel_path.write_text(content)
@@ -55,7 +55,7 @@ class TestScanNarratives:
         _write_narrative(
             narratives_dir,
             "orders.md",
-            "The [odk:entity:orders/Order] is created via [odk:route:orders/create].",
+            "The [ydk:entity:orders/Order] is created via [ydk:route:orders/create].",
         )
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
@@ -65,8 +65,8 @@ class TestScanNarratives:
         assert len(results) == 1
         path, refs = results[0]
         assert path.name == "orders.md"
-        assert "odk:entity:orders/Order" in refs
-        assert "odk:route:orders/create" in refs
+        assert "ydk:entity:orders/Order" in refs
+        assert "ydk:route:orders/create" in refs
 
     def test_no_refs_returns_empty(self, tmp_path):
         narratives_dir = tmp_path / "specs"
@@ -96,7 +96,7 @@ class TestValidateReferences:
         _write_narrative(
             narratives_dir,
             "orders.md",
-            "See [odk:entity:orders/Order] and [odk:route:orders/create].",
+            "See [ydk:entity:orders/Order] and [ydk:route:orders/create].",
         )
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
@@ -113,13 +113,13 @@ class TestValidateReferences:
         narratives_dir = tmp_path / "specs"
 
         _write_schema(schemas_dir, "entity")
-        _write_narrative(narratives_dir, "orders.md", "See [odk:entity:missing/Thing].")
+        _write_narrative(narratives_dir, "orders.md", "See [ydk:entity:missing/Thing].")
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
         linker = ComponentLinker(registry=reg, narratives_dir=narratives_dir)
         result = linker.validate_references()
 
-        assert "odk:entity:missing/Thing" in result.undefined_refs
+        assert "ydk:entity:missing/Thing" in result.undefined_refs
 
     def test_detects_orphaned_components(self, tmp_path):
         schemas_dir = tmp_path / "schemas"
@@ -134,7 +134,7 @@ class TestValidateReferences:
         linker = ComponentLinker(registry=reg, narratives_dir=narratives_dir)
         result = linker.validate_references()
 
-        assert "odk:entity:orders/Order" in result.orphaned_components
+        assert "ydk:entity:orders/Order" in result.orphaned_components
 
 
 class TestValidateCrossRefs:
@@ -150,7 +150,7 @@ class TestValidateCrossRefs:
             "route",
             "orders",
             "create",
-            extra_content="response_ref: odk:entity:orders/Order\n",
+            extra_content="response_ref: ydk:entity:orders/Order\n",
         )
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
@@ -168,11 +168,11 @@ class TestValidateCrossRefs:
             "route",
             "orders",
             "create",
-            extra_content="response_ref: odk:entity:missing/Thing\n",
+            extra_content="response_ref: ydk:entity:missing/Thing\n",
         )
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
         linker = ComponentLinker(registry=reg, narratives_dir=tmp_path / "specs")
         broken = linker.validate_cross_refs()
         assert len(broken) == 1
-        assert "odk:entity:missing/Thing" in broken[0]
+        assert "ydk:entity:missing/Thing" in broken[0]

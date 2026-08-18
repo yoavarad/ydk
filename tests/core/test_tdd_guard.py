@@ -9,17 +9,17 @@ import json
 import shutil
 from pathlib import Path
 
-from odk.core.verifier import Verifier
+from ydk.core.verifier import Verifier
 
-VERIFICATIONS_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications"
+VERIFICATIONS_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications"
 TDD_GUARD_DIR = VERIFICATIONS_DIR / "tdd-guard"
 TDD_GUARD_CMD_DIR = VERIFICATIONS_DIR / "tdd-guard-cmd"
 
-STATE_FILE = ".odk/tdd-state.json"
+STATE_FILE = ".ydk/tdd-state.json"
 
 
 def _activate_tdd_state(project_root: Path) -> None:
-    """Create default .odk/tdd-state.json to activate the TDD guard."""
+    """Create default .ydk/tdd-state.json to activate the TDD guard."""
     _write_state(
         project_root,
         {"phase": "red", "test_files_written": [], "test_run_after_write": False, "active_task": None},
@@ -27,15 +27,15 @@ def _activate_tdd_state(project_root: Path) -> None:
 
 
 def _install_tdd_guard(project_root: Path) -> None:
-    """Install tdd-guard plugin into project's .odk/verifications/ and activate state."""
-    dest = project_root / ".odk" / "verifications" / "tdd-guard"
+    """Install tdd-guard plugin into project's .ydk/verifications/ and activate state."""
+    dest = project_root / ".ydk" / "verifications" / "tdd-guard"
     shutil.copytree(TDD_GUARD_DIR, dest)
     _activate_tdd_state(project_root)
 
 
 def _install_tdd_guard_cmd(project_root: Path) -> None:
-    """Install tdd-guard-cmd plugin into project's .odk/verifications/ and activate state."""
-    dest = project_root / ".odk" / "verifications" / "tdd-guard-cmd"
+    """Install tdd-guard-cmd plugin into project's .ydk/verifications/ and activate state."""
+    dest = project_root / ".ydk" / "verifications" / "tdd-guard-cmd"
     shutil.copytree(TDD_GUARD_CMD_DIR, dest)
     _activate_tdd_state(project_root)
 
@@ -116,13 +116,13 @@ class TestTddGuardEdit:
         assert passed is True
 
     def test_allows_non_source_files_always(self, tmp_path: Path) -> None:
-        """docs/, .odk/, scripts/ etc. always allowed regardless of phase."""
+        """docs/, .ydk/, scripts/ etc. always allowed regardless of phase."""
         _install_tdd_guard(tmp_path)
         v = Verifier(project_root=tmp_path, use_cache=False)
 
         non_source_files = [
             "docs/README.md",
-            ".odk/state.json",
+            ".ydk/state.json",
             ".claude/settings.json",
             "scripts/deploy.sh",
         ]

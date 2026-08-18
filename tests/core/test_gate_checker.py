@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from odk.core.gate_checker import GateChecker
-from odk.models.gate import Gate, GateStatus, GateType
+from ydk.core.gate_checker import GateChecker
+from ydk.models.gate import Gate, GateStatus, GateType
 
 
 @pytest.fixture
@@ -19,38 +19,38 @@ def checker() -> GateChecker:
 
 class TestCheckPrMerged:
     def test_returns_true_when_merged(self, checker) -> None:
-        with patch("odk.core.gate_checker.subprocess.run") as mock_run:
+        with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="MERGED\n", stderr="")
             assert checker.check_pr_merged("https://github.com/org/repo/pull/42") is True
 
     def test_returns_false_when_open(self, checker) -> None:
-        with patch("odk.core.gate_checker.subprocess.run") as mock_run:
+        with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="OPEN\n", stderr="")
             assert checker.check_pr_merged("https://github.com/org/repo/pull/42") is False
 
     def test_returns_false_on_error(self, checker) -> None:
-        with patch("odk.core.gate_checker.subprocess.run") as mock_run:
+        with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="error")
             assert checker.check_pr_merged("https://github.com/org/repo/pull/42") is False
 
 
 class TestCheckCiPassed:
     def test_returns_true_when_completed_success(self, checker) -> None:
-        with patch("odk.core.gate_checker.subprocess.run") as mock_run:
+        with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="completed\tsuccess\n", stderr=""
             )
             assert checker.check_ci_passed("https://github.com/org/repo/actions/runs/123") is True
 
     def test_returns_false_when_in_progress(self, checker) -> None:
-        with patch("odk.core.gate_checker.subprocess.run") as mock_run:
+        with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="in_progress\t\n", stderr=""
             )
             assert checker.check_ci_passed("https://github.com/org/repo/actions/runs/123") is False
 
     def test_returns_false_when_failed(self, checker) -> None:
-        with patch("odk.core.gate_checker.subprocess.run") as mock_run:
+        with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="completed\tfailure\n", stderr=""
             )
@@ -102,7 +102,7 @@ class TestCheckGate:
             description="Wait for PR",
             config={"pr_url": "https://github.com/org/repo/pull/42"},
         )
-        with patch("odk.core.gate_checker.subprocess.run") as mock_run:
+        with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="MERGED\n", stderr="")
             status = checker.check_gate(gate)
             assert status == GateStatus.RESOLVED

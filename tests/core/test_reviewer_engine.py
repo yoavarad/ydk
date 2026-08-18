@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from odk.core.reviewer_engine import REVIEW_TOOL_SPEC, ReviewerEngine
+from ydk.core.reviewer_engine import REVIEW_TOOL_SPEC, ReviewerEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -122,7 +122,7 @@ class TestReviewToolSpec:
 
 
 class TestCallReviewer:
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_extracts_tooluse_result(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -141,7 +141,7 @@ class TestCallReviewer:
         assert len(result["findings"]) == 1
         assert result["findings"][0]["line"] == 1
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_passes_tool_config(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -156,7 +156,7 @@ class TestCallReviewer:
         assert call_kwargs["toolConfig"]["toolChoice"] == {"tool": {"name": "submit_review"}}
         assert call_kwargs["inferenceConfig"]["maxTokens"] == 8192
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_missing_tooluse_block_returns_zero(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -173,7 +173,7 @@ class TestCallReviewer:
         assert result["score"] == 0
         assert "No toolUse block" in result["reasoning"]
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_bedrock_exception_handled(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -193,7 +193,7 @@ class TestCallReviewer:
 
 
 class TestRunAll:
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_basic_flow(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -219,7 +219,7 @@ class TestRunAll:
         ids = [r["reviewer_id"] for r in results]
         assert ids == sorted(ids)
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_empty_reviewers(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -229,7 +229,7 @@ class TestRunAll:
         assert results == []
         mock_client.converse.assert_not_called()
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_bedrock_error_handled(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -247,7 +247,7 @@ class TestRunAll:
         assert results[0]["score"] == 0
         assert "BEDROCK ERROR" in results[0]["reasoning"]
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_model_tier_resolution(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -279,7 +279,7 @@ class TestRunAll:
         first_call_kwargs = mock_client.converse.call_args_list[0][1]
         assert first_call_kwargs["modelId"] == MODEL_TIERS["smart"]
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_per_tier_cache_priming(self, mock_boto3):
         """Each model tier should prime its own cache independently."""
         mock_client = MagicMock()
@@ -345,7 +345,7 @@ class TestRunAll:
         assert call_order[0][0] == MODEL_TIERS["smart"]
         assert call_order[0][1] == "Smart eval 1"
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_mixed_tiers_each_get_correct_model(self, mock_boto3):
         """Reviewers with different tiers should each use their tier's model."""
         mock_client = MagicMock()
@@ -385,7 +385,7 @@ class TestRunAll:
         assert models_used["smart_prompt"] == MODEL_TIERS["smart"]
         assert models_used["fast_prompt"] == MODEL_TIERS["fast"]
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_passed_threshold(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client
@@ -400,7 +400,7 @@ class TestRunAll:
 
         assert results[0]["passed"] is False  # 7 < 8
 
-    @patch("odk.core.reviewer_engine.boto3")
+    @patch("ydk.core.reviewer_engine.boto3")
     def test_passed_at_threshold(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.Session.return_value.client.return_value = mock_client

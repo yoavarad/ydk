@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.core.events import EventBus
-from odk.core.task_lifecycle import TaskLifecycle
-from odk.models.pm import TaskDetail
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.events import EventBus
+from ydk.core.task_lifecycle import TaskLifecycle
+from ydk.models.pm import TaskDetail
+from ydk.models.verification import CheckResult, VerificationReport
 
 # ---------------------------------------------------------------------------
 # Helpers to load the check module
@@ -23,7 +23,7 @@ def _load_check_module():
     check_path = (
         Path(__file__).resolve().parent.parent.parent
         / "src"
-        / "odk"
+        / "ydk"
         / "verifications"
         / "pr-body-validation"
         / "check.py"
@@ -157,11 +157,11 @@ def lifecycle_for_pr_body():
     return lc
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_build_pr_body_includes_verification_console_blocks(mock_subprocess, lifecycle_for_pr_body):
     """_build_pr_body must include ```console blocks from verification output."""
     mock_subprocess.run.return_value = MagicMock(
-        stdout="src/odk/core/task_lifecycle.py\ntests/core/test_task_lifecycle.py\n",
+        stdout="src/ydk/core/task_lifecycle.py\ntests/core/test_task_lifecycle.py\n",
         returncode=0,
     )
     task = TaskDetail(
@@ -190,7 +190,7 @@ def test_build_pr_body_includes_verification_console_blocks(mock_subprocess, lif
     assert "## Test Plan" in body
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_build_pr_body_includes_summary_and_test_plan(mock_subprocess, lifecycle_for_pr_body):
     """_build_pr_body should include ## Summary and ## Test Plan sections."""
     mock_subprocess.run.return_value = MagicMock(stdout="", returncode=0)
@@ -205,7 +205,7 @@ def test_build_pr_body_includes_summary_and_test_plan(mock_subprocess, lifecycle
     assert "## Test Plan" in body
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_build_pr_body_warns_incomplete_proof(mock_subprocess, lifecycle_for_pr_body):
     """_build_pr_body should include a warning when proof is incomplete (no verification checks)."""
     mock_subprocess.run.return_value = MagicMock(stdout="", returncode=0)

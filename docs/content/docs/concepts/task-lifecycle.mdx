@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Task Lifecycle
 
-A task in ODK is not just a ticket with a title and description. It is a node in a dependency graph with typed edges, a state machine with well-defined transitions, a container for gates that control when work can begin, and a target for complexity analysis that determines whether it should be split. Understanding the full lifecycle -- from creation through completion -- is essential for working with ODK effectively.
+A task in YDK is not just a ticket with a title and description. It is a node in a dependency graph with typed edges, a state machine with well-defined transitions, a container for gates that control when work can begin, and a target for complexity analysis that determines whether it should be split. Understanding the full lifecycle -- from creation through completion -- is essential for working with YDK effectively.
 
 ## The State Machine
 
@@ -44,7 +44,7 @@ Task IDs use a collision-resistant format: `T-<uuid4().hex[:8]>`, producing IDs 
 
 ## The PM Hierarchy
 
-ODK uses a three-level hierarchy that maps to how real projects are organized:
+YDK uses a three-level hierarchy that maps to how real projects are organized:
 
 ```
 Release
@@ -57,7 +57,7 @@ Epics group stories around a release or major feature. Stories group tasks aroun
 
 ## Typed Dependencies
 
-The dependency system is one of ODK's most important features. Eight dependency types capture the different relationships between tasks, and the distinction between blocking and non-blocking types determines the execution DAG.
+The dependency system is one of YDK's most important features. Eight dependency types capture the different relationships between tasks, and the distinction between blocking and non-blocking types determines the execution DAG.
 
 Three types create execution edges (blocking):
 
@@ -75,7 +75,7 @@ Five types are tracked for traceability only (non-blocking):
 
 ## DAG Validation
 
-Before starting execution, ODK validates the dependency DAG using Kahn's algorithm. The validation produces four critical metrics:
+Before starting execution, YDK validates the dependency DAG using Kahn's algorithm. The validation produces four critical metrics:
 
 **Cycle detection** catches impossible execution orders. If Task A blocks Task B, which blocks Task C, which blocks Task A, no task in the cycle can ever start. Kahn's algorithm detects this by performing a topological sort -- if not all nodes are visited, a cycle exists.
 
@@ -83,7 +83,7 @@ Before starting execution, ODK validates the dependency DAG using Kahn's algorit
 
 **Critical path** is the longest chain of blocking dependencies, computed via longest-path dynamic programming. This is your minimum project duration regardless of how many agents you throw at it. If the critical path has 12 tasks and each takes an hour, you are looking at at least 12 hours of wall-clock time.
 
-**Fan-out** measures how many tasks depend on each task. A task with fan-out of 8 is a bottleneck -- it blocks 8 other tasks, so completing it unblocks the most downstream work. ODK's `task ready` command ranks ready tasks by fan-out so you always start with the highest-impact work.
+**Fan-out** measures how many tasks depend on each task. A task with fan-out of 8 is a bottleneck -- it blocks 8 other tasks, so completing it unblocks the most downstream work. YDK's `task ready` command ranks ready tasks by fan-out so you always start with the highest-impact work.
 
 ## Gates
 
@@ -95,11 +95,11 @@ Gates are external conditions that must be satisfied before a task can start. Th
 
 **`timer`** gates check whether enough time has elapsed since a specific timestamp. Auto-resolved by comparing the current time against `created_at + duration_minutes`. Use this for soak tests, cooling-off periods, or staged rollouts.
 
-**`human`** gates are never auto-resolved. They require a manual `odk task resolve-gate` command. Use this for stakeholder approvals, legal review, or any condition that requires human judgment.
+**`human`** gates are never auto-resolved. They require a manual `ydk task resolve-gate` command. Use this for stakeholder approvals, legal review, or any condition that requires human judgment.
 
 ## Complexity Scoring
 
-ODK uses an LLM to analyze task complexity on a 1-10 scale. The scorer sends the task's title, description, acceptance criteria, dependencies, and spec references to an LLM with a structured prompt that asks for a score, reasoning, and expansion recommendations.
+YDK uses an LLM to analyze task complexity on a 1-10 scale. The scorer sends the task's title, description, acceptance criteria, dependencies, and spec references to an LLM with a structured prompt that asks for a score, reasoning, and expansion recommendations.
 
 The scale is designed to be actionable:
 
@@ -107,11 +107,11 @@ The scale is designed to be actionable:
 - **4-6 (Moderate)** -- Multiple files, some design decisions, moderate risk. Most tasks fall here.
 - **7-10 (Complex)** -- Cross-cutting changes, high ambiguity, significant design risk. Should likely be split into smaller tasks.
 
-Tasks scoring 8 or above get `should_expand=True` with suggested splits. When no LLM provider is configured, the scorer returns a default score of 5 -- the deterministic fallback that every LLM-powered feature in ODK provides.
+Tasks scoring 8 or above get `should_expand=True` with suggested splits. When no LLM provider is configured, the scorer returns a default score of 5 -- the deterministic fallback that every LLM-powered feature in YDK provides.
 
 ## Scheduling
 
-For teams running multiple agents in parallel, ODK provides a greedy topological scheduler. Given a task DAG and a number of available agents, the scheduler:
+For teams running multiple agents in parallel, YDK provides a greedy topological scheduler. Given a task DAG and a number of available agents, the scheduler:
 
 1. Starts with all zero-degree tasks in a ready queue
 2. Assigns up to N tasks per wave (N = available agents)
@@ -122,10 +122,10 @@ Buffer management tracks schedule health using green (under 33% buffer consumed)
 
 ## Starting Tasks
 
-The `odk task start` command transitions a task from `open` to `in-progress` and sets up the working environment:
+The `ydk task start` command transitions a task from `open` to `in-progress` and sets up the working environment:
 
 ```bash
-odk task start T-a1b2c3d4
+ydk task start T-a1b2c3d4
 ```
 
 ### `--base` Flag
@@ -133,7 +133,7 @@ odk task start T-a1b2c3d4
 By default, task branches are created from `main`. Use `--base` to branch from a different base:
 
 ```bash
-odk task start T-a1b2c3d4 --base feature/api-v2
+ydk task start T-a1b2c3d4 --base feature/api-v2
 ```
 
 This is essential when tasks depend on work that has not yet been merged to main. The task branches from the specified branch, giving it access to the prerequisite code.
@@ -143,17 +143,17 @@ This is essential when tasks depend on work that has not yet been merged to main
 If a task was previously started but its worktree is stale or corrupted, use `--force` to clean up and restart:
 
 ```bash
-odk task start T-a1b2c3d4 --force
+ydk task start T-a1b2c3d4 --force
 ```
 
 This removes the existing worktree and branch, then creates fresh ones. Use this when a task needs to be restarted from scratch after a failed attempt.
 
 ## Completing Tasks
 
-The `odk task done` command runs verification and creates a PR:
+The `ydk task done` command runs verification and creates a PR:
 
 ```bash
-odk task done T-a1b2c3d4
+ydk task done T-a1b2c3d4
 ```
 
 On completion, it prints a structured results table showing pass/fail status for each verification check:
@@ -173,5 +173,5 @@ On completion, it prints a structured results table showing pass/fail status for
 Verification is scoped to changed files where possible (e.g., `ty` only checks files modified in the branch), keeping feedback fast even in large codebases.
 
 <Callout type="info">
-Use `odk task ready` at any time to see which tasks have all blocking dependencies resolved and all gates satisfied. Tasks are ranked by fan-out (number of dependents), so you always know which task to start next for maximum impact.
+Use `ydk task ready` at any time to see which tasks have all blocking dependencies resolved and all gates satisfied. Tasks are ranked by fan-out (number of dependents), so you always know which task to start next for maximum impact.
 </Callout>

@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
-from odk.repositories.gitlab.tasks import GitLabTaskRepository
+from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
+from ydk.repositories.gitlab.tasks import GitLabTaskRepository
 
 # -- Helpers ---------------------------------------------------------------
 
@@ -70,7 +70,7 @@ def _sample_issue_json(
 
 
 class TestCreate:
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_create_success(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(stdout="Creating issue...\nhttps://gitlab.com/owner/repo/-/issues/42")
@@ -91,7 +91,7 @@ class TestCreate:
         assert "--label" in call_args
         assert "--milestone" in call_args
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_create_failure_raises(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(returncode=1, stderr="auth error")
@@ -99,7 +99,7 @@ class TestCreate:
         with pytest.raises(RuntimeError, match="glab issue create failed"):
             repo.create(_sample_create())
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_create_without_optional_fields(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/99")
@@ -118,7 +118,7 @@ class TestCreate:
 
 
 class TestGet:
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_get_success(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(stdout=json.dumps(_sample_issue_json()))
@@ -132,7 +132,7 @@ class TestGet:
         assert len(detail.acceptance_criteria) == 1
         assert detail.acceptance_criteria[0].text == "Required fields checked"
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_get_failure_raises(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(returncode=1, stderr="not found")
@@ -140,7 +140,7 @@ class TestGet:
         with pytest.raises(RuntimeError, match="glab issue view failed"):
             repo.get(999)
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_get_closed_issue(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         issue = _sample_issue_json(state="closed")
@@ -149,7 +149,7 @@ class TestGet:
         detail = repo.get(42)
         assert detail.status == TaskStatus.DONE
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_get_with_string_labels(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         issue = _sample_issue_json()
@@ -164,7 +164,7 @@ class TestGet:
 
 
 class TestList:
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_list_success(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(stdout=json.dumps([_sample_issue_json()]))
@@ -174,7 +174,7 @@ class TestList:
         assert len(details) == 1
         assert details[0].number == 42
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_list_with_filters(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(stdout=json.dumps([]))
@@ -188,14 +188,14 @@ class TestList:
         idx = call_args.index("--state")
         assert call_args[idx + 1] == "opened"  # 'open' -> 'opened'
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_list_returns_empty_on_failure(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(returncode=1, stderr="error")
 
         assert repo.list() == []
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_list_returns_empty_on_bad_json(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(stdout="not json")
@@ -207,7 +207,7 @@ class TestList:
 
 
 class TestUpdateStatus:
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_close_issue(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed()
@@ -217,7 +217,7 @@ class TestUpdateStatus:
         call_args = mock_run.call_args[0][0]
         assert call_args == ["glab", "issue", "close", "42"]
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_reopen_issue(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed()
@@ -227,7 +227,7 @@ class TestUpdateStatus:
         call_args = mock_run.call_args[0][0]
         assert call_args == ["glab", "issue", "reopen", "42"]
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_label_based_status(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed()
@@ -237,7 +237,7 @@ class TestUpdateStatus:
         call_args = mock_run.call_args[0][0]
         assert "status:in_progress" in call_args
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_update_failure_raises(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(returncode=1, stderr="forbidden")
@@ -250,7 +250,7 @@ class TestUpdateStatus:
 
 
 class TestAddComment:
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_add_comment_success(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed()
@@ -260,7 +260,7 @@ class TestAddComment:
         call_args = mock_run.call_args[0][0]
         assert call_args == ["glab", "issue", "note", "42", "--message", "Looking good!"]
 
-    @patch("odk.repositories.gitlab.tasks.run_glab")
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_add_comment_failure_raises(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(returncode=1, stderr="not found")

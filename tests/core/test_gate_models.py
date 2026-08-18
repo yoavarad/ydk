@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from odk.models.gate import Gate, GateStatus, GateType
+from ydk.models.gate import Gate, GateStatus, GateType
 
 
 class TestGateType:

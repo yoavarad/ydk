@@ -3,9 +3,9 @@
 import re
 from pathlib import Path
 
-from odk.models.pm import AcceptanceCriterion, TaskCreate
-from odk.repositories.local.manifest import Manifest, parse_number_from_id
-from odk.repositories.local.tasks import LocalTaskRepository
+from ydk.models.pm import AcceptanceCriterion, TaskCreate
+from ydk.repositories.local.manifest import Manifest, parse_number_from_id
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 _HASH_ID_RE = re.compile(r"^[TSE]-[0-9a-f]{8}$")
 
@@ -108,7 +108,7 @@ class TestTaskRetrievalWithHashIds:
 class TestBackwardCompatibility:
     def test_read_legacy_task_file(self, tmp_path: Path) -> None:
         """Manually create a legacy T-001.md and ensure get_task reads it."""
-        from odk.repositories.local.frontmatter import render_frontmatter
+        from ydk.repositories.local.frontmatter import render_frontmatter
 
         tasks_dir = tmp_path / "tasks"
         tasks_dir.mkdir(parents=True)

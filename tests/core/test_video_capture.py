@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.core.video_capture import VideoCapture
+from ydk.core.video_capture import VideoCapture
 
 
 @pytest.fixture

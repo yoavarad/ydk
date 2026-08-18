@@ -1,11 +1,11 @@
-"""Tests for odk doctor health checks."""
+"""Tests for ydk doctor health checks."""
 
 from __future__ import annotations
 
 import subprocess
 from typing import TYPE_CHECKING
 
-from odk.core.doctor import CheckResult, CheckSeverity, Doctor
+from ydk.core.doctor import CheckResult, CheckSeverity, Doctor
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,35 +43,35 @@ class TestCheckGitRepo:
         assert result.name == "Git repo"
 
 
-class TestCheckOdkConfig:
+class TestCheckYdkConfig:
     def test_passes_with_valid_config(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: test-project\n")
         doc = Doctor(project_root=tmp_path)
-        result = doc._check_odk_config()
+        result = doc._check_ydk_config()
         assert result.severity == CheckSeverity.ok
-        assert result.name == "ODK config"
+        assert result.name == "YDK config"
 
     def test_fails_when_missing(self, tmp_path: Path) -> None:
         doc = Doctor(project_root=tmp_path)
-        result = doc._check_odk_config()
+        result = doc._check_ydk_config()
         assert result.severity == CheckSeverity.error
-        assert result.name == "ODK config"
+        assert result.name == "YDK config"
 
     def test_fails_with_invalid_yaml(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: 123\n  bogus_field: nope\n")
         doc = Doctor(project_root=tmp_path)
-        result = doc._check_odk_config()
+        result = doc._check_ydk_config()
         assert result.severity == CheckSeverity.error
-        assert result.name == "ODK config"
+        assert result.name == "YDK config"
 
 
 class TestCheckSpecLocation:
     def test_passes_when_directory_exists(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: test\n  spec_location: docs/specs\n")
         (tmp_path / "docs" / "specs").mkdir(parents=True)
@@ -81,7 +81,7 @@ class TestCheckSpecLocation:
         assert result.name == "Spec location"
 
     def test_warns_when_directory_missing(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: test\n  spec_location: docs/specs\n")
         doc = Doctor(project_root=tmp_path)
@@ -92,7 +92,7 @@ class TestCheckSpecLocation:
 
 class TestCheckAdrsLocation:
     def test_passes_when_directory_exists(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: test\n")
         (tmp_path / "docs" / "adrs").mkdir(parents=True)
@@ -101,7 +101,7 @@ class TestCheckAdrsLocation:
         assert result.severity == CheckSeverity.ok
 
     def test_warns_when_directory_missing(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: test\n")
         doc = Doctor(project_root=tmp_path)
@@ -161,7 +161,7 @@ class TestCheckTypeChecker:
 
 class TestCheckRemoteCli:
     def test_returns_check_result(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
         doc = Doctor(project_root=tmp_path)
@@ -173,7 +173,7 @@ class TestCheckRemoteCli:
 class TestRunAll:
     def test_returns_results_for_all_checks(self, tmp_path: Path) -> None:
         subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
         (config_dir / "config.yaml").write_text("project:\n  name: test\n")
         doc = Doctor(project_root=tmp_path)

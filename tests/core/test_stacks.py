@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odk.core.stacks import STACKS, get_stack
+from ydk.core.stacks import STACKS, get_stack
 
 
 def test_python_fastapi_stack_exists() -> None:

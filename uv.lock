@@ -1323,7 +1323,7 @@ wheels = [
 ]
 
 [[package]]
-name = "odk"
+name = "ydk"
 version = "0.52.1"
 source = { editable = "." }
 dependencies = [

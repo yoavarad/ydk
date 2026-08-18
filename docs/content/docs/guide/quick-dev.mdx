@@ -7,12 +7,12 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Quick Dev
 
-Not every change needs the full epic/story/task ceremony. A typo fix, a style adjustment, or a single-file bug fix with an obvious cause does not benefit from dependency tracking, complexity scoring, or DAG validation. For these cases, ODK provides Quick Dev -- a fast path that creates a lightweight task and branch without the overhead of the full hierarchy.
+Not every change needs the full epic/story/task ceremony. A typo fix, a style adjustment, or a single-file bug fix with an obvious cause does not benefit from dependency tracking, complexity scoring, or DAG validation. For these cases, YDK provides Quick Dev -- a fast path that creates a lightweight task and branch without the overhead of the full hierarchy.
 
 ## How It Works
 
 ```bash
-odk task quick "fix login button alignment"
+ydk task quick "fix login button alignment"
 ```
 
 This single command does four things:
@@ -42,5 +42,5 @@ If the change touches multiple subsystems, requires spec updates, affects the pu
 The rule of thumb: if you would not merge the change without a code review, it is too complex for Quick Dev.
 
 <Callout type="info">
-Quick Dev tasks still go through verification when you run `odk verify run`. The ceremony that is skipped is task management (epics, stories, dependencies, gates), not quality checks.
+Quick Dev tasks still go through verification when you run `ydk verify run`. The ceremony that is skipped is task management (epics, stories, dependencies, gates), not quality checks.
 </Callout>

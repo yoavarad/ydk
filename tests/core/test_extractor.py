@@ -1,4 +1,4 @@
-"""Tests for odk.core.extractor — LLM-based memory extraction."""
+"""Tests for ydk.core.extractor — LLM-based memory extraction."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.core.extractor import ExtractedMemory, MemoryExtractor
+from ydk.core.extractor import ExtractedMemory, MemoryExtractor
 
 
 class TestExtractedMemory:
@@ -136,7 +136,7 @@ class TestExtractFromTranscript:
         result = extractor.extract_from_transcript("   \n  \n  ")
         assert result == []
 
-    @patch("odk.core.extractor.MemoryExtractor._build_agent")
+    @patch("ydk.core.extractor.MemoryExtractor._build_agent")
     def test_calls_agent_and_parses_response(self, mock_build_agent: MagicMock) -> None:
         mock_agent = MagicMock()
         llm_response = json.dumps(
@@ -173,7 +173,7 @@ class TestExtractFromTranscript:
         call_args = mock_agent.call_args[0][0]
         assert "JWT auth" in call_args
 
-    @patch("odk.core.extractor.MemoryExtractor._build_agent")
+    @patch("ydk.core.extractor.MemoryExtractor._build_agent")
     def test_includes_task_context_in_message(self, mock_build_agent: MagicMock) -> None:
         mock_agent = MagicMock()
         mock_agent.return_value = "[]"
@@ -188,7 +188,7 @@ class TestExtractFromTranscript:
 
 
 class TestExtractFromJsonl:
-    @patch("odk.core.extractor.MemoryExtractor._build_agent")
+    @patch("ydk.core.extractor.MemoryExtractor._build_agent")
     def test_parses_jsonl_then_extracts(self, mock_build_agent: MagicMock, tmp_path) -> None:
         # Write a minimal JSONL fixture
         jsonl = tmp_path / "session.jsonl"
@@ -240,7 +240,7 @@ class TestAbandonedExtraction:
 
     def test_extraction_prompt_includes_abandoned(self) -> None:
         """EXTRACTION_PROMPT must instruct the LLM to look for abandoned approaches."""
-        from odk.core.extractor import EXTRACTION_PROMPT
+        from ydk.core.extractor import EXTRACTION_PROMPT
 
         assert "abandoned" in EXTRACTION_PROMPT.lower()
         assert "rejected" in EXTRACTION_PROMPT.lower()

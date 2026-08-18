@@ -5,10 +5,10 @@ from pathlib import Path
 
 import yaml
 
-from odk.models.pm import AcceptanceCriterion, TaskCreate
-from odk.repositories.local.frontmatter import parse_frontmatter
-from odk.repositories.local.manifest import Manifest
-from odk.repositories.local.tasks import LocalTaskRepository
+from ydk.models.pm import AcceptanceCriterion, TaskCreate
+from ydk.repositories.local.frontmatter import parse_frontmatter
+from ydk.repositories.local.manifest import Manifest
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 _HASH_RE = re.compile(r"^T-[0-9a-f]{8}$")
 

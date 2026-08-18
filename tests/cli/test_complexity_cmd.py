@@ -1,4 +1,4 @@
-"""Tests for odk task analyze-complexity CLI command."""
+"""Tests for ydk task analyze-complexity CLI command."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.models.complexity import ComplexityScore
-from odk.models.pm import TaskDetail, TaskSummary
+from ydk.cli import app
+from ydk.models.complexity import ComplexityScore
+from ydk.models.pm import TaskDetail, TaskSummary
 
 runner = CliRunner()
 
@@ -60,9 +60,9 @@ class _FakeScorer:
 def _patch_for_cli(repo: _FakeRepo, scorer: _FakeScorer):
     """Return combined patch context managers for the CLI command."""
     return (
-        patch("odk.cli.task_cmd._get_repo", return_value=repo),
-        patch("odk.cli.task_cmd._get_llm_provider", return_value=None),
-        patch("odk.core.complexity_scorer.ComplexityScorer", return_value=scorer),
+        patch("ydk.cli.task_cmd._get_repo", return_value=repo),
+        patch("ydk.cli.task_cmd._get_llm_provider", return_value=None),
+        patch("ydk.core.complexity_scorer.ComplexityScorer", return_value=scorer),
     )
 
 

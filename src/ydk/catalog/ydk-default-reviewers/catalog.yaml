@@ -1,0 +1,9 @@
+name: ydk-default-reviewers
+version: "0.1.0"
+description: Built-in spec reviewers (completeness, clarity, architecture, etc.)
+tags:
+  - spec-reviewers
+  - built-in
+publish_checks:
+  - name: yaml-valid
+    description: All reviewer YAML files must be valid

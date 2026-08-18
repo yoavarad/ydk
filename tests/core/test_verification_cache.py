@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from odk.core.verification_cache import VerificationCache
-from odk.core.verifier import Verifier
-from odk.models.verification import CheckResult
+from ydk.core.verification_cache import VerificationCache
+from ydk.core.verifier import Verifier
+from ydk.models.verification import CheckResult
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -232,7 +232,7 @@ class TestVerifierCacheIntegration:
         asyncio.run(v.run_plugin(plugins[0], ctx))
 
         # Cache directory should not exist
-        cache_dir = tmp_path / ".odk" / "cache" / "verification"
+        cache_dir = tmp_path / ".ydk" / "cache" / "verification"
         assert not cache_dir.exists()
 
     def test_clear_cache_removes_all_entries(self, tmp_path: Path) -> None:
@@ -245,7 +245,7 @@ class TestVerifierCacheIntegration:
         asyncio.run(v.run_plugin(plugins[0], ctx))
 
         # Cache should have an entry
-        cache_dir = tmp_path / ".odk" / "cache" / "verification"
+        cache_dir = tmp_path / ".ydk" / "cache" / "verification"
         assert cache_dir.exists()
 
         # Clear it

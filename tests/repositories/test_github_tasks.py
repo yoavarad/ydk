@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
-from odk.repositories.github.tasks import GitHubTaskRepository
+from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
+from ydk.repositories.github.tasks import GitHubTaskRepository
 
 
 def _fake_run(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
@@ -31,7 +31,7 @@ class TestCreate:
             acceptance_criteria=[AcceptanceCriterion(text="It works")],
         )
         fake = _fake_run(stdout="https://github.com/org/repo/issues/42\n")
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             detail = repo.create(task)
 
         assert detail.number == 42
@@ -52,7 +52,7 @@ class TestCreate:
         repo = GitHubTaskRepository()
         task = TaskCreate(title="T", labels=["p1", "backend"], milestone="v1.0")
         fake = _fake_run(stdout="https://github.com/org/repo/issues/10\n")
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             detail = repo.create(task)
 
         assert detail.number == 10
@@ -68,7 +68,7 @@ class TestCreate:
         task = TaskCreate(title="T")
         fake = _fake_run(returncode=1, stderr="auth required")
         with (
-            patch("odk.repositories.github.tasks.run_gh", return_value=fake),
+            patch("ydk.repositories.github.tasks.run_gh", return_value=fake),
             pytest.raises(RuntimeError, match="auth"),
         ):
             repo.create(task)
@@ -97,7 +97,7 @@ class TestGet:
             }
         )
         fake = _fake_run(stdout=issue_json)
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             detail = repo.get(42)
 
         assert detail.number == 42
@@ -115,7 +115,7 @@ class TestGet:
     def test_raises_on_not_found(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run(returncode=1, stderr="not found")
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
             repo.get(999)
 
 
@@ -146,7 +146,7 @@ class TestList:
             },
         ]
         fake = _fake_run(stdout=json.dumps(items))
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake):
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake):
             result = repo.list()
 
         assert len(result) == 2
@@ -157,7 +157,7 @@ class TestList:
     def test_with_filters(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run(stdout="[]")
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             repo.list(milestone="v1.0", labels=["p1"], status="closed")
 
         cmd = mock_run.call_args[0][0]
@@ -172,7 +172,7 @@ class TestList:
     def test_returns_empty_on_failure(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run(returncode=1, stderr="network error")
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake):
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake):
             assert repo.list() == []
 
 
@@ -185,7 +185,7 @@ class TestUpdateStatus:
     def test_close_issue(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run()
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             repo.update_status(42, "closed")
         cmd = mock_run.call_args[0][0]
         assert "close" in cmd
@@ -194,7 +194,7 @@ class TestUpdateStatus:
     def test_done_also_closes(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run()
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             repo.update_status(42, "done")
         cmd = mock_run.call_args[0][0]
         assert "close" in cmd
@@ -202,7 +202,7 @@ class TestUpdateStatus:
     def test_reopen_issue(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run()
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             repo.update_status(42, "open")
         cmd = mock_run.call_args[0][0]
         assert "reopen" in cmd
@@ -210,7 +210,7 @@ class TestUpdateStatus:
     def test_add_label_for_other_statuses(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run()
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             repo.update_status(42, "in-progress")
         cmd = mock_run.call_args[0][0]
         assert "--add-label" in cmd
@@ -219,7 +219,7 @@ class TestUpdateStatus:
     def test_raises_on_failure(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run(returncode=1, stderr="error")
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
             repo.update_status(42, "closed")
 
 
@@ -232,7 +232,7 @@ class TestAddComment:
     def test_adds_comment(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run()
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
             repo.add_comment(42, "LGTM!")
         cmd = mock_run.call_args[0][0]
         assert "comment" in cmd
@@ -243,5 +243,5 @@ class TestAddComment:
     def test_raises_on_failure(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run(returncode=1, stderr="error")
-        with patch("odk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
             repo.add_comment(42, "text")

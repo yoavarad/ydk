@@ -1,0 +1,21 @@
+name: aws-terraform-fullstack
+version: 1.0.0
+tags: [ignition-pack, aws, terraform, infrastructure, ecs, aurora, cloudfront, cognito]
+
+inputs:
+  entity:
+    schema_ref: ydk-core-schemas/entity
+    version: ">=1.0.0"
+    required: false
+  crosscut:
+    schema_ref: ydk-core-schemas/crosscut
+    version: ">=1.0.0"
+    required: false
+
+verification_sets: []
+spec_reviewers:
+  - name: ydk-default-reviewers
+    version: ">=1.0.0"
+component_schemas:
+  - name: ydk-core-schemas
+    version: ">=1.0.0"

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 
-from odk.core.catalog_search import CatalogSearch
+from ydk.core.catalog_search import CatalogSearch
 
 
 def _create_catalog_item(base: Path, name: str, tags: list[str] | None = None, description: str = "") -> Path:
@@ -30,7 +30,7 @@ class TestCatalogSearchKeyword:
         _create_catalog_item(tmp_path, "python-quality", tags=["verification", "python"])
         _create_catalog_item(tmp_path, "hexagonal-architecture", tags=["verification", "architecture"])
 
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=None):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=None):
             searcher = CatalogSearch(tmp_path)
             results = searcher.search("python")
 
@@ -41,7 +41,7 @@ class TestCatalogSearchKeyword:
     def test_search_by_description(self, tmp_path: Path) -> None:
         _create_catalog_item(tmp_path, "my-tool", description="A fantastic linting tool for Go")
 
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=None):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=None):
             searcher = CatalogSearch(tmp_path)
             results = searcher.search("linting")
 
@@ -51,14 +51,14 @@ class TestCatalogSearchKeyword:
     def test_search_no_results(self, tmp_path: Path) -> None:
         _create_catalog_item(tmp_path, "python-quality")
 
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=None):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=None):
             searcher = CatalogSearch(tmp_path)
             results = searcher.search("terraform")
 
         assert results == []
 
     def test_search_empty_catalog(self, tmp_path: Path) -> None:
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=None):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=None):
             searcher = CatalogSearch(tmp_path)
             results = searcher.search("anything")
 
@@ -68,7 +68,7 @@ class TestCatalogSearchKeyword:
         _create_catalog_item(tmp_path, "python-quality", tags=["verification"], description="Python code quality")
         _create_catalog_item(tmp_path, "go-quality", tags=["verification"], description="Has python in readme")
 
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=None):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=None):
             searcher = CatalogSearch(tmp_path)
             results = searcher.search("python")
 
@@ -92,7 +92,7 @@ class TestCatalogSearchChromaDB:
             "distances": [[0.5]],
         }
 
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=mock_chromadb):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=mock_chromadb):
             searcher = CatalogSearch(tmp_path)
             results = searcher.search("python quality checks")
 
@@ -111,7 +111,7 @@ class TestCatalogSearchChromaDB:
         mock_chromadb.EphemeralClient.return_value = mock_client
         mock_collection.query.side_effect = RuntimeError("ChromaDB error")
 
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=mock_chromadb):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=mock_chromadb):
             searcher = CatalogSearch(tmp_path)
             results = searcher.search("python")
 
@@ -123,7 +123,7 @@ class TestCatalogSearchIndexItem:
     """Test incremental indexing."""
 
     def test_index_new_item(self, tmp_path: Path) -> None:
-        with patch("odk.core.catalog_search._try_import_chromadb", return_value=None):
+        with patch("ydk.core.catalog_search._try_import_chromadb", return_value=None):
             searcher = CatalogSearch(tmp_path)
             assert searcher.search("terraform") == []
 

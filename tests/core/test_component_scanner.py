@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from odk.core.component_scanner import ComponentScanner, LLMProvider
-from odk.models.component import SchemaDefinition, SchemaField
+from ydk.core.component_scanner import ComponentScanner, LLMProvider
+from ydk.models.component import SchemaDefinition, SchemaField
 
 
 class MockLLMProvider:
@@ -55,7 +55,7 @@ class TestScanNarrative:
                     {
                         "text": "the Order model",
                         "line": 42,
-                        "suggested_id": "odk:entity:orders/Order",
+                        "suggested_id": "ydk:entity:orders/Order",
                         "confidence": "HIGH",
                         "reason": "Mentions Order by name",
                     }
@@ -67,9 +67,9 @@ class TestScanNarrative:
         result = scanner.scan_narrative("The Order model stores data.", _make_schemas(), llm_provider=provider)
 
         assert len(result.unlinked_mentions) == 1
-        assert result.unlinked_mentions[0].suggested_id == "odk:entity:orders/Order"
+        assert result.unlinked_mentions[0].suggested_id == "ydk:entity:orders/Order"
         assert result.unlinked_mentions[0].confidence == "HIGH"
-        assert result.suggested_ids == ["odk:entity:orders/Order"]
+        assert result.suggested_ids == ["ydk:entity:orders/Order"]
 
     def test_handles_empty_findings(self):
         response = json.dumps({"findings": []})
@@ -91,7 +91,7 @@ class TestScanNarrative:
                     {
                         "text": "calls Binance",
                         "line": 10,
-                        "suggested_id": "odk:ext:binance/ticker",
+                        "suggested_id": "ydk:ext:binance/ticker",
                         "confidence": "MEDIUM",
                         "reason": "External dependency mention",
                     }
@@ -111,14 +111,14 @@ class TestScanNarrative:
                     {
                         "text": "Order model",
                         "line": 5,
-                        "suggested_id": "odk:entity:orders/Order",
+                        "suggested_id": "ydk:entity:orders/Order",
                         "confidence": "HIGH",
                         "reason": "Entity mention",
                     },
                     {
                         "text": "create endpoint",
                         "line": 12,
-                        "suggested_id": "odk:route:orders/create",
+                        "suggested_id": "ydk:route:orders/create",
                         "confidence": "MEDIUM",
                         "reason": "Route mention",
                     },

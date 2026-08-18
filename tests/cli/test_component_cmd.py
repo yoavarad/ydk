@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.core.component_registry import ComponentRegistryError
-from odk.models.component import ComponentId, LinkerResult, SchemaDefinition, SchemaField
+from ydk.cli import app
+from ydk.core.component_registry import ComponentRegistryError
+from ydk.models.component import ComponentId, LinkerResult, SchemaDefinition, SchemaField
 
 runner = CliRunner()
 
@@ -26,33 +26,33 @@ def _make_schema(name: str) -> SchemaDefinition:
 class TestComponentList:
     def test_lists_components(self, monkeypatch):
         components = [
-            ComponentId(full_id="odk:entity:orders/Order", type="entity", namespace="orders", name="Order"),
-            ComponentId(full_id="odk:route:orders/create", type="route", namespace="orders", name="create"),
+            ComponentId(full_id="ydk:entity:orders/Order", type="entity", namespace="orders", name="Order"),
+            ComponentId(full_id="ydk:route:orders/create", type="route", namespace="orders", name="create"),
         ]
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.list_components",
+            "ydk.cli.component_cmd.ComponentRegistry.list_components",
             lambda self, type_filter=None: components,
         )
         result = runner.invoke(app, ["component", "list"])
         assert result.exit_code == 0
-        assert "odk:entity:orders/Order" in result.output
-        assert "odk:route:orders/create" in result.output
+        assert "ydk:entity:orders/Order" in result.output
+        assert "ydk:route:orders/create" in result.output
 
     def test_lists_with_type_filter(self, monkeypatch):
         components = [
-            ComponentId(full_id="odk:entity:orders/Order", type="entity", namespace="orders", name="Order"),
+            ComponentId(full_id="ydk:entity:orders/Order", type="entity", namespace="orders", name="Order"),
         ]
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.list_components",
+            "ydk.cli.component_cmd.ComponentRegistry.list_components",
             lambda self, type_filter=None: components if type_filter == "entity" else [],
         )
         result = runner.invoke(app, ["component", "list", "--type", "entity"])
         assert result.exit_code == 0
-        assert "odk:entity:orders/Order" in result.output
+        assert "ydk:entity:orders/Order" in result.output
 
     def test_lists_empty(self, monkeypatch):
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.list_components",
+            "ydk.cli.component_cmd.ComponentRegistry.list_components",
             lambda self, type_filter=None: [],
         )
         result = runner.invoke(app, ["component", "list"])
@@ -62,35 +62,35 @@ class TestComponentList:
 
 class TestComponentShow:
     def test_shows_component(self, monkeypatch, tmp_path):
-        from odk.models.component import ComponentManifest
+        from ydk.models.component import ComponentManifest
 
         manifest = ComponentManifest(
-            schema_ref="odk:schema:route",
-            id="odk:route:orders/create",
+            schema_ref="ydk:schema:route",
+            id="ydk:route:orders/create",
             method="POST",
         )
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.load_component",
+            "ydk.cli.component_cmd.ComponentRegistry.load_component",
             lambda self, cid: manifest,
         )
         comp_file = tmp_path / "route" / "orders" / "create.yaml"
         comp_file.parent.mkdir(parents=True, exist_ok=True)
-        comp_file.write_text("$schema: odk:schema:route\nid: odk:route:orders/create\nmethod: POST\n")
+        comp_file.write_text("$schema: ydk:schema:route\nid: ydk:route:orders/create\nmethod: POST\n")
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.resolve_id",
+            "ydk.cli.component_cmd.ComponentRegistry.resolve_id",
             lambda self, cid: comp_file,
         )
 
-        result = runner.invoke(app, ["component", "show", "odk:route:orders/create"])
+        result = runner.invoke(app, ["component", "show", "ydk:route:orders/create"])
         assert result.exit_code == 0
-        assert "odk:route:orders/create" in result.output
+        assert "ydk:route:orders/create" in result.output
 
     def test_shows_error_for_missing(self, monkeypatch):
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.load_component",
+            "ydk.cli.component_cmd.ComponentRegistry.load_component",
             lambda self, cid: (_ for _ in ()).throw(ComponentRegistryError("not found")),
         )
-        result = runner.invoke(app, ["component", "show", "odk:route:missing/thing"])
+        result = runner.invoke(app, ["component", "show", "ydk:route:missing/thing"])
         assert result.exit_code == 1
 
 
@@ -98,7 +98,7 @@ class TestComponentCreate:
     def test_creates_component(self, monkeypatch, tmp_path):
         created_path = tmp_path / "route" / "orders" / "cancel.yaml"
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.create_component",
+            "ydk.cli.component_cmd.ComponentRegistry.create_component",
             lambda self, t, n: created_path,
         )
         result = runner.invoke(app, ["component", "create", "route", "orders/cancel"])
@@ -107,7 +107,7 @@ class TestComponentCreate:
 
     def test_create_fails_for_unknown_type(self, monkeypatch):
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.create_component",
+            "ydk.cli.component_cmd.ComponentRegistry.create_component",
             lambda self, t, n: (_ for _ in ()).throw(ComponentRegistryError("Unknown schema type")),
         )
         result = runner.invoke(app, ["component", "create", "unknown", "foo/bar"])
@@ -116,23 +116,23 @@ class TestComponentCreate:
 
 class TestComponentValidate:
     def test_validate_all_pass(self, monkeypatch):
-        from odk.core import component_linker
+        from ydk.core import component_linker
 
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.validate_all",
+            "ydk.cli.component_cmd.ComponentRegistry.validate_all",
             lambda self: {},
         )
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.list_components",
+            "ydk.cli.component_cmd.ComponentRegistry.list_components",
             lambda self, type_filter=None: [
-                ComponentId(full_id="odk:entity:orders/Order", type="entity", namespace="orders", name="Order"),
+                ComponentId(full_id="ydk:entity:orders/Order", type="entity", namespace="orders", name="Order"),
             ],
         )
         monkeypatch.setattr(
             component_linker.ComponentLinker,
             "validate_references",
             lambda self: LinkerResult(
-                undefined_refs=[], orphaned_components=[], broken_cross_refs=[], valid_refs=["odk:entity:orders/Order"]
+                undefined_refs=[], orphaned_components=[], broken_cross_refs=[], valid_refs=["ydk:entity:orders/Order"]
             ),
         )
         result = runner.invoke(app, ["component", "validate"])
@@ -140,11 +140,11 @@ class TestComponentValidate:
         assert "ALL PASSED" in result.output
 
     def test_validate_with_schema_errors(self, monkeypatch):
-        from odk.core import component_linker
+        from ydk.core import component_linker
 
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.validate_all",
-            lambda self: {"odk:route:a/b": ["missing required field 'method'"]},
+            "ydk.cli.component_cmd.ComponentRegistry.validate_all",
+            lambda self: {"ydk:route:a/b": ["missing required field 'method'"]},
         )
         monkeypatch.setattr(
             component_linker.ComponentLinker,
@@ -160,7 +160,7 @@ class TestComponentListSchemas:
     def test_lists_schemas(self, monkeypatch):
         schemas = [_make_schema("route"), _make_schema("entity")]
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.list_schemas",
+            "ydk.cli.component_cmd.ComponentRegistry.list_schemas",
             lambda self: schemas,
         )
         result = runner.invoke(app, ["component", "list-schemas"])
@@ -170,7 +170,7 @@ class TestComponentListSchemas:
 
     def test_lists_empty_schemas(self, monkeypatch):
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.list_schemas",
+            "ydk.cli.component_cmd.ComponentRegistry.list_schemas",
             lambda self: [],
         )
         result = runner.invoke(app, ["component", "list-schemas"])
@@ -181,7 +181,7 @@ class TestComponentListSchemas:
 class TestComponentShowSchema:
     def test_shows_schema(self, monkeypatch):
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.load_schemas",
+            "ydk.cli.component_cmd.ComponentRegistry.load_schemas",
             lambda self: {"route": _make_schema("route")},
         )
         result = runner.invoke(app, ["component", "show-schema", "route"])
@@ -190,7 +190,7 @@ class TestComponentShowSchema:
 
     def test_unknown_schema(self, monkeypatch):
         monkeypatch.setattr(
-            "odk.cli.component_cmd.ComponentRegistry.load_schemas",
+            "ydk.cli.component_cmd.ComponentRegistry.load_schemas",
             lambda self: {},
         )
         result = runner.invoke(app, ["component", "show-schema", "unknown"])
@@ -202,7 +202,7 @@ class TestComponentInitSchemas:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["component", "init-schemas"])
         assert result.exit_code == 0
-        schemas_dir = tmp_path / ".odk" / "schemas"
+        schemas_dir = tmp_path / ".ydk" / "schemas"
         assert schemas_dir.is_dir()
         schema_files = list(schemas_dir.glob("*.yaml"))
         assert len(schema_files) == 14

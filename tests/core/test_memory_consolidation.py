@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from odk.core.memory_consolidation import MemoryConsolidator
-from odk.models.consolidation import ConsolidationReport, DuplicateGroup
+from ydk.core.memory_consolidation import MemoryConsolidator
+from ydk.models.consolidation import ConsolidationReport, DuplicateGroup
 
 
 class FakeVectorStore:

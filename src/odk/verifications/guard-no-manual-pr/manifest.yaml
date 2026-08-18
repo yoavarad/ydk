@@ -1,6 +1,0 @@
-name: guard-no-manual-pr
-description: Block manual PR creation — must use odk task done for proof capture
-trigger: "guard:command"
-parallel: true
-timeout: 5
-requires: []

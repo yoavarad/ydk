@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from odk.core.task_validator import (
+from ydk.core.task_validator import (
     check_hierarchy,
     check_story_completeness,
     validate_batch_yaml,
@@ -12,8 +12,8 @@ from odk.core.task_validator import (
     validate_dag,
     validate_spec_ref,
 )
-from odk.models.pm import EpicSummary, StorySummary, TaskSummary
-from odk.models.task import Task
+from ydk.models.pm import EpicSummary, StorySummary, TaskSummary
+from ydk.models.task import Task
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,31 +28,31 @@ class TestValidateComponentRef:
     def test_valid_ref(self, tmp_path: Path) -> None:
         comp_dir = tmp_path / "entity" / "orders"
         comp_dir.mkdir(parents=True)
-        (comp_dir / "Order.yaml").write_text("id: odk:entity:orders/Order")
+        (comp_dir / "Order.yaml").write_text("id: ydk:entity:orders/Order")
 
-        err = validate_component_ref("odk:entity:orders/Order", tmp_path)
+        err = validate_component_ref("ydk:entity:orders/Order", tmp_path)
         assert err is None
 
     def test_invalid_prefix(self, tmp_path: Path) -> None:
         err = validate_component_ref("bad:entity:orders/Order", tmp_path)
         assert err is not None
-        assert "does not start with 'odk:'" in err
+        assert "does not start with 'ydk:'" in err
 
     def test_missing_file(self, tmp_path: Path) -> None:
-        err = validate_component_ref("odk:entity:orders/Order", tmp_path)
+        err = validate_component_ref("ydk:entity:orders/Order", tmp_path)
         assert err is not None
         assert "not found at" in err
 
     def test_no_namespace(self, tmp_path: Path) -> None:
         comp_dir = tmp_path / "service"
         comp_dir.mkdir(parents=True)
-        (comp_dir / "Auth.yaml").write_text("id: odk:service:Auth")
+        (comp_dir / "Auth.yaml").write_text("id: ydk:service:Auth")
 
-        err = validate_component_ref("odk:service:Auth", tmp_path)
+        err = validate_component_ref("ydk:service:Auth", tmp_path)
         assert err is None
 
     def test_malformed_ref(self, tmp_path: Path) -> None:
-        err = validate_component_ref("odk:", tmp_path)
+        err = validate_component_ref("ydk:", tmp_path)
         assert err is not None
         assert "Invalid component ref format" in err
 
@@ -249,7 +249,7 @@ class TestValidateBatchYaml:
         comp_dir.mkdir()
         data: dict[str, object] = {
             "tasks": [
-                {"id": "T-001", "title": "A", "component_refs": ["odk:entity:orders/Order"]},
+                {"id": "T-001", "title": "A", "component_refs": ["ydk:entity:orders/Order"]},
             ]
         }
         errors = validate_batch_yaml(data, components_dir=comp_dir)

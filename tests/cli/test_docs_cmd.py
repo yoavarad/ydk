@@ -1,16 +1,16 @@
-"""Tests for odk docs generate CLI command."""
+"""Tests for ydk docs generate CLI command."""
 
 from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from odk.cli import app
+from ydk.cli import app
 
 runner = CliRunner()
 
 
 def test_docs_generate_creates_expected_files(tmp_path) -> None:
-    """odk docs generate produces CLI reference and schema MDX files."""
+    """ydk docs generate produces CLI reference and schema MDX files."""
     output_dir = tmp_path / "_generated"
 
     result = runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
@@ -37,7 +37,7 @@ def test_docs_generate_creates_expected_files(tmp_path) -> None:
         assert mdx.exists(), f"Missing CLI page: {mdx}"
         content = mdx.read_text()
         assert content.startswith("---"), f"Missing frontmatter in {page}.mdx"
-        assert f"odk {page}" in content
+        assert f"ydk {page}" in content
 
     # Schema reference page
     schemas_mdx = output_dir / "schemas.mdx"
@@ -68,11 +68,11 @@ def test_docs_generate_group_pages_have_subcommands(tmp_path) -> None:
 
     component_mdx = output_dir / "cli" / "component.mdx"
     content = component_mdx.read_text()
-    # component has subcommands — each rendered as ## `odk component <sub>`
+    # component has subcommands — each rendered as ## `ydk component <sub>`
     # Match any subcommand heading (e.g. list, show, validate)
     import re
 
-    subcommand_headings = re.findall(r"^## `odk component \w+`", content, re.MULTILINE)
+    subcommand_headings = re.findall(r"^## `ydk component \w+`", content, re.MULTILINE)
     assert len(subcommand_headings) >= 1, (
         f"Expected at least one subcommand heading in component.mdx, found none. Content preview:\n{content[:500]}"
     )

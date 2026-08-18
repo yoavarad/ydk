@@ -4,23 +4,23 @@ from __future__ import annotations
 
 import ast
 
-from odk.core.test_generator import ComponentTestGenerator, _class_name_from_id
+from ydk.core.test_generator import ComponentTestGenerator, _class_name_from_id
 
 
 class TestClassNameFromId:
     def test_entity_id(self):
-        assert _class_name_from_id("odk:entity:orders/Order") == "OrdersOrder"
+        assert _class_name_from_id("ydk:entity:orders/Order") == "OrdersOrder"
 
     def test_route_id(self):
-        assert _class_name_from_id("odk:route:orders/create") == "OrdersCreate"
+        assert _class_name_from_id("ydk:route:orders/create") == "OrdersCreate"
 
     def test_simple_id(self):
-        assert _class_name_from_id("odk:error:NotFound") == "Notfound"
+        assert _class_name_from_id("ydk:error:NotFound") == "Notfound"
 
 
 class TestGenerateFromEntity:
     def _make_manifest(self, **overrides):
-        base = {"id": "odk:entity:orders/Order"}
+        base = {"id": "ydk:entity:orders/Order"}
         base.update(overrides)
         return base
 
@@ -49,7 +49,7 @@ class TestGenerateFromEntity:
     def test_component_id_in_result(self):
         gen = ComponentTestGenerator()
         result = gen.generate_from_entity(self._make_manifest(), self._make_schema())
-        assert result.component_id == "odk:entity:orders/Order"
+        assert result.component_id == "ydk:entity:orders/Order"
 
     def test_file_path_contains_component_name(self):
         gen = ComponentTestGenerator()
@@ -86,7 +86,7 @@ class TestGenerateFromEntity:
 class TestGenerateFromRoute:
     def _make_manifest(self, **overrides):
         base = {
-            "id": "odk:route:orders/create",
+            "id": "ydk:route:orders/create",
             "method": "POST",
             "path": "/orders",
             "status": 201,
@@ -148,7 +148,7 @@ class TestGenerateFromRoute:
 
 class TestGenerateFromError:
     def _make_manifest(self):
-        return {"id": "odk:error:common/ValidationError"}
+        return {"id": "ydk:error:common/ValidationError"}
 
     def _make_schema(self):
         return {

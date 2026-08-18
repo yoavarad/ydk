@@ -1,11 +1,11 @@
-"""Tests for odk.core.events — EventBus and event types."""
+"""Tests for ydk.core.events — EventBus and event types."""
 
 from __future__ import annotations
 
 import threading
 import time
 
-from odk.core.events import (
+from ydk.core.events import (
     Event,
     EventBus,
     TaskBlockedEvent,

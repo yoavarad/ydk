@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from odk.core.decision_store import DecisionStore
-from odk.models.decision import Decision
+from ydk.core.decision_store import DecisionStore
+from ydk.models.decision import Decision
 
 
 class TestDecisionRecord:

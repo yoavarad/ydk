@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
-from odk.core.verifier import Verifier
+from ydk.core.verifier import Verifier
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -206,7 +206,7 @@ class TestLintRuffAutoFix:
 
         # Load the real lint-ruff check.py
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "lint-ruff" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "lint-ruff" / "check.py"
         )
         from importlib.util import module_from_spec, spec_from_file_location
 
@@ -246,7 +246,7 @@ class TestLintRuffAutoFix:
         project = _make_ruff_project(tmp_path)
 
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "lint-ruff" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "lint-ruff" / "check.py"
         )
         from importlib.util import module_from_spec, spec_from_file_location
 
@@ -291,8 +291,8 @@ class TestCLIAutoFix:
 
         from typer.testing import CliRunner
 
-        from odk.cli import app
-        from odk.models.verification import CheckResult, VerificationReport
+        from ydk.cli import app
+        from ydk.models.verification import CheckResult, VerificationReport
 
         report = VerificationReport(
             timestamp="2026-04-28T00:00:00Z",
@@ -309,7 +309,7 @@ class TestCLIAutoFix:
             total_duration_seconds=0.3,
         )
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=report),
         )
         cli_runner = CliRunner()
@@ -322,8 +322,8 @@ class TestCLIAutoFix:
 
         from typer.testing import CliRunner
 
-        from odk.cli import app
-        from odk.models.verification import CheckResult, VerificationReport
+        from ydk.cli import app
+        from ydk.models.verification import CheckResult, VerificationReport
 
         report = VerificationReport(
             timestamp="2026-04-28T00:00:00Z",
@@ -340,7 +340,7 @@ class TestCLIAutoFix:
             total_duration_seconds=0.3,
         )
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=report),
         )
         cli_runner = CliRunner()
@@ -356,8 +356,8 @@ class TestCLIAutoFix:
 
         from typer.testing import CliRunner
 
-        from odk.cli import app
-        from odk.models.verification import CheckResult, VerificationReport
+        from ydk.cli import app
+        from ydk.models.verification import CheckResult, VerificationReport
 
         report = VerificationReport(
             timestamp="2026-04-28T00:00:00Z",
@@ -374,7 +374,7 @@ class TestCLIAutoFix:
             total_duration_seconds=0.3,
         )
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=report),
         )
         cli_runner = CliRunner()

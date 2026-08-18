@@ -5,11 +5,11 @@ from __future__ import annotations
 import subprocess
 from typing import TYPE_CHECKING
 
-from odk.core.quickdev import QuickDevSetup, _generate_task_id, _slugify
+from ydk.core.quickdev import QuickDevSetup, _generate_task_id, _slugify
 
 if TYPE_CHECKING:
     from pathlib import Path
-from odk.models.quickdev import QuickDevContext
+from ydk.models.quickdev import QuickDevContext
 
 
 class TestGenerateTaskId:
@@ -60,7 +60,7 @@ class TestQuickDevSetup:
         assert result.description == "add user avatar"
 
         # Task file should exist
-        task_file = tmp_path / ".odk" / "tasks" / f"{result.task_id}.md"
+        task_file = tmp_path / ".ydk" / "tasks" / f"{result.task_id}.md"
         assert task_file.exists()
         content = task_file.read_text()
         assert "add user avatar" in content
@@ -74,7 +74,7 @@ class TestQuickDevSetup:
             capture_output=True,
         )
         # Create components
-        components = tmp_path / ".odk" / "components"
+        components = tmp_path / ".ydk" / "components"
         components.mkdir(parents=True)
         (components / "avatar.yaml").write_text("id: avatar")
         (components / "order.yaml").write_text("id: order")

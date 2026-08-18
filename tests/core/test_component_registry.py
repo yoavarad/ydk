@@ -10,7 +10,7 @@ import yaml
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.component_registry import ComponentRegistry, ComponentRegistryError
+from ydk.core.component_registry import ComponentRegistry, ComponentRegistryError
 
 
 def _write_schema(schemas_dir: Path, name: str, fields: dict | None = None) -> Path:
@@ -21,7 +21,7 @@ def _write_schema(schemas_dir: Path, name: str, fields: dict | None = None) -> P
         "version": 1,
         "fields": fields
         or {
-            "id": {"type": "string", "required": True, "pattern": f"^odk:{name}:.+", "description": "Component ID"},
+            "id": {"type": "string", "required": True, "pattern": f"^ydk:{name}:.+", "description": "Component ID"},
             "description": {"type": "text", "required": True, "description": "What this is"},
         },
     }
@@ -33,11 +33,11 @@ def _write_schema(schemas_dir: Path, name: str, fields: dict | None = None) -> P
 def _write_component(
     components_dir: Path, type_name: str, namespace: str, name: str, extra: dict | None = None
 ) -> Path:
-    component_id = f"odk:{type_name}:{namespace}/{name}"
+    component_id = f"ydk:{type_name}:{namespace}/{name}"
     rel_path = components_dir / type_name / namespace / f"{name}.yaml"
     rel_path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "$schema": f"odk:schema:{type_name}",
+        "$schema": f"ydk:schema:{type_name}",
         "id": component_id,
         "description": f"Test {name}",
     }
@@ -83,22 +83,22 @@ class TestLoadSchemas:
 class TestResolveId:
     def test_resolves_standard_id(self, tmp_path):
         reg = ComponentRegistry(schemas_dir=tmp_path, components_dir=tmp_path / "components")
-        path = reg.resolve_id("odk:route:orders/create")
+        path = reg.resolve_id("ydk:route:orders/create")
         assert path == tmp_path / "components" / "route" / "orders" / "create.yaml"
 
     def test_resolves_entity_id(self, tmp_path):
         reg = ComponentRegistry(schemas_dir=tmp_path, components_dir=tmp_path / "components")
-        path = reg.resolve_id("odk:entity:orders/Order")
+        path = reg.resolve_id("ydk:entity:orders/Order")
         assert path == tmp_path / "components" / "entity" / "orders" / "Order.yaml"
 
     def test_resolves_crosscut_no_namespace(self, tmp_path):
         reg = ComponentRegistry(schemas_dir=tmp_path, components_dir=tmp_path / "components")
-        path = reg.resolve_id("odk:crosscut:error-format")
+        path = reg.resolve_id("ydk:crosscut:error-format")
         assert path == tmp_path / "components" / "crosscut" / "error-format.yaml"
 
     def test_resolves_deep_namespace(self, tmp_path):
         reg = ComponentRegistry(schemas_dir=tmp_path, components_dir=tmp_path / "components")
-        path = reg.resolve_id("odk:nfr:perf/order-latency-p95")
+        path = reg.resolve_id("ydk:nfr:perf/order-latency-p95")
         assert path == tmp_path / "components" / "nfr" / "perf" / "order-latency-p95.yaml"
 
 
@@ -110,14 +110,14 @@ class TestLoadComponent:
         _write_component(components_dir, "route", "orders", "create")
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
-        manifest = reg.load_component("odk:route:orders/create")
-        assert manifest.id == "odk:route:orders/create"
-        assert manifest.schema_ref == "odk:schema:route"
+        manifest = reg.load_component("ydk:route:orders/create")
+        assert manifest.id == "ydk:route:orders/create"
+        assert manifest.schema_ref == "ydk:schema:route"
 
     def test_raises_for_missing_file(self, tmp_path):
         reg = ComponentRegistry(schemas_dir=tmp_path, components_dir=tmp_path / "components")
         with pytest.raises(ComponentRegistryError, match="not found"):
-            reg.load_component("odk:route:orders/nonexistent")
+            reg.load_component("ydk:route:orders/nonexistent")
 
 
 class TestValidateComponent:
@@ -128,7 +128,7 @@ class TestValidateComponent:
             schemas_dir,
             "route",
             fields={
-                "id": {"type": "string", "required": True, "pattern": "^odk:route:.+", "description": "ID"},
+                "id": {"type": "string", "required": True, "pattern": "^ydk:route:.+", "description": "ID"},
                 "description": {"type": "text", "required": True, "description": "What this does"},
                 "method": {"type": "enum", "required": True, "values": ["GET", "POST"], "description": "HTTP method"},
             },
@@ -136,7 +136,7 @@ class TestValidateComponent:
         _write_component(components_dir, "route", "orders", "create", extra={"method": "POST"})
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
-        errors = reg.validate_component("odk:route:orders/create")
+        errors = reg.validate_component("ydk:route:orders/create")
         assert errors == []
 
     def test_missing_required_field(self, tmp_path):
@@ -154,7 +154,7 @@ class TestValidateComponent:
         _write_component(components_dir, "route", "orders", "create")
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
-        errors = reg.validate_component("odk:route:orders/create")
+        errors = reg.validate_component("ydk:route:orders/create")
         assert any("method" in e for e in errors)
 
     def test_invalid_enum_value(self, tmp_path):
@@ -172,7 +172,7 @@ class TestValidateComponent:
         _write_component(components_dir, "route", "orders", "create", extra={"method": "INVALID"})
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
-        errors = reg.validate_component("odk:route:orders/create")
+        errors = reg.validate_component("ydk:route:orders/create")
         assert any("expected one of" in e for e in errors)
 
     def test_unknown_schema_type(self, tmp_path):
@@ -185,14 +185,14 @@ class TestValidateComponent:
         comp_path.write_text(
             yaml.dump(
                 {
-                    "$schema": "odk:schema:widget",
-                    "id": "odk:widget:foo/bar",
+                    "$schema": "ydk:schema:widget",
+                    "id": "ydk:widget:foo/bar",
                 }
             )
         )
 
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
-        errors = reg.validate_component("odk:widget:foo/bar")
+        errors = reg.validate_component("ydk:widget:foo/bar")
         assert any("Unknown schema type" in e for e in errors)
 
 
@@ -225,8 +225,8 @@ class TestListComponents:
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
         components = reg.list_components()
         ids = [c.full_id for c in components]
-        assert "odk:entity:orders/Order" in ids
-        assert "odk:route:orders/create" in ids
+        assert "ydk:entity:orders/Order" in ids
+        assert "ydk:route:orders/create" in ids
 
     def test_filter_by_type(self, tmp_path):
         schemas_dir = tmp_path / "schemas"
@@ -266,8 +266,8 @@ class TestCreateComponent:
 
         assert path.exists()
         data = yaml.safe_load(path.read_text())
-        assert data["$schema"] == "odk:schema:route"
-        assert data["id"] == "odk:route:orders/cancel"
+        assert data["$schema"] == "ydk:schema:route"
+        assert data["id"] == "ydk:route:orders/cancel"
 
     def test_raises_for_unknown_type(self, tmp_path):
         schemas_dir = tmp_path / "schemas"

@@ -1,0 +1,6 @@
+name: guard-no-proof-tamper
+description: Block manual edits to proof files — only ydk task done writes proof
+trigger: "guard:edit"
+parallel: true
+timeout: 5
+requires: []

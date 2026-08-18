@@ -1,13 +1,13 @@
 ---
-title: "odk component"
-description: "CLI reference for odk component"
+title: "ydk component"
+description: "CLI reference for ydk component"
 ---
 
-# `odk component`
+# `ydk component`
 
 ```text
                                                                                 
- Usage: odk component [OPTIONS] COMMAND [ARGS]...                               
+ Usage: ydk component [OPTIONS] COMMAND [ARGS]...                               
                                                                                 
  Component manifest management                                                  
                                                                                 
@@ -21,15 +21,15 @@ description: "CLI reference for odk component"
 │ validate      Validate ALL components (schema + linker + cross-refs).        │
 │ list-schemas  List available schemas.                                        │
 │ show-schema   Show a schema definition.                                      │
-│ init-schemas  Copy default schemas to project's .odk/schemas/ directory.     │
+│ init-schemas  Copy default schemas to project's .ydk/schemas/ directory.     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk component list`
+## `ydk component list`
 
 ```text
                                                                                 
- Usage: odk component list [OPTIONS]                                            
+ Usage: ydk component list [OPTIONS]                                            
                                                                                 
  List all components, optionally filtered by type.                              
                                                                                 
@@ -39,16 +39,16 @@ description: "CLI reference for odk component"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk component show`
+## `ydk component show`
 
 ```text
                                                                                 
- Usage: odk component show [OPTIONS] COMPONENT_ID                               
+ Usage: ydk component show [OPTIONS] COMPONENT_ID                               
                                                                                 
  Show a component manifest.                                                     
                                                                                 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│ *    component_id      TEXT  Full component ID (odk:type:namespace/name)     │
+│ *    component_id      TEXT  Full component ID (ydk:type:namespace/name)     │
 │                              [required]                                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
@@ -56,11 +56,11 @@ description: "CLI reference for odk component"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk component create`
+## `ydk component create`
 
 ```text
                                                                                 
- Usage: odk component create [OPTIONS] TYPE_NAME NAMESPACE_NAME                 
+ Usage: ydk component create [OPTIONS] TYPE_NAME NAMESPACE_NAME                 
                                                                                 
  Create a new component from a schema template.                                 
                                                                                 
@@ -75,11 +75,11 @@ description: "CLI reference for odk component"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk component validate`
+## `ydk component validate`
 
 ```text
                                                                                 
- Usage: odk component validate [OPTIONS]                                        
+ Usage: ydk component validate [OPTIONS]                                        
                                                                                 
  Validate ALL components (schema + linker + cross-refs).                        
                                                                                 
@@ -88,11 +88,11 @@ description: "CLI reference for odk component"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk component list-schemas`
+## `ydk component list-schemas`
 
 ```text
                                                                                 
- Usage: odk component list-schemas [OPTIONS]                                    
+ Usage: ydk component list-schemas [OPTIONS]                                    
                                                                                 
  List available schemas.                                                        
                                                                                 
@@ -101,11 +101,11 @@ description: "CLI reference for odk component"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk component show-schema`
+## `ydk component show-schema`
 
 ```text
                                                                                 
- Usage: odk component show-schema [OPTIONS] TYPE_NAME                           
+ Usage: ydk component show-schema [OPTIONS] TYPE_NAME                           
                                                                                 
  Show a schema definition.                                                      
                                                                                 
@@ -117,13 +117,13 @@ description: "CLI reference for odk component"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk component init-schemas`
+## `ydk component init-schemas`
 
 ```text
                                                                                 
- Usage: odk component init-schemas [OPTIONS]                                    
+ Usage: ydk component init-schemas [OPTIONS]                                    
                                                                                 
- Copy default schemas to project's .odk/schemas/ directory.                     
+ Copy default schemas to project's .ydk/schemas/ directory.                     
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --help          Show this message and exit.                                  │

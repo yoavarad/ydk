@@ -7,12 +7,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from odk.core.events import EventBus
-from odk.core.task_lifecycle import TaskLifecycle
-from odk.models.gate import Gate, GateStatus, GateType
-from odk.models.pm import AcceptanceCriterion, TaskCreate, TaskDetail
-from odk.repositories.local.frontmatter import parse_frontmatter
-from odk.repositories.local.tasks import LocalTaskRepository
+from ydk.core.events import EventBus
+from ydk.core.task_lifecycle import TaskLifecycle
+from ydk.models.gate import Gate, GateStatus, GateType
+from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskDetail
+from ydk.repositories.local.frontmatter import parse_frontmatter
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 
 @pytest.fixture
@@ -140,7 +140,7 @@ class TestGateSerializationInFrontmatter:
         assert reloaded.gates == []
 
     def test_gates_in_manifest(self, tmp_path) -> None:
-        from odk.repositories.local.manifest import Manifest
+        from ydk.repositories.local.manifest import Manifest
 
         repo = LocalTaskRepository(tmp_path)
         gates = [Gate(id="G-001", type=GateType.HUMAN, description="Approval")]

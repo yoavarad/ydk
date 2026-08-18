@@ -7,18 +7,18 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Verification Plugins
 
-ODK's verification system is built on a plugin architecture that prioritizes simplicity and extensibility. A plugin is a directory with two files: a manifest declaring what the plugin does, and a Python script that does the actual checking. There is no registration step, no base class to inherit from, no complex API to learn. Drop the directory in the right place and ODK discovers it on the next run.
+YDK's verification system is built on a plugin architecture that prioritizes simplicity and extensibility. A plugin is a directory with two files: a manifest declaring what the plugin does, and a Python script that does the actual checking. There is no registration step, no base class to inherit from, no complex API to learn. Drop the directory in the right place and YDK discovers it on the next run.
 
 The 40 built-in plugins are standalone Python scripts that read JSON from stdin, run their checks, and write JSON to stdout. Anyone who can write a Python script can write a verification plugin.
 
 ## Discovery
 
-ODK discovers plugins by scanning two directories in order:
+YDK discovers plugins by scanning two directories in order:
 
-1. **`.odk/verifications/`** -- Project-specific plugins that take priority
-2. **`src/odk/verifications/`** (within ODK's package) -- The 40 built-in plugins
+1. **`.ydk/verifications/`** -- Project-specific plugins that take priority
+2. **`src/ydk/verifications/`** (within YDK's package) -- The 40 built-in plugins
 
-For each subdirectory found, ODK looks for `manifest.yaml` and `check.py`. If both exist, the plugin is loaded. When a project plugin has the same name as a built-in plugin, the project version wins.
+For each subdirectory found, YDK looks for `manifest.yaml` and `check.py`. If both exist, the plugin is loaded. When a project plugin has the same name as a built-in plugin, the project version wins.
 
 ## The Manifest
 
@@ -82,9 +82,9 @@ Three fields are required in the output: `name`, `passed`, and `output`. The `ou
 
 ## YAML-Based Spec Reviewers
 
-Separate from the code verification plugins, ODK also has a **spec reviewer** system that evaluates narrative spec quality. This is an entirely different architecture:
+Separate from the code verification plugins, YDK also has a **spec reviewer** system that evaluates narrative spec quality. This is an entirely different architecture:
 
-- **10 YAML reviewer configs** in `src/odk/spec_reviewers/` (copied to `.odk/spec-reviewers/` on `odk init`)
+- **10 YAML reviewer configs** in `src/ydk/spec_reviewers/` (copied to `.ydk/spec-reviewers/` on `ydk init`)
 - Each reviewer has: id (N01-N10), name, group, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric
 - Reviewers run as **parallel Bedrock Converse API calls** with forced structured output (`toolChoice`)
 - **Prompt caching**: spec content cached after first call, remaining reviewers hit cache (90% cost savings)
@@ -94,8 +94,8 @@ Separate from the code verification plugins, ODK also has a **spec reviewer** sy
 - Only **4 high-value tools** remain: `scan_url_paths`, `scan_type_annotations` (N08), `scan_filler_phrases` (N07), `scan_unlinked_mentions` (N09)
 - **Orphaned components are errors** (not warnings)
 
-The spec reviewers run via `odk spec verify`, not `odk verify run`. They are complementary systems: plugins check code quality, reviewers check spec quality.
+The spec reviewers run via `ydk spec verify`, not `ydk verify run`. They are complementary systems: plugins check code quality, reviewers check spec quality.
 
 <Callout type="info">
-You can write a custom code verification plugin in under five minutes: create a directory with `manifest.yaml` and `check.py`, read JSON from stdin, run your check, write JSON to stdout. For custom spec reviewers, add a YAML file to `.odk/spec-reviewers/` following the format of the built-in reviewers.
+You can write a custom code verification plugin in under five minutes: create a directory with `manifest.yaml` and `check.py`, read JSON from stdin, run your check, write JSON to stdout. For custom spec reviewers, add a YAML file to `.ydk/spec-reviewers/` following the format of the built-in reviewers.
 </Callout>

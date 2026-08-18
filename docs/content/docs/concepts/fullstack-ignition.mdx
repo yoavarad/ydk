@@ -51,7 +51,7 @@ This tells ignition: "Before running this pack's generators, copy `openapi.json`
 
 ## The Fullstack FastAPI + Next.js Pack
 
-ODK ships a reference fullstack pack (`fullstack-fastapi-nextjs`) that demonstrates phased ignition:
+YDK ships a reference fullstack pack (`fullstack-fastapi-nextjs`) that demonstrates phased ignition:
 
 **Phase 1 — Backend (FastAPI)**:
 - Generates data models, repository interfaces, service stubs, route handlers
@@ -83,7 +83,7 @@ exports:
 
 During ignition, after Phase 1 completes:
 
-1. ODK reads the pack's `exports` declarations
+1. YDK reads the pack's `exports` declarations
 2. Copies each exported artifact to a staging area
 3. Before Phase 2 runs, resolves all `pack_ref` entries and places consumed artifacts at their target paths
 4. Phase 2 generators can then read those files as inputs
@@ -92,10 +92,10 @@ During ignition, after Phase 1 completes:
 
 ```bash
 # Install packs (order matters for phase assignment)
-odk catalog install fullstack-fastapi-nextjs
+ydk catalog install fullstack-fastapi-nextjs
 
 # Run ignition — phases execute in order automatically
-odk ignite
+ydk ignite
 ```
 
 Ignition detects that the installed pack has multiple phases and runs them sequentially. Progress output shows which phase is active:
@@ -120,7 +120,7 @@ After fullstack ignition completes, the project must satisfy:
 4. **Types align**: The frontend's typed client matches the backend's API contract
 
 <Callout type="info">
-Phased ignition is idempotent like single-pack ignition. Re-running `odk ignite` skips unchanged files based on content hashes. If only a backend component changed, only Phase 1 regenerates (and Phase 2 if the OpenAPI spec changed).
+Phased ignition is idempotent like single-pack ignition. Re-running `ydk ignite` skips unchanged files based on content hashes. If only a backend component changed, only Phase 1 regenerates (and Phase 2 if the OpenAPI spec changed).
 </Callout>
 
 ## When to Use Fullstack vs Single Pack

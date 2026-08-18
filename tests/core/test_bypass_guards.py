@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERIFICATIONS_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications"
+VERIFICATIONS_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications"
 
 
 def _run_guard_plugin(plugin_name: str, context: dict) -> tuple[bool, str]:
@@ -184,7 +184,7 @@ class TestNoManualPr:
             },
         )
         assert passed is False
-        assert "odk task done" in output
+        assert "ydk task done" in output
 
     def test_blocks_gh_pr_merge(self) -> None:
         passed, output = _run_guard_plugin(
@@ -194,7 +194,7 @@ class TestNoManualPr:
             },
         )
         assert passed is False
-        assert "odk task done" in output
+        assert "ydk task done" in output
 
     def test_allows_gh_issue_create(self) -> None:
         passed, _ = _run_guard_plugin(
@@ -222,18 +222,18 @@ class TestNoProofTamper:
         passed, output = _run_guard_plugin(
             "guard-no-proof-tamper",
             {
-                "file_path": ".odk/proofs/T-001/verification.json",
+                "file_path": ".ydk/proofs/T-001/verification.json",
                 "new_content": '{"tampered": true}',
             },
         )
         assert passed is False
-        assert "odk task done" in output
+        assert "ydk task done" in output
 
     def test_allows_summary_md(self) -> None:
         passed, _ = _run_guard_plugin(
             "guard-no-proof-tamper",
             {
-                "file_path": ".odk/proofs/T-001/summary.md",
+                "file_path": ".ydk/proofs/T-001/summary.md",
                 "new_content": "# Summary\nAll tests pass.",
             },
         )

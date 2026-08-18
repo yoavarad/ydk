@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from odk.core.memory import MemoryEngine
-from odk.models.memory import MemoryScore
+from ydk.core.memory import MemoryEngine
+from ydk.models.memory import MemoryScore
 
 # ---------------------------------------------------------------------------
 # Pure-logic tests (no ChromaDB needed)

@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import typer
 
-from odk.cli.task_cmd import _parse_depends_on_arg
-from odk.core.task_validator import check_coverage
+from ydk.cli.task_cmd import _parse_depends_on_arg
+from ydk.core.task_validator import check_coverage
 
 # ---------------------------------------------------------------------------
 # Issue 5: Coverage exclusions + path matching
@@ -102,7 +102,7 @@ class TestListFiltering:
     def test_list_command_has_epic_option(self) -> None:
         import inspect
 
-        from odk.cli.task_cmd import list_tasks
+        from ydk.cli.task_cmd import list_tasks
 
         sig = inspect.signature(list_tasks)
         assert "epic" in sig.parameters
@@ -117,7 +117,7 @@ class TestListFiltering:
 
 class TestLabelCreation:
     def test_required_labels_defined(self) -> None:
-        from odk.cli.init_cmd import _REQUIRED_LABELS
+        from ydk.cli.init_cmd import _REQUIRED_LABELS
 
         label_names = [name for name, _color in _REQUIRED_LABELS]
         assert "epic" in label_names
@@ -127,13 +127,13 @@ class TestLabelCreation:
         assert "blocked-by-decision" in label_names
         assert "in-progress" in label_names
 
-    @patch("odk.cli.init_cmd.subprocess.run")
+    @patch("ydk.cli.init_cmd.subprocess.run")
     def test_create_github_labels_calls_gh(self, mock_run: MagicMock) -> None:
-        from odk.cli.init_cmd import _create_github_labels
+        from ydk.cli.init_cmd import _create_github_labels
 
         _create_github_labels()
         # Should be called once per label
-        from odk.cli.init_cmd import _REQUIRED_LABELS
+        from ydk.cli.init_cmd import _REQUIRED_LABELS
 
         assert mock_run.call_count == len(_REQUIRED_LABELS)
         # Verify the first call uses 'gh label create'
@@ -181,7 +181,7 @@ class TestDependsOnValidation:
 
 class TestTaskExists:
     def test_local_task_exists(self, tmp_path: pytest.TempPathFactory) -> None:  # type: ignore[type-arg]
-        from odk.repositories.local.tasks import LocalTaskRepository
+        from ydk.repositories.local.tasks import LocalTaskRepository
 
         repo = LocalTaskRepository(tmp_path)  # type: ignore[arg-type]
         tasks_dir = tmp_path / "tasks"  # type: ignore[operator]

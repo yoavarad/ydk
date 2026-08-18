@@ -9,8 +9,8 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.procedural_memory import ProceduralMemory
-from odk.models.procedural import ProceduralReport
+from ydk.core.procedural_memory import ProceduralMemory
+from ydk.models.procedural import ProceduralReport
 
 
 class FakeLLM:

@@ -1,0 +1,43 @@
+$schema: "ydk:schema:entity"
+id: "ydk:entity:sample/Item"
+name: Item
+table_name: items
+description: "Sample item entity"
+fields:
+  id:
+    type: integer
+    primary_key: true
+    generated: true
+    description: "Auto-increment PK"
+  name:
+    type: string
+    required: true
+    description: "Item name"
+  description:
+    type: text
+    required: false
+    description: "Optional description"
+  price:
+    type: Decimal
+    required: true
+    precision: [10, 2]
+    description: "Item price"
+  is_active:
+    type: boolean
+    required: true
+    description: "Active flag"
+  created_at:
+    type: datetime
+    required: true
+    auto: true
+    description: "Creation time"
+  updated_at:
+    type: datetime
+    required: true
+    auto: true
+    description: "Last update time"
+  category_id:
+    type: integer
+    required: false
+    index: true
+    description: "Optional category FK"

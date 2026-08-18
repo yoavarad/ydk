@@ -1,21 +1,21 @@
 ---
 title: Configuration Reference
-description: Complete OdkConfig reference with all options
+description: Complete YdkConfig reference with all options
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 # Configuration Reference
 
-All ODK configuration lives in `.odk/config.yaml` and is validated against the `OdkConfig` Pydantic model on every read. This means you cannot have an invalid configuration -- any value that does not pass validation is rejected with a clear error, and the `odk config set` command rolls back changes that would produce an invalid state.
+All YDK configuration lives in `.ydk/config.yaml` and is validated against the `YdkConfig` Pydantic model on every read. This means you cannot have an invalid configuration -- any value that does not pass validation is rejected with a clear error, and the `ydk config set` command rolls back changes that would produce an invalid state.
 
 ## Managing Config
 
 ```bash
-odk config show                                    # Show full config
-odk config get spec_check.thresholds.completeness  # Get a value via dot notation
-odk config set aws.region eu-west-1                # Set a value with validation
-odk config validate                                # Validate the current config
+ydk config show                                    # Show full config
+ydk config get spec_check.thresholds.completeness  # Get a value via dot notation
+ydk config set aws.region eu-west-1                # Set a value with validation
+ydk config validate                                # Validate the current config
 ```
 
 The dot notation system supports arbitrary nesting depth. Under the hood, `config get` traverses the config dictionary following the dot-separated path. `config set` modifies the value at the path, validates the entire config against the Pydantic model, and rolls back on failure. This means setting `spec_check.thresholds.completeness` to `"abc"` is rejected because the model expects an integer.
@@ -43,7 +43,7 @@ Controls the AI-powered specification quality evaluator.
 | `timeout` | int | `60` | Per-criterion evaluation timeout in seconds |
 | `global_timeout` | int | `120` | Total evaluation timeout across all criteria |
 | `concurrency` | int | `10` | Maximum concurrent criterion evaluations |
-| `results_path` | str | `".odk/spec-check-results.json"` | Where to save evaluation results |
+| `results_path` | str | `".ydk/spec-check-results.json"` | Where to save evaluation results |
 
 ### SpecCheckThresholds
 
@@ -84,7 +84,7 @@ Controls the AI-powered specification quality evaluator.
 | `embedding_model` | str | `"amazon.titan-embed-text-v2:0"` | Bedrock embedding model for ChromaDB |
 | `auto_bootstrap` | bool | `True` | Automatically load relevant memories when starting a task |
 | `auto_extract` | bool | `True` | Automatically extract knowledge after task completion |
-| `chroma_path` | str | `".odk/memory/chroma"` | Directory for ChromaDB persistent storage |
+| `chroma_path` | str | `".ydk/memory/chroma"` | Directory for ChromaDB persistent storage |
 
 ## HooksConfig
 
@@ -104,5 +104,5 @@ Controls the AI-powered specification quality evaluator.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `schemas_path` | str | `".odk/schemas"` | Directory containing component type schemas |
-| `components_path` | str | `".odk/components"` | Directory containing component manifests |
+| `schemas_path` | str | `".ydk/schemas"` | Directory containing component type schemas |
+| `components_path` | str | `".ydk/components"` | Directory containing component manifests |

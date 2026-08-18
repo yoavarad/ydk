@@ -1,13 +1,13 @@
 ---
-title: "odk task"
-description: "CLI reference for odk task"
+title: "ydk task"
+description: "CLI reference for ydk task"
 ---
 
-# `odk task`
+# `ydk task`
 
 ```text
                                                                                 
- Usage: odk task [OPTIONS] COMMAND [ARGS]...                                    
+ Usage: ydk task [OPTIONS] COMMAND [ARGS]...                                    
                                                                                 
  Task management and validation                                                 
                                                                                 
@@ -48,11 +48,11 @@ description: "CLI reference for odk task"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task create`
+## `ydk task create`
 
 ```text
                                                                                 
- Usage: odk task create [OPTIONS]                                               
+ Usage: ydk task create [OPTIONS]                                               
                                                                                 
  Create a new task.                                                             
                                                                                 
@@ -82,11 +82,11 @@ description: "CLI reference for odk task"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task create-batch`
+## `ydk task create-batch`
 
 ```text
                                                                                 
- Usage: odk task create-batch [OPTIONS]                                         
+ Usage: ydk task create-batch [OPTIONS]                                         
                                                                                 
  Create epics, stories, and tasks from a YAML file using two-pass dependency    
  resolution.                                                                    
@@ -103,21 +103,21 @@ description: "CLI reference for odk task"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task two-pass`
+## `ydk task two-pass`
 
 ```text
-Usage: odk task [OPTIONS] COMMAND [ARGS]...
-Try 'odk task --help' for help.
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
 │ No such command 'two-pass'.                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task start`
+## `ydk task start`
 
 ```text
                                                                                 
- Usage: odk task start [OPTIONS] TASK_ID                                        
+ Usage: ydk task start [OPTIONS] TASK_ID                                        
                                                                                 
  Start a task: create worktree, claim, explore.                                 
                                                                                 
@@ -133,11 +133,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task comment`
+## `ydk task comment`
 
 ```text
                                                                                 
- Usage: odk task comment [OPTIONS] TASK_ID MESSAGE                              
+ Usage: ydk task comment [OPTIONS] TASK_ID MESSAGE                              
                                                                                 
  Post comment to task issue (replaces plan and progress).                       
                                                                                 
@@ -150,11 +150,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task block`
+## `ydk task block`
 
 ```text
                                                                                 
- Usage: odk task block [OPTIONS] TASK_ID                                        
+ Usage: ydk task block [OPTIONS] TASK_ID                                        
                                                                                 
  Mark task as blocked.                                                          
                                                                                 
@@ -168,11 +168,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task unblock`
+## `ydk task unblock`
 
 ```text
                                                                                 
- Usage: odk task unblock [OPTIONS] TASK_ID                                      
+ Usage: ydk task unblock [OPTIONS] TASK_ID                                      
                                                                                 
  Resume a blocked task.                                                         
                                                                                 
@@ -184,11 +184,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task done`
+## `ydk task done`
 
 ```text
                                                                                 
- Usage: odk task done [OPTIONS] TASK_ID                                         
+ Usage: ydk task done [OPTIONS] TASK_ID                                         
                                                                                 
  Complete task: verify, create PR, post proof.                                  
                                                                                 
@@ -201,11 +201,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task add-gate`
+## `ydk task add-gate`
 
 ```text
                                                                                 
- Usage: odk task add-gate [OPTIONS] TASK_ID                                     
+ Usage: ydk task add-gate [OPTIONS] TASK_ID                                     
                                                                                 
  Add an external event gate to a task.                                          
                                                                                 
@@ -220,11 +220,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task check-gates`
+## `ydk task check-gates`
 
 ```text
                                                                                 
- Usage: odk task check-gates [OPTIONS] TASK_ID                                  
+ Usage: ydk task check-gates [OPTIONS] TASK_ID                                  
                                                                                 
  Check all gates on a task.                                                     
                                                                                 
@@ -236,11 +236,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task resolve-gate`
+## `ydk task resolve-gate`
 
 ```text
                                                                                 
- Usage: odk task resolve-gate [OPTIONS] TASK_ID GATE_ID                         
+ Usage: ydk task resolve-gate [OPTIONS] TASK_ID GATE_ID                         
                                                                                 
  Manually resolve a human gate.                                                 
                                                                                 
@@ -253,11 +253,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task add-subtask`
+## `ydk task add-subtask`
 
 ```text
                                                                                 
- Usage: odk task add-subtask [OPTIONS] TASK_ID                                  
+ Usage: ydk task add-subtask [OPTIONS] TASK_ID                                  
                                                                                 
  Create discovered subtask linked to parent.                                    
                                                                                 
@@ -271,11 +271,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task ready`
+## `ydk task ready`
 
 ```text
                                                                                 
- Usage: odk task ready [OPTIONS]                                                
+ Usage: ydk task ready [OPTIONS]                                                
                                                                                 
  List all actionable tasks with satisfied dependencies, ranked by priority.     
                                                                                 
@@ -284,21 +284,21 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task ranked`
+## `ydk task ranked`
 
 ```text
-Usage: odk task [OPTIONS] COMMAND [ARGS]...
-Try 'odk task --help' for help.
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
 │ No such command 'ranked'.                                                    │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task list`
+## `ydk task list`
 
 ```text
                                                                                 
- Usage: odk task list [OPTIONS]                                                 
+ Usage: ydk task list [OPTIONS]                                                 
                                                                                 
  List tasks with optional filters, grouped by status.                           
                                                                                 
@@ -311,11 +311,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task validate-dag`
+## `ydk task validate-dag`
 
 ```text
                                                                                 
- Usage: odk task validate-dag [OPTIONS]                                         
+ Usage: ydk task validate-dag [OPTIONS]                                         
                                                                                 
  Validate task dependency graph (DAG) -- reads tasks from repository.           
                                                                                 
@@ -324,46 +324,46 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task repository.`
+## `ydk task repository.`
 
 ```text
-Usage: odk task [OPTIONS] COMMAND [ARGS]...
-Try 'odk task --help' for help.
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
 │ No such command 'repository.'. Did you mean 'create-story'?                  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task component-coverage`
+## `ydk task component-coverage`
 
 ```text
                                                                                 
- Usage: odk task component-coverage [OPTIONS]                                   
+ Usage: ydk task component-coverage [OPTIONS]                                   
                                                                                 
  Check that every component manifest is referenced by at least one task.        
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --exclude        TEXT  Glob patterns to exclude (e.g. 'odk:page:*')          │
+│ --exclude        TEXT  Glob patterns to exclude (e.g. 'ydk:page:*')          │
 │ --strict               Exit with code 1 if any uncovered components          │
 │ --help                 Show this message and exit.                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task least`
+## `ydk task least`
 
 ```text
-Usage: odk task [OPTIONS] COMMAND [ARGS]...
-Try 'odk task --help' for help.
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
 │ No such command 'least'. Did you mean 'list'?                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task plan-waves`
+## `ydk task plan-waves`
 
 ```text
                                                                                 
- Usage: odk task plan-waves [OPTIONS]                                           
+ Usage: ydk task plan-waves [OPTIONS]                                           
                                                                                 
  Display resource-constrained schedule as a table -- reads tasks from           
  repository.                                                                    
@@ -374,21 +374,21 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task reads`
+## `ydk task reads`
 
 ```text
-Usage: odk task [OPTIONS] COMMAND [ARGS]...
-Try 'odk task --help' for help.
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
 │ No such command 'reads'. Did you mean 'ready'?                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task coverage`
+## `ydk task coverage`
 
 ```text
                                                                                 
- Usage: odk task coverage [OPTIONS]                                             
+ Usage: ydk task coverage [OPTIONS]                                             
                                                                                 
  Check spec-to-story coverage.                                                  
                                                                                 
@@ -399,11 +399,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task analyze-complexity`
+## `ydk task analyze-complexity`
 
 ```text
                                                                                 
- Usage: odk task analyze-complexity [OPTIONS]                                   
+ Usage: ydk task analyze-complexity [OPTIONS]                                   
                                                                                 
  Score task complexity (1-10) using LLM analysis.                               
                                                                                 
@@ -413,11 +413,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task archive-done`
+## `ydk task archive-done`
 
 ```text
                                                                                 
- Usage: odk task archive-done [OPTIONS]                                         
+ Usage: ydk task archive-done [OPTIONS]                                         
                                                                                 
  Archive completed tasks into context-efficient summaries.                      
                                                                                 
@@ -429,21 +429,21 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task summaries.`
+## `ydk task summaries.`
 
 ```text
-Usage: odk task [OPTIONS] COMMAND [ARGS]...
-Try 'odk task --help' for help.
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
 │ No such command 'summaries.'.                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task create-epic`
+## `ydk task create-epic`
 
 ```text
                                                                                 
- Usage: odk task create-epic [OPTIONS]                                          
+ Usage: ydk task create-epic [OPTIONS]                                          
                                                                                 
  Create a new epic.                                                             
                                                                                 
@@ -458,11 +458,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task create-story`
+## `ydk task create-story`
 
 ```text
                                                                                 
- Usage: odk task create-story [OPTIONS]                                         
+ Usage: ydk task create-story [OPTIONS]                                         
                                                                                 
  Create a new story.                                                            
                                                                                 
@@ -479,11 +479,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task quick`
+## `ydk task quick`
 
 ```text
                                                                                 
- Usage: odk task quick [OPTIONS] DESCRIPTION                                    
+ Usage: ydk task quick [OPTIONS] DESCRIPTION                                    
                                                                                 
  Set up a lightweight workspace for a small change.                             
                                                                                 
@@ -495,11 +495,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task tdd`
+## `ydk task tdd`
 
 ```text
                                                                                 
- Usage: odk task tdd [OPTIONS] TASK_ID                                          
+ Usage: ydk task tdd [OPTIONS] TASK_ID                                          
                                                                                 
  Set TDD phase on task (stored in frontmatter).                                 
                                                                                 
@@ -512,11 +512,11 @@ Try 'odk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `odk task review-comments`
+## `ydk task review-comments`
 
 ```text
                                                                                 
- Usage: odk task review-comments [OPTIONS] TASK_ID                              
+ Usage: ydk task review-comments [OPTIONS] TASK_ID                              
                                                                                 
  Fetch unresolved PR review comments for a task.                                
                                                                                 

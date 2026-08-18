@@ -8,7 +8,7 @@ from typing import ClassVar
 import pytest
 import yaml
 
-PACK_ROOT = Path(__file__).resolve().parents[2] / "src" / "odk" / "catalog" / "python-fastapi-hexagonal"
+PACK_ROOT = Path(__file__).resolve().parents[2] / "src" / "ydk" / "catalog" / "python-fastapi-hexagonal"
 
 
 class TestPackMetadata:

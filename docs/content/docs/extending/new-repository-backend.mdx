@@ -7,11 +7,11 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Adding a Repository Backend
 
-ODK ships with three backends -- local file storage, GitHub Issues, and GitLab Issues -- but the protocol-based architecture makes adding new ones straightforward. You might want a Jira backend, a Linear backend, or a custom backend that stores tasks in a database. The protocol defines exactly what methods you need to implement, and the factory dispatch makes registration a single line.
+YDK ships with three backends -- local file storage, GitHub Issues, and GitLab Issues -- but the protocol-based architecture makes adding new ones straightforward. You might want a Jira backend, a Linear backend, or a custom backend that stores tasks in a database. The protocol defines exactly what methods you need to implement, and the factory dispatch makes registration a single line.
 
 ## Step 1: Understand the Protocols
 
-The protocols are defined in `src/odk/repositories/protocols.py`. For a complete backend, you need to implement three protocols:
+The protocols are defined in `src/ydk/repositories/protocols.py`. For a complete backend, you need to implement three protocols:
 
 **`LifecycleTaskRepository`** is the most important -- it has 11 methods covering the full task lifecycle:
 
@@ -36,28 +36,28 @@ class LifecycleTaskRepository(Protocol):
 
 ## Step 2: Implement the Backend
 
-Create a module in `src/odk/repositories/<backend>/tasks.py`. Study the existing backends for patterns. The local backend (`repositories/local/tasks.py`) is the simplest reference implementation.
+Create a module in `src/ydk/repositories/<backend>/tasks.py`. Study the existing backends for patterns. The local backend (`repositories/local/tasks.py`) is the simplest reference implementation.
 
 Key implementation considerations:
 
-**ID mapping.** ODK uses `T-<hex>` format IDs internally. Your backend might use integer IDs (like GitHub/GitLab) or UUIDs (like Jira). You need to handle the mapping between ODK IDs and backend IDs, typically using labels or metadata fields.
+**ID mapping.** YDK uses `T-<hex>` format IDs internally. Your backend might use integer IDs (like GitHub/GitLab) or UUIDs (like Jira). You need to handle the mapping between YDK IDs and backend IDs, typically using labels or metadata fields.
 
-**Metadata serialization.** ODK tasks carry structured data (typed dependencies, acceptance criteria, gates) that most issue trackers do not natively support. The existing backends use a structured markdown format with `**Key**: value` pairs and `### Section` headings. You can use the same approach or implement a JSON metadata field if your backend supports it.
+**Metadata serialization.** YDK tasks carry structured data (typed dependencies, acceptance criteria, gates) that most issue trackers do not natively support. The existing backends use a structured markdown format with `**Key**: value` pairs and `### Section` headings. You can use the same approach or implement a JSON metadata field if your backend supports it.
 
-**Status mapping.** ODK has 7 lifecycle states. Map them to your backend's status system -- using labels, workflow states, or custom fields depending on what the backend supports.
+**Status mapping.** YDK has 7 lifecycle states. Map them to your backend's status system -- using labels, workflow states, or custom fields depending on what the backend supports.
 
 **Comment threading.** Plan posts, progress updates, and proof summaries are added as comments. Your backend needs to support appending structured text to an issue.
 
 ## Step 3: Register in the Factory
 
-Add your backend to the registry in `src/odk/repositories/factory.py`:
+Add your backend to the registry in `src/ydk/repositories/factory.py`:
 
 ```python
 _REGISTRY = {
     # ... existing entries ...
-    ("jira", "task"): ("odk.repositories.jira.tasks", "JiraTaskRepository"),
-    ("jira", "story"): ("odk.repositories.jira.stories", "JiraStoryRepository"),
-    ("jira", "epic"): ("odk.repositories.jira.epics", "JiraEpicRepository"),
+    ("jira", "task"): ("ydk.repositories.jira.tasks", "JiraTaskRepository"),
+    ("jira", "story"): ("ydk.repositories.jira.stories", "JiraStoryRepository"),
+    ("jira", "epic"): ("ydk.repositories.jira.epics", "JiraEpicRepository"),
 }
 ```
 
@@ -86,7 +86,7 @@ def test_create_and_get_task(backend):
 Users activate your backend by setting `project.remote` in their config:
 
 ```bash
-odk config set project.remote jira
+ydk config set project.remote jira
 ```
 
 The factory reads this value and dispatches to your backend automatically.

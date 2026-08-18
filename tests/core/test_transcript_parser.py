@@ -1,11 +1,11 @@
-"""Tests for odk.core.transcript_parser — JSONL transcript parsing."""
+"""Tests for ydk.core.transcript_parser — JSONL transcript parsing."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from odk.core.transcript_parser import format_as_conversation, parse_transcript
+from ydk.core.transcript_parser import format_as_conversation, parse_transcript
 
 FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 SAMPLE_SESSION = FIXTURE_DIR / "sample_session.jsonl"

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from odk.cli.task_cmd import _normalize_refs, _validate_batch_yaml
+from ydk.cli.task_cmd import _normalize_refs, _validate_batch_yaml
 
 # ---------------------------------------------------------------------------
 # BUG-1: spec_refs parsed character-by-character when string
@@ -86,7 +86,7 @@ class TestBatchYamlStringSpecRefs:
                     "id": "S-001",
                     "title": "Test story",
                     "epic": "",
-                    "component_refs": "odk:entity:orders/Order",
+                    "component_refs": "ydk:entity:orders/Order",
                 }
             ]
         }
@@ -103,10 +103,10 @@ class TestBatchYamlStringSpecRefs:
 class TestIgnitionRuntimeDeps:
     def test_runtime_deps_read_from_manifest(self, tmp_path: Path) -> None:
         """Ignition reads runtime_dependencies from pack manifest and attempts install."""
-        from odk.core.ignition import IgnitionEngine
+        from ydk.core.ignition import IgnitionEngine
 
         # Set up minimal pack
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "test-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "test-pack"
         pack_dir.mkdir(parents=True)
         gen_dir = pack_dir / "generators"
         gen_dir.mkdir()
@@ -129,7 +129,7 @@ class TestIgnitionRuntimeDeps:
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
 
         # Set up components (minimum requirement)
-        comp_dir = tmp_path / ".odk" / "components" / "entity"
+        comp_dir = tmp_path / ".ydk" / "components" / "entity"
         comp_dir.mkdir(parents=True)
         (comp_dir / "Test.yaml").write_text(yaml.dump({"name": "Test"}))
 
@@ -138,7 +138,7 @@ class TestIgnitionRuntimeDeps:
 
         engine = IgnitionEngine(tmp_path)
 
-        with patch("odk.core.ignition.subprocess.run") as mock_run:
+        with patch("ydk.core.ignition.subprocess.run") as mock_run:
             # First call is the generator, second is py_compile, third is ruff format, etc.
             # We need to mock selectively
             from subprocess import CompletedProcess
@@ -164,9 +164,9 @@ class TestIgnitionRuntimeDeps:
 
     def test_runtime_deps_empty_when_not_declared(self, tmp_path: Path) -> None:
         """No runtime_dependencies in manifest -> empty list in result."""
-        from odk.core.ignition import IgnitionEngine
+        from ydk.core.ignition import IgnitionEngine
 
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "test-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "test-pack"
         pack_dir.mkdir(parents=True)
         gen_dir = pack_dir / "generators"
         gen_dir.mkdir()
@@ -184,7 +184,7 @@ class TestIgnitionRuntimeDeps:
         }
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
 
-        comp_dir = tmp_path / ".odk" / "components" / "entity"
+        comp_dir = tmp_path / ".ydk" / "components" / "entity"
         comp_dir.mkdir(parents=True)
         (comp_dir / "Test.yaml").write_text(yaml.dump({"name": "Test"}))
 
@@ -197,7 +197,7 @@ class TestIgnitionRuntimeDeps:
         manifest_path = (
             Path(__file__).resolve().parent.parent.parent
             / "src"
-            / "odk"
+            / "ydk"
             / "catalog"
             / "python-fastapi-hexagonal"
             / "manifest.yaml"
@@ -210,7 +210,7 @@ class TestIgnitionRuntimeDeps:
 
 
 # ---------------------------------------------------------------------------
-# BUG-3: odk task done produces no visible output
+# BUG-3: ydk task done produces no visible output
 # ---------------------------------------------------------------------------
 
 
@@ -219,7 +219,7 @@ class TestTaskDoneOutput:
         """On success, done command prints pass message and PR URL."""
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
         runner = CliRunner()
 
@@ -231,7 +231,7 @@ class TestTaskDoneOutput:
         }
 
         # Need todos.yaml for the start precondition check in done
-        with patch("odk.cli.task_cmd._build_lifecycle", return_value=mock_lc):
+        with patch("ydk.cli.task_cmd._build_lifecycle", return_value=mock_lc):
             result = runner.invoke(app, ["task", "done", "T-001"])
 
         assert "All verifications passed" in result.output
@@ -241,8 +241,8 @@ class TestTaskDoneOutput:
         """On failure, done command prints individual check results."""
         from typer.testing import CliRunner
 
-        from odk.cli import app
-        from odk.models.verification import CheckResult, VerificationReport
+        from ydk.cli import app
+        from ydk.models.verification import CheckResult, VerificationReport
 
         runner = CliRunner()
 
@@ -260,7 +260,7 @@ class TestTaskDoneOutput:
         mock_lc = MagicMock()
         mock_lc.done.return_value = {"passed": False, "report": report}
 
-        with patch("odk.cli.task_cmd._build_lifecycle", return_value=mock_lc):
+        with patch("ydk.cli.task_cmd._build_lifecycle", return_value=mock_lc):
             result = runner.invoke(app, ["task", "done", "T-001"])
 
         assert result.exit_code == 1
@@ -273,14 +273,14 @@ class TestTaskDoneOutput:
         """Lifecycle exceptions are caught and printed clearly."""
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
         runner = CliRunner()
 
         mock_lc = MagicMock()
         mock_lc.done.side_effect = ValueError("Task T-999 not found")
 
-        with patch("odk.cli.task_cmd._build_lifecycle", return_value=mock_lc):
+        with patch("ydk.cli.task_cmd._build_lifecycle", return_value=mock_lc):
             result = runner.invoke(app, ["task", "done", "T-999"])
 
         assert result.exit_code == 1
@@ -296,7 +296,7 @@ class TestTyCheckScoping:
     def test_ty_plugin_scopes_to_changed_files(self, tmp_path: Path) -> None:
         """When changed_files is in context, ty only checks those files."""
         check_script = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "types-ty" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "types-ty" / "check.py"
         )
         context = {
             "project_root": str(tmp_path),
@@ -335,7 +335,7 @@ class TestTyCheckScoping:
     def test_ty_plugin_skips_when_no_py_files_changed(self, tmp_path: Path) -> None:
         """When changed_files has no .py files, ty check is skipped."""
         check_script = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "types-ty" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "types-ty" / "check.py"
         )
         context = {
             "project_root": str(tmp_path),
@@ -366,7 +366,7 @@ class TestTyCheckScoping:
 
     def test_verifier_injects_changed_files(self) -> None:
         """Verifier._get_changed_files is called and injected into context."""
-        from odk.core.verifier import Verifier
+        from ydk.core.verifier import Verifier
 
         v = Verifier(project_root=Path("/fake"))
         with patch("subprocess.run") as mock_run:

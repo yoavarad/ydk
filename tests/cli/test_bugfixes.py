@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import yaml
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.core.config import DEFAULT_CONFIG
-from odk.models.pm import TaskSummary
-from odk.models.verification import CheckResult
+from ydk.cli import app
+from ydk.core.config import DEFAULT_CONFIG
+from ydk.models.pm import TaskSummary
+from ydk.models.verification import CheckResult
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,7 +22,7 @@ runner = CliRunner()
 
 def _setup_project(tmp_path: Path) -> None:
     """Write valid config and manifest."""
-    config_dir = tmp_path / ".odk"
+    config_dir = tmp_path / ".ydk"
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "config.yaml").write_text(yaml.dump(DEFAULT_CONFIG, default_flow_style=False))
     (config_dir / "manifest.yaml").write_text(
@@ -44,7 +44,7 @@ def _setup_project(tmp_path: Path) -> None:
 
 
 def test_task_create(tmp_path: Path, monkeypatch: object) -> None:
-    """odk task create creates a task and exits 0."""
+    """ydk task create creates a task and exits 0."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     result = runner.invoke(
@@ -57,7 +57,7 @@ def test_task_create(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_task_create_with_options(tmp_path: Path, monkeypatch: object) -> None:
-    """odk task create with all options stores them correctly."""
+    """ydk task create with all options stores them correctly."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     result = runner.invoke(
@@ -76,14 +76,14 @@ def test_task_create_with_options(tmp_path: Path, monkeypatch: object) -> None:
         ],
     )
     assert result.exit_code == 0
-    task_files = list((tmp_path / ".odk" / "tasks").glob("T-*.md"))
+    task_files = list((tmp_path / ".ydk" / "tasks").glob("T-*.md"))
     assert len(task_files) == 1
     file_content = task_files[0].read_text()
     assert "Build the login form" in file_content
 
 
 def test_task_create_json_format(tmp_path: Path, monkeypatch: object) -> None:
-    """odk --format json task create outputs valid JSON."""
+    """ydk --format json task create outputs valid JSON."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     result = runner.invoke(
@@ -99,12 +99,12 @@ def test_task_create_json_format(tmp_path: Path, monkeypatch: object) -> None:
 # ─── Fix 2: spec check actually runs (mocked) ────────────────────────────
 
 
-@patch("odk.cli.spec_cmd._strands_available", return_value=False)
-@patch("odk.cli.spec_cmd._run_reviewer_agents", return_value=([], {}))
+@patch("ydk.cli.spec_cmd._strands_available", return_value=False)
+@patch("ydk.cli.spec_cmd._run_reviewer_agents", return_value=([], {}))
 def test_spec_check_without_strands(
     mock_reviewers: MagicMock, mock_strands: MagicMock, tmp_path: Path, monkeypatch: object
 ) -> None:
-    """odk spec verify without strands skips LLM checks and still produces a report."""
+    """ydk spec verify without strands skips LLM checks and still produces a report."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     # Create a spec file
@@ -116,18 +116,18 @@ def test_spec_check_without_strands(
     assert "Verification Report" in result.output
 
 
-@patch("odk.cli.spec_cmd._strands_available", return_value=True)
-@patch("odk.cli.spec_cmd._run_reviewer_agents")
+@patch("ydk.cli.spec_cmd._strands_available", return_value=True)
+@patch("ydk.cli.spec_cmd._run_reviewer_agents")
 def test_spec_check_with_strands_runs_eval(
     mock_run: MagicMock, mock_strands: MagicMock, tmp_path: Path, monkeypatch: object
 ) -> None:
-    """odk spec verify calls reviewer agents when strands is available."""
+    """ydk spec verify calls reviewer agents when strands is available."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     spec_dir = tmp_path / "docs" / "specs"
     spec_dir.mkdir(parents=True)
     (spec_dir / "api.md").write_text("# API Spec")
-    from odk.core.reviewer import ReviewResult
+    from ydk.core.reviewer import ReviewResult
 
     mock_run.return_value = (
         [
@@ -151,15 +151,15 @@ def test_verify_duration_is_reasonable(monkeypatch: object) -> None:
     plugin.trigger = "git:pre-commit"
 
     monkeypatch.setattr(
-        "odk.cli.verify_cmd.Verifier.discover_plugins",
+        "ydk.cli.verify_cmd.Verifier.discover_plugins",
         lambda self: [plugin],
     )
     monkeypatch.setattr(
-        "odk.cli.verify_cmd.Verifier.filter_by_name",
+        "ydk.cli.verify_cmd.Verifier.filter_by_name",
         lambda self, plugins, name: [p for p in plugins if p.name == name],
     )
     monkeypatch.setattr(
-        "odk.cli.verify_cmd.Verifier.run_layer",
+        "ydk.cli.verify_cmd.Verifier.run_layer",
         AsyncMock(return_value=[CheckResult(name="test-check", passed=True, output="ok", duration_seconds=0.1)]),
     )
 
@@ -181,15 +181,15 @@ def test_verify_duration_is_reasonable(monkeypatch: object) -> None:
 # ─── Fix 4: Nonexistent task returns friendly error ──────────────────────
 
 
-@patch("odk.cli.task_cmd._build_lifecycle")
+@patch("ydk.cli.task_cmd._build_lifecycle")
 def test_start_nonexistent_task_friendly_error(mock_build: MagicMock, tmp_path: Path, monkeypatch: object) -> None:
-    """odk task start T-999 shows friendly error, not traceback."""
+    """ydk task start T-999 shows friendly error, not traceback."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     # Satisfy precondition: todos.yaml must exist
-    (tmp_path / ".odk").mkdir(parents=True)
-    (tmp_path / ".odk" / "todos.yaml").write_text("todos: []")
+    (tmp_path / ".ydk").mkdir(parents=True)
+    (tmp_path / ".ydk" / "todos.yaml").write_text("todos: []")
     lc = MagicMock()
-    lc.start.side_effect = FileNotFoundError("[Errno 2] No such file or directory: '.odk/tasks/T-999.md'")
+    lc.start.side_effect = FileNotFoundError("[Errno 2] No such file or directory: '.ydk/tasks/T-999.md'")
     mock_build.return_value = lc
     result = runner.invoke(app, ["task", "start", "T-999"])
     assert result.exit_code == 1
@@ -198,9 +198,9 @@ def test_start_nonexistent_task_friendly_error(mock_build: MagicMock, tmp_path: 
     assert "Traceback" not in result.output
 
 
-@patch("odk.cli.task_cmd._build_lifecycle")
+@patch("ydk.cli.task_cmd._build_lifecycle")
 def test_comment_nonexistent_task_friendly_error(mock_build: MagicMock) -> None:
-    """odk task comment T-999 shows friendly error."""
+    """ydk task comment T-999 shows friendly error."""
     lc = MagicMock()
     lc.progress.side_effect = FileNotFoundError("No such file")
     mock_build.return_value = lc
@@ -209,9 +209,9 @@ def test_comment_nonexistent_task_friendly_error(mock_build: MagicMock) -> None:
     assert "Error:" in result.output
 
 
-@patch("odk.cli.task_cmd._build_lifecycle")
+@patch("ydk.cli.task_cmd._build_lifecycle")
 def test_block_nonexistent_task_friendly_error(mock_build: MagicMock) -> None:
-    """odk task block T-999 shows friendly error."""
+    """ydk task block T-999 shows friendly error."""
     lc = MagicMock()
     lc.block.side_effect = FileNotFoundError("No such file")
     mock_build.return_value = lc
@@ -220,9 +220,9 @@ def test_block_nonexistent_task_friendly_error(mock_build: MagicMock) -> None:
     assert "Error:" in result.output
 
 
-@patch("odk.cli.task_cmd._build_lifecycle")
+@patch("ydk.cli.task_cmd._build_lifecycle")
 def test_done_nonexistent_task_friendly_error(mock_build: MagicMock) -> None:
-    """odk task done T-999 shows friendly error."""
+    """ydk task done T-999 shows friendly error."""
     lc = MagicMock()
     lc.done.side_effect = FileNotFoundError("No such file")
     mock_build.return_value = lc
@@ -231,9 +231,9 @@ def test_done_nonexistent_task_friendly_error(mock_build: MagicMock) -> None:
     assert "Error:" in result.output
 
 
-@patch("odk.cli.task_cmd._build_lifecycle")
+@patch("ydk.cli.task_cmd._build_lifecycle")
 def test_add_subtask_nonexistent_task_friendly_error(mock_build: MagicMock) -> None:
-    """odk task add-subtask T-999 shows friendly error."""
+    """ydk task add-subtask T-999 shows friendly error."""
     lc = MagicMock()
     lc.discover.side_effect = FileNotFoundError("No such file")
     mock_build.return_value = lc
@@ -246,7 +246,7 @@ def test_add_subtask_nonexistent_task_friendly_error(mock_build: MagicMock) -> N
 
 
 def test_config_show_no_raw_markup(tmp_path: Path, monkeypatch: object) -> None:
-    """odk config show should not output raw Rich markup like [bold]."""
+    """ydk config show should not output raw Rich markup like [bold]."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     result = runner.invoke(app, ["config", "show"])
@@ -257,7 +257,7 @@ def test_config_show_no_raw_markup(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_config_show_json_format(tmp_path: Path, monkeypatch: object) -> None:
-    """odk --format json config show outputs valid JSON."""
+    """ydk --format json config show outputs valid JSON."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     result = runner.invoke(app, ["--format", "json", "config", "show"])
@@ -271,12 +271,12 @@ def test_config_show_json_format(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_task_list_json_format() -> None:
-    """odk --format json task list outputs valid JSON."""
+    """ydk --format json task list outputs valid JSON."""
     mock_repo = MagicMock()
     mock_repo.list_tasks.return_value = [
         TaskSummary(id="T-a1b2c3d4", title="First", status="open", dependencies_met=True),
     ]
-    with patch("odk.repositories.factory.get_task_repository", return_value=mock_repo):
+    with patch("ydk.repositories.factory.get_task_repository", return_value=mock_repo):
         result = runner.invoke(app, ["--format", "json", "task", "list"])
     assert result.exit_code == 0
     data = json.loads(result.output)
@@ -287,7 +287,7 @@ def test_task_list_json_format() -> None:
 
 
 def test_task_coverage_no_specs(tmp_path: Path, monkeypatch: object) -> None:
-    """odk task coverage with no spec files shows message."""
+    """ydk task coverage with no spec files shows message."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     result = runner.invoke(app, ["task", "coverage"])
@@ -296,7 +296,7 @@ def test_task_coverage_no_specs(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_task_coverage_finds_gaps(tmp_path: Path, monkeypatch: object) -> None:
-    """odk task coverage identifies uncovered spec sections."""
+    """ydk task coverage identifies uncovered spec sections."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     # Create spec files
@@ -312,7 +312,7 @@ def test_task_coverage_finds_gaps(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_task_coverage_json_format(tmp_path: Path, monkeypatch: object) -> None:
-    """odk --format json task coverage outputs valid JSON."""
+    """ydk --format json task coverage outputs valid JSON."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     spec_dir = tmp_path / "docs" / "specs"
@@ -329,15 +329,15 @@ def test_task_coverage_json_format(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_task_unblock(tmp_path: Path, monkeypatch: object) -> None:
-    """odk task unblock changes status from blocked to in-progress."""
+    """ydk task unblock changes status from blocked to in-progress."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
 
     # Create a task first
-    from odk.models.pm import TaskCreate
-    from odk.repositories.local.tasks import LocalTaskRepository
+    from ydk.models.pm import TaskCreate
+    from ydk.repositories.local.tasks import LocalTaskRepository
 
-    repo = LocalTaskRepository(tmp_path / ".odk")
+    repo = LocalTaskRepository(tmp_path / ".ydk")
     created = repo.create_task(TaskCreate(title="Test task", story_id="S-001"))
     task_id = created.id
 
@@ -356,9 +356,9 @@ def test_task_unblock(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_task_unblock_nonexistent_friendly_error() -> None:
-    """odk task unblock T-999 gives friendly error."""
+    """ydk task unblock T-999 gives friendly error."""
     # No project setup -- should fail with FileNotFoundError caught gracefully
-    with patch("odk.cli.task_cmd._get_repo") as mock_get_repo:
+    with patch("ydk.cli.task_cmd._get_repo") as mock_get_repo:
         mock_repo = MagicMock()
         mock_repo.update_status.side_effect = FileNotFoundError("No such file")
         mock_get_repo.return_value = mock_repo
@@ -370,17 +370,17 @@ def test_task_unblock_nonexistent_friendly_error() -> None:
 # ─── Fix 9: aws.profile is read in spec check ────────────────────────────
 
 
-@patch("odk.cli.spec_cmd._strands_available", return_value=True)
-@patch("odk.cli.spec_cmd._run_reviewer_agents")
+@patch("ydk.cli.spec_cmd._strands_available", return_value=True)
+@patch("ydk.cli.spec_cmd._run_reviewer_agents")
 def test_spec_check_reads_aws_profile(
     mock_run: MagicMock, mock_strands: MagicMock, tmp_path: Path, monkeypatch: object
 ) -> None:
-    """odk spec verify passes config (with aws.profile) to reviewer agents."""
+    """ydk spec verify passes config (with aws.profile) to reviewer agents."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
 
     # Set up config with aws.profile
     config = {**DEFAULT_CONFIG, "aws": {"profile": "my-test-profile", "region": "us-east-1"}}
-    config_dir = tmp_path / ".odk"
+    config_dir = tmp_path / ".ydk"
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "config.yaml").write_text(yaml.dump(config, default_flow_style=False))
 
@@ -396,8 +396,8 @@ def test_spec_check_reads_aws_profile(
     mock_run.assert_called_once()
     call_kwargs = mock_run.call_args
     # The config object is passed as `config` kwarg
-    from odk.models.config import OdkConfig
+    from ydk.models.config import YdkConfig
 
     cfg = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
-    assert isinstance(cfg, OdkConfig)
+    assert isinstance(cfg, YdkConfig)
     assert cfg.aws.profile == "my-test-profile"

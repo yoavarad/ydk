@@ -1,0 +1,39 @@
+name: python-fastapi-hexagonal
+version: 1.0.0
+tags: [ignition-pack, python, fastapi, hexagonal, backend, sqlalchemy, protocol]
+
+inputs:
+  entity:
+    schema_ref: ydk-core-schemas/entity
+    version: ">=1.0.0"
+    required: true
+  route:
+    schema_ref: ydk-core-schemas/route
+    version: ">=1.0.0"
+    required: true
+  contract:
+    schema_ref: ydk-core-schemas/contract
+    version: ">=1.0.0"
+    required: true
+  error:
+    schema_ref: ydk-core-schemas/error
+    version: ">=1.0.0"
+    required: false
+  event:
+    schema_ref: ydk-core-schemas/event
+    version: ">=1.0.0"
+    required: false
+
+verification_sets:
+  - name: hexagonal-architecture
+    version: ">=1.0.0"
+  - name: python-quality
+    version: ">=1.0.0"
+
+spec_reviewers:
+  - name: ydk-default-reviewers
+    version: ">=1.0.0"
+
+component_schemas:
+  - name: ydk-core-schemas
+    version: ">=1.0.0"

@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Core Layer
 
-The core layer at `src/odk/core/` contains all of ODK's business logic. It is the largest layer by module count (30+ files) and the most important architectural boundary in the codebase: core never imports from the CLI layer. This means every module in core can be tested with unit tests that instantiate the class directly, pass in mock dependencies via protocol-based DI, and verify behavior without launching a CLI process.
+The core layer at `src/ydk/core/` contains all of YDK's business logic. It is the largest layer by module count (30+ files) and the most important architectural boundary in the codebase: core never imports from the CLI layer. This means every module in core can be tested with unit tests that instantiate the class directly, pass in mock dependencies via protocol-based DI, and verify behavior without launching a CLI process.
 
 ## Module Overview
 
@@ -37,7 +37,7 @@ The core modules naturally group into five functional areas:
 - **`verifier.py`** -- Plugin discovery, layer execution, parallel/serial scheduling, content-hash caching, and proof saving. This is the central verification orchestrator.
 - **`verification_cache.py`** -- SHA256-based content hash computation and cache lookup/storage for verification results.
 - **`auto_repair.py`** -- Structured error formatting for the repair loop. Does not call LLMs -- formats errors for the coding agent.
-- **`pr_commenter.py`** -- Marker-based idempotent PR commenting using `<!-- odk-verification -->` HTML markers.
+- **`pr_commenter.py`** -- Marker-based idempotent PR commenting using `<!-- ydk-verification -->` HTML markers.
 
 ### Memory and Learning
 
@@ -92,4 +92,4 @@ if self._llm is None:
     )
 ```
 
-This ensures that ODK is fully functional without AI credentials. The LLM features are enhancements, not requirements.
+This ensures that YDK is fully functional without AI credentials. The LLM features are enhancements, not requirements.

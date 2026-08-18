@@ -17,7 +17,7 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.log_setup import set_console_level, setup_odk_logger
+from ydk.core.log_setup import set_console_level, setup_ydk_logger
 
 
 class TestSpecCheckerRemoved:
@@ -25,35 +25,35 @@ class TestSpecCheckerRemoved:
 
     def test_spec_checker_module_removed(self) -> None:
         with pytest.raises(ImportError):
-            import odk.core.spec_checker  # type: ignore[import-not-found]  # noqa: F401
+            import ydk.core.spec_checker  # type: ignore[import-not-found]  # noqa: F401
 
     def test_core_init_no_spec_checker_exports(self) -> None:
-        import odk.core
+        import ydk.core
 
-        assert not hasattr(odk.core, "SpecChecker")
-        assert not hasattr(odk.core, "NARRATIVE_CRITERIA")
-        assert not hasattr(odk.core, "BUILT_IN_CRITERIA")
-        assert not hasattr(odk.core, "SYSTEM_PROMPT_PREFIX")
-        assert not hasattr(odk.core, "EvalCriterion")
+        assert not hasattr(ydk.core, "SpecChecker")
+        assert not hasattr(ydk.core, "NARRATIVE_CRITERIA")
+        assert not hasattr(ydk.core, "BUILT_IN_CRITERIA")
+        assert not hasattr(ydk.core, "SYSTEM_PROMPT_PREFIX")
+        assert not hasattr(ydk.core, "EvalCriterion")
 
 
-class TestSetupOdkLogger:
+class TestSetupYdkLogger:
     """Test the structured logger setup."""
 
     def test_creates_logger_with_handlers(self, tmp_path: Path, monkeypatch: object) -> None:
-        monkeypatch.setattr("odk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr("ydk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
         # Clear any existing handlers
-        logger = logging.getLogger("odk.test_setup")
+        logger = logging.getLogger("ydk.test_setup")
         logger.handlers.clear()
 
-        result = setup_odk_logger(name="odk.test_setup", session_id="test-session")
+        result = setup_ydk_logger(name="ydk.test_setup", session_id="test-session")
 
-        assert result.name == "odk.test_setup"
+        assert result.name == "ydk.test_setup"
         assert len(result.handlers) == 2  # file + console
 
-        log_dir = tmp_path / ".odk" / "logs" / "test-session"
+        log_dir = tmp_path / ".ydk" / "logs" / "test-session"
         assert log_dir.is_dir()
-        assert (log_dir / "odk.log").exists()
+        assert (log_dir / "ydk.log").exists()
 
         # Cleanup
         for h in result.handlers[:]:
@@ -61,13 +61,13 @@ class TestSetupOdkLogger:
             result.removeHandler(h)
 
     def test_avoids_duplicate_handlers(self, tmp_path: Path, monkeypatch: object) -> None:
-        monkeypatch.setattr("odk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
-        logger = logging.getLogger("odk.test_dedup")
+        monkeypatch.setattr("ydk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
+        logger = logging.getLogger("ydk.test_dedup")
         logger.handlers.clear()
 
-        setup_odk_logger(name="odk.test_dedup")
+        setup_ydk_logger(name="ydk.test_dedup")
         handler_count = len(logger.handlers)
-        setup_odk_logger(name="odk.test_dedup")
+        setup_ydk_logger(name="ydk.test_dedup")
         assert len(logger.handlers) == handler_count
 
         for h in logger.handlers[:]:
@@ -77,11 +77,11 @@ class TestSetupOdkLogger:
     def test_rotating_handler_config(self, tmp_path: Path, monkeypatch: object) -> None:
         from logging.handlers import RotatingFileHandler
 
-        monkeypatch.setattr("odk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
-        logger = logging.getLogger("odk.test_rotate")
+        monkeypatch.setattr("ydk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
+        logger = logging.getLogger("ydk.test_rotate")
         logger.handlers.clear()
 
-        setup_odk_logger(name="odk.test_rotate")
+        setup_ydk_logger(name="ydk.test_rotate")
         file_handlers = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
         assert len(file_handlers) == 1
         assert file_handlers[0].maxBytes == 10_000_000
@@ -96,11 +96,11 @@ class TestSetConsoleLevel:
     def test_changes_stream_handler_level(self, tmp_path: Path, monkeypatch: object) -> None:
         from logging.handlers import RotatingFileHandler
 
-        monkeypatch.setattr("odk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr("ydk.core.log_setup.Path.home", lambda: tmp_path)  # type: ignore[attr-defined]
         # Clear and re-setup
-        logger = logging.getLogger("odk")
+        logger = logging.getLogger("ydk")
         logger.handlers.clear()
-        setup_odk_logger()
+        setup_ydk_logger()
 
         set_console_level(logging.DEBUG)
 
@@ -121,7 +121,7 @@ class TestReviewerTiming:
     """Verify elapsed_seconds field on ReviewResult."""
 
     def test_review_result_has_elapsed_seconds(self) -> None:
-        from odk.core.reviewer import ReviewResult
+        from ydk.core.reviewer import ReviewResult
 
         result = ReviewResult(
             reviewer_id="N01",
@@ -134,7 +134,7 @@ class TestReviewerTiming:
         assert result.elapsed_seconds == 3.2
 
     def test_review_result_default_zero(self) -> None:
-        from odk.core.reviewer import ReviewResult
+        from ydk.core.reviewer import ReviewResult
 
         result = ReviewResult(
             reviewer_id="N01",

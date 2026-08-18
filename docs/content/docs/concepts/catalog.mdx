@@ -1,13 +1,13 @@
 ---
 title: Catalog System
-description: Searchable registry for ignition packs, schemas, and reusable ODK components
+description: Searchable registry for ignition packs, schemas, and reusable YDK components
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 # Catalog System
 
-The catalog is a searchable registry of reusable ODK components -- ignition packs, component schemas, verification plugins, and reviewer configurations. It exists because every project needs roughly the same foundation (entity schemas, route schemas, quality plugins), but with enough variation that a one-size-fits-all approach fails. The catalog lets you search for what you need, install it, and customize it for your project.
+The catalog is a searchable registry of reusable YDK components -- ignition packs, component schemas, verification plugins, and reviewer configurations. It exists because every project needs roughly the same foundation (entity schemas, route schemas, quality plugins), but with enough variation that a one-size-fits-all approach fails. The catalog lets you search for what you need, install it, and customize it for your project.
 
 ## What Lives in the Catalog
 
@@ -15,8 +15,8 @@ The catalog ships with eight built-in items:
 
 | Item | Type | Description |
 |---|---|---|
-| `odk-core-schemas` | schemas | The 13 default component schemas (entity, route, error, contract, etc.) |
-| `odk-default-reviewers` | reviewers | The 10 spec reviewers (N01-N10) for quality evaluation |
+| `ydk-core-schemas` | schemas | The 13 default component schemas (entity, route, error, contract, etc.) |
+| `ydk-default-reviewers` | reviewers | The 10 spec reviewers (N01-N10) for quality evaluation |
 | `python-quality` | verification plugins | Ruff, ty, and pytest verification plugins |
 | `hexagonal-architecture` | verification plugins | Hexagonal architecture conformance checks |
 | `python-fastapi-hexagonal` | ignition pack | FastAPI + SQLAlchemy hexagonal layout generators |
@@ -28,9 +28,9 @@ You can publish your own items to the catalog for reuse across projects.
 
 ## How Search Works
 
-The catalog uses ChromaDB for semantic search. When you run `odk catalog search "fastapi hexagonal"`, the query is embedded and matched against catalog item descriptions, tags, and metadata. This means you do not need to know the exact name of what you are looking for -- a query like "python web API skeleton" will find relevant ignition packs.
+The catalog uses ChromaDB for semantic search. When you run `ydk catalog search "fastapi hexagonal"`, the query is embedded and matched against catalog item descriptions, tags, and metadata. This means you do not need to know the exact name of what you are looking for -- a query like "python web API skeleton" will find relevant ignition packs.
 
-The local catalog backend stores items at `~/.odk/catalog/`. The ChromaDB index lives at `~/.odk/catalog/chroma/`.
+The local catalog backend stores items at `~/.ydk/catalog/`. The ChromaDB index lives at `~/.ydk/catalog/chroma/`.
 
 ## Ignition Packs
 
@@ -45,20 +45,20 @@ The catalog is local-first. All items are stored on your machine, and search run
 ## CLI Reference
 
 ```bash
-odk catalog search <query>       # Semantic search for catalog items
-odk catalog install <name>       # Install a catalog item into the project
-odk catalog list                 # List installed catalog items
-odk catalog info <name>          # Show details (consumed types, generated files, TODOs)
-odk catalog publish <path>       # Publish a local item to the catalog
-odk catalog uninstall <name>     # Remove an installed catalog item
+ydk catalog search <query>       # Semantic search for catalog items
+ydk catalog install <name>       # Install a catalog item into the project
+ydk catalog list                 # List installed catalog items
+ydk catalog info <name>          # Show details (consumed types, generated files, TODOs)
+ydk catalog publish <path>       # Publish a local item to the catalog
+ydk catalog uninstall <name>     # Remove an installed catalog item
 ```
 
 ## Configuration
 
 ```yaml
-# .odk/config.yaml
+# .ydk/config.yaml
 catalog:
   backend: local                 # Currently only "local" is supported
-  local_path: ~/.odk/catalog     # Path to local catalog store
-  chroma_path: ~/.odk/catalog/chroma  # ChromaDB index for semantic search
+  local_path: ~/.ydk/catalog     # Path to local catalog store
+  chroma_path: ~/.ydk/catalog/chroma  # ChromaDB index for semantic search
 ```

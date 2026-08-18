@@ -9,7 +9,7 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.pr_template import (
+from ydk.core.pr_template import (
     PRBodyBuilder,
     _details_block,
     _extract_review_score,
@@ -44,13 +44,13 @@ class TestBuild:
     def test_includes_footer(self, proof_dir: Path) -> None:
         builder = PRBodyBuilder()
         body = builder.build("T-001", proof_dir)
-        assert "Generated with [ODK]" in body
+        assert "Generated with [YDK]" in body
 
     def test_handles_all_files_missing_gracefully(self, proof_dir: Path) -> None:
         builder = PRBodyBuilder()
         body = builder.build("T-001", proof_dir)
         assert "## Summary" in body
-        assert "Generated with [ODK]" in body
+        assert "Generated with [YDK]" in body
         assert "## Verification Results" not in body
 
 
@@ -235,7 +235,7 @@ class TestFullTemplate:
         assert "### Screenshots / Videos" in body
         assert "Screenshots (1)" in body
         assert "Videos (1)" in body
-        assert "Generated with [ODK]" in body
+        assert "Generated with [YDK]" in body
 
 
 class TestSummaryExtraction:

@@ -1,4 +1,4 @@
-"""Tests for odk visual commands."""
+"""Tests for ydk visual commands."""
 
 from __future__ import annotations
 
@@ -8,15 +8,15 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.models.visual import SessionStatus, VisualSession
+from ydk.cli import app
+from ydk.models.visual import SessionStatus, VisualSession
 
 runner = CliRunner()
 
 
 def _fake_session(tmp_path, session_id="abc123", port=5173, pid=9999, status=SessionStatus.running):
-    content_dir = tmp_path / ".odk" / "visual" / session_id / "content"
-    state_dir = tmp_path / ".odk" / "visual" / session_id / "state"
+    content_dir = tmp_path / ".ydk" / "visual" / session_id / "content"
+    state_dir = tmp_path / ".ydk" / "visual" / session_id / "state"
     content_dir.mkdir(parents=True, exist_ok=True)
     state_dir.mkdir(parents=True, exist_ok=True)
     session = VisualSession(
@@ -34,7 +34,7 @@ def _fake_session(tmp_path, session_id="abc123", port=5173, pid=9999, status=Ses
 
 def test_visual_start(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+    with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
         mock_proc = MagicMock()
         mock_proc.pid = 12345
         mock_popen.return_value = mock_proc

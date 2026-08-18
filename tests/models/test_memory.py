@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from odk.models.memory import ExtractedMemoryModel
+from ydk.models.memory import ExtractedMemoryModel
 
 
 class TestAbandonedType:

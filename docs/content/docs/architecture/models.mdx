@@ -1,19 +1,19 @@
 ---
 title: Pydantic Models
-description: All ODK models with strict validation
+description: All YDK models with strict validation
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 # Pydantic Models
 
-ODK's model layer uses Pydantic v2 with a strict validation philosophy: every model uses `ConfigDict(extra="forbid")`, meaning any unexpected field in the input causes an immediate validation error. This catches typos, schema drift, and stale data at the boundary where data enters the system, rather than deep in business logic where the root cause is harder to trace.
+YDK's model layer uses Pydantic v2 with a strict validation philosophy: every model uses `ConfigDict(extra="forbid")`, meaning any unexpected field in the input causes an immediate validation error. This catches typos, schema drift, and stale data at the boundary where data enters the system, rather than deep in business logic where the root cause is harder to trace.
 
 The models are organized into domain-specific modules, each containing related models that form a cohesive API surface.
 
 ## Project Management Models (`models/pm.py`)
 
-The PM models define the data structures for ODK's three-level hierarchy and their relationships.
+The PM models define the data structures for YDK's three-level hierarchy and their relationships.
 
 **`DependencyType`** is a `StrEnum` with 8 values: `blocks`, `validates`, `caused-by`, `conditional-blocks`, `waits-for`, `discovered-from`, `supersedes`, and `related`. The constant `BLOCKING_DEPENDENCY_TYPES` is a `frozenset` containing the three types that create execution edges: `blocks`, `conditional-blocks`, and `waits-for`. This distinction drives the entire DAG validation and scheduling system.
 
@@ -25,7 +25,7 @@ The PM models define the data structures for ODK's three-level hierarchy and the
 
 ## Configuration Models (`models/config.py`)
 
-`OdkConfig` is the top-level configuration model with nested sub-models for each configuration section. Every field has a default value, making the model usable even when the config file is minimal. The nested structure is:
+`YdkConfig` is the top-level configuration model with nested sub-models for each configuration section. Every field has a default value, making the model usable even when the config file is minimal. The nested structure is:
 
 - **`ProjectConfig`** -- name, spec_location, adrs_location, research_location, remote, stack
 - **`HooksConfig`** -- pre_push settings (spec_check, task_check), commit_msg_check
@@ -47,7 +47,7 @@ The `config.py` core module validates every set operation against this model, ro
 
 ## Component Models (`models/component.py`)
 
-**`ComponentId`** parses and represents the `odk:<type>:<namespace>/<name>` format with validation. The `parse()` classmethod handles both namespaced IDs (with `/`) and flat IDs (without `/`).
+**`ComponentId`** parses and represents the `ydk:<type>:<namespace>/<name>` format with validation. The `parse()` classmethod handles both namespaced IDs (with `/`) and flat IDs (without `/`).
 
 **`SchemaField`** and **`SchemaDefinition`** represent the schema system. A schema definition has a name, description, version, and a map of field names to `SchemaField` instances with type, required flag, pattern, allowed values, reference type, and other constraints.
 

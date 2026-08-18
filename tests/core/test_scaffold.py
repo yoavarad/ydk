@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from odk.core.scaffold import ScaffoldEngine, TemplateManifest, TemplateValidationError
+from ydk.core.scaffold import ScaffoldEngine, TemplateManifest, TemplateValidationError
 
 
 def _create_template(base: Path, name: str, variables: dict[str, str], files: dict[str, str]) -> Path:
@@ -157,7 +157,7 @@ def test_apply_raises_for_extra_variables(tmp_path: Path) -> None:
 
 def test_write_files_creates_files(tmp_path: Path) -> None:
     """write_files creates files on disk."""
-    from odk.core.scaffold import GeneratedFile
+    from ydk.core.scaffold import GeneratedFile
 
     engine = ScaffoldEngine(tmp_path, tmp_path)
     files = [GeneratedFile(path=Path("out.txt"), content="content")]
@@ -168,7 +168,7 @@ def test_write_files_creates_files(tmp_path: Path) -> None:
 
 def test_write_files_adds_header_py(tmp_path: Path) -> None:
     """write_files adds GENERATED header for .py files."""
-    from odk.core.scaffold import GeneratedFile
+    from ydk.core.scaffold import GeneratedFile
 
     engine = ScaffoldEngine(tmp_path, tmp_path)
     files = [GeneratedFile(path=Path("mod.py"), content="pass\n")]
@@ -179,7 +179,7 @@ def test_write_files_adds_header_py(tmp_path: Path) -> None:
 
 def test_write_files_no_header_ts(tmp_path: Path) -> None:
     """write_files writes content directly without GENERATED header."""
-    from odk.core.scaffold import GeneratedFile
+    from ydk.core.scaffold import GeneratedFile
 
     engine = ScaffoldEngine(tmp_path, tmp_path)
     files = [GeneratedFile(path=Path("index.ts"), content="export {};\n")]
@@ -190,7 +190,7 @@ def test_write_files_no_header_ts(tmp_path: Path) -> None:
 
 def test_write_files_no_header_md(tmp_path: Path) -> None:
     """write_files writes content directly without GENERATED header."""
-    from odk.core.scaffold import GeneratedFile
+    from ydk.core.scaffold import GeneratedFile
 
     engine = ScaffoldEngine(tmp_path, tmp_path)
     files = [GeneratedFile(path=Path("README.md"), content="# Hello\n")]
@@ -201,7 +201,7 @@ def test_write_files_no_header_md(tmp_path: Path) -> None:
 
 def test_write_files_skips_header_unknown_ext(tmp_path: Path) -> None:
     """write_files skips header for unknown extensions."""
-    from odk.core.scaffold import GeneratedFile
+    from ydk.core.scaffold import GeneratedFile
 
     engine = ScaffoldEngine(tmp_path, tmp_path)
     files = [GeneratedFile(path=Path("data.csv"), content="a,b,c\n")]
@@ -212,7 +212,7 @@ def test_write_files_skips_header_unknown_ext(tmp_path: Path) -> None:
 
 def test_write_files_creates_nested_dirs(tmp_path: Path) -> None:
     """write_files creates nested directories as needed."""
-    from odk.core.scaffold import GeneratedFile
+    from ydk.core.scaffold import GeneratedFile
 
     engine = ScaffoldEngine(tmp_path, tmp_path)
     files = [GeneratedFile(path=Path("a/b/c/deep.txt"), content="deep")]
@@ -222,7 +222,7 @@ def test_write_files_creates_nested_dirs(tmp_path: Path) -> None:
 
 def test_write_files_raises_if_exists(tmp_path: Path) -> None:
     """write_files raises FileExistsError if file already exists."""
-    from odk.core.scaffold import GeneratedFile
+    from ydk.core.scaffold import GeneratedFile
 
     (tmp_path / "exists.txt").write_text("old")
     engine = ScaffoldEngine(tmp_path, tmp_path)
@@ -271,7 +271,7 @@ def test_create_template_manifest_has_module_name_variable(tmp_path: Path) -> No
 
 def test_round_trip_test_greeting(tmp_path: Path) -> None:
     """Round-trip: apply test-greeting template, verify output content."""
-    global_templates = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "templates"
+    global_templates = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "templates"
     engine = ScaffoldEngine(tmp_path / "empty", global_templates)
 
     files = engine.apply("test-greeting", {"greeting_name": "World", "module_name": "hello"})

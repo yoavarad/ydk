@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 
 import yaml
 
-from odk.core.component_checker import ComponentChecker
-from odk.models.evaluation import ComponentFinding
+from ydk.core.component_checker import ComponentChecker
+from ydk.models.evaluation import ComponentFinding
 
 
 def _write_component(
@@ -21,11 +21,11 @@ def _write_component(
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write a component manifest YAML file and return its path."""
-    component_id = f"odk:{type_name}:{namespace}/{name}"
+    component_id = f"ydk:{type_name}:{namespace}/{name}"
     rel_path = components_dir / type_name / namespace / f"{name}.yaml"
     rel_path.parent.mkdir(parents=True, exist_ok=True)
     data: dict[str, Any] = {
-        "$schema": f"odk:schema:{type_name}",
+        "$schema": f"ydk:schema:{type_name}",
         "id": component_id,
         "description": f"Test {name}",
     }
@@ -262,7 +262,7 @@ class TestDescriptionChecks:
         schemas_dir = tmp_path / "schemas"
         comp_dir = components_dir / "entity" / "orders"
         comp_dir.mkdir(parents=True)
-        data = {"$schema": "odk:schema:entity", "id": "odk:entity:orders/Order", "description": ""}
+        data = {"$schema": "ydk:schema:entity", "id": "ydk:entity:orders/Order", "description": ""}
         (comp_dir / "Order.yaml").write_text(yaml.dump(data))
         checker = ComponentChecker()
         findings = checker.check_all(components_dir, schemas_dir)
@@ -274,15 +274,15 @@ class TestDescriptionChecks:
 class TestFindingModel:
     def test_finding_has_all_fields(self) -> None:
         finding = ComponentFinding(
-            component_id="odk:route:orders/create",
-            file_path=".odk/components/route/orders/create.yaml",
+            component_id="ydk:route:orders/create",
+            file_path=".ydk/components/route/orders/create.yaml",
             check="route-missing-error-responses",
             severity="error",
             message="No error responses",
             suggestion="Add 400 and 401",
         )
-        assert finding.component_id == "odk:route:orders/create"
-        assert finding.file_path == ".odk/components/route/orders/create.yaml"
+        assert finding.component_id == "ydk:route:orders/create"
+        assert finding.file_path == ".ydk/components/route/orders/create.yaml"
         assert finding.check == "route-missing-error-responses"
         assert finding.severity == "error"
         assert finding.message == "No error responses"
@@ -294,7 +294,7 @@ class TestFindingModel:
 
         with pytest.raises(ValidationError, match="extra_field"):
             ComponentFinding(
-                component_id="odk:route:orders/create",
+                component_id="ydk:route:orders/create",
                 file_path="x",
                 check="x",
                 severity="error",

@@ -5,8 +5,8 @@ description: "All built-in component schema definitions"
 
 # Component Schemas
 
-These schemas define the structure of ODK component manifests.
-Each component YAML file in `.odk/components/` must conform to its schema.
+These schemas define the structure of YDK component manifests.
+Each component YAML file in `.ydk/components/` must conform to its schema.
 
 ## `component` (v1)
 
@@ -20,8 +20,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:component:.+"
-    description: "Unique component identifier in odk:component:namespace/name format"
+    pattern: "^ydk:component:.+"
+    description: "Unique component identifier in ydk:component:namespace/name format"
   description:
     type: text
     required: true
@@ -85,8 +85,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:contract:.+"
-    description: "Unique component identifier in odk:contract:namespace/Name format"
+    pattern: "^ydk:contract:.+"
+    description: "Unique component identifier in ydk:contract:namespace/Name format"
   description:
     type: text
     required: true
@@ -125,8 +125,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:crosscut:.+"
-    description: "Unique component identifier in odk:crosscut:name format"
+    pattern: "^ydk:crosscut:.+"
+    description: "Unique component identifier in ydk:crosscut:name format"
   description:
     type: text
     required: true
@@ -159,8 +159,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:entity:.+"
-    description: "Unique component identifier in odk:entity:namespace/Name format"
+    pattern: "^ydk:entity:.+"
+    description: "Unique component identifier in ydk:entity:namespace/Name format"
   description:
     type: text
     required: true
@@ -272,8 +272,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:error:.+"
-    description: "Unique component identifier in odk:error:namespace/name format"
+    pattern: "^ydk:error:.+"
+    description: "Unique component identifier in ydk:error:namespace/name format"
   description:
     type: text
     required: true
@@ -315,8 +315,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:event:.+"
-    description: "Unique component identifier in odk:event:namespace/name format"
+    pattern: "^ydk:event:.+"
+    description: "Unique component identifier in ydk:event:namespace/name format"
   description:
     type: text
     required: true
@@ -355,8 +355,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:ext:.+"
-    description: "Unique component identifier in odk:ext:namespace/name format"
+    pattern: "^ydk:ext:.+"
+    description: "Unique component identifier in ydk:ext:namespace/name format"
   description:
     type: text
     required: true
@@ -420,8 +420,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:hook:.+"
-    description: "Unique component identifier in odk:hook:namespace/name format"
+    pattern: "^ydk:hook:.+"
+    description: "Unique component identifier in ydk:hook:namespace/name format"
   description:
     type: text
     required: true
@@ -474,8 +474,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:nfr:.+"
-    description: "Unique component identifier in odk:nfr:namespace/name format"
+    pattern: "^ydk:nfr:.+"
+    description: "Unique component identifier in ydk:nfr:namespace/name format"
   description:
     type: text
     required: true
@@ -517,8 +517,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:page:.+"
-    description: "Unique component identifier in odk:page:namespace/name format"
+    pattern: "^ydk:page:.+"
+    description: "Unique component identifier in ydk:page:namespace/name format"
   description:
     type: text
     required: true
@@ -573,8 +573,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:req:.+"
-    description: "Unique component identifier in odk:req:namespace/name format"
+    pattern: "^ydk:req:.+"
+    description: "Unique component identifier in ydk:req:namespace/name format"
   description:
     type: text
     required: true
@@ -619,8 +619,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:route:.+"
-    description: "Unique component identifier in odk:route:namespace/name format"
+    pattern: "^ydk:route:.+"
+    description: "Unique component identifier in ydk:route:namespace/name format"
   description:
     type: text
     required: true
@@ -691,8 +691,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:test:.+"
-    description: "Unique component identifier in odk:test:namespace/name.level format"
+    pattern: "^ydk:test:.+"
+    description: "Unique component identifier in ydk:test:namespace/name.level format"
   description:
     type: text
     required: true

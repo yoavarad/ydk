@@ -1,23 +1,23 @@
 ---
-title: ODK Documentation
-description: Oz Development Kit -- AI-assisted development methodology and CLI toolkit
+title: YDK Documentation
+description: Yoav Development Kit -- AI-assisted development methodology and CLI toolkit
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-# ODK -- Oz Development Kit
+# YDK -- Yoav Development Kit
 
-ODK is a CLI toolkit that orchestrates the full AI-assisted software development lifecycle: brainstorming, task management, execution with proof-based verification, and compound learning. It exists because the tools that were available each covered about 60% of the problem -- good at task management but ignorant of specifications, or strong on verification but disconnected from the knowledge that makes future tasks faster.
+YDK is a CLI toolkit that orchestrates the full AI-assisted software development lifecycle: brainstorming, task management, execution with proof-based verification, and compound learning. It exists because the tools that were available each covered about 60% of the problem -- good at task management but ignorant of specifications, or strong on verification but disconnected from the knowledge that makes future tasks faster.
 
-ODK connects all four stages into a single workflow. Specifications are validated before tasks are created. Tasks are dependency-checked before agents start working. Implementation is verified with 40 plugins before PRs are created. Knowledge from completed work feeds back into future tasks through a hybrid memory system. The result is a development process where each task is more efficient than the last because the system remembers what worked, what failed, and what decisions were made.
+YDK connects all four stages into a single workflow. Specifications are validated before tasks are created. Tasks are dependency-checked before agents start working. Implementation is verified with 40 plugins before PRs are created. Knowledge from completed work feeds back into future tasks through a hybrid memory system. The result is a development process where each task is more efficient than the last because the system remembers what worked, what failed, and what decisions were made.
 
 ## Core Principles
 
-**Proof over claims.** When a coding agent says "all tests pass", ODK does not take its word for it. The verification pipeline captures actual command output -- pytest results, lint output, type checker results -- and attaches them to the PR as proof artifacts. Reviewers verify evidence, not claims.
+**Proof over claims.** When a coding agent says "all tests pass", YDK does not take its word for it. The verification pipeline captures actual command output -- pytest results, lint output, type checker results -- and attaches them to the PR as proof artifacts. Reviewers verify evidence, not claims.
 
 **Specs before code.** Every project starts with a specification that combines narrative prose (for humans) with component manifests (for machines). The deterministic linker validates that every reference resolves. The AI-powered quality checker evaluates 18 criteria across 5 groups. Vague specs are caught and fixed before any agent writes a line of code.
 
-**Typed dependencies.** Not all dependencies are the same. A blocking dependency prevents task execution. A validation dependency links a test to its target. A discovery dependency tracks work found during implementation. ODK's 8 dependency types capture these nuances, and the DAG validator ensures the execution order is sound.
+**Typed dependencies.** Not all dependencies are the same. A blocking dependency prevents task execution. A validation dependency links a test to its target. A discovery dependency tracks work found during implementation. YDK's 8 dependency types capture these nuances, and the DAG validator ensures the execution order is sound.
 
 **Compound learning.** Knowledge extracted from agent sessions -- discoveries, decisions, gotchas, patterns, abandoned approaches -- is stored in a hybrid search engine (vector + BM25 + Reciprocal Rank Fusion) and retrieved when new tasks begin. Over time, the system accumulates project-specific expertise.
 

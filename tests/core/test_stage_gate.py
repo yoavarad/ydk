@@ -11,26 +11,26 @@ from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
-from odk.cli.main import app
-from odk.core.state import ProjectState
+from ydk.cli.main import app
+from ydk.core.state import ProjectState
 
 if TYPE_CHECKING:
     import pytest
 
 runner = CliRunner()
 
-VERIFICATIONS_SRC = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications"
+VERIFICATIONS_SRC = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications"
 
 
 def _install_stage_gate_guard(project_root: Path) -> None:
     """Copy the guard-stage-gate plugin into a project's verifications dir."""
-    dest = project_root / ".odk" / "verifications" / "guard-stage-gate"
+    dest = project_root / ".ydk" / "verifications" / "guard-stage-gate"
     shutil.copytree(VERIFICATIONS_SRC / "guard-stage-gate", dest)
 
 
 def _install_stage_gate_cmd_guard(project_root: Path) -> None:
     """Copy the guard-stage-gate-cmd plugin into a project's verifications dir."""
-    dest = project_root / ".odk" / "verifications" / "guard-stage-gate-cmd"
+    dest = project_root / ".ydk" / "verifications" / "guard-stage-gate-cmd"
     shutil.copytree(VERIFICATIONS_SRC / "guard-stage-gate-cmd", dest)
 
 
@@ -42,7 +42,7 @@ def _set_stage(project_root: Path, stage: str) -> None:
 
 def _run_guard_check(project_root: Path, context: dict) -> dict:
     """Run guard-stage-gate check.py via subprocess and return result dict."""
-    check_py = project_root / ".odk" / "verifications" / "guard-stage-gate" / "check.py"
+    check_py = project_root / ".ydk" / "verifications" / "guard-stage-gate" / "check.py"
     proc = subprocess.run(
         [sys.executable, str(check_py)],
         input=json.dumps(context),
@@ -54,7 +54,7 @@ def _run_guard_check(project_root: Path, context: dict) -> dict:
 
 def _run_cmd_guard_check(project_root: Path, context: dict) -> dict:
     """Run guard-stage-gate-cmd check.py via subprocess and return result dict."""
-    check_py = project_root / ".odk" / "verifications" / "guard-stage-gate-cmd" / "check.py"
+    check_py = project_root / ".ydk" / "verifications" / "guard-stage-gate-cmd" / "check.py"
     proc = subprocess.run(
         [sys.executable, str(check_py)],
         input=json.dumps(context),
@@ -99,7 +99,7 @@ class TestStageGateEdit:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "file_path": ".odk/components/auth.yaml",
+                "file_path": ".ydk/components/auth.yaml",
             },
         )
         assert result["passed"] is True
@@ -117,14 +117,14 @@ class TestStageGateEdit:
         assert result["passed"] is False
 
     def test_allows_batch_yaml_in_stage_02(self, tmp_path: Path) -> None:
-        """In stage 02, .odk/ files (like batch YAML) are allowed."""
+        """In stage 02, .ydk/ files (like batch YAML) are allowed."""
         _install_stage_gate_guard(tmp_path)
         _set_stage(tmp_path, "02")
         result = _run_guard_check(
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "file_path": ".odk/batch.yaml",
+                "file_path": ".ydk/batch.yaml",
             },
         )
         assert result["passed"] is True
@@ -170,7 +170,7 @@ class TestStageGateEdit:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "file_path": ".odk/config.yaml",
+                "file_path": ".ydk/config.yaml",
             },
         )
         assert result["passed"] is True
@@ -198,7 +198,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk ignite",
+                "command": "ydk ignite",
             },
         )
         assert result["passed"] is False
@@ -211,7 +211,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk ignite",
+                "command": "ydk ignite",
             },
         )
         assert result["passed"] is True
@@ -223,7 +223,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk task start T-001",
+                "command": "ydk task start T-001",
             },
         )
         assert result["passed"] is False
@@ -235,7 +235,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk ignite --force",
+                "command": "ydk ignite --force",
             },
         )
         assert result["passed"] is False
@@ -247,7 +247,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk task start T-001",
+                "command": "ydk task start T-001",
             },
         )
         assert result["passed"] is True
@@ -259,7 +259,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk verify run",
+                "command": "ydk verify run",
             },
         )
         assert result["passed"] is True
@@ -271,7 +271,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk component scan",
+                "command": "ydk component scan",
             },
         )
         assert result["passed"] is True
@@ -283,7 +283,7 @@ class TestStageGateCommand:
             tmp_path,
             {
                 "project_root": str(tmp_path),
-                "command": "odk task create-batch --from batch.yaml",
+                "command": "ydk task create-batch --from batch.yaml",
             },
         )
         assert result["passed"] is False
@@ -294,10 +294,10 @@ class TestCliPreconditions:
 
     def test_ignite_fails_without_schemas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        # Create .odk dir but no schemas
-        (tmp_path / ".odk").mkdir()
-        (tmp_path / ".odk" / "ignition-packs" / "test-pack").mkdir(parents=True)
-        (tmp_path / ".odk" / "ignition-packs" / "test-pack" / "pack.yaml").write_text("name: test")
+        # Create .ydk dir but no schemas
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "ignition-packs" / "test-pack").mkdir(parents=True)
+        (tmp_path / ".ydk" / "ignition-packs" / "test-pack" / "pack.yaml").write_text("name: test")
         result = runner.invoke(app, ["ignite"])
         assert result.exit_code != 0
         assert "Schemas not installed" in result.output
@@ -305,8 +305,8 @@ class TestCliPreconditions:
     def test_ignite_fails_without_pack(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         # Create schemas but no pack
-        (tmp_path / ".odk" / "schemas").mkdir(parents=True)
-        (tmp_path / ".odk" / "schemas" / "entity.yaml").write_text("name: entity")
+        (tmp_path / ".ydk" / "schemas").mkdir(parents=True)
+        (tmp_path / ".ydk" / "schemas" / "entity.yaml").write_text("name: entity")
         result = runner.invoke(app, ["ignite"])
         assert result.exit_code != 0
         assert "No ignition pack installed" in result.output
@@ -314,17 +314,17 @@ class TestCliPreconditions:
     def test_ignite_fails_without_spec_verify(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         # Create schemas + pack but no spec-check-results
-        (tmp_path / ".odk" / "schemas").mkdir(parents=True)
-        (tmp_path / ".odk" / "schemas" / "entity.yaml").write_text("name: entity")
-        (tmp_path / ".odk" / "ignition-packs" / "test-pack").mkdir(parents=True)
-        (tmp_path / ".odk" / "ignition-packs" / "test-pack" / "pack.yaml").write_text("name: test")
+        (tmp_path / ".ydk" / "schemas").mkdir(parents=True)
+        (tmp_path / ".ydk" / "schemas" / "entity.yaml").write_text("name: entity")
+        (tmp_path / ".ydk" / "ignition-packs" / "test-pack").mkdir(parents=True)
+        (tmp_path / ".ydk" / "ignition-packs" / "test-pack" / "pack.yaml").write_text("name: test")
         result = runner.invoke(app, ["ignite"])
         assert result.exit_code != 0
         assert "Spec verification required" in result.output
 
     def test_task_start_fails_without_todos(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".odk").mkdir()
+        (tmp_path / ".ydk").mkdir()
         result = runner.invoke(app, ["task", "start", "T-001"])
         assert result.exit_code != 0
         assert "No TODO registry found" in result.output
@@ -335,7 +335,7 @@ class TestStateAdvancement:
 
     def test_init_sets_stage_00(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
-        # Initialize git repo for odk init to work
+        # Initialize git repo for ydk init to work
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
         subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, capture_output=True)
@@ -350,17 +350,17 @@ class TestStateAdvancement:
         monkeypatch.chdir(tmp_path)
 
         # Setup preconditions for ignite
-        (tmp_path / ".odk" / "schemas").mkdir(parents=True)
-        (tmp_path / ".odk" / "schemas" / "entity.yaml").write_text("type: entity\nfields: []")
-        (tmp_path / ".odk" / "ignition-packs" / "test-pack").mkdir(parents=True)
+        (tmp_path / ".ydk" / "schemas").mkdir(parents=True)
+        (tmp_path / ".ydk" / "schemas" / "entity.yaml").write_text("type: entity\nfields: []")
+        (tmp_path / ".ydk" / "ignition-packs" / "test-pack").mkdir(parents=True)
         pack_manifest = {
             "name": "test-pack",
             "version": "1.0.0",
             "generators": [],
         }
-        (tmp_path / ".odk" / "ignition-packs" / "test-pack" / "pack.yaml").write_text(json.dumps(pack_manifest))
-        (tmp_path / ".odk" / "spec-check-results.json").write_text('{"passed": true}')
-        (tmp_path / ".odk" / "components").mkdir(parents=True)
+        (tmp_path / ".ydk" / "ignition-packs" / "test-pack" / "pack.yaml").write_text(json.dumps(pack_manifest))
+        (tmp_path / ".ydk" / "spec-check-results.json").write_text('{"passed": true}')
+        (tmp_path / ".ydk" / "components").mkdir(parents=True)
 
         # Set initial state
         _set_stage(tmp_path, "01.5")
@@ -368,11 +368,11 @@ class TestStateAdvancement:
         # Create minimal config for ignition engine
         config_content = {
             "project": {"name": "test", "remote": "local", "stack": "python-cli"},
-            "components": {"schemas_path": ".odk/schemas"},
+            "components": {"schemas_path": ".ydk/schemas"},
         }
         import yaml
 
-        (tmp_path / ".odk" / "config.yaml").write_text(yaml.dump(config_content))
+        (tmp_path / ".ydk" / "config.yaml").write_text(yaml.dump(config_content))
 
         result = runner.invoke(app, ["ignite"])
         # Ignition may fail due to minimal setup, but if it succeeds, state advances

@@ -1,4 +1,4 @@
-"""Tests for odk scaffold commands."""
+"""Tests for ydk scaffold commands."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import yaml
 from typer.testing import CliRunner
 
-from odk.cli import app
+from ydk.cli import app
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,9 +29,9 @@ def _create_template(base: Path, name: str, variables: dict[str, str], files: di
 
 
 def test_scaffold_list_shows_templates(tmp_path: Path, monkeypatch: object) -> None:
-    """odk scaffold list shows available templates."""
+    """ydk scaffold list shows available templates."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-    project_templates = tmp_path / ".odk" / "templates"
+    project_templates = tmp_path / ".ydk" / "templates"
     _create_template(project_templates, "my-tmpl", {"x": "X var"}, {"f.txt.j2": "hello"})
 
     result = runner.invoke(app, ["scaffold", "list"])
@@ -40,9 +40,9 @@ def test_scaffold_list_shows_templates(tmp_path: Path, monkeypatch: object) -> N
 
 
 def test_scaffold_info_shows_manifest(tmp_path: Path, monkeypatch: object) -> None:
-    """odk scaffold info test-greeting shows manifest."""
+    """ydk scaffold info test-greeting shows manifest."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-    project_templates = tmp_path / ".odk" / "templates"
+    project_templates = tmp_path / ".ydk" / "templates"
     _create_template(project_templates, "demo", {"greeting": "The greeting"}, {"f.txt.j2": "hi"})
 
     result = runner.invoke(app, ["scaffold", "info", "demo"])
@@ -52,9 +52,9 @@ def test_scaffold_info_shows_manifest(tmp_path: Path, monkeypatch: object) -> No
 
 
 def test_scaffold_apply_generates_files(tmp_path: Path, monkeypatch: object) -> None:
-    """odk scaffold apply with --var generates files."""
+    """ydk scaffold apply with --var generates files."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-    project_templates = tmp_path / ".odk" / "templates"
+    project_templates = tmp_path / ".ydk" / "templates"
     _create_template(
         project_templates,
         "greet",
@@ -82,9 +82,9 @@ def test_scaffold_apply_generates_files(tmp_path: Path, monkeypatch: object) -> 
 
 
 def test_scaffold_apply_without_variables_exits_error(tmp_path: Path, monkeypatch: object) -> None:
-    """odk scaffold apply without required variables exits with error."""
+    """ydk scaffold apply without required variables exits with error."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-    project_templates = tmp_path / ".odk" / "templates"
+    project_templates = tmp_path / ".ydk" / "templates"
     _create_template(
         project_templates,
         "needs-vars",
@@ -98,14 +98,14 @@ def test_scaffold_apply_without_variables_exits_error(tmp_path: Path, monkeypatc
 
 
 def test_scaffold_create_creates_template_dir(tmp_path: Path, monkeypatch: object) -> None:
-    """odk scaffold create my-template creates template dir."""
+    """ydk scaffold create my-template creates template dir."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
 
     result = runner.invoke(app, ["scaffold", "create", "my-template", "-d", "A test template"])
     assert result.exit_code == 0
     assert "Created" in result.output
 
-    manifest_path = tmp_path / ".odk" / "templates" / "my-template" / "manifest.yaml"
+    manifest_path = tmp_path / ".ydk" / "templates" / "my-template" / "manifest.yaml"
     assert manifest_path.exists()
     data = yaml.safe_load(manifest_path.read_text())
     assert data["name"] == "my-template"

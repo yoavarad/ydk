@@ -1,7 +1,7 @@
 """Tests for the GitHub Issue body parser — round-trip and edge cases."""
 
-from odk.models.pm import AcceptanceCriterion, EpicCreate, StoryCreate, TaskCreate, TaskStatus
-from odk.repositories.github.parser import (
+from ydk.models.pm import AcceptanceCriterion, EpicCreate, StoryCreate, TaskCreate, TaskStatus
+from ydk.repositories.github.parser import (
     _github_ref,
     parse_epic_detail,
     parse_story_detail,
