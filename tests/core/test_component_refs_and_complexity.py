@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-from odk.core.complexity_scorer import ComplexityScorer
-from odk.models.pm import TaskCreate, TaskDetail
+from ydk.core.complexity_scorer import ComplexityScorer
+from ydk.models.pm import TaskCreate, TaskDetail
 
 
 class TestComponentRefs:
@@ -14,9 +14,9 @@ class TestComponentRefs:
         task = TaskCreate(
             title="Implement order model",
             story_id="S-001",
-            component_refs=["odk:entity:orders/Order", "odk:route:orders/create"],
+            component_refs=["ydk:entity:orders/Order", "ydk:route:orders/create"],
         )
-        assert task.component_refs == ["odk:entity:orders/Order", "odk:route:orders/create"]
+        assert task.component_refs == ["ydk:entity:orders/Order", "ydk:route:orders/create"]
 
     def test_task_create_component_refs_defaults_empty(self) -> None:
         task = TaskCreate(title="Simple task")
@@ -25,9 +25,9 @@ class TestComponentRefs:
     def test_task_detail_has_component_refs(self) -> None:
         detail = TaskDetail(
             title="Implement order model",
-            component_refs=["odk:entity:orders/Order"],
+            component_refs=["ydk:entity:orders/Order"],
         )
-        assert detail.component_refs == ["odk:entity:orders/Order"]
+        assert detail.component_refs == ["ydk:entity:orders/Order"]
 
     def test_task_detail_component_refs_defaults_empty(self) -> None:
         detail = TaskDetail(title="Simple task")
@@ -39,7 +39,7 @@ class TestComponentRefsInFrontmatter:
         """component_refs should appear in the YAML frontmatter of task files."""
         from pathlib import Path
 
-        from odk.repositories.local.tasks import LocalTaskRepository
+        from ydk.repositories.local.tasks import LocalTaskRepository
 
         tasks_root = Path(str(tmp_path))
         (tasks_root / "manifest.yaml").write_text("tasks: {}\nstories: {}\nepics: {}\n")
@@ -47,29 +47,29 @@ class TestComponentRefsInFrontmatter:
         repo = LocalTaskRepository(tasks_root)
         task = TaskCreate(
             title="Test task",
-            component_refs=["odk:entity:Foo", "odk:route:bar/create"],
+            component_refs=["ydk:entity:Foo", "ydk:route:bar/create"],
         )
         detail = repo.create_task(task)
 
-        assert detail.component_refs == ["odk:entity:Foo", "odk:route:bar/create"]
+        assert detail.component_refs == ["ydk:entity:Foo", "ydk:route:bar/create"]
 
         # Read it back
         loaded = repo.get_task(detail.id)
-        assert loaded.component_refs == ["odk:entity:Foo", "odk:route:bar/create"]
+        assert loaded.component_refs == ["ydk:entity:Foo", "ydk:route:bar/create"]
 
 
 class TestComponentRefsInGitHubParser:
     def test_render_and_parse_component_refs(self) -> None:
-        from odk.repositories.github.parser import parse_task_detail, render_task_body
+        from ydk.repositories.github.parser import parse_task_detail, render_task_body
 
         task = TaskCreate(
             title="Test",
-            component_refs=["odk:entity:Order", "odk:route:create"],
+            component_refs=["ydk:entity:Order", "ydk:route:create"],
             spec_refs=["orders.md"],
         )
         body = render_task_body(task)
         assert "**Component refs**:" in body
-        assert "odk:entity:Order" in body
+        assert "ydk:entity:Order" in body
 
         detail = parse_task_detail(
             number=42,
@@ -78,7 +78,7 @@ class TestComponentRefsInGitHubParser:
             state="OPEN",
             labels=["task"],
         )
-        assert detail.component_refs == ["odk:entity:Order", "odk:route:create"]
+        assert detail.component_refs == ["ydk:entity:Order", "ydk:route:create"]
 
 
 class TestAnalyzeComplexityProvider:
@@ -111,14 +111,14 @@ class TestAnalyzeComplexityProvider:
         mock_boto3.Session.return_value = mock_session
         mock_session.client.return_value = mock_client
 
-        with patch.dict(sys.modules, {"boto3": mock_boto3}), patch("odk.core.config.load_config") as mock_load:
+        with patch.dict(sys.modules, {"boto3": mock_boto3}), patch("ydk.core.config.load_config") as mock_load:
             mock_cfg = MagicMock()
             mock_cfg.aws.profile = "my-test-profile"
             mock_cfg.aws.region = "us-west-2"
             mock_cfg.ai.model_tiers = {"fast": "us.anthropic.claude-sonnet-4-20250514-v1:0"}
             mock_load.return_value = mock_cfg
 
-            from odk.cli.task_cmd import _get_llm_provider
+            from ydk.cli.task_cmd import _get_llm_provider
 
             provider = _get_llm_provider()
 

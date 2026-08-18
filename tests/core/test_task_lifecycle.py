@@ -1,4 +1,4 @@
-"""Tests for odk.core.task_lifecycle — TaskLifecycle orchestration."""
+"""Tests for ydk.core.task_lifecycle — TaskLifecycle orchestration."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from odk.core.events import EventBus
-from odk.core.task_lifecycle import TaskLifecycle
-from odk.models.pm import DependencyStatus, TaskCreate, TaskDetail
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.events import EventBus
+from ydk.core.task_lifecycle import TaskLifecycle
+from ydk.models.pm import DependencyStatus, TaskCreate, TaskDetail
+from ydk.models.verification import CheckResult, VerificationReport
 
 
 @pytest.fixture
@@ -113,7 +113,7 @@ def test_block_updates_status_and_labels(lifecycle: TaskLifecycle, mock_repo: Ma
     assert "Blocked (code)" in mock_repo.add_comment.call_args[0][1]
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_done_runs_verifications(
     mock_subprocess: MagicMock,
     lifecycle: TaskLifecycle,
@@ -159,7 +159,7 @@ def test_done_fails_when_verification_fails(
     assert "Verification FAILED" in mock_repo.add_comment.call_args[0][1]
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_done_creates_pr_when_verification_passes(
     mock_subprocess: MagicMock,
     lifecycle: TaskLifecycle,
@@ -199,7 +199,7 @@ def test_start_fails_when_task_already_in_progress(lifecycle: TaskLifecycle, moc
         lifecycle.start("T-001")
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_start_without_worktree_isolation(
     mock_subprocess: MagicMock,
     mock_repo: MagicMock,
@@ -222,7 +222,7 @@ def test_start_without_worktree_isolation(
 
 
 @patch("shutil.which", return_value=None)
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_create_pr_returns_local_reference(
     mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, mock_worktree: MagicMock
 ) -> None:
@@ -281,7 +281,7 @@ def test_start_force_restarts_stale_task(
     assert "worktree" in result
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_start_with_base_branch_no_worktree_isolation(
     mock_subprocess: MagicMock,
     mock_repo: MagicMock,
@@ -382,7 +382,7 @@ def test_check_xfail_removed_detects_remaining_markers(
     test_file = test_dir / "test_strategies_routes.py"
     test_file.write_text(
         "import pytest\n\n"
-        '@pytest.mark.xfail(reason="ODK-TODO-0042: implement StrategyService.create")\n'
+        '@pytest.mark.xfail(reason="YDK-TODO-0042: implement StrategyService.create")\n'
         "def test_create_strategy():\n"
         "    pass\n"
     )
@@ -391,11 +391,11 @@ def test_check_xfail_removed_detects_remaining_markers(
     lifecycle._root = tmp_path
 
     # Mock TodoManager at its source module
-    with patch("odk.core.todo_manager.TodoManager") as mock_todo_cls:
+    with patch("ydk.core.todo_manager.TodoManager") as mock_todo_cls:
         mock_mgr = MagicMock()
         mock_todo_cls.return_value = mock_mgr
         mock_todo = MagicMock()
-        mock_todo.id = "ODK-TODO-0042"
+        mock_todo.id = "YDK-TODO-0042"
         mock_todo.task_id = "T-001"
         mock_mgr.list_todos.return_value = [mock_todo]
 
@@ -405,7 +405,7 @@ def test_check_xfail_removed_detects_remaining_markers(
         )
 
     assert len(warnings) == 1
-    assert "ODK-TODO-0042" in warnings[0]
+    assert "YDK-TODO-0042" in warnings[0]
 
 
 def test_check_xfail_removed_passes_when_markers_gone(
@@ -421,11 +421,11 @@ def test_check_xfail_removed_passes_when_markers_gone(
 
     lifecycle._root = tmp_path
 
-    with patch("odk.core.todo_manager.TodoManager") as mock_todo_cls:
+    with patch("ydk.core.todo_manager.TodoManager") as mock_todo_cls:
         mock_mgr = MagicMock()
         mock_todo_cls.return_value = mock_mgr
         mock_todo = MagicMock()
-        mock_todo.id = "ODK-TODO-0042"
+        mock_todo.id = "YDK-TODO-0042"
         mock_todo.task_id = "T-001"
         mock_mgr.list_todos.return_value = [mock_todo]
 
@@ -449,7 +449,7 @@ def test_derive_test_files_maps_services_to_unit(lifecycle: TaskLifecycle) -> No
     assert "tests/unit/test_strategy_service.py" in result
 
 
-@patch("odk.core.task_lifecycle.subprocess")
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_done_removes_active_task_file(
     mock_subprocess: MagicMock,
     mock_repo: MagicMock,
@@ -457,7 +457,7 @@ def test_done_removes_active_task_file(
     mock_verifier: MagicMock,
     tmp_path: Path,
 ) -> None:
-    """odk task done removes .odk/active-task.json after success."""
+    """ydk task done removes .ydk/active-task.json after success."""
     events = EventBus()
     lc = TaskLifecycle(
         repo=mock_repo,
@@ -468,9 +468,9 @@ def test_done_removes_active_task_file(
     )
 
     # Create active-task.json (simulating task start)
-    odk_dir = tmp_path / ".odk"
-    odk_dir.mkdir(parents=True, exist_ok=True)
-    active_file = odk_dir / "active-task.json"
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(parents=True, exist_ok=True)
+    active_file = ydk_dir / "active-task.json"
     active_file.write_text('{"task_id": "T-001", "base_branch": "main"}')
 
     report = VerificationReport(

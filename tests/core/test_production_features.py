@@ -1,8 +1,8 @@
-"""Tests for all ODK production-readiness features (Items 1-11).
+"""Tests for all YDK production-readiness features (Items 1-11).
 
 Covers: PR body with console outputs, session ID tracking, git diff in spec-alignment,
 code review with both perspectives, screenshots in PR, retrospective with LLM,
-GitHub templates from odk init, pre-push verified flag, coverage with factory,
+GitHub templates from ydk init, pre-push verified flag, coverage with factory,
 YAML output format.
 """
 
@@ -19,10 +19,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from odk.core.events import EventBus
-from odk.core.task_lifecycle import TaskLifecycle
-from odk.models.pm import TaskDetail
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.events import EventBus
+from ydk.core.task_lifecycle import TaskLifecycle
+from ydk.models.pm import TaskDetail
+from ydk.models.verification import CheckResult, VerificationReport
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -105,7 +105,7 @@ def passing_report() -> VerificationReport:
 class TestPRBodyWithProof:
     """Item 1: PR creation with full proof including command outputs."""
 
-    @patch("odk.core.task_lifecycle.subprocess")
+    @patch("ydk.core.task_lifecycle.subprocess")
     def test_pr_body_includes_verification_outputs(
         self,
         mock_subprocess: MagicMock,
@@ -140,7 +140,7 @@ class TestPRBodyWithProof:
         assert "11 passed in 0.8s" in body
         assert "Closes #T-001" in body
 
-    @patch("odk.core.task_lifecycle.subprocess")
+    @patch("ydk.core.task_lifecycle.subprocess")
     def test_pr_body_includes_files_changed(
         self,
         mock_subprocess: MagicMock,
@@ -213,12 +213,12 @@ class TestSessionID:
 
 
 # ---------------------------------------------------------------------------
-# Item 3: Orchestrator calls odk task from project root
+# Item 3: Orchestrator calls ydk task from project root
 # ---------------------------------------------------------------------------
 
 
 class TestOrchestratorProjectRoot:
-    """Item 3: odk task commands work from project root."""
+    """Item 3: ydk task commands work from project root."""
 
     def test_lifecycle_uses_project_root(self, lifecycle: TaskLifecycle) -> None:
         """TaskLifecycle stores and uses project_root."""
@@ -239,7 +239,7 @@ class TestOrchestratorProjectRoot:
 # ---------------------------------------------------------------------------
 
 SPEC_ALIGNMENT_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "spec-alignment" / "check.py"
+    Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "spec-alignment" / "check.py"
 )
 
 
@@ -286,7 +286,7 @@ class TestSpecAlignmentGitDiff:
 # ---------------------------------------------------------------------------
 
 AI_CODE_REVIEW_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "ai-code-review" / "check.py"
+    Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "ai-code-review" / "check.py"
 )
 
 
@@ -355,7 +355,7 @@ class TestScreenshotCapture:
         """When screenshots exist, they are included as image links."""
         # Override project root
         lifecycle._root = tmp_path
-        screenshots_dir = tmp_path / ".odk" / "proofs" / "T-001" / "screenshots"
+        screenshots_dir = tmp_path / ".ydk" / "proofs" / "T-001" / "screenshots"
         screenshots_dir.mkdir(parents=True)
         (screenshots_dir / "dashboard.png").write_text("fake-png")
         (screenshots_dir / "order-form.jpg").write_text("fake-jpg")
@@ -368,7 +368,7 @@ class TestScreenshotCapture:
         assert ".png" in lines[0]
         assert ".jpg" in lines[1]
 
-    @patch("odk.core.task_lifecycle.subprocess")
+    @patch("ydk.core.task_lifecycle.subprocess")
     def test_screenshots_in_pr_body(
         self,
         mock_subprocess: MagicMock,
@@ -379,7 +379,7 @@ class TestScreenshotCapture:
     ) -> None:
         """PR body should contain ## Screenshots section when screenshots exist."""
         lifecycle._root = tmp_path
-        screenshots_dir = tmp_path / ".odk" / "proofs" / "T-001" / "screenshots"
+        screenshots_dir = tmp_path / ".ydk" / "proofs" / "T-001" / "screenshots"
         screenshots_dir.mkdir(parents=True)
         (screenshots_dir / "screen.png").write_text("fake")
 
@@ -402,7 +402,7 @@ class TestRetrospectiveLLM:
 
     def test_run_llm_retrospective_returns_none_without_strands(self) -> None:
         """_run_llm_retrospective gracefully returns None when strands not available."""
-        from odk.cli.memory_cmd import _run_llm_retrospective
+        from ydk.cli.memory_cmd import _run_llm_retrospective
 
         original_import = __import__
 
@@ -418,7 +418,7 @@ class TestRetrospectiveLLM:
 
     def test_retrospective_produces_proposals_with_mock_llm(self) -> None:
         """_run_llm_retrospective returns structured proposals with mocked LLM."""
-        from odk.cli.memory_cmd import _run_llm_retrospective
+        from ydk.cli.memory_cmd import _run_llm_retrospective
 
         ai_response = json.dumps(
             {
@@ -459,19 +459,19 @@ class TestRetrospectiveLLM:
 
 
 # ---------------------------------------------------------------------------
-# Item 8: Git templates created by odk init
+# Item 8: Git templates created by ydk init
 # ---------------------------------------------------------------------------
 
 
 class TestGitTemplatesInit:
-    """Item 8: odk init creates .github/ templates."""
+    """Item 8: ydk init creates .github/ templates."""
 
     def test_init_creates_github_templates(self, tmp_path: Path, monkeypatch: object) -> None:
-        """odk init should create .github/ISSUE_TEMPLATE/ and PR template."""
+        """ydk init should create .github/ISSUE_TEMPLATE/ and PR template."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["init", "--name", "testproj"])
@@ -491,7 +491,7 @@ class TestGitTemplatesInit:
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
         runner = CliRunner()
         runner.invoke(app, ["init", "--name", "testproj"])
@@ -508,7 +508,7 @@ class TestGitTemplatesInit:
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
         runner = CliRunner()
         runner.invoke(app, ["init", "--name", "testproj"])
@@ -524,9 +524,9 @@ class TestGitTemplatesInit:
 
 
 class TestPrePushVerifiedFlag:
-    """Item 9: Pre-push hook respects .odk/.verified flag."""
+    """Item 9: Pre-push hook respects .ydk/.verified flag."""
 
-    @patch("odk.core.task_lifecycle.subprocess")
+    @patch("ydk.core.task_lifecycle.subprocess")
     def test_done_writes_verified_flag(
         self,
         mock_subprocess: MagicMock,
@@ -535,7 +535,7 @@ class TestPrePushVerifiedFlag:
         mock_verifier: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """done() should write .odk/.verified before pushing."""
+        """done() should write .ydk/.verified before pushing."""
         events = EventBus()
         lc = TaskLifecycle(
             repo=mock_repo,
@@ -558,25 +558,25 @@ class TestPrePushVerifiedFlag:
 
         lc.done("T-001")
 
-        flag = tmp_path / ".odk" / ".verified"
+        flag = tmp_path / ".ydk" / ".verified"
         assert flag.is_file()
         ts = float(flag.read_text())
         assert abs(time.time() - ts) < 10  # Written within last 10 seconds
 
     def test_pre_push_hook_has_verified_check(self, tmp_path: Path, monkeypatch: object) -> None:
-        """Pre-push hook script should check for .odk/.verified flag."""
+        """Pre-push hook script should check for .ydk/.verified flag."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
         runner = CliRunner()
         runner.invoke(app, ["init", "--name", "testproj"])
 
-        pre_push = tmp_path / ".odk" / "hooks" / "pre-push"
+        pre_push = tmp_path / ".ydk" / "hooks" / "pre-push"
         assert pre_push.is_file()
         content = pre_push.read_text()
-        assert ".odk/.verified" in content
+        assert ".ydk/.verified" in content
         assert "skipping verification" in content.lower() or "skip" in content.lower()
 
     def test_write_verified_flag(self, tmp_path: Path) -> None:
@@ -592,7 +592,7 @@ class TestPrePushVerifiedFlag:
 
         lc._write_verified_flag()
 
-        flag = tmp_path / ".odk" / ".verified"
+        flag = tmp_path / ".ydk" / ".verified"
         assert flag.is_file()
         ts = float(flag.read_text())
         assert ts > 0
@@ -611,17 +611,17 @@ class TestCoverageFactory:
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
         # Create minimal config
-        odk_dir = tmp_path / ".odk"
-        odk_dir.mkdir()
-        (odk_dir / "config.yaml").write_text(
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "config.yaml").write_text(
             "project:\n  name: test\n  remote: local\n"
             "  spec_location: docs/specs\n  adrs_location: docs/adrs\n"
             "  research_location: docs/research\n"
         )
-        (odk_dir / "manifest.yaml").write_text("{}")
+        (ydk_dir / "manifest.yaml").write_text("{}")
 
         # Create a spec file
         spec_dir = tmp_path / "docs" / "specs"
@@ -647,11 +647,11 @@ class TestYAMLOutput:
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         from typer.testing import CliRunner
 
-        from odk.cli import app
+        from ydk.cli import app
 
-        odk_dir = tmp_path / ".odk"
-        odk_dir.mkdir()
-        (odk_dir / "config.yaml").write_text(
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "config.yaml").write_text(
             "project:\n  name: test\n  remote: local\n"
             "  spec_location: docs/specs\n  adrs_location: docs/adrs\n"
             "  research_location: docs/research\n"
@@ -663,7 +663,7 @@ class TestYAMLOutput:
             "stories": {},
             "epics": {},
         }
-        (odk_dir / "manifest.yaml").write_text(yaml.dump(manifest_data))
+        (ydk_dir / "manifest.yaml").write_text(yaml.dump(manifest_data))
 
         runner = CliRunner()
         result = runner.invoke(app, ["--format", "yaml", "task", "list"])
@@ -674,7 +674,7 @@ class TestYAMLOutput:
 
     def test_yaml_formatter_produces_valid_yaml(self) -> None:
         """YamlFormatter.format should produce parseable YAML."""
-        from odk.output.formatters import YamlFormatter
+        from ydk.output.formatters import YamlFormatter
 
         formatter = YamlFormatter()
         data = [{"id": "T-001", "title": "Test", "status": "open"}]

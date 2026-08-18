@@ -1,8 +1,10 @@
-# ODK — Oz Development Kit
+# YDK — Yoav Development Kit
 
-ODK is my coding workflow, packaged as an installable agent skill. I am [Oz Altagar](https://www.linkedin.com/in/oz-altagar-0a50861b3/), and this repository exists to share the way I structure AI-assisted software work: how I parallelize implementation across many coding agents, keep the work coordinated, and still trust the output.
+> **Fork notice:** YDK is a personal fork of [ODK — Oz Development Kit](https://github.com/oaltagar-personal/odk), created by [Oz Altagar](https://www.linkedin.com/in/oz-altagar-0a50861b3/). All credit for the original design and workflow goes to him; this fork adapts it for my own use.
 
-It is intentionally opinionated. It is not meant to be a generic tool, a universal framework, or a neutral abstraction over every possible development style. ODK captures one specific way of working: specs first, agent-operated execution, deterministic enforcement where possible, and proof before trust.
+YDK is my coding workflow, packaged as an installable agent skill. I am [Oz Altagar](https://www.linkedin.com/in/oz-altagar-0a50861b3/), and this repository exists to share the way I structure AI-assisted software work: how I parallelize implementation across many coding agents, keep the work coordinated, and still trust the output.
+
+It is intentionally opinionated. It is not meant to be a generic tool, a universal framework, or a neutral abstraction over every possible development style. YDK captures one specific way of working: specs first, agent-operated execution, deterministic enforcement where possible, and proof before trust.
 
 The repository is meant to be read by coding agents first. Humans should only need to install the skill, tell their agent to use it, and then work with the agent as it guides the project through the process.
 
@@ -11,18 +13,18 @@ The repository is meant to be read by coding agents first. Humans should only ne
 1. Clone this repository.
 
 ```bash
-git clone https://github.com/oaltagar-personal/odk.git
-cd odk
+git clone https://github.com/oaltagar-personal/ydk.git
+cd ydk
 ```
 
-2. Install the skill by copying `skills/odk` into your agent's local skills directory.
+2. Install the skill by copying `skills/ydk` into your agent's local skills directory.
 
 Common locations:
 
 ```bash
 # Claude Code / local agent setups often use one of these:
 mkdir -p ~/.claude/skills ~/.codex/skills ~/.agents/skills
-cp -R skills/odk ~/.claude/skills/
+cp -R skills/ydk ~/.claude/skills/
 ```
 
 Use the skills directory for the agent you actually run. The installed folder must contain `SKILL.md`.
@@ -30,14 +32,14 @@ Use the skills directory for the agent you actually run. The installed folder mu
 3. Start a new agent session in your project and say:
 
 ```text
-Use the ODK skill for this project.
+Use the YDK skill for this project.
 ```
 
-That is the onboarding. The agent reads `skills/odk/SKILL.md`, determines the current stage, and follows the process from there.
+That is the onboarding. The agent reads `skills/ydk/SKILL.md`, determines the current stage, and follows the process from there.
 
 ## What The User Needs To Know
 
-ODK is not a user-operated app. It is a process skill for coding agents.
+YDK is not a user-operated app. It is a process skill for coding agents.
 
 The user does not need to learn the CLI, memorize commands, understand component schemas, or manually walk through the lifecycle. The agent is expected to load the skill, inspect the project, choose the correct stage, read the relevant stage instructions, and drive the work.
 
@@ -45,7 +47,7 @@ The human role is to provide taste, product intent, review, and approval. The ag
 
 ## The Process
 
-ODK organizes software development into stages. The stages are sequential, but not rigid waterfall; discoveries can send the agent back to an earlier stage when that is the correct engineering move.
+YDK organizes software development into stages. The stages are sequential, but not rigid waterfall; discoveries can send the agent back to an earlier stage when that is the correct engineering move.
 
 ```text
 Idea
@@ -110,19 +112,19 @@ Decisions, failed assumptions, reusable patterns, and hard-won lessons should be
 ## Repository Layout
 
 ```text
-skills/odk/
+skills/ydk/
   SKILL.md                 # Entry point the agent loads
   docs/stages/             # Stage-specific process instructions
   docs/cross-cutting/      # Shared process guidance
 
-src/odk/
+src/ydk/
   CLI implementation used by agents and automation
 
 tests/
   Verification for the CLI and process tooling
 ```
 
-The skill is the important part. The CLI exists to give agents concrete tooling for the process, but humans evaluating this repository should start with `skills/odk/SKILL.md`.
+The skill is the important part. The CLI exists to give agents concrete tooling for the process, but humans evaluating this repository should start with `skills/ydk/SKILL.md`.
 
 ## License
 

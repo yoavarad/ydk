@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from odk.core.catalog import LocalCatalogBackend, _load_manifest
+from ydk.core.catalog import LocalCatalogBackend, _load_manifest
 
 
 def _create_catalog_item(base: Path, name: str, tags: list[str] | None = None, version: str = "0.1.0") -> Path:
@@ -129,7 +129,7 @@ class TestLocalCatalogBackendInstall:
         backend = LocalCatalogBackend(catalog_dir=catalog_dir, include_builtin=False)
         backend.install("python-quality", None, project_dir)
 
-        dest = project_dir / ".odk" / "verifications" / "python-quality"
+        dest = project_dir / ".ydk" / "verifications" / "python-quality"
         assert dest.exists()
         assert (dest / "catalog.yaml").exists()
 
@@ -138,11 +138,11 @@ class TestLocalCatalogBackendInstall:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
 
-        _create_catalog_item(catalog_dir, "odk-core-schemas", tags=["component-schemas"])
+        _create_catalog_item(catalog_dir, "ydk-core-schemas", tags=["component-schemas"])
         backend = LocalCatalogBackend(catalog_dir=catalog_dir, include_builtin=False)
-        backend.install("odk-core-schemas", None, project_dir)
+        backend.install("ydk-core-schemas", None, project_dir)
 
-        dest = project_dir / ".odk" / "schemas" / "odk-core-schemas"
+        dest = project_dir / ".ydk" / "schemas" / "ydk-core-schemas"
         assert dest.exists()
 
     def test_install_spec_reviewers(self, tmp_path: Path) -> None:
@@ -154,7 +154,7 @@ class TestLocalCatalogBackendInstall:
         backend = LocalCatalogBackend(catalog_dir=catalog_dir, include_builtin=False)
         backend.install("my-reviewers", None, project_dir)
 
-        dest = project_dir / ".odk" / "spec-reviewers" / "my-reviewers"
+        dest = project_dir / ".ydk" / "spec-reviewers" / "my-reviewers"
         assert dest.exists()
 
     def test_install_default_location(self, tmp_path: Path) -> None:
@@ -166,7 +166,7 @@ class TestLocalCatalogBackendInstall:
         backend = LocalCatalogBackend(catalog_dir=catalog_dir, include_builtin=False)
         backend.install("misc-tool", None, project_dir)
 
-        dest = project_dir / ".odk" / "catalog-installed" / "misc-tool"
+        dest = project_dir / ".ydk" / "catalog-installed" / "misc-tool"
         assert dest.exists()
 
     def test_install_records_lock(self, tmp_path: Path) -> None:
@@ -178,7 +178,7 @@ class TestLocalCatalogBackendInstall:
         backend = LocalCatalogBackend(catalog_dir=catalog_dir, include_builtin=False)
         backend.install("my-item", None, project_dir)
 
-        lock_path = project_dir / ".odk" / "catalog-lock.yaml"
+        lock_path = project_dir / ".ydk" / "catalog-lock.yaml"
         assert lock_path.exists()
         lock = yaml.safe_load(lock_path.read_text())
         assert len(lock["installed"]) == 1
@@ -200,7 +200,7 @@ class TestLocalCatalogBackendInstall:
         # Install again should overwrite without error
         backend.install("my-item", None, project_dir)
 
-        dest = project_dir / ".odk" / "verifications" / "my-item"
+        dest = project_dir / ".ydk" / "verifications" / "my-item"
         assert dest.exists()
 
 
@@ -360,7 +360,7 @@ class TestLocalCatalogBackendUninstall:
         backend.install("removable", None, project_dir)
 
         assert backend.uninstall("removable", project_dir) is True
-        assert not (project_dir / ".odk" / "verifications" / "removable").exists()
+        assert not (project_dir / ".ydk" / "verifications" / "removable").exists()
 
         installed = backend.list_installed(project_dir)
         assert all(i.name != "removable" for i in installed)

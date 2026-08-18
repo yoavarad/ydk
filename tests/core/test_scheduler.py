@@ -1,8 +1,8 @@
-"""Tests for odk.core.scheduler — resource-constrained scheduling."""
+"""Tests for ydk.core.scheduler — resource-constrained scheduling."""
 
-from odk.core.scheduler import Scheduler
-from odk.models.schedule import Schedule, ScheduleSlot
-from odk.models.task import Task
+from ydk.core.scheduler import Scheduler
+from ydk.models.schedule import Schedule, ScheduleSlot
+from ydk.models.task import Task
 
 
 class TestScheduleSingleAgent:

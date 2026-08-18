@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from odk.core.reviewer import (
+from ydk.core.reviewer import (
     ReviewerAgent,
     ReviewerConfig,
     ReviewResult,
@@ -200,13 +200,13 @@ class TestLoadBuiltInReviewers:
     """Test that the shipped YAML files all load correctly."""
 
     def test_loads_10_reviewers(self) -> None:
-        from odk.spec_reviewers import REVIEWERS_DIR
+        from ydk.spec_reviewers import REVIEWERS_DIR
 
         configs = load_all_reviewers(REVIEWERS_DIR)
         assert len(configs) == 10
 
     def test_all_ids_present(self) -> None:
-        from odk.spec_reviewers import REVIEWERS_DIR
+        from ydk.spec_reviewers import REVIEWERS_DIR
 
         configs = load_all_reviewers(REVIEWERS_DIR)
         ids = {c.id for c in configs}
@@ -214,14 +214,14 @@ class TestLoadBuiltInReviewers:
         assert ids == expected
 
     def test_all_have_system_prompts(self) -> None:
-        from odk.spec_reviewers import REVIEWERS_DIR
+        from ydk.spec_reviewers import REVIEWERS_DIR
 
         configs = load_all_reviewers(REVIEWERS_DIR)
         for c in configs:
             assert len(c.system_prompt) > 100, f"{c.id} has too short a system prompt"
 
     def test_tools_are_callable(self) -> None:
-        from odk.spec_reviewers import REVIEWERS_DIR
+        from ydk.spec_reviewers import REVIEWERS_DIR
 
         configs = load_all_reviewers(REVIEWERS_DIR)
         for c in configs:
@@ -230,7 +230,7 @@ class TestLoadBuiltInReviewers:
 
     def test_all_tools_execute(self) -> None:
         """All compiled tools can execute on a trivial input."""
-        from odk.spec_reviewers import REVIEWERS_DIR
+        from ydk.spec_reviewers import REVIEWERS_DIR
 
         configs = load_all_reviewers(REVIEWERS_DIR)
         for c in configs:
@@ -425,7 +425,7 @@ class TestOutputCapture:
         import io
         import sys
 
-        from odk.core.reviewer import run_reviewer
+        from ydk.core.reviewer import run_reviewer
 
         config = _make_config(tools=[_empty_tool])
 

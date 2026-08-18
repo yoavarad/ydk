@@ -1,4 +1,4 @@
-"""Tests for odk memory commands."""
+"""Tests for ydk memory commands."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from odk.cli import app
+from ydk.cli import app
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,7 +31,7 @@ def _mock_engine():
 
 def _mock_extractor():
     """Create a mock MemoryExtractor."""
-    from odk.core.extractor import ExtractedMemory
+    from ydk.core.extractor import ExtractedMemory
 
     extractor = MagicMock()
     extractor.extract_from_jsonl.return_value = [
@@ -50,31 +50,31 @@ def _mock_task():
     return task
 
 
-@patch("odk.cli.memory_cmd._get_engine")
-@patch("odk.cli.memory_cmd._load_memory_config")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
 def test_memory_index(mock_config: MagicMock, mock_get_engine: MagicMock) -> None:
-    """odk memory index exits 0 with mock MemoryEngine."""
+    """ydk memory index exits 0 with mock MemoryEngine."""
     mock_get_engine.return_value = _mock_engine()
     result = runner.invoke(app, ["memory", "index"])
     assert result.exit_code == 0
     assert "Indexed 12 files" in result.output
 
 
-@patch("odk.cli.memory_cmd._get_engine")
-@patch("odk.cli.memory_cmd._load_memory_config")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
 def test_memory_search(mock_config: MagicMock, mock_get_engine: MagicMock) -> None:
-    """odk memory search exits 0 with mock search results."""
+    """ydk memory search exits 0 with mock search results."""
     mock_get_engine.return_value = _mock_engine()
     result = runner.invoke(app, ["memory", "search", "order validation"])
     assert result.exit_code == 0
     assert "orders.md" in result.output
 
 
-@patch("odk.repositories.factory.get_task_repository")
-@patch("odk.cli.memory_cmd._get_engine")
-@patch("odk.cli.memory_cmd._load_memory_config")
+@patch("ydk.repositories.factory.get_task_repository")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
 def test_memory_bootstrap(mock_config: MagicMock, mock_get_engine: MagicMock, mock_repo_factory: MagicMock) -> None:
-    """odk memory bootstrap T-001 exits 0 with mock bootstrap results."""
+    """ydk memory bootstrap T-001 exits 0 with mock bootstrap results."""
     mock_get_engine.return_value = _mock_engine()
     mock_repo = MagicMock()
     mock_repo.get_task.return_value = _mock_task()
@@ -84,13 +84,13 @@ def test_memory_bootstrap(mock_config: MagicMock, mock_get_engine: MagicMock, mo
     assert "Bootstrap context for T-001" in result.output
 
 
-@patch("odk.cli.memory_cmd._get_extractor")
-@patch("odk.cli.memory_cmd._get_engine")
-@patch("odk.cli.memory_cmd._load_memory_config")
+@patch("ydk.cli.memory_cmd._get_extractor")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
 def test_memory_extract(
     mock_config: MagicMock, mock_get_engine: MagicMock, mock_get_extractor: MagicMock, tmp_path: Path
 ) -> None:
-    """odk memory extract T-001 --jsonl file.jsonl exits 0 with mock extractor."""
+    """ydk memory extract T-001 --jsonl file.jsonl exits 0 with mock extractor."""
     mock_get_engine.return_value = _mock_engine()
     mock_get_extractor.return_value = _mock_extractor()
     jsonl_file = tmp_path / "session.jsonl"
@@ -100,10 +100,10 @@ def test_memory_extract(
     assert "Extracted 1 memories" in result.output
 
 
-@patch("odk.cli.memory_cmd._get_engine")
-@patch("odk.cli.memory_cmd._load_memory_config")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
 def test_memory_search_shows_provenance(mock_config: MagicMock, mock_get_engine: MagicMock) -> None:
-    """odk memory search displays source_type and verified status."""
+    """ydk memory search displays source_type and verified status."""
     engine = _mock_engine()
     engine.search.return_value = [
         {
@@ -121,10 +121,10 @@ def test_memory_search_shows_provenance(mock_config: MagicMock, mock_get_engine:
     assert "llm-extracted" in result.output
 
 
-@patch("odk.cli.memory_cmd._get_engine")
-@patch("odk.cli.memory_cmd._load_memory_config")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
 def test_memory_search_verified_only(mock_config: MagicMock, mock_get_engine: MagicMock) -> None:
-    """odk memory search --verified-only filters to verified results."""
+    """ydk memory search --verified-only filters to verified results."""
     engine = _mock_engine()
     engine.search.return_value = [
         {
@@ -151,20 +151,20 @@ def test_memory_search_verified_only(mock_config: MagicMock, mock_get_engine: Ma
     assert "auth.md" not in result.output
 
 
-@patch("odk.cli.memory_cmd._load_memory_config")
+@patch("ydk.cli.memory_cmd._load_memory_config")
 def test_memory_audit(mock_config: MagicMock) -> None:
-    """odk memory audit exits 0."""
+    """ydk memory audit exits 0."""
     cfg = MagicMock()
-    cfg.project.research_location = "/tmp/nonexistent_research_dir_odk"
+    cfg.project.research_location = "/tmp/nonexistent_research_dir_ydk"
     mock_config.return_value = cfg
     result = runner.invoke(app, ["memory", "audit"])
     assert result.exit_code == 0
     assert "Memory Audit" in result.output
 
 
-@patch("odk.repositories.factory.get_task_repository")
+@patch("ydk.repositories.factory.get_task_repository")
 def test_memory_retrospective(mock_repo_factory: MagicMock) -> None:
-    """odk memory retrospective exits 0."""
+    """ydk memory retrospective exits 0."""
     mock_repo = MagicMock()
     task = MagicMock()
     task.id = "T-001"

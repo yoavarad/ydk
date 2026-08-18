@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from odk.core.memory import MemoryEngine
-from odk.models.memory import ExtractedMemoryModel
+from ydk.core.memory import MemoryEngine
+from ydk.models.memory import ExtractedMemoryModel
 
 
 class TestTemporalFields:
@@ -119,7 +119,7 @@ class TestContradictionSetsValidUntil:
             {"ids": ["old"], "metadatas": [{"concepts": "database,postgresql", "valid_until": ""}]},
         ]
         e._get_collection = MagicMock(return_value=mc)  # type: ignore[assignment]
-        from odk.core.contradiction_detector import ContradictionDetector
+        from ydk.core.contradiction_detector import ContradictionDetector
 
         class FL:
             def judge_contradiction(self, new_text, old_text):

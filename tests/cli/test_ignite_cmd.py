@@ -1,4 +1,4 @@
-"""Tests for the odk ignite CLI command."""
+"""Tests for the ydk ignite CLI command."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import yaml
 from typer.testing import CliRunner
 
-from odk.cli import app
+from ydk.cli import app
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,7 +18,7 @@ runner = CliRunner()
 _SIMPLE_GENERATOR = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, yaml
-    entities_path = os.environ.get("ODK_COMPONENTS_ENTITY")
+    entities_path = os.environ.get("YDK_COMPONENTS_ENTITY")
     entities = []
     if entities_path:
         with open(entities_path) as f:
@@ -36,7 +36,7 @@ _SIMPLE_GENERATOR = textwrap.dedent("""\
 
 def _setup_project(root: Path) -> None:
     """Create a minimal project with pack + components + schemas + spec-check-results."""
-    pack_dir = root / ".odk" / "ignition-pack"
+    pack_dir = root / ".ydk" / "ignition-pack"
     pack_dir.mkdir(parents=True)
     manifest = {
         "name": "test-pack",
@@ -46,15 +46,15 @@ def _setup_project(root: Path) -> None:
     (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False))
     (pack_dir / "gen.py").write_text(_SIMPLE_GENERATOR)
 
-    comp_dir = root / ".odk" / "components" / "entity"
+    comp_dir = root / ".ydk" / "components" / "entity"
     comp_dir.mkdir(parents=True)
     (comp_dir / "strategy.yaml").write_text(yaml.dump({"name": "Strategy"}))
 
     # Preconditions for ignite CLI
-    schemas_dir = root / ".odk" / "schemas"
+    schemas_dir = root / ".ydk" / "schemas"
     schemas_dir.mkdir(parents=True, exist_ok=True)
     (schemas_dir / "entity.yaml").write_text("type: entity\nfields: []")
-    (root / ".odk" / "spec-check-results.json").write_text('{"passed": true}')
+    (root / ".ydk" / "spec-check-results.json").write_text('{"passed": true}')
 
 
 def test_ignite_no_pack(tmp_path: Path, monkeypatch: object) -> None:
@@ -64,7 +64,7 @@ def test_ignite_no_pack(tmp_path: Path, monkeypatch: object) -> None:
     monkeypatch.setattr(os, "getcwd", lambda: str(tmp_path))  # type: ignore[attr-defined]
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     # Set up schemas so we hit the pack check (not the schemas check)
-    schemas_dir = tmp_path / ".odk" / "schemas"
+    schemas_dir = tmp_path / ".ydk" / "schemas"
     schemas_dir.mkdir(parents=True)
     (schemas_dir / "entity.yaml").write_text("type: entity")
     result = runner.invoke(app, ["ignite"])
@@ -114,7 +114,7 @@ def test_ignite_force_overwrites_developer_owned(tmp_path: Path, monkeypatch: ob
 def test_ignite_registered_as_top_level_command() -> None:
     """ignite is a top-level command, not a subgroup."""
     # Check the command is directly on the app
-    from odk.cli import app
+    from ydk.cli import app
 
     command_names = []
     if hasattr(app, "registered_commands"):

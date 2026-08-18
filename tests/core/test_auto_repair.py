@@ -1,4 +1,4 @@
-"""Tests for odk.core.auto_repair -- RepairLoop and structured error output."""
+"""Tests for ydk.core.auto_repair -- RepairLoop and structured error output."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from odk.core.auto_repair import RepairLoop, RepairResult
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.auto_repair import RepairLoop, RepairResult
+from ydk.models.verification import CheckResult, VerificationReport
 
 
 def _ok_report() -> VerificationReport:

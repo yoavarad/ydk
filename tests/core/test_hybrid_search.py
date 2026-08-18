@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from odk.core.bm25_index import BM25Index
-from odk.core.memory import MemoryEngine
+from ydk.core.bm25_index import BM25Index
+from ydk.core.memory import MemoryEngine
 
 
 class TestRRFFusion:

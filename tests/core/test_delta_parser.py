@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from odk.core.delta_parser import apply_operations_to_spec, parse_delta_directory, parse_delta_file
-from odk.models.change import DeltaType
+from ydk.core.delta_parser import apply_operations_to_spec, parse_delta_directory, parse_delta_file
+from ydk.models.change import DeltaType
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -162,7 +162,7 @@ def test_parse_delta_directory_nonexistent(tmp_path: Path):
 
 
 def test_apply_add_appends_to_spec():
-    from odk.models.change import DeltaOperation
+    from ydk.models.change import DeltaOperation
 
     spec = "# API Spec\n\n### GET /users\n\nReturns all users.\n"
     ops = [
@@ -180,7 +180,7 @@ def test_apply_add_appends_to_spec():
 
 
 def test_apply_modify_replaces_block():
-    from odk.models.change import DeltaOperation
+    from ydk.models.change import DeltaOperation
 
     spec = "# API\n\n### GET /users\n\nOld description.\n\n### GET /items\n\nItems list.\n"
     ops = [
@@ -198,7 +198,7 @@ def test_apply_modify_replaces_block():
 
 
 def test_apply_remove_deletes_block():
-    from odk.models.change import DeltaOperation
+    from ydk.models.change import DeltaOperation
 
     spec = "# API\n\n### GET /users\n\nUsers list.\n\n### DELETE /legacy\n\nOld endpoint.\n"
     ops = [
@@ -216,7 +216,7 @@ def test_apply_remove_deletes_block():
 
 
 def test_apply_modify_nonexistent_block_leaves_unchanged():
-    from odk.models.change import DeltaOperation
+    from ydk.models.change import DeltaOperation
 
     spec = "# API\n\n### GET /users\n\nUsers.\n"
     ops = [

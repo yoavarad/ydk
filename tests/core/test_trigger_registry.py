@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from odk.core.trigger_registry import TriggerRegistry
-from odk.models.trigger import TriggerEvent, validate_trigger_id
-from odk.models.verification import CheckResult
+from ydk.core.trigger_registry import TriggerRegistry
+from ydk.models.trigger import TriggerEvent, validate_trigger_id
+from ydk.models.verification import CheckResult
 
 
 class FakeHandler:

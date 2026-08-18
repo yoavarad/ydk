@@ -1,30 +1,30 @@
 ---
-title: "odk watch"
+title: "ydk watch"
 description: "CLI reference for PR review watch daemon"
 ---
 
-# `odk watch`
+# `ydk watch`
 
 The watch commands manage a polling daemon that monitors PRs for new review comments, reacts with an eyes emoji, and triggers an agent to address the feedback.
 
-## `odk watch install`
+## `ydk watch install`
 
 Install the macOS launchd plist for automatic polling every 30 seconds.
 
 ```bash
-$ odk watch install
-Installing com.odk.watch plist...
-Plist written to ~/Library/LaunchAgents/com.odk.watch.plist
-Loaded com.odk.watch
+$ ydk watch install
+Installing com.ydk.watch plist...
+Plist written to ~/Library/LaunchAgents/com.ydk.watch.plist
+Loaded com.ydk.watch
 Watch daemon is now running (30s polling interval)
 ```
 
-## `odk watch poll`
+## `ydk watch poll`
 
 Manually trigger a single poll cycle. Checks all open PRs for new review comments, reacts with an eyes emoji to acknowledge, and triggers an agent session to address the feedback.
 
 ```bash
-$ odk watch poll
+$ ydk watch poll
 Polling PRs for new review comments...
   PR #42: 2 new comments found
     -> Reacted with eyes emoji
@@ -33,25 +33,25 @@ Polling PRs for new review comments...
 Poll complete.
 ```
 
-## `odk watch uninstall`
+## `ydk watch uninstall`
 
 Remove the launchd plist and stop the polling daemon.
 
 ```bash
-$ odk watch uninstall
-Unloading com.odk.watch...
-Removed ~/Library/LaunchAgents/com.odk.watch.plist
+$ ydk watch uninstall
+Unloading com.ydk.watch...
+Removed ~/Library/LaunchAgents/com.ydk.watch.plist
 Watch daemon stopped.
 ```
 
-## `odk watch status`
+## `ydk watch status`
 
 Show the current state of the watch daemon including whether it is installed, when it last polled, and any active agent sessions.
 
 ```bash
-$ odk watch status
+$ ydk watch status
 Watch daemon: installed (running)
-Plist: ~/Library/LaunchAgents/com.odk.watch.plist
+Plist: ~/Library/LaunchAgents/com.ydk.watch.plist
 Polling interval: 30s
 Last poll: 2026-05-03T10:42:15Z
 Active sessions: 1

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.services.git import LocalGitService
+from ydk.services.git import LocalGitService
 
 # ---------------------------------------------------------------------------
 # Unit tests — mocked subprocess

@@ -7,23 +7,23 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Creating a Verification Plugin
 
-ODK's verification system is designed to be extended. The plugin contract is deliberately simple -- a directory with two files, JSON in, JSON out -- because verification rules are specific to each project and team. The 40 built-in plugins cover common patterns, but your project almost certainly has rules that are unique to your domain, architecture, or team standards.
+YDK's verification system is designed to be extended. The plugin contract is deliberately simple -- a directory with two files, JSON in, JSON out -- because verification rules are specific to each project and team. The 40 built-in plugins cover common patterns, but your project almost certainly has rules that are unique to your domain, architecture, or team standards.
 
 This guide walks through creating a custom plugin from scratch, explaining the design decisions at each step.
 
 ## Step 1: Create the Plugin Directory
 
-Plugins live in `.odk/verifications/` for project-specific checks. Create a directory with a descriptive name:
+Plugins live in `.ydk/verifications/` for project-specific checks. Create a directory with a descriptive name:
 
 ```bash
-mkdir -p .odk/verifications/no-print-statements
+mkdir -p .ydk/verifications/no-print-statements
 ```
 
 The directory name is not used for identification -- the `name` field in the manifest is what matters -- but keeping them consistent avoids confusion.
 
 ## Step 2: Write the Manifest
 
-Create `.odk/verifications/no-print-statements/manifest.yaml`:
+Create `.ydk/verifications/no-print-statements/manifest.yaml`:
 
 ```yaml
 name: no-print-statements
@@ -40,13 +40,13 @@ supports_auto_fix: false
 
 The `layer` field determines when your plugin runs relative to others. Layer 1 is for fast, deterministic checks (formatting, linting). Layer 2 is for architectural rules. Layer 3 is for AI-powered analysis. Choose the layer that matches the cost and complexity of your check.
 
-The `trigger` field controls when your plugin is invoked. `pre-commit` runs on `odk verify run --trigger pre-commit`. `pre-push` runs on `odk verify run --trigger pre-push` and also during `odk task done`.
+The `trigger` field controls when your plugin is invoked. `pre-commit` runs on `ydk verify run --trigger pre-commit`. `pre-push` runs on `ydk verify run --trigger pre-push` and also during `ydk task done`.
 
 The `parallel` field should be `true` unless your plugin modifies files (in which case set it to `false` to avoid race conditions with other plugins).
 
 ## Step 3: Write the Check Script
 
-Create `.odk/verifications/no-print-statements/check.py`:
+Create `.ydk/verifications/no-print-statements/check.py`:
 
 ```python
 import json
@@ -63,7 +63,7 @@ def main():
     for py_file in sorted(project_root.rglob("*.py")):
         # Skip test files and virtual environments
         rel = str(py_file.relative_to(project_root))
-        if rel.startswith(("tests/", ".venv/", ".odk/")):
+        if rel.startswith(("tests/", ".venv/", ".ydk/")):
             continue
 
         for i, line in enumerate(py_file.read_text().splitlines(), 1):
@@ -93,13 +93,13 @@ The check script follows a straightforward pattern: read context from stdin, per
 Run the plugin directly to verify it works:
 
 ```bash
-echo '{"project_root": "."}' | python .odk/verifications/no-print-statements/check.py
+echo '{"project_root": "."}' | python .ydk/verifications/no-print-statements/check.py
 ```
 
-Then run it through ODK's verification system:
+Then run it through YDK's verification system:
 
 ```bash
-odk verify run --plugin no-print-statements
+ydk verify run --plugin no-print-statements
 ```
 
 ## Step 5: Adding Auto-Fix Support
@@ -115,8 +115,8 @@ if context.get("auto_fix"):
         py_file.write_text(fixed)
 ```
 
-When a user runs `odk verify run --auto-fix`, your plugin receives `"auto_fix": true` in the context and can perform fixes before running the check.
+When a user runs `ydk verify run --auto-fix`, your plugin receives `"auto_fix": true` in the context and can perform fixes before running the check.
 
 <Callout type="info">
-Project-specific plugins in `.odk/verifications/` override built-in plugins with the same name. This lets you customize any built-in check without modifying ODK itself.
+Project-specific plugins in `.ydk/verifications/` override built-in plugins with the same name. This lets you customize any built-in check without modifying YDK itself.
 </Callout>

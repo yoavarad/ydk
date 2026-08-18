@@ -50,7 +50,7 @@ jobs:
       - name: ruff check
         run: uv run ruff check src/ tests/
       - name: ty check
-        run: uv run ty check src/odk/ --python-version 3.13 --exclude "src/odk/catalog/*/generators/"
+        run: uv run ty check src/ydk/ --python-version 3.13 --exclude "src/ydk/catalog/*/generators/"
 
   test:
     name: Unit tests

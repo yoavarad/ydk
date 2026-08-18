@@ -1,4 +1,4 @@
-"""Tests for odk verify CLI commands."""
+"""Tests for ydk verify CLI commands."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock
 
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.core.verifier import VerificationPlugin
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.cli import app
+from ydk.core.verifier import VerificationPlugin
+from ydk.models.verification import CheckResult, VerificationReport
 
 runner = CliRunner()
 
@@ -55,7 +55,7 @@ def _sample_plugin(name: str = "test-plugin") -> VerificationPlugin:
 class TestVerifyRun:
     def test_exits_zero_when_all_pass(self, monkeypatch) -> None:
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=_ok_report()),
         )
         result = runner.invoke(app, ["verify", "run"])
@@ -64,7 +64,7 @@ class TestVerifyRun:
 
     def test_exits_one_when_any_check_fails(self, monkeypatch) -> None:
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=_fail_report()),
         )
         result = runner.invoke(app, ["verify", "run"])
@@ -73,11 +73,11 @@ class TestVerifyRun:
 
     def test_save_proof_writes_file(self, monkeypatch, tmp_path: Path) -> None:
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=_ok_report()),
         )
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.save_proof",
+            "ydk.cli.verify_cmd.Verifier.save_proof",
             lambda self, report, task_id=None: tmp_path / "verification.json",
         )
         result = runner.invoke(app, ["verify", "run", "--save-proof"])
@@ -87,15 +87,15 @@ class TestVerifyRun:
     def test_filter_by_name(self, monkeypatch) -> None:
         plugin = _sample_plugin("my-check")
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.discover_plugins",
+            "ydk.cli.verify_cmd.Verifier.discover_plugins",
             lambda self: [plugin],
         )
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.filter_by_name",
+            "ydk.cli.verify_cmd.Verifier.filter_by_name",
             lambda self, plugins, name: [p for p in plugins if p.name == name],
         )
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_layer",
+            "ydk.cli.verify_cmd.Verifier.run_layer",
             AsyncMock(return_value=[_ok_check("my-check")]),
         )
         result = runner.invoke(app, ["verify", "run", "--name", "my-check"])
@@ -103,11 +103,11 @@ class TestVerifyRun:
 
     def test_name_not_found_exits_one(self, monkeypatch) -> None:
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.discover_plugins",
+            "ydk.cli.verify_cmd.Verifier.discover_plugins",
             lambda self: [],
         )
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.filter_by_name",
+            "ydk.cli.verify_cmd.Verifier.filter_by_name",
             lambda self, plugins, name: [],
         )
         result = runner.invoke(app, ["verify", "run", "--name", "nope"])
@@ -118,7 +118,7 @@ class TestVerifyRetry:
     def test_retry_passes_on_first_try(self, monkeypatch) -> None:
         """--retry with an immediately passing verifier exits 0."""
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=_ok_report()),
         )
         result = runner.invoke(app, ["verify", "run", "--retry", "3"])
@@ -129,7 +129,7 @@ class TestVerifyRetry:
     def test_retry_fails_then_passes(self, monkeypatch) -> None:
         """--retry with a verifier that fails once then passes."""
         mock = AsyncMock(side_effect=[_fail_report(), _ok_report()])
-        monkeypatch.setattr("odk.cli.verify_cmd.Verifier.run_all", mock)
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock)
         result = runner.invoke(app, ["verify", "run", "--retry", "3"])
         assert result.exit_code == 0
         assert "ALL PASSED" in result.output
@@ -139,7 +139,7 @@ class TestVerifyRetry:
     def test_retry_max_reached(self, monkeypatch) -> None:
         """--retry exits 1 when max retries exhausted."""
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(return_value=_fail_report()),
         )
         result = runner.invoke(app, ["verify", "run", "--retry", "2"])
@@ -156,7 +156,7 @@ class TestVerifyRetry:
             call_count["n"] += 1
             return original_fail
 
-        monkeypatch.setattr("odk.cli.verify_cmd.Verifier.run_all", counting_run_all)
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", counting_run_all)
         result = runner.invoke(app, ["verify", "run", "--repair"])
         assert result.exit_code == 1
         assert call_count["n"] == 3  # --repair = --retry 3
@@ -164,7 +164,7 @@ class TestVerifyRetry:
     def test_retry_displays_structured_json(self, monkeypatch) -> None:
         """Structured error JSON is displayed between attempts."""
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.run_all",
+            "ydk.cli.verify_cmd.Verifier.run_all",
             AsyncMock(side_effect=[_fail_report(), _ok_report()]),
         )
         result = runner.invoke(app, ["verify", "run", "--retry", "3"])
@@ -176,7 +176,7 @@ class TestVerifyRetry:
 class TestVerifyList:
     def test_shows_plugins(self, monkeypatch) -> None:
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.discover_plugins",
+            "ydk.cli.verify_cmd.Verifier.discover_plugins",
             lambda self: [_sample_plugin("lint-ruff"), _sample_plugin("tests-pytest")],
         )
         result = runner.invoke(app, ["verify", "list"])
@@ -186,7 +186,7 @@ class TestVerifyList:
 
     def test_empty_plugins(self, monkeypatch) -> None:
         monkeypatch.setattr(
-            "odk.cli.verify_cmd.Verifier.discover_plugins",
+            "ydk.cli.verify_cmd.Verifier.discover_plugins",
             lambda self: [],
         )
         result = runner.invoke(app, ["verify", "list"])
@@ -200,6 +200,6 @@ class TestVerifyCreate:
         result = runner.invoke(app, ["verify", "create", "my-check", "--trigger", "git:pre-push"])
         assert result.exit_code == 0
         assert "Created plugin" in result.output
-        plugin_dir = tmp_path / ".odk" / "verifications" / "my-check"
+        plugin_dir = tmp_path / ".ydk" / "verifications" / "my-check"
         assert (plugin_dir / "manifest.yaml").exists()
         assert (plugin_dir / "check.py").exists()

@@ -1,8 +1,8 @@
 """Tests for buffer management with green/yellow/red health tracking."""
 
-from odk.core.buffer_manager import BufferManager
-from odk.models.buffer import BufferStatus, BufferZone
-from odk.models.pm import TaskSummary
+from ydk.core.buffer_manager import BufferManager
+from ydk.models.buffer import BufferStatus, BufferZone
+from ydk.models.pm import TaskSummary
 
 
 def _make_tasks(

@@ -4,7 +4,7 @@ import re
 import threading
 from pathlib import Path
 
-from odk.repositories.local.manifest import Manifest
+from ydk.repositories.local.manifest import Manifest
 
 _HASH_RE = re.compile(r"^[TSE]-[0-9a-f]{8}$")
 

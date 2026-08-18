@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from odk.core.pr_template import PRBodyBuilder
-from odk.core.proof_capture import ProofCapture
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.pr_template import PRBodyBuilder
+from ydk.core.proof_capture import ProofCapture
+from ydk.models.verification import CheckResult, VerificationReport
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,11 +29,11 @@ def _make_report(task_id: str = "T-001") -> VerificationReport:
 
 
 class TestVerifyCaptureFlag:
-    """Test that odk verify run --capture saves files via save_report."""
+    """Test that ydk verify run --capture saves files via save_report."""
 
     def test_capture_flag_creates_proof_files(self, tmp_path: Path) -> None:
         """Simulate what --capture does: create ProofCapture, save report."""
-        proof_dir = tmp_path / ".odk" / "proofs" / "T-test"
+        proof_dir = tmp_path / ".ydk" / "proofs" / "T-test"
         pc = ProofCapture(proof_dir)
         report = _make_report("T-test")
         artifacts = pc.save_report(report)
@@ -53,7 +53,7 @@ class TestTaskDoneProofCapture:
 
     def test_done_uses_pr_body_builder(self, tmp_path: Path) -> None:
         """Verify PRBodyBuilder reads proof files correctly for task done."""
-        proof_dir = tmp_path / ".odk" / "proofs" / "T-001"
+        proof_dir = tmp_path / ".ydk" / "proofs" / "T-001"
         pc = ProofCapture(proof_dir)
         pc.write_summary("T-001", "Implemented the widget system.")
 
@@ -71,11 +71,11 @@ class TestTaskDoneProofCapture:
         assert "All checks passed!" in body
         assert "pytest" in body
         assert "11 passed" in body
-        assert "Generated with [ODK]" in body
+        assert "Generated with [YDK]" in body
 
     def test_done_with_summary_flag(self, tmp_path: Path) -> None:
         """Verify --summary flag writes summary.md before PR body build."""
-        proof_dir = tmp_path / ".odk" / "proofs" / "T-002"
+        proof_dir = tmp_path / ".ydk" / "proofs" / "T-002"
         proof_dir.mkdir(parents=True)
 
         pc = ProofCapture(proof_dir)
@@ -90,7 +90,7 @@ class TestTaskDoneProofCapture:
 
     def test_pr_body_includes_all_plugins(self, tmp_path: Path) -> None:
         """Verify all plugin outputs appear in PR body."""
-        proof_dir = tmp_path / ".odk" / "proofs" / "T-003"
+        proof_dir = tmp_path / ".ydk" / "proofs" / "T-003"
         pc = ProofCapture(proof_dir)
 
         checks = [
@@ -118,7 +118,7 @@ class TestTaskDoneProofCapture:
 
     def test_check_status_from_report(self, tmp_path: Path) -> None:
         """Verify check_status reads the JSON report correctly."""
-        proof_dir = tmp_path / ".odk" / "proofs" / "T-004"
+        proof_dir = tmp_path / ".ydk" / "proofs" / "T-004"
         pc = ProofCapture(proof_dir)
 
         checks = [

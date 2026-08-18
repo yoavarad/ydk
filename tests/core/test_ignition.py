@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 import pytest
 import yaml
 
-from odk.core.ignition import IgnitionEngine, IgnitionError
-from odk.models.ignition import GeneratedFile, IgnitionResult
+from ydk.core.ignition import IgnitionEngine, IgnitionError
+from ydk.models.ignition import GeneratedFile, IgnitionResult
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -23,7 +23,7 @@ _SIMPLE_GENERATOR = textwrap.dedent("""\
     \"\"\"Minimal test generator: reads entity components, outputs JSON.\"\"\"
     import json, os, yaml
 
-    entities_path = os.environ.get("ODK_COMPONENTS_ENTITY")
+    entities_path = os.environ.get("YDK_COMPONENTS_ENTITY")
     entities = []
     if entities_path:
         with open(entities_path) as f:
@@ -58,8 +58,8 @@ def _setup_pack(
     generators: list[dict],
     generator_scripts: dict[str, str] | None = None,
 ) -> None:
-    """Create a minimal ignition pack in root/.odk/ignition-pack/."""
-    pack_dir = root / ".odk" / "ignition-pack"
+    """Create a minimal ignition pack in root/.ydk/ignition-pack/."""
+    pack_dir = root / ".ydk" / "ignition-pack"
     pack_dir.mkdir(parents=True, exist_ok=True)
     manifest = {"name": "test-pack", "version": "0.1.0", "generators": generators}
     (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False))
@@ -69,9 +69,9 @@ def _setup_pack(
 
 
 def _setup_components(root: Path, components: dict[str, list[dict]]) -> None:
-    """Create component YAML files in root/.odk/components/<type>/."""
+    """Create component YAML files in root/.ydk/components/<type>/."""
     for comp_type, items in components.items():
-        type_dir = root / ".odk" / "components" / comp_type
+        type_dir = root / ".ydk" / "components" / comp_type
         type_dir.mkdir(parents=True, exist_ok=True)
         for i, item in enumerate(items):
             (type_dir / f"{item.get('name', f'comp{i}').lower()}.yaml").write_text(
@@ -118,7 +118,7 @@ class TestAssembleComponents:
         assert len(result["route"]) == 2
 
     def test_skips_non_yaml_files(self, tmp_path: Path) -> None:
-        comp_dir = tmp_path / ".odk" / "components" / "entity"
+        comp_dir = tmp_path / ".ydk" / "components" / "entity"
         comp_dir.mkdir(parents=True)
         (comp_dir / "readme.txt").write_text("not yaml")
         (comp_dir / "strategy.yaml").write_text(yaml.dump({"name": "Strategy"}))
@@ -137,7 +137,7 @@ class TestRunGenerator:
         _setup_components(tmp_path, {"entity": [{"name": "Strategy"}]})
         engine = IgnitionEngine(tmp_path)
         component_data = engine._assemble_components()
-        script = tmp_path / ".odk" / "ignition-pack" / "gen.py"
+        script = tmp_path / ".ydk" / "ignition-pack" / "gen.py"
         files = engine._run_generator(script, component_data, tmp_path, {})
         assert len(files) == 1
         assert files[0].path == "app/models/strategy.py"
@@ -150,7 +150,7 @@ class TestRunGenerator:
             generator_scripts={"fail.py": _FAILING_GENERATOR},
         )
         engine = IgnitionEngine(tmp_path)
-        script = tmp_path / ".odk" / "ignition-pack" / "fail.py"
+        script = tmp_path / ".ydk" / "ignition-pack" / "fail.py"
         with pytest.raises(IgnitionError, match="exited with code 1"):
             engine._run_generator(script, {}, tmp_path, {})
 
@@ -161,7 +161,7 @@ class TestRunGenerator:
             generator_scripts={"empty.py": _EMPTY_GENERATOR},
         )
         engine = IgnitionEngine(tmp_path)
-        script = tmp_path / ".odk" / "ignition-pack" / "empty.py"
+        script = tmp_path / ".ydk" / "ignition-pack" / "empty.py"
         files = engine._run_generator(script, {}, tmp_path, {})
         assert files == []
 
@@ -349,11 +349,11 @@ class TestIgniteFull:
         assert "not found" in result.errors[0]
 
     def test_ignite_with_init_answers(self, tmp_path: Path) -> None:
-        """init_answers are passed to generators via ODK_INIT_ANSWERS."""
+        """init_answers are passed to generators via YDK_INIT_ANSWERS."""
         gen_with_answers = textwrap.dedent("""\
             #!/usr/bin/env python3
             import json, os
-            answers = json.loads(os.environ.get("ODK_INIT_ANSWERS", "{}"))
+            answers = json.loads(os.environ.get("YDK_INIT_ANSWERS", "{}"))
             name = answers.get("project_name", "default")
             print(json.dumps([{"path": "app/config.py", "content": f"PROJECT = '{name}'\\n"}]))
         """)
@@ -402,11 +402,11 @@ class TestGeneratorStderrLogging:
         )
         engine = IgnitionEngine(tmp_path)
         component_data = {"entity": [{"name": "Foo"}]}
-        script = tmp_path / ".odk" / "ignition-pack" / "gen.py"
+        script = tmp_path / ".ydk" / "ignition-pack" / "gen.py"
 
         import logging
 
-        with caplog.at_level(logging.WARNING, logger="odk.ignition"):
+        with caplog.at_level(logging.WARNING, logger="ydk.ignition"):
             engine._run_generator(script, component_data, tmp_path, {})
 
         assert any("stderr" in r.message.lower() or "deprecated" in r.message.lower() for r in caplog.records)
@@ -424,9 +424,9 @@ class TestGeneratorTimeout:
             generator_scripts={"slow.py": "# placeholder"},
         )
         engine = IgnitionEngine(tmp_path)
-        script = tmp_path / ".odk" / "ignition-pack" / "slow.py"
+        script = tmp_path / ".ydk" / "ignition-pack" / "slow.py"
 
-        with patch("odk.core.ignition.subprocess.run") as mock_run:
+        with patch("ydk.core.ignition.subprocess.run") as mock_run:
             mock_run.side_effect = sp.TimeoutExpired(cmd=["python", "slow.py"], timeout=120)
             with pytest.raises(IgnitionError, match=r"(?i)timeout|timed out"):
                 engine._run_generator(script, {}, tmp_path, {})
@@ -478,7 +478,7 @@ class TestRuffFormatCall:
 
         engine = IgnitionEngine(tmp_path)
 
-        with patch("odk.core.ignition.subprocess.run") as mock_run:
+        with patch("ydk.core.ignition.subprocess.run") as mock_run:
             mock_run.return_value = type("R", (), {"returncode": 0, "stderr": "", "stdout": ""})()
             engine._post_generate([good_py, non_py])
 
@@ -514,11 +514,11 @@ class TestPostGenerate:
 
 
 class TestNewPacksDirectory:
-    """Tests for the corrected .odk/ignition-packs/<name>/ path (Bug 1 fix)."""
+    """Tests for the corrected .ydk/ignition-packs/<name>/ path (Bug 1 fix)."""
 
     def test_loads_pack_from_ignition_packs_subdir(self, tmp_path: Path) -> None:
         """Pack installed via catalog (plural path with name subdir) is found."""
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "my-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "my-pack"
         pack_dir.mkdir(parents=True)
         manifest = {"name": "my-pack", "version": "1.0.0", "generators": [{"script": "gen.py"}]}
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
@@ -532,7 +532,7 @@ class TestNewPacksDirectory:
 
     def test_multiple_packs_raises_error(self, tmp_path: Path) -> None:
         """Multiple installed packs cause a clear error."""
-        packs_dir = tmp_path / ".odk" / "ignition-packs"
+        packs_dir = tmp_path / ".ydk" / "ignition-packs"
         for name in ("pack-a", "pack-b"):
             d = packs_dir / name
             d.mkdir(parents=True)
@@ -544,23 +544,23 @@ class TestNewPacksDirectory:
             engine.ignite()
 
 
-class TestOdkComponentEnvVars:
-    """Tests: ODK_COMPONENTS_* env vars set for generators."""
+class TestYdkComponentEnvVars:
+    """Tests: YDK_COMPONENTS_* env vars set for generators."""
 
-    def test_odk_entity_env_set(self, tmp_path: Path) -> None:
-        """Generator sees ODK_COMPONENTS_ENTITY pointing to raw entity list."""
+    def test_ydk_entity_env_set(self, tmp_path: Path) -> None:
+        """Generator sees YDK_COMPONENTS_ENTITY pointing to raw entity list."""
         gen_check = textwrap.dedent("""\
             #!/usr/bin/env python3
             import json, os, yaml
-            entity_path = os.environ.get("ODK_COMPONENTS_ENTITY", "")
-            assert entity_path, "ODK_COMPONENTS_ENTITY not set"
+            entity_path = os.environ.get("YDK_COMPONENTS_ENTITY", "")
+            assert entity_path, "YDK_COMPONENTS_ENTITY not set"
             data = yaml.safe_load(open(entity_path))
             assert isinstance(data, list), f"Expected list, got {type(data)}"
             assert len(data) == 1
             assert data[0]["name"] == "Widget"
             print(json.dumps([{"path": "ok.txt", "content": "native"}]))
         """)
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "test-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "test-pack"
         pack_dir.mkdir(parents=True)
         manifest = {"name": "test-pack", "version": "0.1.0", "generators": [{"script": "gen.py"}]}
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
@@ -572,13 +572,13 @@ class TestOdkComponentEnvVars:
         assert not result.errors
         assert result.files_written == 1
 
-    def test_odk_contract_env_set(self, tmp_path: Path) -> None:
-        """Generator sees ODK_COMPONENTS_CONTRACT pointing to raw contract list."""
+    def test_ydk_contract_env_set(self, tmp_path: Path) -> None:
+        """Generator sees YDK_COMPONENTS_CONTRACT pointing to raw contract list."""
         gen_check = textwrap.dedent("""\
             #!/usr/bin/env python3
             import json, os, yaml
-            contract_path = os.environ.get("ODK_COMPONENTS_CONTRACT", "")
-            assert contract_path, "ODK_COMPONENTS_CONTRACT not set"
+            contract_path = os.environ.get("YDK_COMPONENTS_CONTRACT", "")
+            assert contract_path, "YDK_COMPONENTS_CONTRACT not set"
             data = yaml.safe_load(open(contract_path))
             assert isinstance(data, list), f"Expected list, got {type(data)}"
             assert len(data) == 1
@@ -586,7 +586,7 @@ class TestOdkComponentEnvVars:
             assert len(data[0]["ports"]) == 2
             print(json.dumps([{"path": "ok.txt", "content": "ok"}]))
         """)
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "test-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "test-pack"
         pack_dir.mkdir(parents=True)
         manifest = {"name": "test-pack", "version": "0.1.0", "generators": [{"script": "gen.py"}]}
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
@@ -680,27 +680,27 @@ class TestDetectPathConflicts:
 
 class TestSingletonComponentUnwrapping:
     def test_singleton_component_unwrapping(self, tmp_path: Path) -> None:
-        """Config with 1 item gets ODK_COMPONENT_CONFIG (singular, unwrapped dict)."""
+        """Config with 1 item gets YDK_COMPONENT_CONFIG (singular, unwrapped dict)."""
         gen_check_singular = textwrap.dedent("""\
             #!/usr/bin/env python3
             import json, os, yaml
 
             # Plural should exist and be a list
-            plural_path = os.environ.get("ODK_COMPONENTS_CONFIG", "")
-            assert plural_path, "ODK_COMPONENTS_CONFIG not set"
+            plural_path = os.environ.get("YDK_COMPONENTS_CONFIG", "")
+            assert plural_path, "YDK_COMPONENTS_CONFIG not set"
             plural_data = yaml.safe_load(open(plural_path))
             assert isinstance(plural_data, list), f"Plural should be list, got {type(plural_data)}"
 
             # Singular should exist and be a dict (unwrapped)
-            singular_path = os.environ.get("ODK_COMPONENT_CONFIG", "")
-            assert singular_path, "ODK_COMPONENT_CONFIG not set"
+            singular_path = os.environ.get("YDK_COMPONENT_CONFIG", "")
+            assert singular_path, "YDK_COMPONENT_CONFIG not set"
             singular_data = yaml.safe_load(open(singular_path))
             assert isinstance(singular_data, dict), f"Singular should be dict, got {type(singular_data)}"
             assert singular_data["title"] == "MyApp"
 
             print(json.dumps([{"path": "ok.txt", "content": "singleton works"}]))
         """)
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "test-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "test-pack"
         pack_dir.mkdir(parents=True)
         manifest = {"name": "test-pack", "version": "0.1.0", "generators": [{"script": "gen.py"}]}
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
@@ -719,13 +719,13 @@ class TestSingletonComponentUnwrapping:
             import json, os
 
             # Plural should exist
-            assert os.environ.get("ODK_COMPONENTS_ENTITY"), "Plural not set"
+            assert os.environ.get("YDK_COMPONENTS_ENTITY"), "Plural not set"
             # Singular should NOT exist (multiple entities)
-            assert not os.environ.get("ODK_COMPONENT_ENTITY"), "Singular should not be set for multiple"
+            assert not os.environ.get("YDK_COMPONENT_ENTITY"), "Singular should not be set for multiple"
 
             print(json.dumps([{"path": "ok.txt", "content": "ok"}]))
         """)
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "test-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "test-pack"
         pack_dir.mkdir(parents=True)
         manifest = {"name": "test-pack", "version": "0.1.0", "generators": [{"script": "gen.py"}]}
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
@@ -747,8 +747,8 @@ class TestTodoPersistence:
         )
         _setup_components(tmp_path, {"entity": [{"name": "Strategy"}]})
 
-        # Ensure .odk dir exists for the todo registry
-        (tmp_path / ".odk").mkdir(parents=True, exist_ok=True)
+        # Ensure .ydk dir exists for the todo registry
+        (tmp_path / ".ydk").mkdir(parents=True, exist_ok=True)
 
         engine = IgnitionEngine(tmp_path)
         result = engine.ignite()
@@ -756,7 +756,7 @@ class TestTodoPersistence:
         assert result.todos_registered >= 1
 
         # Verify TODOs are actually persisted via TodoManager
-        from odk.core.todo_manager import TodoManager
+        from ydk.core.todo_manager import TodoManager
 
         todo_mgr = TodoManager(tmp_path)
         todos = todo_mgr.list_todos()
@@ -779,7 +779,7 @@ _PHASE_GENERATOR_A = textwrap.dedent("""\
 _PHASE_GENERATOR_B = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os
-    artifact = os.environ.get("ODK_ARTIFACT_OPENAPI", "not-set")
+    artifact = os.environ.get("YDK_ARTIFACT_OPENAPI", "not-set")
     print(json.dumps([
         {"path": "client/api.ts", "content": f"// artifact: {artifact}\\n"},
     ]))
@@ -799,8 +799,8 @@ def _setup_phased_pack(
     phases: list[dict],
     generator_scripts: dict[str, str] | None = None,
 ) -> None:
-    """Create a phased ignition pack in root/.odk/ignition-pack/."""
-    pack_dir = root / ".odk" / "ignition-pack"
+    """Create a phased ignition pack in root/.ydk/ignition-pack/."""
+    pack_dir = root / ".ydk" / "ignition-pack"
     pack_dir.mkdir(parents=True, exist_ok=True)
     manifest = {"name": "phased-pack", "version": "0.1.0", "phases": phases}
     (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False))
@@ -918,7 +918,7 @@ class TestPhasedIgnitionWithPackRef:
     def test_pack_ref_loads_generators_from_referenced_pack(self, tmp_path: Path) -> None:
         """pack_ref causes the engine to load generators from another installed pack."""
         # Set up the main phased pack in ignition-packs (single subdir = the main pack)
-        pack_dir = tmp_path / ".odk" / "ignition-packs" / "phased-pack"
+        pack_dir = tmp_path / ".ydk" / "ignition-packs" / "phased-pack"
         pack_dir.mkdir(parents=True)
         manifest = {
             "name": "phased-pack",

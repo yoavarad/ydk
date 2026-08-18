@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""odk pre-push hook — branch rules, unit tests."""
+"""ydk pre-push hook — branch rules, unit tests."""
 
 import subprocess, sys, time
 
@@ -69,16 +69,16 @@ step_pass(t0)
 # 2. Docs freshness
 t0 = step("docs freshness")
 DOCS_PATHS = [
-    "skills/odk",
+    "skills/ydk",
     "docs/content",
     "CLAUDE.md",
 ]
 SOURCE_PATHS = [
-    "src/odk/cli/",
-    "src/odk/core/",
-    "src/odk/models/",
-    "src/odk/catalog/python-fastapi-hexagonal/generators/",
-    "src/odk/verifications/",
+    "src/ydk/cli/",
+    "src/ydk/core/",
+    "src/ydk/models/",
+    "src/ydk/catalog/python-fastapi-hexagonal/generators/",
+    "src/ydk/verifications/",
 ]
 
 # Find last commit that touched documentation
@@ -109,7 +109,7 @@ else:
             extra = f"\n  ... and {len(source_changes) - 10} more" if len(source_changes) > 10 else ""
             step_fail(t0, (
                 f"Source changed since last docs update:\n{changed_list}{extra}\n"
-                "Update docs (skills/odk, docs/content, CLAUDE.md) and commit.\n"
+                "Update docs (skills/ydk, docs/content, CLAUDE.md) and commit.\n"
                 "Bypass (emergency): git push --no-verify"
             ))
             failed = True

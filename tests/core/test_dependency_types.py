@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from odk.models.pm import Dependency, DependencyType, TaskCreate, TaskDetail
+from ydk.models.pm import Dependency, DependencyType, TaskCreate, TaskDetail
 
 
 class TestDependencyTypeEnum:

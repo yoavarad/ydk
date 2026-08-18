@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.core.visual import VisualEngine
-from odk.models.visual import (
+from ydk.core.visual import VisualEngine
+from ydk.models.visual import (
     AnchorInfo,
     BoundingRect,
     ComponentInfo,
@@ -96,7 +96,7 @@ class TestModels:
 class TestVisualEngineSessionLifecycle:
     def test_start_session_creates_dirs(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 12345
             mock_popen.return_value = mock_proc
@@ -110,7 +110,7 @@ class TestVisualEngineSessionLifecycle:
 
     def test_get_session_returns_session(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 12345
             mock_popen.return_value = mock_proc
@@ -131,7 +131,7 @@ class TestVisualEngineSessionLifecycle:
 
     def test_list_sessions_finds_created(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 111
             mock_popen.return_value = mock_proc
@@ -146,7 +146,7 @@ class TestVisualEngineSessionLifecycle:
 
     def test_stop_session_writes_sentinel(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 12345
             mock_popen.return_value = mock_proc
@@ -174,7 +174,7 @@ class TestVisualEngineSessionLifecycle:
 class TestPushContent:
     def test_push_content_creates_file(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 123
             mock_popen.return_value = mock_proc
@@ -187,7 +187,7 @@ class TestPushContent:
 
     def test_push_content_overwrites_existing(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 123
             mock_popen.return_value = mock_proc
@@ -210,7 +210,7 @@ class TestPushContent:
 class TestReadFeedback:
     def _setup_session(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 123
             mock_popen.return_value = mock_proc
@@ -304,7 +304,7 @@ class TestReadFeedback:
 class TestClearFeedback:
     def test_clear_feedback(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 123
             mock_popen.return_value = mock_proc
@@ -329,14 +329,14 @@ class TestClearFeedback:
 class TestCaptureScreenshot:
     def test_capture_screenshot_calls_playwright(self, tmp_path):
         engine = VisualEngine(project_dir=tmp_path)
-        with patch("odk.core.visual.subprocess.Popen") as mock_popen:
+        with patch("ydk.core.visual.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             mock_proc.pid = 123
             mock_popen.return_value = mock_proc
             session = engine.start_session()
 
         output = tmp_path / "shot.png"
-        with patch("odk.core.visual.subprocess.run") as mock_run:
+        with patch("ydk.core.visual.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             result = engine.capture_screenshot(session.id, "http://localhost:3000", output)
 

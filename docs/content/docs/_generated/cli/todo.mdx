@@ -1,35 +1,35 @@
 ---
-title: "odk todo"
+title: "ydk todo"
 description: "CLI reference for TODO tracking commands"
 ---
 
-# `odk todo`
+# `ydk todo`
 
-The todo commands manage tracked `NotImplementedError` placeholders created during ignition. Each TODO has a unique `ODK-TODO-NNN` identifier and a lifecycle from registration through resolution.
+The todo commands manage tracked `NotImplementedError` placeholders created during ignition. Each TODO has a unique `YDK-TODO-NNN` identifier and a lifecycle from registration through resolution.
 
-## `odk todo list [--status open|in-progress|done]`
+## `ydk todo list [--status open|in-progress|done]`
 
 List tracked TODOs, optionally filtered by status.
 
 ```bash
-$ odk todo list
-ODK-TODO-001  open         src/domain/services/user_service.py:24    create_user business logic
-ODK-TODO-002  open         src/domain/services/user_service.py:38    update_user business logic
-ODK-TODO-003  in-progress  src/domain/services/order_service.py:15   place_order validation
-ODK-TODO-004  done         src/adapters/api/routes/health.py:10      health check response
+$ ydk todo list
+YDK-TODO-001  open         src/domain/services/user_service.py:24    create_user business logic
+YDK-TODO-002  open         src/domain/services/user_service.py:38    update_user business logic
+YDK-TODO-003  in-progress  src/domain/services/order_service.py:15   place_order validation
+YDK-TODO-004  done         src/adapters/api/routes/health.py:10      health check response
 
-$ odk todo list --status open
-ODK-TODO-001  open  src/domain/services/user_service.py:24    create_user business logic
-ODK-TODO-002  open  src/domain/services/user_service.py:38    update_user business logic
+$ ydk todo list --status open
+YDK-TODO-001  open  src/domain/services/user_service.py:24    create_user business logic
+YDK-TODO-002  open  src/domain/services/user_service.py:38    update_user business logic
 ```
 
-## `odk todo show <id>`
+## `ydk todo show <id>`
 
 Show full details of a specific TODO including file location, line window, and assignment status.
 
 ```bash
-$ odk todo show ODK-TODO-001
-ID:          ODK-TODO-001
+$ ydk todo show YDK-TODO-001
+ID:          YDK-TODO-001
 Status:      open
 File:        src/domain/services/user_service.py
 Line:        24
@@ -41,42 +41,42 @@ Registered:  2026-04-28T14:30:00Z
 Context (lines 22-26):
   22 |     def create_user(self, data: CreateUserRequest) -> User:
   23 |         """Create a new user with validation."""
-  24 |         raise NotImplementedError  # ODK-TODO-001
+  24 |         raise NotImplementedError  # YDK-TODO-001
   25 |
   26 |     def update_user(self, user_id: str, data: UpdateUserRequest) -> User:
 ```
 
-## `odk todo assign <todo-id> <task-id>`
+## `ydk todo assign <todo-id> <task-id>`
 
-Link a TODO to a task. When `odk task done` runs for that task, it verifies all assigned TODOs have been resolved.
+Link a TODO to a task. When `ydk task done` runs for that task, it verifies all assigned TODOs have been resolved.
 
 ```bash
-$ odk todo assign ODK-TODO-001 T-003
-Assigned ODK-TODO-001 to task T-003
+$ ydk todo assign YDK-TODO-001 T-003
+Assigned YDK-TODO-001 to task T-003
 ```
 
-## `odk todo done <todo-id>`
+## `ydk todo done <todo-id>`
 
 Mark a TODO as resolved. This command performs AST-based verification that the `NotImplementedError` has been removed from the line window before marking it done.
 
 ```bash
-$ odk todo done ODK-TODO-001
+$ ydk todo done YDK-TODO-001
 Checking src/domain/services/user_service.py line 24...
   NotImplementedError: not found (resolved)
-Marked ODK-TODO-001 as done
+Marked YDK-TODO-001 as done
 
-$ odk todo done ODK-TODO-002
+$ ydk todo done YDK-TODO-002
 Checking src/domain/services/user_service.py line 38...
   NotImplementedError: still present on line 38
-ERROR: Cannot mark ODK-TODO-002 as done -- NotImplementedError still exists
+ERROR: Cannot mark YDK-TODO-002 as done -- NotImplementedError still exists
 ```
 
-## `odk todo coverage`
+## `ydk todo coverage`
 
 Show resolution statistics with a progress summary.
 
 ```bash
-$ odk todo coverage
+$ ydk todo coverage
 TODO Coverage:
   Total:       12
   Done:         8 (66.7%)

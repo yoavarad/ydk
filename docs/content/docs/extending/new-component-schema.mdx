@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Creating a Component Schema
 
-The 13 built-in schema types cover common patterns, but your project might have domain-specific component types that do not fit neatly into any existing category. A trading system might need a `strategy` schema type. A healthcare system might need a `regulation` type. A game might need a `level` type. ODK's schema system is extensible -- you can add custom types that participate fully in validation, scaffolding, and documentation.
+The 13 built-in schema types cover common patterns, but your project might have domain-specific component types that do not fit neatly into any existing category. A trading system might need a `strategy` schema type. A healthcare system might need a `regulation` type. A game might need a `level` type. YDK's schema system is extensible -- you can add custom types that participate fully in validation, scaffolding, and documentation.
 
 ## Step 1: Design the Schema
 
@@ -17,7 +17,7 @@ For example, a `strategy` schema for a trading system might need: a description,
 
 ## Step 2: Write the Schema File
 
-Create `.odk/schemas/strategy.yaml`:
+Create `.ydk/schemas/strategy.yaml`:
 
 ```yaml
 name: strategy
@@ -27,8 +27,8 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:strategy:.+"
-    description: "Unique strategy identifier in odk:strategy:namespace/name format"
+    pattern: "^ydk:strategy:.+"
+    description: "Unique strategy identifier in ydk:strategy:namespace/name format"
   description:
     type: text
     required: true
@@ -59,24 +59,24 @@ fields:
     description: "Default backtesting configuration"
 ```
 
-The `id` field should always have a pattern that starts with `^odk:<your-type>:.+` to maintain the component ID convention. Use `ref` and `ref_list` types for fields that reference other components -- this enables the deterministic linker to validate cross-references.
+The `id` field should always have a pattern that starts with `^ydk:<your-type>:.+` to maintain the component ID convention. Use `ref` and `ref_list` types for fields that reference other components -- this enables the deterministic linker to validate cross-references.
 
 ## Step 3: Use the New Type
 
-Once the schema file exists in `.odk/schemas/`, ODK automatically discovers it:
+Once the schema file exists in `.ydk/schemas/`, YDK automatically discovers it:
 
 ```bash
 # Create a component using the new type
-odk component create strategy trading/momentum-crossover
+ydk component create strategy trading/momentum-crossover
 
 # List all strategy components
-odk component list --type strategy
+ydk component list --type strategy
 
 # Validate strategy manifests against the schema
-odk component validate
+ydk component validate
 ```
 
-The `odk component create` command reads the schema and generates a template with all fields pre-populated with sensible defaults. You fill in the actual values.
+The `ydk component create` command reads the schema and generates a template with all fields pre-populated with sensible defaults. You fill in the actual values.
 
 ## Step 4: Reference in Specs
 
@@ -85,7 +85,7 @@ Use your custom components in narrative specs just like built-in types:
 ```markdown
 ## Momentum Crossover Strategy
 Uses 20/50 day moving average crossovers to generate entry signals.
-[odk:strategy:trading/momentum-crossover]
+[ydk:strategy:trading/momentum-crossover]
 ```
 
 The deterministic linker validates these references exactly like built-in types.

@@ -1,18 +1,18 @@
 ---
-title: "odk catalog"
+title: "ydk catalog"
 description: "CLI reference for catalog management commands"
 ---
 
-# `odk catalog`
+# `ydk catalog`
 
-The catalog commands manage the local registry of reusable ODK components -- ignition packs, schemas, verification plugins, and reviewer configurations.
+The catalog commands manage the local registry of reusable YDK components -- ignition packs, schemas, verification plugins, and reviewer configurations.
 
-## `odk catalog search <query>`
+## `ydk catalog search <query>`
 
 Semantic search across all catalog items using ChromaDB embeddings.
 
 ```bash
-$ odk catalog search "python web API"
+$ ydk catalog search "python web API"
 Results for "python web API":
   1. python-fastapi-hexagonal (ignition pack) - FastAPI + SQLAlchemy hexagonal layout
   2. python-quality (plugins) - Ruff, ty, pytest verification plugins
@@ -21,37 +21,37 @@ Results for "python web API":
 
 The query is embedded and matched against item descriptions, tags, and metadata. You do not need to know exact names.
 
-## `odk catalog install <name>`
+## `ydk catalog install <name>`
 
 Install a catalog item into the current project. Checks dependencies and prompts for confirmation if the item requires other items to be installed first.
 
 ```bash
-$ odk catalog install python-fastapi-hexagonal
+$ ydk catalog install python-fastapi-hexagonal
 Installing python-fastapi-hexagonal...
-  Requires: odk-core-schemas (already installed)
+  Requires: ydk-core-schemas (already installed)
   Requires: python-quality (already installed)
-Installed python-fastapi-hexagonal into .odk/pack/
+Installed python-fastapi-hexagonal into .ydk/pack/
 ```
 
-## `odk catalog list`
+## `ydk catalog list`
 
 List all currently installed catalog items in the project.
 
 ```bash
-$ odk catalog list
+$ ydk catalog list
 Installed items:
-  odk-core-schemas       schemas         13 component schemas
-  odk-default-reviewers  reviewers       10 spec reviewers (N01-N10)
+  ydk-core-schemas       schemas         13 component schemas
+  ydk-default-reviewers  reviewers       10 spec reviewers (N01-N10)
   python-quality         plugins         Ruff, ty, pytest plugins
   python-fastapi-hexagonal  ignition pack  FastAPI hexagonal generators
 ```
 
-## `odk catalog info <name>`
+## `ydk catalog info <name>`
 
 Show detailed information about a catalog item including its manifest, consumed component types, and generated file patterns.
 
 ```bash
-$ odk catalog info python-fastapi-hexagonal
+$ ydk catalog info python-fastapi-hexagonal
 Name: python-fastapi-hexagonal
 Type: ignition pack
 Version: 1.0.0
@@ -73,24 +73,24 @@ Generates:
   alembic/versions/*.py
 ```
 
-## `odk catalog publish <path>`
+## `ydk catalog publish <path>`
 
 Validate and publish a local item to the catalog registry.
 
 ```bash
-$ odk catalog publish ./my-custom-pack/
+$ ydk catalog publish ./my-custom-pack/
 Validating my-custom-pack...
   Manifest: OK
   Generators: 4 found
   Schema compliance: OK
-Published my-custom-pack to ~/.odk/catalog/
+Published my-custom-pack to ~/.ydk/catalog/
 ```
 
-## `odk catalog uninstall <name>`
+## `ydk catalog uninstall <name>`
 
 Remove an installed catalog item from the project.
 
 ```bash
-$ odk catalog uninstall python-fastapi-hexagonal
-Uninstalled python-fastapi-hexagonal from .odk/pack/
+$ ydk catalog uninstall python-fastapi-hexagonal
+Uninstalled python-fastapi-hexagonal from .ydk/pack/
 ```

@@ -1,30 +1,30 @@
-"""Tests for odk.models — Pydantic data models."""
+"""Tests for ydk.models — Pydantic data models."""
 
 import pytest
 from pydantic import ValidationError
 
-from odk.models import (
+from ydk.models import (
     CriterionResult,
     CustomCriterion,
     DagValidationResult,
     EvalReport,
     ExecutionConfig,
     HooksConfig,
-    OdkConfig,
     ProjectConfig,
     SpecCheckConfig,
     SpecCheckThresholds,
     Task,
     TaskManagementConfig,
+    YdkConfig,
 )
 
-# --- OdkConfig ---
+# --- YdkConfig ---
 
 
-class TestOdkConfig:
+class TestYdkConfig:
     def test_validates_with_all_defaults(self) -> None:
         """Only project.name is required; everything else has defaults."""
-        cfg = OdkConfig(project=ProjectConfig(name="my-project"))
+        cfg = YdkConfig(project=ProjectConfig(name="my-project"))
         assert cfg.project.name == "my-project"
         assert cfg.project.spec_location == "docs/specs"
         assert cfg.hooks == HooksConfig()
@@ -32,9 +32,9 @@ class TestOdkConfig:
         assert cfg.task_management == TaskManagementConfig()
         assert cfg.execution == ExecutionConfig()
 
-    def test_rejects_unknown_fields_on_odk_config(self) -> None:
+    def test_rejects_unknown_fields_on_ydk_config(self) -> None:
         with pytest.raises(ValidationError, match="extra_forbidden"):
-            OdkConfig(project=ProjectConfig(name="x"), bogus="nope")
+            YdkConfig(project=ProjectConfig(name="x"), bogus="nope")
 
     def test_rejects_unknown_fields_on_project_config(self) -> None:
         with pytest.raises(ValidationError, match="extra_forbidden"):
@@ -64,12 +64,12 @@ class TestOdkConfig:
 
     def test_config_round_trip(self) -> None:
         """create -> dump -> reload -> equal."""
-        cfg = OdkConfig(
+        cfg = YdkConfig(
             project=ProjectConfig(name="roundtrip", remote="gitlab"),
             spec_check=SpecCheckConfig(timeout=90, thresholds=SpecCheckThresholds(completeness=5)),
         )
         data = cfg.model_dump()
-        reloaded = OdkConfig.model_validate(data)
+        reloaded = YdkConfig.model_validate(data)
         assert reloaded == cfg
 
 

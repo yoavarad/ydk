@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from odk.hooks.commit_msg import validate_commit_message
+from ydk.hooks.commit_msg import validate_commit_message
 
 VALID_TYPES = [
     "feat",

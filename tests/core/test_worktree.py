@@ -1,4 +1,4 @@
-"""Tests for odk.core.git_worktree — WorktreeManager with real git repos."""
+"""Tests for ydk.core.git_worktree — WorktreeManager with real git repos."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from odk.core.git_worktree import WorktreeManager
+from ydk.core.git_worktree import WorktreeManager
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -32,7 +32,7 @@ def test_create_makes_worktree_directory_and_branch(git_repo: Path) -> None:
     path = mgr.create("T-001")
 
     assert path.exists()
-    assert path == git_repo / ".odk" / "worktrees" / "T-001"
+    assert path == git_repo / ".ydk" / "worktrees" / "T-001"
 
     # Branch should exist
     result = subprocess.run(
@@ -65,11 +65,11 @@ def test_cleanup_removes_worktree_and_branch(git_repo: Path) -> None:
     mgr = WorktreeManager(git_repo)
     mgr.create("T-003")
 
-    assert (git_repo / ".odk" / "worktrees" / "T-003").exists()
+    assert (git_repo / ".ydk" / "worktrees" / "T-003").exists()
 
     mgr.cleanup("T-003")
 
-    assert not (git_repo / ".odk" / "worktrees" / "T-003").exists()
+    assert not (git_repo / ".ydk" / "worktrees" / "T-003").exists()
 
     result = subprocess.run(
         ["git", "branch", "--list", "task/T-003*"],
@@ -108,7 +108,7 @@ def test_list_worktrees_returns_active_task_ids(git_repo: Path) -> None:
 
 
 def test_list_worktrees_empty_when_no_dir(tmp_path: Path) -> None:
-    """list_worktrees() returns empty list when .odk/worktrees doesn't exist."""
+    """list_worktrees() returns empty list when .ydk/worktrees doesn't exist."""
     mgr = WorktreeManager(tmp_path)
     assert mgr.list_worktrees() == []
 

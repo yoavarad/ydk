@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from odk.services.remote import GitHubRemoteService
+from ydk.services.remote import GitHubRemoteService
 
 
 class TestCreateIssue:

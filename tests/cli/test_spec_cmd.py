@@ -1,4 +1,4 @@
-"""Tests for odk spec commands."""
+"""Tests for ydk spec commands."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.cli.spec_cmd import (
+from ydk.cli import app
+from ydk.cli.spec_cmd import (
     _build_report,
     _dump_report_files,
     _format_report_human,
@@ -20,9 +20,9 @@ from odk.cli.spec_cmd import (
     _format_structured_report,
     _score_color,
 )
-from odk.core.reviewer import ReviewResult
-from odk.models.component import LinkerResult, ScannerResult
-from odk.models.evaluation import ComponentFinding, CriterionResult, SpecVerificationReport
+from ydk.core.reviewer import ReviewResult
+from ydk.models.component import LinkerResult, ScannerResult
+from ydk.models.evaluation import ComponentFinding, CriterionResult, SpecVerificationReport
 
 runner = CliRunner()
 
@@ -35,13 +35,13 @@ class TestThresholdConfig:
         import pytest
         from pydantic import ValidationError
 
-        from odk.models.config import SpecCheckThresholds
+        from ydk.models.config import SpecCheckThresholds
 
         with pytest.raises(ValidationError, match="robustness"):
             SpecCheckThresholds(robustness=7)  # type: ignore[call-arg]
 
     def test_valid_fields_accepted(self) -> None:
-        from odk.models.config import SpecCheckThresholds
+        from ydk.models.config import SpecCheckThresholds
 
         t = SpecCheckThresholds(completeness=9, clarity=7, architecture=8, quality=6)
         assert t.completeness == 9
@@ -51,7 +51,7 @@ class TestThresholdConfig:
 
 
 def test_spec_list_criteria_exits_0() -> None:
-    """odk spec list-criteria exits 0 and shows rubric names."""
+    """ydk spec list-criteria exits 0 and shows rubric names."""
     result = runner.invoke(app, ["spec", "list-criteria"])
     assert result.exit_code == 0
     assert "completeness" in result.output
@@ -60,7 +60,7 @@ def test_spec_list_criteria_exits_0() -> None:
 
 
 def test_spec_verify_no_files_warns_and_exits_1(tmp_path: object, monkeypatch: object) -> None:
-    """odk spec verify with no changed spec files exits 1 with a warning."""
+    """ydk spec verify with no changed spec files exits 1 with a warning."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["spec", "verify"])
     assert result.exit_code == 1
@@ -70,7 +70,7 @@ def test_spec_verify_no_files_warns_and_exits_1(tmp_path: object, monkeypatch: o
 
 def test_spec_verify_reviewer_agents_exists() -> None:
     """Verify the reviewer agents function exists in spec_cmd."""
-    from odk.cli.spec_cmd import _run_reviewer_agents
+    from ydk.cli.spec_cmd import _run_reviewer_agents
 
     assert callable(_run_reviewer_agents)
 
@@ -80,7 +80,7 @@ class TestBuildReport:
         report = _build_report(
             component_findings=[],
             linker_result=LinkerResult(
-                undefined_refs=[], orphaned_components=[], broken_cross_refs=[], valid_refs=["odk:entity:a/B"]
+                undefined_refs=[], orphaned_components=[], broken_cross_refs=[], valid_refs=["ydk:entity:a/B"]
             ),
             narrative_scores=[
                 CriterionResult(criterion_id="N01", score=9.0, passed=True, reasoning="Good"),
@@ -94,7 +94,7 @@ class TestBuildReport:
         report = _build_report(
             component_findings=[
                 ComponentFinding(
-                    component_id="odk:route:orders/create",
+                    component_id="ydk:route:orders/create",
                     file_path="x",
                     check="route-missing-auth",
                     severity="error",
@@ -113,7 +113,7 @@ class TestBuildReport:
         report = _build_report(
             component_findings=[
                 ComponentFinding(
-                    component_id="odk:nfr:perf/latency",
+                    component_id="ydk:nfr:perf/latency",
                     file_path="x",
                     check="nfr-missing-unit",
                     severity="warning",
@@ -123,7 +123,7 @@ class TestBuildReport:
             ],
             linker_result=LinkerResult(
                 undefined_refs=[],
-                orphaned_components=["odk:entity:a/Orphan"],
+                orphaned_components=["ydk:entity:a/Orphan"],
                 broken_cross_refs=[],
                 valid_refs=[],
             ),
@@ -144,7 +144,7 @@ class TestFormatHumanReport:
             scanner_result=ScannerResult(unlinked_mentions=[], suggested_ids=[]),
         )
         output = _format_report_human(report)
-        assert "ODK Spec Verification Report" in output
+        assert "YDK Spec Verification Report" in output
         assert "Component Checks" in output
         assert "Reference Integrity" in output
 
@@ -164,7 +164,7 @@ class TestFormatJsonReport:
         report = _build_report(
             component_findings=[],
             linker_result=LinkerResult(
-                undefined_refs=[], orphaned_components=[], broken_cross_refs=[], valid_refs=["odk:a:b/c"]
+                undefined_refs=[], orphaned_components=[], broken_cross_refs=[], valid_refs=["ydk:a:b/c"]
             ),
             narrative_scores=[],
             scanner_result=ScannerResult(unlinked_mentions=[], suggested_ids=[]),
@@ -182,7 +182,7 @@ class TestFormatJsonReport:
         report = _build_report(
             component_findings=[
                 ComponentFinding(
-                    component_id="odk:route:orders/create",
+                    component_id="ydk:route:orders/create",
                     file_path="x.yaml",
                     check="route-missing-auth",
                     severity="error",
@@ -191,7 +191,7 @@ class TestFormatJsonReport:
                 ),
             ],
             linker_result=LinkerResult(
-                undefined_refs=["odk:entity:missing/X"],
+                undefined_refs=["ydk:entity:missing/X"],
                 orphaned_components=[],
                 broken_cross_refs=[],
                 valid_refs=[],
@@ -210,7 +210,7 @@ class TestFormatJsonReport:
         assert data["narrative_criteria"]["failed"] == ["N01"]
 
     def test_json_format_flag(self, tmp_path: Path, monkeypatch: object) -> None:
-        """odk spec verify --format json --all-files outputs valid JSON."""
+        """ydk spec verify --format json --all-files outputs valid JSON."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         result = runner.invoke(app, ["spec", "verify", "--format", "json", "--all-files"])
         assert result.exit_code == 0
@@ -229,7 +229,7 @@ class TestToolFindingsInjection:
 
     def test_findings_injected_into_prompt(self) -> None:
         """When deterministic tools produce findings, they must appear in the reviewer prompt."""
-        from odk.core.reviewer import ReviewerConfig
+        from ydk.core.reviewer import ReviewerConfig
 
         # Create a mock tool that returns findings
         def mock_tool(spec_content: str) -> str:
@@ -285,7 +285,7 @@ class TestToolFindingsInjection:
 
     def test_no_findings_means_no_injection(self) -> None:
         """When tools produce no findings, the prompt should remain unchanged."""
-        from odk.core.reviewer import ReviewerConfig
+        from ydk.core.reviewer import ReviewerConfig
 
         def empty_tool(spec_content: str) -> str:
             return json.dumps([])
@@ -363,10 +363,10 @@ class TestRunCachedFanoutIntegration:
     def test_tool_findings_injected_and_min_scored(self) -> None:
         """End-to-end: tools find issues -> injected into prompt -> min-score applied."""
         # Ensure the module is importable before patching
-        import odk.core.reviewer_engine  # noqa: F401
-        from odk.cli.spec_cmd import _run_cached_fanout
-        from odk.core.reviewer import ReviewerConfig
-        from odk.models.config import OdkConfig
+        import ydk.core.reviewer_engine  # noqa: F401
+        from ydk.cli.spec_cmd import _run_cached_fanout
+        from ydk.core.reviewer import ReviewerConfig
+        from ydk.models.config import YdkConfig
 
         # Tool that finds 5 issues (det_score = 4)
         def noisy_tool(spec_content: str) -> str:
@@ -401,12 +401,12 @@ class TestRunCachedFanoutIntegration:
                 }
             ]
 
-        with patch("odk.core.reviewer_engine.ReviewerEngine") as MockEngine:
+        with patch("ydk.core.reviewer_engine.ReviewerEngine") as MockEngine:
             mock_engine_instance = MockEngine.return_value
             mock_engine_instance.run_all.side_effect = capture_run_all
 
             config = MagicMock()
-            config.__class__ = OdkConfig
+            config.__class__ = YdkConfig
             config.aws.profile = "test"
             config.aws.region = "us-east-1"
             config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
@@ -431,10 +431,10 @@ class TestRunCachedFanoutIntegration:
 
     def test_no_tools_no_score_cap(self) -> None:
         """Reviewer with no tools: no injection, score passes through unchanged."""
-        import odk.core.reviewer_engine  # noqa: F401
-        from odk.cli.spec_cmd import _run_cached_fanout
-        from odk.core.reviewer import ReviewerConfig
-        from odk.models.config import OdkConfig
+        import ydk.core.reviewer_engine  # noqa: F401
+        from ydk.cli.spec_cmd import _run_cached_fanout
+        from ydk.core.reviewer import ReviewerConfig
+        from ydk.models.config import YdkConfig
 
         reviewers = [
             ReviewerConfig(
@@ -465,12 +465,12 @@ class TestRunCachedFanoutIntegration:
                 }
             ]
 
-        with patch("odk.core.reviewer_engine.ReviewerEngine") as MockEngine:
+        with patch("ydk.core.reviewer_engine.ReviewerEngine") as MockEngine:
             mock_engine_instance = MockEngine.return_value
             mock_engine_instance.run_all.side_effect = capture_run_all
 
             config = MagicMock()
-            config.__class__ = OdkConfig
+            config.__class__ = YdkConfig
             config.aws.profile = "test"
             config.aws.region = "us-east-1"
             config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
@@ -535,7 +535,7 @@ def _make_report_and_scores(
             undefined_refs=[],
             orphaned_components=[],
             broken_cross_refs=[],
-            valid_refs=[f"odk:entity:ns/C{i}" for i in range(20)],
+            valid_refs=[f"ydk:entity:ns/C{i}" for i in range(20)],
         ),
         narrative_scores=narrative_scores,
         scanner_result=ScannerResult(unlinked_mentions=[], suggested_ids=[]),
@@ -640,7 +640,7 @@ class TestReportFileDump:
     """Test that report files are written correctly."""
 
     def test_creates_report_files(self, tmp_path: Path, monkeypatch: object) -> None:
-        """Dump should create .txt and .json files in .odk/reports/."""
+        """Dump should create .txt and .json files in .ydk/reports/."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         results = _make_reviewer_results(3)
         report, _ = _make_report_and_scores(results)
@@ -655,7 +655,7 @@ class TestReportFileDump:
             component_count=10,
         )
 
-        reports_dir = tmp_path / ".odk" / "reports"
+        reports_dir = tmp_path / ".ydk" / "reports"
         assert reports_dir.is_dir()
 
         txt_files = list(reports_dir.glob("spec-verify-*.txt"))
@@ -679,10 +679,10 @@ class TestReportFileDump:
             component_count=5,
         )
 
-        txt_file = next((tmp_path / ".odk" / "reports").glob("spec-verify-*.txt"))
+        txt_file = next((tmp_path / ".ydk" / "reports").glob("spec-verify-*.txt"))
         content = txt_file.read_text()
         assert "\x1b[" not in content  # No ANSI escape codes
-        assert "ODK Spec Verification Report" in content
+        assert "YDK Spec Verification Report" in content
 
     def test_json_structure(self, tmp_path: Path, monkeypatch: object) -> None:
         """JSON dump must have expected top-level keys."""
@@ -703,7 +703,7 @@ class TestReportFileDump:
             component_count=8,
         )
 
-        json_file = next((tmp_path / ".odk" / "reports").glob("spec-verify-*.json"))
+        json_file = next((tmp_path / ".ydk" / "reports").glob("spec-verify-*.json"))
         data = json.loads(json_file.read_text())
 
         assert data["project"] == "json-test"
@@ -745,7 +745,7 @@ class TestReportFileDump:
             component_count=5,
         )
 
-        txt_file = next((tmp_path / ".odk" / "reports").glob("spec-verify-*.txt"))
+        txt_file = next((tmp_path / ".ydk" / "reports").glob("spec-verify-*.txt"))
         content = txt_file.read_text()
 
         # All 100 findings must appear

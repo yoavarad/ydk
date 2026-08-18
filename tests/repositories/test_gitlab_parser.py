@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from odk.models.pm import AcceptanceCriterion
-from odk.repositories.gitlab.parser import parse_body, render_body
+from ydk.models.pm import AcceptanceCriterion
+from ydk.repositories.gitlab.parser import parse_body, render_body
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

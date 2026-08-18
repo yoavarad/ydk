@@ -1,7 +1,7 @@
-"""Tests for odk.core.task_validator — DAG validation and coverage checking."""
+"""Tests for ydk.core.task_validator — DAG validation and coverage checking."""
 
-from odk.core.task_validator import check_coverage, validate_dag
-from odk.models.task import Task
+from ydk.core.task_validator import check_coverage, validate_dag
+from ydk.models.task import Task
 
 
 class TestValidateDag:

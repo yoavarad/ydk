@@ -9,7 +9,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 A spec describes what you want to build. Tasks describe how to build it, in what order, and with what dependencies. The decomposition from spec to task is where most AI-assisted projects go wrong -- either they create tasks that are too large for a single agent session, or they create tasks with circular dependencies that cannot be executed, or they skip dependency tracking entirely and end up with agents working on code that depends on things that do not exist yet.
 
-ODK addresses this with a three-level hierarchy (Epic > Story > Task), a dependency type system that distinguishes between blocking and non-blocking relationships, and DAG validation that detects cycles and computes parallel execution waves before any work begins.
+YDK addresses this with a three-level hierarchy (Epic > Story > Task), a dependency type system that distinguishes between blocking and non-blocking relationships, and DAG validation that detects cycles and computes parallel execution waves before any work begins.
 
 ## The Three-Level Hierarchy
 
@@ -17,26 +17,26 @@ ODK addresses this with a three-level hierarchy (Epic > Story > Task), a depende
 
 **Stories** represent user-visible capabilities within an epic -- "Place an Order" or "Cancel an Order Before Shipment". A story is a meaningful increment of functionality but still too large for a single coding session. Stories group related tasks and carry acceptance criteria that span multiple implementation steps.
 
-**Tasks** are the atomic unit of work. Each task should be completable in a single coding session by a single agent. It has a clear test strategy, specific acceptance criteria, and declared dependencies on other tasks. When ODK says "start a task", it means create a worktree, write tests, implement, verify, and create a PR.
+**Tasks** are the atomic unit of work. Each task should be completable in a single coding session by a single agent. It has a clear test strategy, specific acceptance criteria, and declared dependencies on other tasks. When YDK says "start a task", it means create a worktree, write tests, implement, verify, and create a PR.
 
 ## Creating the Hierarchy
 
 Start with the epic:
 
 ```bash
-odk task create-epic \
+ydk task create-epic \
   --title "Orders System" \
   --description "Complete order management including CRUD, lifecycle, and error handling" \
   --release "v1.0" \
   --spec-refs orders.md
 ```
 
-ODK assigns a collision-resistant ID (like `E-a1b2c3d4`) using UUID4 hex. The `--spec-refs` flag links the epic to the spec files it implements, which is used later for coverage analysis.
+YDK assigns a collision-resistant ID (like `E-a1b2c3d4`) using UUID4 hex. The `--spec-refs` flag links the epic to the spec files it implements, which is used later for coverage analysis.
 
 Create stories under the epic:
 
 ```bash
-odk task create-story \
+ydk task create-story \
   --title "Place Order" \
   --epic E-a1b2c3d4 \
   --description "User can create a new order with items and see the total" \
@@ -49,7 +49,7 @@ odk task create-story \
 Then create tasks under each story. This is where the detail matters most -- each task needs enough specificity that a coding agent can implement it without asking questions:
 
 ```bash
-odk task create \
+ydk task create \
   --title "Create Order entity model" \
   --story S-def45678 \
   --description "Implement the Order Pydantic model with all fields from the entity manifest, including state transitions and decimal precision for totals" \
@@ -59,7 +59,7 @@ odk task create \
   --acceptance "State transitions enforce the allowed paths" \
   --acceptance "Total field uses Decimal(10,2) precision"
 
-odk task create \
+ydk task create \
   --title "Create POST /orders route" \
   --story S-def45678 \
   --description "Implement the order creation endpoint that validates input, creates an Order, and returns the created resource" \
@@ -73,7 +73,7 @@ odk task create \
 
 ## Typed Dependencies
 
-The `--depends-on` flag accepts a task ID with an optional type suffix. This is one of ODK's most important features -- not all dependencies are the same, and the type determines whether the dependency blocks execution.
+The `--depends-on` flag accepts a task ID with an optional type suffix. This is one of YDK's most important features -- not all dependencies are the same, and the type determines whether the dependency blocks execution.
 
 | Type | Blocking? | When to use |
 |------|-----------|-------------|
@@ -89,7 +89,7 @@ The `--depends-on` flag accepts a task ID with an optional type suffix. This is 
 Only `blocks`, `conditional-blocks`, and `waits-for` create edges in the execution DAG. The other types are tracked for traceability and context -- when a coding agent starts a task, it can see the related tasks, the root causes, and the discoveries that led to this work -- but they do not affect scheduling.
 
 <Callout type="info">
-Typed dependencies solve a real problem. In most task systems, "depends on" means "blocks". But when a test task validates an implementation task, you do not want the test to block the implementation -- the relationship goes the other direction. ODK's type system captures these nuances so the DAG accurately reflects the execution order.
+Typed dependencies solve a real problem. In most task systems, "depends on" means "blocks". But when a test task validates an implementation task, you do not want the test to block the implementation -- the relationship goes the other direction. YDK's type system captures these nuances so the DAG accurately reflects the execution order.
 </Callout>
 
 ## Validating the Task DAG
@@ -97,10 +97,10 @@ Typed dependencies solve a real problem. In most task systems, "depends on" mean
 Before starting any work, validate the dependency graph:
 
 ```bash
-odk task validate-dag
+ydk task validate-dag
 ```
 
-ODK runs Kahn's algorithm on the blocking dependency edges. This gives you four critical pieces of information:
+YDK runs Kahn's algorithm on the blocking dependency edges. This gives you four critical pieces of information:
 
 1. **Cycle detection** -- If the graph has cycles (Task A blocks Task B, which blocks Task C, which blocks Task A), validation fails immediately. Cycles make execution impossible, and catching them before any work begins saves enormous time.
 
@@ -115,10 +115,10 @@ ODK runs Kahn's algorithm on the blocking dependency edges. This gives you four 
 Once tasks are created, analyze their complexity:
 
 ```bash
-odk task analyze-complexity
+ydk task analyze-complexity
 ```
 
-ODK sends each task's title, description, acceptance criteria, dependencies, and spec references to an LLM, which scores it on a 1-10 scale:
+YDK sends each task's title, description, acceptance criteria, dependencies, and spec references to an LLM, which scores it on a 1-10 scale:
 
 - **1-3 (Simple)** -- Single file change, clear implementation path, no design ambiguity
 - **4-6 (Moderate)** -- Multiple files, some design decisions to make, moderate risk
@@ -126,14 +126,14 @@ ODK sends each task's title, description, acceptance criteria, dependencies, and
 
 Tasks scoring 8 or above get flagged with `should_expand=True` and the LLM suggests how to split them into smaller, more manageable pieces. This catches tasks that are too large for a single agent session before you waste time attempting them.
 
-When no LLM provider is configured, complexity scoring falls back to a default score of 5 for all tasks. This is a deliberate design choice -- every LLM-powered feature in ODK has a deterministic fallback so the tool works without AI credentials.
+When no LLM provider is configured, complexity scoring falls back to a default score of 5 for all tasks. This is a deliberate design choice -- every LLM-powered feature in YDK has a deterministic fallback so the tool works without AI credentials.
 
 ## Finding Ready Tasks
 
-When you are ready to start implementation, ask ODK which tasks are actionable:
+When you are ready to start implementation, ask YDK which tasks are actionable:
 
 ```bash
-odk task ready
+ydk task ready
 ```
 
 This lists all tasks whose blocking dependencies are resolved and whose gates are satisfied, ranked by the number of dependents. Starting with the highest-impact tasks -- the ones that unblock the most downstream work -- is the most efficient execution strategy.
@@ -143,10 +143,10 @@ This lists all tasks whose blocking dependencies are resolved and whose gates ar
 Before moving to execution, verify that your tasks cover the entire spec:
 
 ```bash
-odk task coverage --spec-dir docs/specs
+ydk task coverage --spec-dir docs/specs
 ```
 
-Coverage analysis checks that every component referenced in your specs has at least one task that implements it. If you have an entity manifest for `odk:entity:orders/OrderItem` but no task creates that model, the coverage check flags it. This prevents the common failure mode where a spec describes five entities but the task decomposition only covers three.
+Coverage analysis checks that every component referenced in your specs has at least one task that implements it. If you have an entity manifest for `ydk:entity:orders/OrderItem` but no task creates that model, the coverage check flags it. This prevents the common failure mode where a spec describes five entities but the task decomposition only covers three.
 
 ## Next Steps
 

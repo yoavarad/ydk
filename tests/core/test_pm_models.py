@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from odk.models.pm import (
+from ydk.models.pm import (
     AcceptanceCriterion,
     EpicCreate,
     EpicDetail,

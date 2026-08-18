@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from odk.core.scaffold_state import ScaffoldState
+from ydk.core.scaffold_state import ScaffoldState
 
 if TYPE_CHECKING:
     from pathlib import Path

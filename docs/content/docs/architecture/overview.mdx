@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Architecture Overview
 
-ODK follows a strict layered architecture where each layer has clear responsibilities and import rules. This structure was not chosen for aesthetic reasons -- it exists because ODK itself is developed using ODK, and the verification plugins enforce these boundaries. If a core module imports from the CLI layer, the `fastapi-core-purity` style check catches it. If a model imports from a repository, the import isolation check flags it. The architecture is self-enforcing.
+YDK follows a strict layered architecture where each layer has clear responsibilities and import rules. This structure was not chosen for aesthetic reasons -- it exists because YDK itself is developed using YDK, and the verification plugins enforce these boundaries. If a core module imports from the CLI layer, the `fastapi-core-purity` style check catches it. If a model imports from a repository, the import isolation check flags it. The architecture is self-enforcing.
 
 ## Layer Diagram
 
@@ -47,11 +47,11 @@ These rules mean you can test any core module by providing mock implementations 
 
 ## Design Philosophy
 
-Six design patterns recur throughout ODK's architecture:
+Six design patterns recur throughout YDK's architecture:
 
 **Protocol-based dependency injection.** Core classes depend on protocols (Python's `typing.Protocol`), not concrete implementations. `TaskLifecycle` depends on `LifecycleTaskRepository`, not `LocalTaskRepository` or `GitHubTaskRepository`. `ComplexityScorer` depends on `LLMProvider`, not a specific Bedrock client. This makes every class independently testable and swappable.
 
-**Deterministic fallbacks.** Every LLM-powered feature has a non-LLM path. When `ComplexityScorer` has no LLM provider, it returns a default score of 5. When `ComponentScanner` has no LLM, it returns an empty result. When `TaskCompactor` has no LLM, it uses deterministic summarization. This means ODK works fully without AI credentials -- the AI features enhance but do not gate the core workflow.
+**Deterministic fallbacks.** Every LLM-powered feature has a non-LLM path. When `ComplexityScorer` has no LLM provider, it returns a default score of 5. When `ComponentScanner` has no LLM, it returns an empty result. When `TaskCompactor` has no LLM, it uses deterministic summarization. This means YDK works fully without AI credentials -- the AI features enhance but do not gate the core workflow.
 
 **Repository pattern with factory dispatch.** The factory reads `project.remote` from config and dispatches to the correct backend class. Adding a new backend means implementing the protocol and adding one line to the registry -- no other code changes needed.
 
@@ -64,7 +64,7 @@ Six design patterns recur throughout ODK's architecture:
 ## Directory Structure
 
 ```
-src/odk/
+src/ydk/
   cli/           # 14 command modules + helpers
   core/          # 30+ modules: business logic
   models/        # 18 model modules: Pydantic models

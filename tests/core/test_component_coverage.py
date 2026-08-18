@@ -1,4 +1,4 @@
-"""Tests for check_component_coverage in odk.core.task_validator."""
+"""Tests for check_component_coverage in ydk.core.task_validator."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from odk.core.task_validator import check_component_coverage
+from ydk.core.task_validator import check_component_coverage
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -17,21 +17,21 @@ class TestCheckComponentCoverage:
         """Components not referenced by any task are returned."""
         comp_dir = tmp_path / "components" / "entity"
         comp_dir.mkdir(parents=True)
-        (comp_dir / "Order.yaml").write_text(yaml.dump({"id": "odk:entity:orders/Order"}))
-        (comp_dir / "User.yaml").write_text(yaml.dump({"id": "odk:entity:users/User"}))
+        (comp_dir / "Order.yaml").write_text(yaml.dump({"id": "ydk:entity:orders/Order"}))
+        (comp_dir / "User.yaml").write_text(yaml.dump({"id": "ydk:entity:users/User"}))
 
         # Only Order is referenced
-        task_refs = {"T-001": ["odk:entity:orders/Order"]}
+        task_refs = {"T-001": ["ydk:entity:orders/Order"]}
         uncovered = check_component_coverage(tmp_path / "components", task_refs)
-        assert uncovered == ["odk:entity:users/User"]
+        assert uncovered == ["ydk:entity:users/User"]
 
     def test_all_covered(self, tmp_path: Path) -> None:
         """No components returned when all are referenced."""
         comp_dir = tmp_path / "components" / "entity"
         comp_dir.mkdir(parents=True)
-        (comp_dir / "Order.yaml").write_text(yaml.dump({"id": "odk:entity:orders/Order"}))
+        (comp_dir / "Order.yaml").write_text(yaml.dump({"id": "ydk:entity:orders/Order"}))
 
-        task_refs = {"T-001": ["odk:entity:orders/Order"]}
+        task_refs = {"T-001": ["ydk:entity:orders/Order"]}
         uncovered = check_component_coverage(tmp_path / "components", task_refs)
         assert uncovered == []
 
@@ -54,11 +54,11 @@ class TestCheckComponentCoverage:
         """A component referenced by multiple tasks is still covered."""
         comp_dir = tmp_path / "components" / "service"
         comp_dir.mkdir(parents=True)
-        (comp_dir / "Auth.yaml").write_text(yaml.dump({"id": "odk:service:Auth"}))
+        (comp_dir / "Auth.yaml").write_text(yaml.dump({"id": "ydk:service:Auth"}))
 
         task_refs = {
-            "T-001": ["odk:service:Auth"],
-            "T-002": ["odk:service:Auth"],
+            "T-001": ["ydk:service:Auth"],
+            "T-002": ["ydk:service:Auth"],
         }
         uncovered = check_component_coverage(tmp_path / "components", task_refs)
         assert uncovered == []
@@ -67,7 +67,7 @@ class TestCheckComponentCoverage:
         """Components in nested directories are found."""
         nested = tmp_path / "components" / "entity" / "billing" / "sub"
         nested.mkdir(parents=True)
-        (nested / "Invoice.yaml").write_text(yaml.dump({"id": "odk:entity:billing/sub/Invoice"}))
+        (nested / "Invoice.yaml").write_text(yaml.dump({"id": "ydk:entity:billing/sub/Invoice"}))
 
         uncovered = check_component_coverage(tmp_path / "components", {})
-        assert uncovered == ["odk:entity:billing/sub/Invoice"]
+        assert uncovered == ["ydk:entity:billing/sub/Invoice"]

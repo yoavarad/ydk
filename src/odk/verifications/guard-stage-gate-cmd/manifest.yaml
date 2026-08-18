@@ -1,6 +1,0 @@
-name: guard-stage-gate-cmd
-description: Block ODK commands inappropriate for the current stage
-trigger: guard:command
-parallel: false
-timeout: 5
-requires: []

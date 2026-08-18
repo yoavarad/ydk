@@ -1,6 +1,8 @@
-# ODK -- Oz Development Kit
+# YDK -- Yoav Development Kit
 
-ODK is an agent skill that orchestrates the full AI-assisted software development lifecycle: brainstorming, task management, execution with proof-based verification, and compound learning. The skill is the primary interface; the CLI exists to support agent automation.
+> Fork notice: YDK is a personal fork of ODK — Oz Development Kit, created by [Oz Altagar](https://www.linkedin.com/in/oz-altagar-0a50861b3/). All credit for the original design and workflow goes to him.
+
+YDK is an agent skill that orchestrates the full AI-assisted software development lifecycle: brainstorming, task management, execution with proof-based verification, and compound learning. The skill is the primary interface; the CLI exists to support agent automation.
 
 ## Setup
 
@@ -21,12 +23,12 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
 # Type check
-uv run ty check src/odk/ --python-version 3.13 --exclude "src/odk/catalog/*/generators/"
+uv run ty check src/ydk/ --python-version 3.13 --exclude "src/ydk/catalog/*/generators/"
 ```
 
 ## Onboarding
 
-Start with `skills/odk/SKILL.md`. It is the entry point agents should load before doing development work.
+Start with `skills/ydk/SKILL.md`. It is the entry point agents should load before doing development work.
 
 ## Key Rules
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""odk pre-commit hook — ruff format, ruff lint."""
+"""ydk pre-commit hook — ruff format, ruff lint."""
 
 import subprocess, sys, time
 
@@ -72,9 +72,9 @@ else:
 import os
 t0 = step("catalog protection")
 result = run(["git", "diff", "--cached", "--name-only"])
-catalog_changes = [f for f in result.stdout.strip().splitlines() if f.startswith("src/odk/catalog/")]
-if catalog_changes and not os.environ.get('ODK_CATALOG_PUBLISH'):
-    step_fail(t0, "Direct catalog edits blocked. Use: odk catalog publish <path>")
+catalog_changes = [f for f in result.stdout.strip().splitlines() if f.startswith("src/ydk/catalog/")]
+if catalog_changes and not os.environ.get('YDK_CATALOG_PUBLISH'):
+    step_fail(t0, "Direct catalog edits blocked. Use: ydk catalog publish <path>")
     failed = True
 else:
     step_pass(t0)

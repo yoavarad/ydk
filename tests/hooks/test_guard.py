@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from odk.cli.init_cmd import _GUARD_SCRIPT
+from ydk.cli.init_cmd import _GUARD_SCRIPT
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -64,7 +64,7 @@ class TestNoManualPr:
             },
         )
         assert result.returncode == 2
-        assert "odk task done" in result.stderr
+        assert "ydk task done" in result.stderr
 
     def test_allows_gh_pr_view(self, guard_script: Path) -> None:
         result = _run_guard(
@@ -79,14 +79,14 @@ class TestNoManualPr:
 
 
 class TestNoProofTamper:
-    """GUARD: no-proof-tamper blocks edits to .odk/proofs/ (except summary.md)."""
+    """GUARD: no-proof-tamper blocks edits to .ydk/proofs/ (except summary.md)."""
 
     def test_blocks_proof_edit(self, guard_script: Path) -> None:
         result = _run_guard(
             guard_script,
             {
                 "tool_name": "Edit",
-                "tool_input": {"file_path": ".odk/proofs/T-001/pytest.txt", "new_string": "fake"},
+                "tool_input": {"file_path": ".ydk/proofs/T-001/pytest.txt", "new_string": "fake"},
                 "cwd": str(guard_script.parent),
             },
         )
@@ -98,7 +98,7 @@ class TestNoProofTamper:
             guard_script,
             {
                 "tool_name": "Edit",
-                "tool_input": {"file_path": ".odk/proofs/T-001/summary.md", "new_string": "notes"},
+                "tool_input": {"file_path": ".ydk/proofs/T-001/summary.md", "new_string": "notes"},
                 "cwd": str(guard_script.parent),
             },
         )
@@ -218,9 +218,9 @@ class TestStageGate:
 
     def test_blocks_source_in_stage_01(self, guard_script: Path, tmp_path: Path) -> None:
         # Create state file
-        odk_dir = tmp_path / ".odk"
-        odk_dir.mkdir()
-        (odk_dir / "state.json").write_text(json.dumps({"stage": "01"}))
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "state.json").write_text(json.dumps({"stage": "01"}))
 
         result = _run_guard(
             guard_script,
@@ -235,9 +235,9 @@ class TestStageGate:
         assert "Stage 01" in result.stderr
 
     def test_blocks_tests_in_stage_02(self, guard_script: Path, tmp_path: Path) -> None:
-        odk_dir = tmp_path / ".odk"
-        odk_dir.mkdir()
-        (odk_dir / "state.json").write_text(json.dumps({"stage": "02"}))
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "state.json").write_text(json.dumps({"stage": "02"}))
 
         result = _run_guard(
             guard_script,
@@ -252,9 +252,9 @@ class TestStageGate:
         assert "Stage 02" in result.stderr
 
     def test_allows_source_in_stage_03(self, guard_script: Path, tmp_path: Path) -> None:
-        odk_dir = tmp_path / ".odk"
-        odk_dir.mkdir()
-        (odk_dir / "state.json").write_text(json.dumps({"stage": "03"}))
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "state.json").write_text(json.dumps({"stage": "03"}))
 
         result = _run_guard(
             guard_script,
@@ -267,16 +267,16 @@ class TestStageGate:
         )
         assert result.returncode == 0
 
-    def test_allows_odk_files_in_early_stages(self, guard_script: Path, tmp_path: Path) -> None:
-        odk_dir = tmp_path / ".odk"
-        odk_dir.mkdir()
-        (odk_dir / "state.json").write_text(json.dumps({"stage": "01"}))
+    def test_allows_ydk_files_in_early_stages(self, guard_script: Path, tmp_path: Path) -> None:
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "state.json").write_text(json.dumps({"stage": "01"}))
 
         result = _run_guard(
             guard_script,
             {
                 "tool_name": "Edit",
-                "tool_input": {"file_path": ".odk/config.yaml", "new_string": "name: test"},
+                "tool_input": {"file_path": ".ydk/config.yaml", "new_string": "name: test"},
                 "cwd": str(tmp_path),
             },
             cwd=tmp_path,
@@ -309,9 +309,9 @@ class TestEdgeCases:
 
     def test_absolute_file_path_normalized(self, guard_script: Path, tmp_path: Path) -> None:
         """Absolute file_path matching cwd is normalized correctly."""
-        odk_dir = tmp_path / ".odk"
-        odk_dir.mkdir()
-        (odk_dir / "state.json").write_text(json.dumps({"stage": "01"}))
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "state.json").write_text(json.dumps({"stage": "01"}))
 
         result = _run_guard(
             guard_script,

@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-SAMPLE_COMPONENTS = Path(os.environ.get("ODK_GENERATOR_TEST_COMPONENTS", "/tmp/odk-generator-test-components"))
-PACK_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "catalog" / "python-fastapi-hexagonal"
+SAMPLE_COMPONENTS = Path(os.environ.get("YDK_GENERATOR_TEST_COMPONENTS", "/tmp/ydk-generator-test-components"))
+PACK_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "catalog" / "python-fastapi-hexagonal"
 
 pytestmark = [
     pytest.mark.skipif(not SAMPLE_COMPONENTS.exists(), reason="E2E components not available"),
@@ -31,22 +31,22 @@ def generated_project(tmp_path_factory):
     project = tmp_path_factory.mktemp("e2e_project")
 
     # Set up ignition pack
-    pack_dest = project / ".odk" / "ignition-packs" / "python-fastapi-hexagonal"
+    pack_dest = project / ".ydk" / "ignition-packs" / "python-fastapi-hexagonal"
     pack_dest.mkdir(parents=True)
     shutil.copytree(PACK_DIR / "generators", pack_dest / "generators")
     shutil.copytree(PACK_DIR / "templates", pack_dest / "templates")
     shutil.copy(PACK_DIR / "manifest.yaml", pack_dest / "manifest.yaml")
 
     # Copy components
-    components_dest = project / ".odk" / "components"
+    components_dest = project / ".ydk" / "components"
     shutil.copytree(SAMPLE_COMPONENTS, components_dest)
 
     # Add config component
     config_dir = components_dest / "config"
     config_dir.mkdir(exist_ok=True)
     (config_dir / "app.yaml").write_text(
-        '$schema: "odk:schema:config"\n'
-        'id: "odk:config:app"\n'
+        '$schema: "ydk:schema:config"\n'
+        'id: "ydk:config:app"\n'
         'title: "Sample App"\n'
         'version: "1.0.0"\n'
         "database:\n"
@@ -59,7 +59,7 @@ def generated_project(tmp_path_factory):
 
     # Run ignition
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-    from odk.core.ignition import IgnitionEngine
+    from ydk.core.ignition import IgnitionEngine
 
     engine = IgnitionEngine(project)
     result = engine.ignite(dry_run=False)

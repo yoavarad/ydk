@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from odk.models.catalog import (
+from ydk.models.catalog import (
     CatalogItem,
     CatalogManifest,
     InputSpec,
@@ -18,13 +18,13 @@ class TestInputSpec:
     """InputSpec model validation."""
 
     def test_required_fields(self) -> None:
-        spec = InputSpec(schema_ref="odk-core-schemas/entity", version=">=1.0.0")
-        assert spec.schema_ref == "odk-core-schemas/entity"
+        spec = InputSpec(schema_ref="ydk-core-schemas/entity", version=">=1.0.0")
+        assert spec.schema_ref == "ydk-core-schemas/entity"
         assert spec.version == ">=1.0.0"
         assert spec.required is True
 
     def test_optional_required_false(self) -> None:
-        spec = InputSpec(schema_ref="odk-core-schemas/route", version=">=2.0.0", required=False)
+        spec = InputSpec(schema_ref="ydk-core-schemas/route", version=">=2.0.0", required=False)
         assert spec.required is False
 
     def test_extra_fields_rejected(self) -> None:
@@ -91,14 +91,14 @@ class TestCatalogManifest:
             version="1.0.0",
             description="A test pack",
             tags=["ignition-pack", "python"],
-            inputs={"entities": InputSpec(schema_ref="odk-core-schemas/entity", version=">=1.0.0")},
+            inputs={"entities": InputSpec(schema_ref="ydk-core-schemas/entity", version=">=1.0.0")},
             verification_sets=[Reference(name="python-quality", version=">=0.1.0")],
-            spec_reviewers=[Reference(name="odk-default-reviewers", version=">=0.1.0")],
-            component_schemas=[Reference(name="odk-core-schemas", version=">=0.1.0")],
+            spec_reviewers=[Reference(name="ydk-default-reviewers", version=">=0.1.0")],
+            component_schemas=[Reference(name="ydk-core-schemas", version=">=0.1.0")],
             publish_checks=[PublishCheck(name="lint", command="ruff check .")],
         )
         assert len(m.inputs) == 1
-        assert m.inputs["entities"].schema_ref == "odk-core-schemas/entity"
+        assert m.inputs["entities"].schema_ref == "ydk-core-schemas/entity"
         assert len(m.verification_sets) == 1
         assert len(m.publish_checks) == 1
 

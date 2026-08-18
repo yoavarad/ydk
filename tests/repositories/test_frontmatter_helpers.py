@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-from odk.repositories.local.frontmatter import (
+from ydk.repositories.local.frontmatter import (
     append_comment,
     parse_frontmatter,
     render_frontmatter,
     update_file_status,
 )
-from odk.repositories.local.manifest import Manifest
+from ydk.repositories.local.manifest import Manifest
 
 
 def _write_item(directory: Path, item_id: str, status: str = "open") -> Path:

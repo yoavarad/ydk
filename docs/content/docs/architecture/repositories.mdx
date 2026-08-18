@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Repository Layer
 
-ODK supports three repository backends -- local file storage, GitHub Issues, and GitLab Issues -- through a protocol-based abstraction that lets the core layer work identically regardless of where tasks are stored. This design means you can develop locally with file-based storage, then switch to GitHub Issues for team collaboration, without changing any workflow or losing any data fidelity.
+YDK supports three repository backends -- local file storage, GitHub Issues, and GitLab Issues -- through a protocol-based abstraction that lets the core layer work identically regardless of where tasks are stored. This design means you can develop locally with file-based storage, then switch to GitHub Issues for team collaboration, without changing any workflow or losing any data fidelity.
 
 ## Protocols
 
@@ -27,28 +27,28 @@ The factory in `repositories/factory.py` uses a registry-based dispatch to insta
 
 ```python
 _REGISTRY = {
-    ("local", "task"): ("odk.repositories.local.tasks", "LocalTaskRepository"),
-    ("github", "task"): ("odk.repositories.github.tasks", "GitHubTaskRepository"),
-    ("gitlab", "task"): ("odk.repositories.gitlab.tasks", "GitLabTaskRepository"),
+    ("local", "task"): ("ydk.repositories.local.tasks", "LocalTaskRepository"),
+    ("github", "task"): ("ydk.repositories.github.tasks", "GitHubTaskRepository"),
+    ("gitlab", "task"): ("ydk.repositories.gitlab.tasks", "GitLabTaskRepository"),
     # ... 9 total combinations (3 backends x 3 entity types)
 }
 ```
 
-The factory reads `project.remote` from the ODK config to determine which backend to instantiate. This is the only place in the codebase that knows about concrete repository classes -- everywhere else depends on the protocol.
+The factory reads `project.remote` from the YDK config to determine which backend to instantiate. This is the only place in the codebase that knows about concrete repository classes -- everywhere else depends on the protocol.
 
 ## The Three Backends
 
 ### Local (File-Based)
 
-The local backend stores tasks as markdown files with YAML frontmatter at `.odk/tasks/tasks/T-xxx.md`. This is the simplest and fastest backend, requiring no external services.
+The local backend stores tasks as markdown files with YAML frontmatter at `.ydk/tasks/tasks/T-xxx.md`. This is the simplest and fastest backend, requiring no external services.
 
-The backend maintains a manifest file at `.odk/manifest.yaml` -- a thread-safe YAML index that enables fast task listing without reading every individual task file. The manifest is updated atomically using temp-file-plus-rename to ensure crash safety.
+The backend maintains a manifest file at `.ydk/manifest.yaml` -- a thread-safe YAML index that enables fast task listing without reading every individual task file. The manifest is updated atomically using temp-file-plus-rename to ensure crash safety.
 
 IDs are generated using `uuid4().hex[:8]`, producing collision-resistant identifiers like `T-a1b2c3d4`. The hex format was chosen over integer IDs because it avoids coordination -- two agents can create tasks simultaneously without risking duplicate IDs.
 
 ### GitHub
 
-The GitHub backend maps ODK's task model to GitHub Issues using the `gh` CLI. Task metadata (dependencies, acceptance criteria, test strategy, spec refs) is serialized into a structured markdown format in the issue body using `**Key**: value` pairs and `### Section` headings. A bidirectional parser handles serialization and deserialization.
+The GitHub backend maps YDK's task model to GitHub Issues using the `gh` CLI. Task metadata (dependencies, acceptance criteria, test strategy, spec refs) is serialized into a structured markdown format in the issue body using `**Key**: value` pairs and `### Section` headings. A bidirectional parser handles serialization and deserialization.
 
 Task status is mapped to GitHub labels (`in-progress`, `blocked-by-code`, etc.). Plan posts, progress updates, and proof summaries are added as issue comments. PRs are created with `gh pr create` and linked to the issue with `Closes #N` in the body.
 

@@ -12,9 +12,9 @@ from typer.testing import CliRunner
 if TYPE_CHECKING:
     import pytest
 
-from odk.cli.main import app
-from odk.core.state import ProjectState
-from odk.core.verifier import Verifier
+from ydk.cli.main import app
+from ydk.core.state import ProjectState
+from ydk.core.verifier import Verifier
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 SAMPLE_GUARD = FIXTURES / "sample-guard"
@@ -23,8 +23,8 @@ runner = CliRunner()
 
 
 def _install_guard(project_root: Path, fixture: Path = SAMPLE_GUARD) -> None:
-    """Copy a guard fixture into the project's .odk/verifications/ dir."""
-    dest = project_root / ".odk" / "verifications" / fixture.name
+    """Copy a guard fixture into the project's .ydk/verifications/ dir."""
+    dest = project_root / ".ydk" / "verifications" / fixture.name
     shutil.copytree(fixture, dest)
 
 
@@ -99,7 +99,7 @@ class TestRunGuard:
 
 
 class TestCheckGuardCLI:
-    """Integration tests for `odk verify check-guard`."""
+    """Integration tests for `ydk verify check-guard`."""
 
     def test_exits_0_when_no_guard_plugins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """No guard plugins -> exit 0."""
@@ -178,14 +178,14 @@ class TestProjectState:
         assert state.read() == result
 
     def test_update_creates_file_if_missing(self, tmp_path: Path) -> None:
-        """Update creates .odk/state.json if it doesn't exist."""
+        """Update creates .ydk/state.json if it doesn't exist."""
         state = ProjectState(tmp_path)
         result = state.update(stage="01")
         assert result == {"stage": "01"}
         assert state.path.exists()
 
     def test_write_creates_parent_dirs(self, tmp_path: Path) -> None:
-        """Write creates .odk/ directory if needed."""
+        """Write creates .ydk/ directory if needed."""
         state = ProjectState(tmp_path)
         assert not state.path.parent.exists()
         state.write({"stage": "00"})

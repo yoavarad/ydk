@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from odk.core.bm25_index import BM25Index
+from ydk.core.bm25_index import BM25Index
 
 
 class TestBM25IndexAddAndSearch:

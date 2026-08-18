@@ -1,9 +1,0 @@
-name: odk-core-schemas
-version: "0.1.0"
-description: Built-in ODK component schemas (entity, route, hook, event, etc.)
-tags:
-  - component-schemas
-  - built-in
-publish_checks:
-  - name: yaml-valid
-    description: All schema YAML files must be valid

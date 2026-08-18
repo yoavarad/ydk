@@ -4,10 +4,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-.odk/memory/chroma/
-.odk/proofs/
-.odk/.verified
-odk-task-lifecycle-*
+.ydk/memory/chroma/
+.ydk/proofs/
+.ydk/.verified
+ydk-task-lifecycle-*
 docs/node_modules/
 docs/.next/
 docs/.source/

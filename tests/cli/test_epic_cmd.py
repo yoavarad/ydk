@@ -1,4 +1,4 @@
-"""Tests for odk task create-epic."""
+"""Tests for ydk task create-epic."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import yaml
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.core.config import DEFAULT_CONFIG
+from ydk.cli import app
+from ydk.core.config import DEFAULT_CONFIG
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,7 +18,7 @@ runner = CliRunner()
 
 def _setup(tmp_path: Path) -> None:
     """Write valid config and manifest for epic creation."""
-    d = tmp_path / ".odk"
+    d = tmp_path / ".ydk"
     d.mkdir(parents=True, exist_ok=True)
     (d / "config.yaml").write_text(yaml.dump(DEFAULT_CONFIG, default_flow_style=False))
     manifest = {
@@ -33,7 +33,7 @@ def _setup(tmp_path: Path) -> None:
 
 
 def test_task_create_epic(tmp_path: Path, monkeypatch: object) -> None:
-    """odk task create-epic creates an epic and exits 0."""
+    """ydk task create-epic creates an epic and exits 0."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup(tmp_path)
     r = runner.invoke(app, ["task", "create-epic", "--title", "Auth"])

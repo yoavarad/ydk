@@ -12,7 +12,7 @@ For projects with significant UI components, specifications written purely in pr
 ## Starting a Session
 
 ```bash
-odk visual start --project-dir .
+ydk visual start --project-dir .
 ```
 
 This starts a Vite dev server with an annotation overlay injected into the page. The overlay provides tools for making design selections, annotating specific DOM elements, and drawing rectangle regions with comments. The Vite server auto-reloads when content changes, so you can iterate on wireframes while the annotation session is active.
@@ -22,7 +22,7 @@ This starts a Vite dev server with an annotation overlay injected into the page.
 Load your wireframes or prototypes into the session:
 
 ```bash
-odk visual push wireframe.html --filename index.html --session-id abc
+ydk visual push wireframe.html --filename index.html --session-id abc
 ```
 
 This writes the HTML content to the session's content directory. Vite detects the change and reloads the browser automatically. You can push multiple files to build up a multi-page wireframe that covers different user flows.
@@ -32,7 +32,7 @@ This writes the HTML content to the session's content directory. Vite detects th
 After annotating in the browser, collect the structured feedback:
 
 ```bash
-odk visual feedback --session-id abc
+ydk visual feedback --session-id abc
 ```
 
 Three types of feedback events are captured:
@@ -48,19 +48,19 @@ Three types of feedback events are captured:
 Capture screenshots using Playwright for inclusion in PRs and documentation:
 
 ```bash
-odk visual screenshot --url http://localhost:5173 --output screenshot.png
+ydk visual screenshot --url http://localhost:5173 --output screenshot.png
 ```
 
-Screenshots can also be saved to `.odk/proofs/<task_id>/screenshots/` for automatic inclusion in PR bodies when the task is completed.
+Screenshots can also be saved to `.ydk/proofs/<task_id>/screenshots/` for automatic inclusion in PR bodies when the task is completed.
 
 ## Session Management
 
 ```bash
 # List all active sessions
-odk visual list
+ydk visual list
 
 # Stop a session
-odk visual stop session-id
+ydk visual stop session-id
 ```
 
 Each session maintains its own state -- content files, annotations, and screenshots -- isolated from other sessions. This supports parallel brainstorming on different features.

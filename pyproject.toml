@@ -1,11 +1,11 @@
 [project]
-name = "odk"
+name = "ydk"
 
 
 
 version = "0.52.1"
 
-description = "ODK — Oz Development Kit"
+description = "YDK — Yoav Development Kit"
 requires-python = ">=3.13"
 dependencies = [
     "typer>=0.15",
@@ -35,7 +35,7 @@ dev = [
 ]
 
 [project.scripts]
-odk = "odk.cli:app"
+ydk = "ydk.cli:app"
 
 [tool.ruff]
 line-length = 120
@@ -75,12 +75,12 @@ select = [
   "ANN401",   # Tests may use Any for mocking
 ]
 # Catalog generators + catalog tests — relaxed rules for ported code
-"src/odk/catalog/**/generators/**/*.py" = [
+"src/ydk/catalog/**/generators/**/*.py" = [
   "ANN001", "ANN002", "ANN201", "ANN202", "ANN401",
   "D101", "D102", "D103",
   "B", "UP", "RUF", "SIM", "PERF", "PT",
 ]
-"src/odk/catalog/**/tests/**/*.py" = [
+"src/ydk/catalog/**/tests/**/*.py" = [
   "D101", "D102", "D103",
   "ANN001", "ANN201", "ANN202", "ANN401",
 ]
@@ -109,4 +109,4 @@ version_files = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/odk"]
+packages = ["src/ydk"]

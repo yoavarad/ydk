@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import inspect
 
-from odk.repositories.github.epics import GitHubEpicRepository
-from odk.repositories.github.stories import GitHubStoryRepository
-from odk.repositories.github.tasks import GitHubTaskRepository
-from odk.repositories.protocols import EpicRepository, LifecycleTaskRepository, StoryRepository
+from ydk.repositories.github.epics import GitHubEpicRepository
+from ydk.repositories.github.stories import GitHubStoryRepository
+from ydk.repositories.github.tasks import GitHubTaskRepository
+from ydk.repositories.protocols import EpicRepository, LifecycleTaskRepository, StoryRepository
 
 
 def _public_methods(cls: type) -> set[str]:

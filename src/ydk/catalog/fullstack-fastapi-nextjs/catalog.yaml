@@ -1,0 +1,50 @@
+name: fullstack-fastapi-nextjs
+version: "1.0.0"
+description: "Full-stack ignition: FastAPI backend + Next.js frontend with shared types and generated API client"
+tags:
+  - ignition-pack
+  - fullstack
+  - python
+  - fastapi
+  - nextjs
+  - typescript
+
+inputs:
+  entity:
+    schema_ref: ydk-core-schemas/entity
+    version: ">=1.0.0"
+    required: true
+  route:
+    schema_ref: ydk-core-schemas/route
+    version: ">=1.0.0"
+    required: true
+  contract:
+    schema_ref: ydk-core-schemas/contract
+    version: ">=1.0.0"
+    required: true
+  error:
+    schema_ref: ydk-core-schemas/error
+    version: ">=1.0.0"
+    required: false
+  config:
+    schema_ref: ydk-core-schemas/config
+    version: ">=1.0.0"
+    required: true
+  page:
+    schema_ref: ydk-core-schemas/page
+    version: ">=1.0.0"
+    required: true
+
+verification_sets:
+  - name: hexagonal-architecture
+    version: ">=1.0.0"
+  - name: python-quality
+    version: ">=1.0.0"
+
+spec_reviewers:
+  - name: ydk-default-reviewers
+    version: ">=1.0.0"
+
+component_schemas:
+  - name: ydk-core-schemas
+    version: ">=1.0.0"

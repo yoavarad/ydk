@@ -9,7 +9,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 Every time a coding agent completes a task, it generates knowledge. It discovers that a particular library has an undocumented quirk. It decides on an architectural pattern for a specific reason. It tries an approach that fails and switches to another. It learns a naming convention that the project follows. All of this knowledge evaporates when the agent session ends. The next agent working on a related task starts from zero context, likely to rediscover the same quirks, revisit the same failed approaches, and make inconsistent architectural decisions.
 
-ODK's memory system exists to break this cycle. It captures knowledge from completed work, stores it in a searchable index, and retrieves relevant context when new tasks begin. Over time, the system accumulates project-specific knowledge that makes each successive task more efficient -- the compound learning loop that connects Stage 04 back to Stage 01.
+YDK's memory system exists to break this cycle. It captures knowledge from completed work, stores it in a searchable index, and retrieves relevant context when new tasks begin. Over time, the system accumulates project-specific knowledge that makes each successive task more efficient -- the compound learning loop that connects Stage 04 back to Stage 01.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ Content is organized into six ChromaDB collections: `adrs` (architecture decisio
 
 ## Six Extraction Types
 
-When ODK extracts knowledge from agent session transcripts, it categorizes each memory into one of six types. The categories are not arbitrary -- they have different priority weights because different kinds of knowledge have different values for future tasks:
+When YDK extracts knowledge from agent session transcripts, it categorizes each memory into one of six types. The categories are not arbitrary -- they have different priority weights because different kinds of knowledge have different values for future tasks:
 
 **Abandoned approaches** (priority 0.9) are arguably the most valuable type of memory. When an agent tries an approach and it fails, recording that failure prevents future agents from wasting time on the same dead end. "We tried using SQLAlchemy async sessions but they deadlock under concurrent writes -- switched to sync sessions with connection pooling" saves the next agent from a multi-hour debugging session.
 
@@ -31,7 +31,7 @@ When ODK extracts knowledge from agent session transcripts, it categorizes each 
 
 **Discoveries** (priority 0.6) are facts about how the system works. "The verification cache computes SHA256 hashes of all Python files, not just changed files, because ruff checks can be affected by import resolution from unchanged files."
 
-**Conventions** (priority 0.5) are naming and structural standards. "Test files mirror the source tree: `src/odk/core/verifier.py` has tests at `tests/core/test_verifier.py`."
+**Conventions** (priority 0.5) are naming and structural standards. "Test files mirror the source tree: `src/ydk/core/verifier.py` has tests at `tests/core/test_verifier.py`."
 
 ## The 4-Factor Scoring Formula
 
@@ -56,7 +56,7 @@ total = category_weight * 0.50
 
 Pure vector search has a well-known weakness: it is excellent at finding semantically similar content but poor at matching specific technical terms. If you search for "SQLAlchemy async session deadlock" and the memory contains "SQLAlchemy async sessions deadlock under concurrent writes", vector search will find it. But if the memory uses the exact error message, keyword search is more reliable.
 
-ODK solves this with hybrid search -- running both vector and BM25 searches, then merging the results using Reciprocal Rank Fusion (RRF) with k=60:
+YDK solves this with hybrid search -- running both vector and BM25 searches, then merging the results using Reciprocal Rank Fusion (RRF) with k=60:
 
 ```
 rrf_score(doc) = sum(1 / (60 + rank)) for each result list containing doc
@@ -68,7 +68,7 @@ Three search modes are available: `vector` (ChromaDB only), `keyword` (BM25 only
 
 ## Progressive Retrieval
 
-Not every use case needs the full content of every matching memory. ODK provides three depth levels that control how much content is returned:
+Not every use case needs the full content of every matching memory. YDK provides three depth levels that control how much content is returned:
 
 **`index`** returns compact entries with a 150-character snippet preview, title, and score. Use this when you need to survey what memories exist without reading them in full.
 
@@ -78,11 +78,11 @@ Not every use case needs the full content of every matching memory. ODK provides
 
 ## Decision Store
 
-Some knowledge is better stored as versioned decisions than as free-form memories. ODK's decision store provides topic-keyed, append-only YAML files at `.odk/memory/decisions/`. When you record a decision on a topic, ODK auto-increments the version and sets `supersedes` to link to the previous version:
+Some knowledge is better stored as versioned decisions than as free-form memories. YDK's decision store provides topic-keyed, append-only YAML files at `.ydk/memory/decisions/`. When you record a decision on a topic, YDK auto-increments the version and sets `supersedes` to link to the previous version:
 
 ```bash
-odk memory record-decision "authentication-strategy"
-odk memory decision-history "authentication-strategy"
+ydk memory record-decision "authentication-strategy"
+ydk memory decision-history "authentication-strategy"
 ```
 
 This gives you a clear timeline of how architectural decisions evolved, which is invaluable during code review ("why did we switch from JWT to session tokens?") and onboarding ("what is our auth strategy and how did we arrive at it?").
@@ -91,7 +91,7 @@ This gives you a clear timeline of how architectural decisions evolved, which is
 
 Knowledge changes over time. An early decision to use library X might be superseded by a switch to library Y. If both memories exist in the system with no connection between them, agents get conflicting guidance.
 
-Contradiction detection is a two-phase process. First, ODK identifies candidates by computing Jaccard similarity on concept tags -- if the new memory and an existing memory share 60% or more of their concepts, they are candidates for contradiction. Second, for each candidate, an LLM evaluates whether the new memory actually contradicts the old one.
+Contradiction detection is a two-phase process. First, YDK identifies candidates by computing Jaccard similarity on concept tags -- if the new memory and an existing memory share 60% or more of their concepts, they are candidates for contradiction. Second, for each candidate, an LLM evaluates whether the new memory actually contradicts the old one.
 
 When a contradiction is confirmed, the old memory is marked with a `valid_until` timestamp. It is NOT deleted -- this is a deliberate design choice. Deletion would lose the historical record. Instead, the `valid_until` field causes the memory to be filtered from search results by default, while remaining accessible for history queries with `--include-expired`.
 
@@ -100,11 +100,11 @@ When a contradiction is confirmed, the old memory is marked with a `valid_until`
 Over time, the same knowledge can be extracted from multiple sessions in slightly different forms. Consolidation finds and merges these duplicates:
 
 ```bash
-odk memory consolidate --threshold 0.85 --dry-run
+ydk memory consolidate --threshold 0.85 --dry-run
 ```
 
 The consolidator groups memories by semantic similarity (threshold configurable, default 0.85), keeps the best version (highest provenance, most recent, most accessed), and marks duplicates with `superseded_by` metadata.
 
 <Callout type="info">
-The memory system requires the `memory` extras (ChromaDB, boto3). Install with `uv add "odk[memory]"`. Without these extras, ODK works normally -- you just do not get compound learning.
+The memory system requires the `memory` extras (ChromaDB, boto3). Install with `uv add "ydk[memory]"`. Without these extras, YDK works normally -- you just do not get compound learning.
 </Callout>

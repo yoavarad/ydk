@@ -34,7 +34,7 @@ jobs:
           if [ "$ERRORS" -gt 0 ]; then
             echo ""
             echo "PR body validation failed with $ERRORS error(s)."
-            echo "See https://github.com/${{ github.repository }}/blob/main/src/odk/verifications/pr-body-validation/check.py for requirements."
+            echo "See https://github.com/${{ github.repository }}/blob/main/src/ydk/verifications/pr-body-validation/check.py for requirements."
             exit 1
           fi
 

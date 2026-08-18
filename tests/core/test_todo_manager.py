@@ -1,4 +1,4 @@
-"""Tests for odk.core.todo_manager — TODO tracking and verification."""
+"""Tests for ydk.core.todo_manager — TODO tracking and verification."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.todo_manager import TodoError, TodoManager
-from odk.models.todo import TodoStatus
+from ydk.core.todo_manager import TodoError, TodoManager
+from ydk.models.todo import TodoStatus
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     """Create a minimal project structure."""
-    (tmp_path / ".odk").mkdir()
+    (tmp_path / ".ydk").mkdir()
     return tmp_path
 
 
@@ -30,22 +30,22 @@ def mgr(project: Path) -> TodoManager:
 
 def test_register_creates_id(mgr: TodoManager) -> None:
     todo_id = mgr.register(file="app/service.py", line=10, method="Service.create")
-    assert todo_id == "ODK-TODO-001"
+    assert todo_id == "YDK-TODO-001"
 
 
 def test_register_increments_id(mgr: TodoManager) -> None:
     mgr.register(file="a.py", line=1, method="A.x")
     mgr.register(file="b.py", line=2, method="B.y")
     third = mgr.register(file="c.py", line=3, method="C.z")
-    assert third == "ODK-TODO-003"
+    assert third == "YDK-TODO-003"
 
 
 def test_register_saves_to_yaml(mgr: TodoManager, project: Path) -> None:
     mgr.register(file="app/service.py", line=10, method="Service.create", description="Impl create")
-    registry_path = project / ".odk" / "todos.yaml"
+    registry_path = project / ".ydk" / "todos.yaml"
     assert registry_path.exists()
     content = registry_path.read_text()
-    assert "ODK-TODO-001" in content
+    assert "YDK-TODO-001" in content
     assert "app/service.py" in content
 
 
@@ -54,10 +54,10 @@ def test_register_with_component_refs(mgr: TodoManager) -> None:
         file="app/service.py",
         line=10,
         method="Service.create",
-        component_refs=["odk:entity:orders/Order"],
+        component_refs=["ydk:entity:orders/Order"],
     )
     item = mgr.get(todo_id)
-    assert item.component_refs == ["odk:entity:orders/Order"]
+    assert item.component_refs == ["ydk:entity:orders/Order"]
 
 
 # --- list ---
@@ -96,7 +96,7 @@ def test_get_existing(mgr: TodoManager) -> None:
 
 def test_get_not_found(mgr: TodoManager) -> None:
     with pytest.raises(TodoError, match="TODO not found"):
-        mgr.get("ODK-TODO-999")
+        mgr.get("YDK-TODO-999")
 
 
 # --- assign ---
@@ -111,7 +111,7 @@ def test_assign_links_task(mgr: TodoManager) -> None:
 
 def test_assign_not_found(mgr: TodoManager) -> None:
     with pytest.raises(TodoError, match="TODO not found"):
-        mgr.assign("ODK-TODO-999", "T-001")
+        mgr.assign("YDK-TODO-999", "T-001")
 
 
 # --- start ---
@@ -141,7 +141,7 @@ def test_done_marks_complete(mgr: TodoManager, project: Path) -> None:
 def test_done_fails_if_not_implemented_present(mgr: TodoManager, project: Path) -> None:
     src = project / "app" / "service.py"
     src.parent.mkdir(parents=True)
-    src.write_text("def create(self):\n    raise NotImplementedError  # ODK-TODO-001: Impl create\n")
+    src.write_text("def create(self):\n    raise NotImplementedError  # YDK-TODO-001: Impl create\n")
     todo_id = mgr.register(file="app/service.py", line=2, method="Service.create")
     with pytest.raises(TodoError, match="NotImplementedError still present"):
         mgr.done(todo_id)
@@ -161,7 +161,7 @@ def test_verify_done_true_when_resolved(mgr: TodoManager, project: Path) -> None
 def test_verify_done_false_when_still_present(mgr: TodoManager, project: Path) -> None:
     src = project / "app" / "service.py"
     src.parent.mkdir(parents=True)
-    src.write_text("def create(self):\n    raise NotImplementedError  # ODK-TODO-001: Impl\n")
+    src.write_text("def create(self):\n    raise NotImplementedError  # YDK-TODO-001: Impl\n")
     todo_id = mgr.register(file="app/service.py", line=2, method="Service.create")
     assert mgr.verify_done(todo_id) is False
 
@@ -173,7 +173,7 @@ def test_verify_done_true_when_file_removed(mgr: TodoManager) -> None:
 
 def test_verify_done_not_found(mgr: TodoManager) -> None:
     with pytest.raises(TodoError, match="TODO not found"):
-        mgr.verify_done("ODK-TODO-999")
+        mgr.verify_done("YDK-TODO-999")
 
 
 # --- coverage ---
@@ -214,10 +214,10 @@ def test_scan_file_finds_not_implemented(mgr: TodoManager, project: Path) -> Non
     src.write_text(
         "class StrategyService:\n"
         "    def create(self, data):\n"
-        "        raise NotImplementedError  # ODK-TODO-001: Impl create\n"
+        "        raise NotImplementedError  # YDK-TODO-001: Impl create\n"
         "\n"
         "    def update(self, data):\n"
-        "        raise NotImplementedError  # ODK-TODO-002: Impl update\n"
+        "        raise NotImplementedError  # YDK-TODO-002: Impl update\n"
     )
     results = mgr.scan_file("app/strategy.py")
     assert len(results) == 2

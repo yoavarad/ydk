@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import json
 
-from odk.core.reviewer import load_all_reviewers
-from odk.spec_reviewers import REVIEWERS_DIR
+from ydk.core.reviewer import load_all_reviewers
+from ydk.spec_reviewers import REVIEWERS_DIR
 
 
 def _get_tool(reviewer_id: str, tool_name: str) -> object:
@@ -40,11 +40,11 @@ class TestScanUrlPaths:
         assert len(findings) >= 1
         assert any("/api/backtest/results" in f["text"] for f in findings)
 
-    def test_ignores_odk_references(self) -> None:
+    def test_ignores_ydk_references(self) -> None:
         tool = _get_tool("N08", "scan_url_paths")
-        text = "The [odk:route:orders/create] endpoint handles order creation."
+        text = "The [ydk:route:orders/create] endpoint handles order creation."
         findings = json.loads(tool(text))  # type: ignore[operator]
-        assert all("odk:" not in f["text"] for f in findings)
+        assert all("ydk:" not in f["text"] for f in findings)
 
     def test_empty_text_returns_empty(self) -> None:
         tool = _get_tool("N08", "scan_url_paths")
@@ -102,9 +102,9 @@ class TestScanUnlinkedMentions:
         findings = json.loads(tool(text))  # type: ignore[operator]
         assert any(f["category"] == "unlinked_route" for f in findings)
 
-    def test_ignores_odk_referenced_terms(self) -> None:
+    def test_ignores_ydk_referenced_terms(self) -> None:
         tool = _get_tool("N09", "scan_unlinked_mentions")
-        text = "The [odk:entity:orders/OrderService] processes orders."
+        text = "The [ydk:entity:orders/OrderService] processes orders."
         findings = json.loads(tool(text))  # type: ignore[operator]
         assert not any(f["text"] == "OrderService" for f in findings)
 

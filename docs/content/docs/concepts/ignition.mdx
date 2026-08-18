@@ -17,22 +17,22 @@ Before ignition, Stage 03 agents spent significant time writing boilerplate -- d
 
 ```
 Component Manifests ──> Ignition Pack Generators ──> Runnable Skeleton + TODOs
-(.odk/components/)      (subprocess per type)         (src/, tests/, migrations/)
+(.ydk/components/)      (subprocess per type)         (src/, tests/, migrations/)
 ```
 
-1. **Read inputs**: Ignition reads the installed pack and all component manifests in `.odk/components/`
+1. **Read inputs**: Ignition reads the installed pack and all component manifests in `.ydk/components/`
 2. **Run generators**: Each component type (entity, route, error, etc.) has a generator that runs as a subprocess, as subprocesses (env vars in, JSON stdout out)
-3. **Track hashes**: Every generated file's content hash is stored in `.odk/ignition-hashes.json` for idempotency -- re-running ignition skips unchanged files
-4. **Register TODOs**: Every `NotImplementedError` placeholder is registered as a tracked TODO with an `ODK-TODO-NNN` ID
+3. **Track hashes**: Every generated file's content hash is stored in `.ydk/ignition-hashes.json` for idempotency -- re-running ignition skips unchanged files
+4. **Register TODOs**: Every `NotImplementedError` placeholder is registered as a tracked TODO with an `YDK-TODO-NNN` ID
 5. **Post-generation checks**: Syntax validation, circular import detection, and `ruff format` run automatically
 
 ## TODO Tracking
 
-TODOs are the connective tissue between ignition and execution. Each `NotImplementedError` in generated code gets a unique `ODK-TODO-NNN` identifier, registered in `.odk/todos.yaml`. During Stage 02, TODOs are assigned to tasks via `odk todo assign`. During Stage 03, `odk task done` verifies that all assigned TODOs have been resolved -- no `NotImplementedError` remains for any TODO linked to that task.
+TODOs are the connective tissue between ignition and execution. Each `NotImplementedError` in generated code gets a unique `YDK-TODO-NNN` identifier, registered in `.ydk/todos.yaml`. During Stage 02, TODOs are assigned to tasks via `ydk todo assign`. During Stage 03, `ydk task done` verifies that all assigned TODOs have been resolved -- no `NotImplementedError` remains for any TODO linked to that task.
 
 ```
 Ignition registers TODOs ──> Stage 02 assigns TODOs to tasks ──> Stage 03 resolves TODOs
-(ODK-TODO-001..N)             (odk todo assign)                    (odk task done checks)
+(YDK-TODO-001..N)             (ydk todo assign)                    (ydk task done checks)
 ```
 
 ## Idempotency
@@ -41,10 +41,10 @@ Ignition is designed to be re-run safely. The hash store tracks content hashes f
 
 - **Unchanged components**: Generated files are skipped (hash matches)
 - **Changed components**: Only affected files are regenerated
-- **Force mode**: `odk ignite --force` ignores hashes and regenerates everything
+- **Force mode**: `ydk ignite --force` ignores hashes and regenerates everything
 
 <Callout type="info">
-Ignition does not replace scaffolding entirely. Scaffolding (`odk scaffold apply`) still exists for ad-hoc code generation during Stage 03. Ignition is the bulk one-time generation that creates the project skeleton; scaffolding handles cases where you add a new component later and need to generate code for just that component.
+Ignition does not replace scaffolding entirely. Scaffolding (`ydk scaffold apply`) still exists for ad-hoc code generation during Stage 03. Ignition is the bulk one-time generation that creates the project skeleton; scaffolding handles cases where you add a new component later and need to generate code for just that component.
 </Callout>
 
 ## The New SDLC Flow
@@ -75,7 +75,7 @@ The goal is that the generated code looks like an experienced developer wrote it
 
 ## Runtime Dependencies
 
-Ignition automatically installs runtime dependencies declared by the pack. When `odk ignite` runs, it reads the pack's `dependencies` section and runs the appropriate package manager (`pip install`, `npm install`, etc.) to ensure the generated code can execute immediately. You should never need to manually install packages after ignition.
+Ignition automatically installs runtime dependencies declared by the pack. When `ydk ignite` runs, it reads the pack's `dependencies` section and runs the appropriate package manager (`pip install`, `npm install`, etc.) to ensure the generated code can execute immediately. You should never need to manually install packages after ignition.
 
 ## App Must Start
 
@@ -90,8 +90,8 @@ If the app does not start after ignition, that is a bug in the pack, not in your
 
 ## No GENERATED Headers
 
-Unlike earlier versions of ODK, ignition packs no longer add `# GENERATED` headers to files. All generated files are developer-owned from the start. This simplifies the ownership model -- there is no "generated vs developer-owned" distinction to track. Re-running ignition uses content hashes (not headers) to determine which files to update.
+Unlike earlier versions of YDK, ignition packs no longer add `# GENERATED` headers to files. All generated files are developer-owned from the start. This simplifies the ownership model -- there is no "generated vs developer-owned" distinction to track. Re-running ignition uses content hashes (not headers) to determine which files to update.
 
 ## Fullstack Ignition
 
-For projects spanning multiple layers (backend + frontend + infrastructure), ODK supports phased ignition where multiple packs run in sequence with artifact passing between phases. See [Fullstack Ignition](/docs/concepts/fullstack-ignition) for details.
+For projects spanning multiple layers (backend + frontend + infrastructure), YDK supports phased ignition where multiple packs run in sequence with artifact passing between phases. See [Fullstack Ignition](/docs/concepts/fullstack-ignition) for details.

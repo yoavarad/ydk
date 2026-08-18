@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # The SDLC Stages
 
-ODK organizes the entire software development lifecycle into stages, each with its own tools, artifacts, and quality gates. This is not arbitrary structure -- it emerged from evaluating over twenty existing tools and finding that each solved about 60% of the problem with opinions baked in that did not fit. Some tools were excellent at task management but had no concept of specifications. Others handled verification beautifully but assumed you already had a perfect task breakdown. None of them connected the output of one phase as the input to the next in a way that actually worked.
+YDK organizes the entire software development lifecycle into stages, each with its own tools, artifacts, and quality gates. This is not arbitrary structure -- it emerged from evaluating over twenty existing tools and finding that each solved about 60% of the problem with opinions baked in that did not fit. Some tools were excellent at task management but had no concept of specifications. Others handled verification beautifully but assumed you already had a perfect task breakdown. None of them connected the output of one phase as the input to the next in a way that actually worked.
 
 The stages are sequential but not waterfall. You can loop back -- a discovery during execution creates a new task, a failed spec check sends you back to brainstorming, a memory from Stage 04 improves a spec in Stage 01. The stages define *what kind of work* you are doing, not a rigid order that forbids revisiting earlier phases.
 
@@ -21,7 +21,7 @@ Brainstorming --> Ignition --> Task Management --> Execution --> Learning
 
 ## Stage 01: Brainstorming and Design
 
-Stage 01 is human-owned. Coding agents do not participate in brainstorming, and this is a deliberate choice. The brainstorming stage exists because every failed project starts with a vague spec. An LLM given a vague spec will produce vague code, and you will spend more time debugging the ambiguity than you saved. ODK's brainstorming process is designed to be thorough -- by the time you finish, your spec is precise enough that an AI agent can implement from it without asking questions.
+Stage 01 is human-owned. Coding agents do not participate in brainstorming, and this is a deliberate choice. The brainstorming stage exists because every failed project starts with a vague spec. An LLM given a vague spec will produce vague code, and you will spend more time debugging the ambiguity than you saved. YDK's brainstorming process is designed to be thorough -- by the time you finish, your spec is precise enough that an AI agent can implement from it without asking questions.
 
 The work in Stage 01 centers on writing narrative specifications in markdown, defining component manifests in YAML, and validating the result through both deterministic linking and AI-powered quality evaluation. The narrative tells the story of what you are building and why. The component manifests capture the exact structure -- every entity, every route, every error response, every event, every service interface. The deterministic linker (Layer A) ensures that every reference in your narrative resolves to an actual manifest, and the LLM prose scanner (Layer B) finds things you mentioned in prose but forgot to formalize as components.
 
@@ -29,25 +29,25 @@ The spec checker evaluates 18 criteria across 5 groups (completeness, clarity, a
 
 For UI-heavy projects, the visual companion provides browser-based design annotation. You push wireframes or prototypes to a Vite dev server, annotate them with selection events, element comments, and rectangle regions, and the feedback is captured as structured data that informs the spec.
 
-Spec evolution is also managed here. When requirements change after the initial spec, you create a change proposal with delta specs that describe what was ADDED, MODIFIED, or REMOVED. ODK can diff the proposed changes against the current spec and archive them once approved, applying the operations to the canonical spec files.
+Spec evolution is also managed here. When requirements change after the initial spec, you create a change proposal with delta specs that describe what was ADDED, MODIFIED, or REMOVED. YDK can diff the proposed changes against the current spec and archive them once approved, applying the operations to the canonical spec files.
 
 ## Stage 01.5: Ignition
 
-Stage 01.5 bridges design and implementation with a single command: `odk ignite`. Given an installed ignition pack (from the catalog) and validated component manifests, ignition generates a complete runnable skeleton -- domain models, repository interfaces, API routes, test stubs, and migration files. Every piece of business logic that cannot be derived from the manifest is left as a `NotImplementedError` placeholder, registered as a tracked TODO with an `ODK-TODO-NNN` identifier.
+Stage 01.5 bridges design and implementation with a single command: `ydk ignite`. Given an installed ignition pack (from the catalog) and validated component manifests, ignition generates a complete runnable skeleton -- domain models, repository interfaces, API routes, test stubs, and migration files. Every piece of business logic that cannot be derived from the manifest is left as a `NotImplementedError` placeholder, registered as a tracked TODO with an `YDK-TODO-NNN` identifier.
 
-The catalog system (`odk catalog search/install`) provides ignition packs. Each pack declares which component types it consumes and what code it generates. The `hexagonal-architecture` pack, for example, consumes entity, route, error, contract, and external-dep manifests and produces a FastAPI + SQLAlchemy hexagonal layout.
+The catalog system (`ydk catalog search/install`) provides ignition packs. Each pack declares which component types it consumes and what code it generates. The `hexagonal-architecture` pack, for example, consumes entity, route, error, contract, and external-dep manifests and produces a FastAPI + SQLAlchemy hexagonal layout.
 
-Ignition is idempotent. File content hashes are tracked in `.odk/ignition-hashes.json`, so re-running `odk ignite` after adding new components only generates files for the changed manifests. Files where a developer has removed the `GENERATED` header are treated as developer-owned and never overwritten.
+Ignition is idempotent. File content hashes are tracked in `.ydk/ignition-hashes.json`, so re-running `ydk ignite` after adding new components only generates files for the changed manifests. Files where a developer has removed the `GENERATED` header are treated as developer-owned and never overwritten.
 
-The TODO registry created during ignition becomes the backbone of Stage 02 planning. Instead of decomposing the spec into tasks from scratch, you decompose the TODO list -- each TODO maps to a specific business logic implementation that an agent needs to write. This makes tasks smaller, more focused, and directly verifiable: `odk task done` checks that all assigned TODOs have been resolved.
+The TODO registry created during ignition becomes the backbone of Stage 02 planning. Instead of decomposing the spec into tasks from scratch, you decompose the TODO list -- each TODO maps to a specific business logic implementation that an agent needs to write. This makes tasks smaller, more focused, and directly verifiable: `ydk task done` checks that all assigned TODOs have been resolved.
 
 ## Stage 02: Task Management
 
 Stage 02 translates the spec into executable work. With ignition producing the skeleton, tasks now focus exclusively on business logic -- the boilerplate is already generated. The output of this stage is a dependency graph of tasks, each linked to specific TODOs, that agents can pick up and implement independently.
 
-The hierarchy is Epic > Story > Task. Epics map to major features or releases. Stories map to user-visible capabilities. Tasks are the atomic unit -- each one should be completable in a single coding session. After ignition, tasks are linked to `ODK-TODO-NNN` identifiers via `odk todo assign`, creating a direct mapping between the generated placeholders and the work that needs to be done. This granularity matters because AI coding agents have context windows. A task that requires understanding an entire codebase across multiple sessions will fail. A task scoped to "implement place_order() business logic (ODK-TODO-001)" can succeed in one pass.
+The hierarchy is Epic > Story > Task. Epics map to major features or releases. Stories map to user-visible capabilities. Tasks are the atomic unit -- each one should be completable in a single coding session. After ignition, tasks are linked to `YDK-TODO-NNN` identifiers via `ydk todo assign`, creating a direct mapping between the generated placeholders and the work that needs to be done. This granularity matters because AI coding agents have context windows. A task that requires understanding an entire codebase across multiple sessions will fail. A task scoped to "implement place_order() business logic (YDK-TODO-001)" can succeed in one pass.
 
-Dependency management is the heart of Stage 02. ODK supports 8 dependency types, but only 3 create execution edges in the DAG: `blocks`, `conditional-blocks`, and `waits-for`. The other 5 types (`validates`, `caused-by`, `discovered-from`, `supersedes`, `related`) are tracked for traceability without affecting scheduling. This distinction matters -- a test task that validates an implementation task is a dependency for traceability, but it should not block the implementation.
+Dependency management is the heart of Stage 02. YDK supports 8 dependency types, but only 3 create execution edges in the DAG: `blocks`, `conditional-blocks`, and `waits-for`. The other 5 types (`validates`, `caused-by`, `discovered-from`, `supersedes`, `related`) are tracked for traceability without affecting scheduling. This distinction matters -- a test task that validates an implementation task is a dependency for traceability, but it should not block the implementation.
 
 DAG validation uses Kahn's algorithm to detect cycles, compute parallel execution waves, find the critical path, and measure fan-out. The critical path tells you the minimum project duration even with unlimited agents. The parallel waves tell you how many agents you can productively use. The fan-out identifies bottleneck tasks that should be prioritized.
 
@@ -69,7 +69,7 @@ Gates control external dependencies. A task can require a PR to be merged, a CI 
 
 ## Stage 04: Learning
 
-Stage 04 is what makes ODK different from tools that treat each task as independent. Every completed task generates knowledge -- gotchas, patterns, decisions, abandoned approaches, discoveries, conventions. If that knowledge is not captured and made available for future tasks, each agent starts from zero context. The memory system solves this.
+Stage 04 is what makes YDK different from tools that treat each task as independent. Every completed task generates knowledge -- gotchas, patterns, decisions, abandoned approaches, discoveries, conventions. If that knowledge is not captured and made available for future tasks, each agent starts from zero context. The memory system solves this.
 
 Memory extraction parses Claude Code session transcripts (JSONL format) and uses an LLM to identify six types of knowledge: discoveries (facts about how the system works), decisions (architectural choices with rationale), gotchas (traps and edge cases), patterns (reusable approaches), conventions (naming and structural standards), and abandoned approaches (things tried and rejected, which are arguably the most valuable because they prevent others from wasting time on the same dead ends).
 
@@ -80,5 +80,5 @@ Contradiction detection prevents stale knowledge from polluting the system. When
 The decision store provides topic-keyed, append-only versioned decisions. When an architectural decision changes, the new version automatically supersedes the old one, maintaining a clear history of how the project's design evolved.
 
 <Callout type="info">
-The compound learning loop is the key differentiator. Knowledge from Stage 04 flows back to Stage 01 via memory bootstrapping -- when an agent starts a task, ODK searches for relevant memories from past work and includes them in the agent's context. Over time, the system gets smarter about your specific project.
+The compound learning loop is the key differentiator. Knowledge from Stage 04 flows back to Stage 01 via memory bootstrapping -- when an agent starts a task, YDK searches for relevant memories from past work and includes them in the agent's context. Over time, the system gets smarter about your specific project.
 </Callout>

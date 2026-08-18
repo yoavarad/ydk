@@ -7,9 +7,9 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 # Component Schemas
 
-Component schemas define the vocabulary ODK uses to describe your system. Each schema is a YAML file that specifies the fields a component manifest of that type must contain, their data types, whether they are required, validation patterns, and relationships to other components. The schemas live in two locations: built-in schemas ship with ODK at `src/odk/schemas/`, and project-specific schemas are copied to `.odk/schemas/` during initialization.
+Component schemas define the vocabulary YDK uses to describe your system. Each schema is a YAML file that specifies the fields a component manifest of that type must contain, their data types, whether they are required, validation patterns, and relationships to other components. The schemas live in two locations: built-in schemas ship with YDK at `src/ydk/schemas/`, and project-specific schemas are copied to `.ydk/schemas/` during initialization.
 
-The schema system serves three purposes. First, it enables validation -- when you create or modify a component manifest, ODK checks it against the schema to catch structural errors. Second, it enables scaffolding -- when you run `odk component create`, ODK reads the schema and generates a template with all fields pre-populated. Third, it enables documentation -- the `odk docs generate` command reads schemas and produces reference pages listing every field and its constraints.
+The schema system serves three purposes. First, it enables validation -- when you create or modify a component manifest, YDK checks it against the schema to catch structural errors. Second, it enables scaffolding -- when you run `ydk component create`, YDK reads the schema and generates a template with all fields pre-populated. Third, it enables documentation -- the `ydk docs generate` command reads schemas and produces reference pages listing every field and its constraints.
 
 ## How Schemas Work
 
@@ -23,7 +23,7 @@ fields:
   id:
     type: string
     required: true
-    pattern: "^odk:entity:.+"
+    pattern: "^ydk:entity:.+"
     description: "Unique component identifier"
   description:
     type: text
@@ -41,7 +41,7 @@ The `ref` and `ref_list` types are special -- they declare that a field referenc
 
 ## The 13 Built-in Types
 
-ODK ships with 13 schema types that cover the patterns found in most software systems:
+YDK ships with 13 schema types that cover the patterns found in most software systems:
 
 **`entity`** -- Domain models with typed fields, foreign keys, state transition maps, and relationship declarations. The richest schema, designed for database-backed objects.
 
@@ -71,6 +71,6 @@ ODK ships with 13 schema types that cover the patterns found in most software sy
 
 ## Adding Custom Schemas
 
-You can add project-specific schemas by creating new YAML files in `.odk/schemas/`. The schema format is the same as the built-in schemas. Once added, the new type is available for `odk component create` and validation.
+You can add project-specific schemas by creating new YAML files in `.ydk/schemas/`. The schema format is the same as the built-in schemas. Once added, the new type is available for `ydk component create` and validation.
 
 See [New Component Schema](/docs/extending/new-component-schema) for a detailed guide.

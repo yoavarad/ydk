@@ -9,15 +9,15 @@ import yaml
 if TYPE_CHECKING:
     from pathlib import Path
 
-from odk.core.test_coverage import TestCoverageChecker
+from ydk.core.test_coverage import TestCoverageChecker
 
 
 def _write_component(components_dir: Path, comp_type: str, namespace: str, name: str) -> None:
     """Write a minimal component YAML file."""
     type_dir = components_dir / comp_type / namespace
     type_dir.mkdir(parents=True, exist_ok=True)
-    cid = f"odk:{comp_type}:{namespace}/{name}"
-    data = {"$schema": f"odk:schema:{comp_type}", "id": cid, "description": "test"}
+    cid = f"ydk:{comp_type}:{namespace}/{name}"
+    data = {"$schema": f"ydk:schema:{comp_type}", "id": cid, "description": "test"}
     (type_dir / f"{name}.yaml").write_text(yaml.dump(data))
 
 
@@ -49,7 +49,7 @@ class TestCoverageCheckerFindsMatching:
         report = checker.check_coverage(components_dir, tests_dir)
         assert report.covered == 0
         assert report.uncovered == 1
-        assert "odk:entity:orders/Order" in report.uncovered_ids
+        assert "ydk:entity:orders/Order" in report.uncovered_ids
 
     def test_route_matched_by_all_segments(self, tmp_path):
         components_dir = tmp_path / "components"

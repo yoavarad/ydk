@@ -1,7 +1,7 @@
 """Tests for CLI parsing of dependency type syntax: T-001:validates."""
 
-from odk.cli.task_cmd import _parse_depends_on_arg
-from odk.models.pm import Dependency, DependencyType
+from ydk.cli.task_cmd import _parse_depends_on_arg
+from ydk.models.pm import Dependency, DependencyType
 
 
 class TestParseDependsOnArg:

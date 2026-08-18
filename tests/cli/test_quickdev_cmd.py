@@ -1,4 +1,4 @@
-"""Tests for odk task quick."""
+"""Tests for ydk task quick."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.models.quickdev import QuickDevContext
+from ydk.cli import app
+from ydk.models.quickdev import QuickDevContext
 
 runner = CliRunner()
 
 
-@patch("odk.core.quickdev.QuickDevSetup")
+@patch("ydk.core.quickdev.QuickDevSetup")
 def test_task_quick(mock_cls: MagicMock) -> None:
-    """odk task quick sets up quick dev and exits 0."""
+    """ydk task quick sets up quick dev and exits 0."""
     m = MagicMock()
     m.setup.return_value = QuickDevContext(
         task_id="QD-1",

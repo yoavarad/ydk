@@ -4,7 +4,7 @@ Exercises: issue create → task start → commit → task done → PR created o
 
 Requires:
 - gh CLI authenticated
-- GitHub repo configured via ODK_TASK_LIFECYCLE_TEST_REPO accessible
+- GitHub repo configured via YDK_TASK_LIFECYCLE_TEST_REPO accessible
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-REAL_REPO = os.environ.get("ODK_TASK_LIFECYCLE_TEST_REPO", "example-org/odk-task-lifecycle-test")
+REAL_REPO = os.environ.get("YDK_TASK_LIFECYCLE_TEST_REPO", "example-org/ydk-task-lifecycle-test")
 
 
 def _gh_available() -> bool:
@@ -39,7 +39,7 @@ pytestmark = [
 
 @pytest.fixture
 def e2e_project(tmp_path):
-    """Clone the real test repo and set up ODK structure."""
+    """Clone the real test repo and set up YDK structure."""
     project = tmp_path / "e2e-lifecycle"
     subprocess.run(
         ["gh", "repo", "clone", REAL_REPO, str(project)],
@@ -56,16 +56,16 @@ def e2e_project(tmp_path):
         check=True,
     )
 
-    # Set up minimal ODK structure
-    odk_dir = project / ".odk"
-    odk_dir.mkdir(exist_ok=True)
-    (odk_dir / "config.yaml").write_text("project:\n  name: e2e-test\n  remote: github\n  stack: python-fastapi\n")
-    (odk_dir / "todos.yaml").write_text("todos: {}\nnext_id: 1\n")
+    # Set up minimal YDK structure
+    ydk_dir = project / ".ydk"
+    ydk_dir.mkdir(exist_ok=True)
+    (ydk_dir / "config.yaml").write_text("project:\n  name: e2e-test\n  remote: github\n  stack: python-fastapi\n")
+    (ydk_dir / "todos.yaml").write_text("todos: {}\nnext_id: 1\n")
 
     # Initial commit + push the base branch so the task branch can PR against it
     subprocess.run(["git", "add", "."], cwd=str(project), capture_output=True)
     subprocess.run(
-        ["git", "commit", "-m", "chore: setup odk structure for e2e test"],
+        ["git", "commit", "-m", "chore: setup ydk structure for e2e test"],
         cwd=str(project),
         capture_output=True,
     )
@@ -110,16 +110,16 @@ def e2e_project(tmp_path):
 
 
 class TestFullTaskLifecycle:
-    """Test that odk task start → implement → done creates a real PR."""
+    """Test that ydk task start → implement → done creates a real PR."""
 
     def test_task_done_creates_github_pr(self, e2e_project):
         """The complete lifecycle creates a real GitHub PR with correct base branch."""
         from unittest.mock import MagicMock
 
-        from odk.core.events import EventBus
-        from odk.core.git_worktree import WorktreeManager
-        from odk.core.task_lifecycle import TaskLifecycle
-        from odk.core.verifier import Verifier
+        from ydk.core.events import EventBus
+        from ydk.core.git_worktree import WorktreeManager
+        from ydk.core.task_lifecycle import TaskLifecycle
+        from ydk.core.verifier import Verifier
 
         project = e2e_project["project"]
         base_branch = e2e_project["base_branch"]
@@ -170,7 +170,7 @@ class TestFullTaskLifecycle:
         assert "worktree" in start_result or "branch" in start_result
 
         # Verify active-task.json was written
-        active_task_file = project / ".odk" / "active-task.json"
+        active_task_file = project / ".ydk" / "active-task.json"
         assert active_task_file.exists(), "active-task.json not created"
         task_ctx = json.loads(active_task_file.read_text())
         assert task_ctx["base_branch"] == base_branch

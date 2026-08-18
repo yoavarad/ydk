@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install ODK and its prerequisites
+description: Install YDK and its prerequisites
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
@@ -8,11 +8,11 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 # Installation
 
-ODK -- the Oz Development Kit -- is a CLI toolkit that orchestrates the full AI-assisted software development lifecycle. It grew out of a simple observation: after evaluating over twenty existing tools for managing AI-driven development, none of them covered more than about 60% of the problem, and each came with opinions baked in that did not fit the way real projects evolve. Some focused only on task management. Others handled verification but ignored specifications. A few had memory systems, but none connected the entire pipeline from brainstorming through learning.
+YDK -- the Yoav Development Kit -- is a CLI toolkit that orchestrates the full AI-assisted software development lifecycle. It grew out of a simple observation: after evaluating over twenty existing tools for managing AI-driven development, none of them covered more than about 60% of the problem, and each came with opinions baked in that did not fit the way real projects evolve. Some focused only on task management. Others handled verification but ignored specifications. A few had memory systems, but none connected the entire pipeline from brainstorming through learning.
 
-ODK fills that gap. It is a single tool that covers four stages -- brainstorming and specification, task management and decomposition, execution with proof-based verification, and compound learning that feeds knowledge back into future work. It runs on your local machine, integrates with GitHub and GitLab issue trackers, and works alongside Claude Code or any other coding agent that follows a task-based workflow.
+YDK fills that gap. It is a single tool that covers four stages -- brainstorming and specification, task management and decomposition, execution with proof-based verification, and compound learning that feeds knowledge back into future work. It runs on your local machine, integrates with GitHub and GitLab issue trackers, and works alongside Claude Code or any other coding agent that follows a task-based workflow.
 
-Before installing ODK, you need Python 3.13 or later. ODK uses features introduced in Python 3.13 -- most notably the `StrEnum` improvements and type annotation patterns that earlier versions do not support. Check your Python version:
+Before installing YDK, you need Python 3.13 or later. YDK uses features introduced in Python 3.13 -- most notably the `StrEnum` improvements and type annotation patterns that earlier versions do not support. Check your Python version:
 
 ```bash
 python3 --version
@@ -21,19 +21,19 @@ python3 --version
 
 If you need to upgrade, use your system's package manager or install from python.org. On macOS with Homebrew, `brew install python@3.13` will get you there.
 
-## Installing ODK
+## Installing YDK
 
-The recommended way to install ODK is with `uv`, the fast Python package manager. If you do not have `uv`, install it first from [astral.sh](https://astral.sh).
+The recommended way to install YDK is with `uv`, the fast Python package manager. If you do not have `uv`, install it first from [astral.sh](https://astral.sh).
 
 <Tabs items={['uv (recommended)', 'pip']}>
 <Tab value="uv (recommended)">
 ```bash
-uv add odk
+uv add ydk
 ```
 </Tab>
 <Tab value="pip">
 ```bash
-pip install odk
+pip install ydk
 ```
 </Tab>
 </Tabs>
@@ -41,17 +41,17 @@ pip install odk
 Once installed, verify that the CLI is available:
 
 ```bash
-odk --help
+ydk --help
 ```
 
 You should see the full command tree: `init`, `doctor`, `task`, `spec`, `verify`, `memory`, `component`, and others. If you see `command not found`, check that your Python scripts directory is on your `PATH`.
 
 ## Running the Doctor Check
 
-ODK depends on several external tools for different parts of its workflow. Rather than failing cryptically when one is missing, ODK ships a `doctor` command that validates your entire environment in one pass:
+YDK depends on several external tools for different parts of its workflow. Rather than failing cryptically when one is missing, YDK ships a `doctor` command that validates your entire environment in one pass:
 
 ```bash
-odk doctor
+ydk doctor
 ```
 
 The doctor checks for:
@@ -64,27 +64,27 @@ The doctor checks for:
 - **gh** (optional) -- needed for GitHub issue tracking and PR creation
 - **glab** (optional) -- needed for GitLab issue tracking
 
-Each check reports its status with a clear pass/fail indicator. If something is missing, the doctor tells you exactly what to install and why ODK needs it.
+Each check reports its status with a clear pass/fail indicator. If something is missing, the doctor tells you exactly what to install and why YDK needs it.
 
 ## Optional Dependencies
 
-ODK's core CLI works with no extra dependencies -- you can create tasks, manage specs, run verification, and scaffold projects out of the box. However, some of the more advanced features require optional extras that pull in larger libraries.
+YDK's core CLI works with no extra dependencies -- you can create tasks, manage specs, run verification, and scaffold projects out of the box. However, some of the more advanced features require optional extras that pull in larger libraries.
 
 ```bash
 # AI features (spec checking, complexity scoring, AI code review)
-uv add "odk[ai]"
+uv add "ydk[ai]"
 
 # Memory system (ChromaDB + Amazon Bedrock embeddings)
-uv add "odk[memory]"
+uv add "ydk[memory]"
 
-# Development tools (for contributing to ODK itself)
-uv add "odk[dev]"
+# Development tools (for contributing to YDK itself)
+uv add "ydk[dev]"
 
 # Everything
-uv add "odk[ai,memory,dev]"
+uv add "ydk[ai,memory,dev]"
 ```
 
-The `ai` extra installs `boto3` and the Bedrock SDK, enabling ODK to call Claude for spec quality evaluation, complexity scoring, and AI-powered code review. The `memory` extra adds ChromaDB for vector storage and Bedrock embedding functions for hybrid search. Both require AWS credentials configured for Amazon Bedrock access -- set `aws.profile` and `aws.region` in your ODK config after initialization.
+The `ai` extra installs `boto3` and the Bedrock SDK, enabling YDK to call Claude for spec quality evaluation, complexity scoring, and AI-powered code review. The `memory` extra adds ChromaDB for vector storage and Bedrock embedding functions for hybrid search. Both require AWS credentials configured for Amazon Bedrock access -- set `aws.profile` and `aws.region` in your YDK config after initialization.
 
 <Callout type="info">
 If you are just getting started, install the base package first and add extras later as you need them. The core workflow -- specs, tasks, verification, and component manifests -- works without any AI or memory features.
@@ -92,7 +92,7 @@ If you are just getting started, install the base package first and add extras l
 
 ## What You Just Installed
 
-ODK is not a framework or a library -- it is a CLI orchestrator. It does not generate code for you. Instead, it provides the scaffolding, verification, and knowledge management that makes AI-assisted development reliable and repeatable. Here is what you now have access to:
+YDK is not a framework or a library -- it is a CLI orchestrator. It does not generate code for you. Instead, it provides the scaffolding, verification, and knowledge management that makes AI-assisted development reliable and repeatable. Here is what you now have access to:
 
 - **16 command groups** covering the full development lifecycle
 - **40 built-in verification plugins** for Python, FastAPI, Next.js/React, and Terraform
@@ -100,7 +100,7 @@ ODK is not a framework or a library -- it is a CLI orchestrator. It does not gen
 - **A hybrid memory engine** that combines vector search with keyword matching
 - **Repository backends** for local file storage, GitHub Issues, and GitLab Issues
 
-The next step is to initialize your first project and explore the directory structure that ODK creates.
+The next step is to initialize your first project and explore the directory structure that YDK creates.
 
 ## Next Steps
 

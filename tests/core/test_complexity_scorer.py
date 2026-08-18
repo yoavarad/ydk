@@ -7,9 +7,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from odk.core.complexity_scorer import ComplexityScorer, LLMProvider, _build_prompt
-from odk.models.complexity import ComplexityScore
-from odk.models.pm import TaskDetail
+from ydk.core.complexity_scorer import ComplexityScorer, LLMProvider, _build_prompt
+from ydk.models.complexity import ComplexityScore
+from ydk.models.pm import TaskDetail
 
 # ---------------------------------------------------------------------------
 # Mock LLM provider (system boundary — OK to mock)

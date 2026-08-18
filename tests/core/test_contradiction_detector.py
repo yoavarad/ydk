@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from odk.core.contradiction_detector import Contradiction, ContradictionDetector, LLMProvider
-from odk.models.memory import ExtractedMemoryModel
+from ydk.core.contradiction_detector import Contradiction, ContradictionDetector, LLMProvider
+from ydk.models.memory import ExtractedMemoryModel
 
 
 class FakeLLM:

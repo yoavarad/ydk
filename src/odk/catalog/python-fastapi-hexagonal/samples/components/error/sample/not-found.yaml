@@ -1,6 +1,0 @@
-$schema: "odk:schema:error"
-id: "odk:error:sample/not-found"
-description: "The requested resource was not found"
-http_status: 404
-code: "RESOURCE_NOT_FOUND"
-detail_template: "{resource_type} {resource_id} not found"

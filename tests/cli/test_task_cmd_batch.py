@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 import yaml
 from typer.testing import CliRunner
 
-from odk.cli import app
-from odk.cli.task_cmd import _validate_batch_yaml
-from odk.models.pm import EpicDetail, StoryDetail, TaskDetail, TaskSummary
+from ydk.cli import app
+from ydk.cli.task_cmd import _validate_batch_yaml
+from ydk.models.pm import EpicDetail, StoryDetail, TaskDetail, TaskSummary
 
 runner = CliRunner()
 
@@ -56,10 +56,10 @@ class TestTwoPassBatchCreation:
         ]
 
         with (
-            patch("odk.cli.task_cmd._get_repo", return_value=mock_task_repo),
-            patch("odk.repositories.factory.get_epic_repository", return_value=mock_epic_repo),
-            patch("odk.repositories.factory.get_story_repository", return_value=mock_story_repo),
-            patch("odk.cli.task_cmd._ensure_labels"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_task_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=mock_epic_repo),
+            patch("ydk.repositories.factory.get_story_repository", return_value=mock_story_repo),
+            patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -98,10 +98,10 @@ class TestTwoPassBatchCreation:
         ]
 
         with (
-            patch("odk.cli.task_cmd._get_repo", return_value=mock_task_repo),
-            patch("odk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("odk.repositories.factory.get_story_repository", return_value=MagicMock()),
-            patch("odk.cli.task_cmd._ensure_labels"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_task_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -136,10 +136,10 @@ class TestAutoCreateLabels:
             ensure_called.append(True)
 
         with (
-            patch("odk.cli.task_cmd._get_repo", return_value=mock_repo),
-            patch("odk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("odk.repositories.factory.get_story_repository", return_value=MagicMock()),
-            patch("odk.cli.task_cmd._ensure_labels", side_effect=mock_ensure),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.cli.task_cmd._ensure_labels", side_effect=mock_ensure),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -173,10 +173,10 @@ class TestFullBatchSchema:
         ]
 
         with (
-            patch("odk.cli.task_cmd._get_repo", return_value=mock_repo),
-            patch("odk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("odk.repositories.factory.get_story_repository", return_value=MagicMock()),
-            patch("odk.cli.task_cmd._ensure_labels"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -195,10 +195,10 @@ class TestFullBatchSchema:
         mock_repo.create_task.return_value = TaskDetail(id="T-100", title="Task A", status="open")
 
         with (
-            patch("odk.cli.task_cmd._get_repo", return_value=mock_repo),
-            patch("odk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("odk.repositories.factory.get_story_repository", return_value=MagicMock()),
-            patch("odk.cli.task_cmd._ensure_labels"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -247,7 +247,7 @@ class TestDryRunValidation:
         )
 
         mock_repo = MagicMock()
-        with patch("odk.cli.task_cmd._get_repo", return_value=mock_repo):
+        with patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
 
         assert result.exit_code == 0
@@ -345,8 +345,8 @@ class TestIndividualDryRun:
 class TestValidateDagErrorMessages:
     def test_unresolved_deps_show_specific_error(self) -> None:
         """validate-dag shows 'Unresolved dependency references' not 'cycle detected'."""
-        from odk.core.task_validator import validate_dag
-        from odk.models.task import Task
+        from ydk.core.task_validator import validate_dag
+        from ydk.models.task import Task
 
         tasks = [
             Task(id="A", title="A", depends_on=["MISSING"]),
@@ -360,8 +360,8 @@ class TestValidateDagErrorMessages:
 
     def test_cycles_still_detected(self) -> None:
         """validate-dag still reports cycles correctly."""
-        from odk.core.task_validator import validate_dag
-        from odk.models.task import Task
+        from ydk.core.task_validator import validate_dag
+        from ydk.models.task import Task
 
         tasks = [
             Task(id="A", title="A", depends_on=["B"]),
@@ -404,9 +404,9 @@ class TestConfigSetJSON:
     def test_config_set_json_list(self, tmp_path: Path, monkeypatch: object) -> None:
         """config set parses JSON list values."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-        config_dir = tmp_path / ".odk"
+        config_dir = tmp_path / ".ydk"
         config_dir.mkdir()
-        from odk.core.config import DEFAULT_CONFIG
+        from ydk.core.config import DEFAULT_CONFIG
 
         config_path = config_dir / "config.yaml"
         config_path.write_text(yaml.dump(DEFAULT_CONFIG, default_flow_style=False))
@@ -442,7 +442,7 @@ class TestCreateBatch:
                             "id": "t1",
                             "title": "Create config.py",
                             "story": "S-001",
-                            "component_refs": ["odk:crosscut:config/settings"],
+                            "component_refs": ["ydk:crosscut:config/settings"],
                             "spec_refs": ["docs/specs/01-core-domain.md"],
                             "depends_on": [],
                             "test_strategy": "Unit test for settings loading",
@@ -451,7 +451,7 @@ class TestCreateBatch:
                             "id": "t2",
                             "title": "Create database.py",
                             "story": "S-001",
-                            "component_refs": ["odk:contract:data/DatabaseSession"],
+                            "component_refs": ["ydk:contract:data/DatabaseSession"],
                             "spec_refs": ["docs/specs/01-core-domain.md"],
                             "depends_on": ["t1:blocks"],
                             "test_strategy": "Integration test",
@@ -469,10 +469,10 @@ class TestCreateBatch:
         ]
 
         with (
-            patch("odk.cli.task_cmd._get_repo", return_value=mock_repo),
-            patch("odk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("odk.repositories.factory.get_story_repository", return_value=MagicMock()),
-            patch("odk.cli.task_cmd._ensure_labels"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -517,10 +517,10 @@ class TestCreateBatch:
         ]
 
         with (
-            patch("odk.cli.task_cmd._get_repo", return_value=mock_repo),
-            patch("odk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("odk.repositories.factory.get_story_repository", return_value=MagicMock()),
-            patch("odk.cli.task_cmd._ensure_labels"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -541,7 +541,7 @@ class TestDescriptionFile:
         mock_repo = MagicMock()
         mock_repo.create_task.return_value = TaskDetail(id="T-010", title="My task", status="open")
 
-        with patch("odk.cli.task_cmd._get_repo", return_value=mock_repo):
+        with patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo):
             result = runner.invoke(
                 app,
                 [
@@ -620,7 +620,7 @@ class TestPlanWavesUnresolvedDeps:
         ]
         mock_repo.get_task.side_effect = lambda tid: {"T-001": t1, "T-002": t2}[tid]
 
-        with patch("odk.cli.task_cmd._get_repo", return_value=mock_repo):
+        with patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo):
             result = runner.invoke(app, ["task", "plan-waves", "--agents", "1"])
 
         assert result.exit_code == 0
@@ -638,7 +638,7 @@ class TestPlanWavesUnresolvedDeps:
         ]
         mock_repo.get_task.side_effect = lambda tid: {"T-001": t1, "T-002": t2}[tid]
 
-        with patch("odk.cli.task_cmd._get_repo", return_value=mock_repo):
+        with patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo):
             result = runner.invoke(app, ["task", "plan-waves", "--agents", "1"])
 
         assert result.exit_code == 0
@@ -653,18 +653,18 @@ def _setup_local_repo() -> tuple:  # type: ignore[type-arg]
     import tempfile
     from pathlib import Path
 
-    from odk.repositories.local.tasks import LocalTaskRepository
+    from ydk.repositories.local.tasks import LocalTaskRepository
 
     tmp = Path(tempfile.mkdtemp())
-    odk_dir = tmp / ".odk"
-    odk_dir.mkdir(parents=True)
-    tasks_dir = odk_dir / "tasks"
+    ydk_dir = tmp / ".ydk"
+    ydk_dir.mkdir(parents=True)
+    tasks_dir = ydk_dir / "tasks"
     tasks_dir.mkdir()
     # Write empty manifest
-    manifest_path = odk_dir / "manifest.yaml"
+    manifest_path = ydk_dir / "manifest.yaml"
     manifest_path.write_text(
         yaml.dump({"epics": {}, "stories": {}, "tasks": {}, "next_ids": {"epic": 1, "story": 1, "task": 1}}),
         encoding="utf-8",
     )
-    repo = LocalTaskRepository(odk_dir)
+    repo = LocalTaskRepository(ydk_dir)
     return repo, tmp

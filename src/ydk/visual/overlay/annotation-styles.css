@@ -1,0 +1,116 @@
+/* ── YDK Visual Companion — Annotation Styles ─── */
+
+#ydk-toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+}
+
+.ydk-tb-btn {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ydk-tb-btn:hover { background: rgba(59, 130, 246, 0.08); border-color: #3B82F6; }
+.ydk-tb-btn.ydk-tb-active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #3B82F6;
+  color: #1D4ED8;
+  font-weight: 600;
+}
+.ydk-tb-btn.ydk-tb-active::before { content: "\25CF "; color: #3B82F6; }
+.ydk-tb-btn kbd {
+  display: inline-block;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 4px;
+  font-family: monospace;
+}
+.ydk-tb-cancel { color: #666; }
+.ydk-tb-sep { color: #ccc; margin: 0 4px; }
+
+/* ── Element highlight ─── */
+.ydk-highlight {
+  outline: 2px solid #3B82F6 !important;
+  outline-offset: 1px;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* ── Selection highlight ─── */
+[data-choice].ydk-selected {
+  outline: 3px solid #3B82F6;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.15);
+}
+
+/* ── Comment popover ─── */
+.ydk-popover {
+  position: absolute;
+  z-index: 100000;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  width: 280px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.ydk-popover-text {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.ydk-popover-text:focus { outline: none; border-color: #3B82F6; }
+.ydk-popover-actions { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+.ydk-popover-actions button {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: #fff;
+}
+.ydk-popover-submit { background: #3B82F6 !important; color: #fff !important; border-color: #3B82F6 !important; }
+.ydk-popover-submit:hover { background: #2563EB !important; }
+.ydk-popover-cancel:hover { background: #f5f5f5; }
+
+/* ── Draw overlay + rectangle ─── */
+.ydk-draw-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  cursor: crosshair;
+}
+.ydk-draw-rect {
+  position: fixed;
+  border: 2px solid #3B82F6;
+  background: rgba(59, 130, 246, 0.07);
+  border-radius: 8px;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+  pointer-events: none;
+}

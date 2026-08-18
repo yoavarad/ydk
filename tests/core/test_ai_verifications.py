@@ -14,10 +14,10 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 
 SPEC_ALIGNMENT_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "spec-alignment" / "check.py"
+    Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "spec-alignment" / "check.py"
 )
 AI_CODE_REVIEW_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "ai-code-review" / "check.py"
+    Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "ai-code-review" / "check.py"
 )
 
 

@@ -14,7 +14,7 @@ class TestLintRuffDiscoverDirs:
         (tmp_path / "tests").mkdir()
 
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "lint-ruff" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "lint-ruff" / "check.py"
         )
         # Import the function directly by executing the module code
         from importlib.util import module_from_spec, spec_from_file_location
@@ -34,7 +34,7 @@ class TestLintRuffDiscoverDirs:
         (tmp_path / "app").mkdir()
 
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "lint-ruff" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "lint-ruff" / "check.py"
         )
         from importlib.util import module_from_spec, spec_from_file_location
 
@@ -50,7 +50,7 @@ class TestLintRuffDiscoverDirs:
     def test_falls_back_to_dot_when_no_dirs(self, tmp_path: Path) -> None:
         """Plugin falls back to '.' when no standard dirs exist."""
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "lint-ruff" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "lint-ruff" / "check.py"
         )
         from importlib.util import module_from_spec, spec_from_file_location
 
@@ -71,7 +71,7 @@ class TestTypesTyDiscoverDirs:
         (tmp_path / "src").mkdir()
 
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "types-ty" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "types-ty" / "check.py"
         )
         from importlib.util import module_from_spec, spec_from_file_location
 
@@ -86,7 +86,7 @@ class TestTypesTyDiscoverDirs:
 
     def test_falls_back_to_dot(self, tmp_path: Path) -> None:
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "types-ty" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "types-ty" / "check.py"
         )
         from importlib.util import module_from_spec, spec_from_file_location
 
@@ -102,7 +102,7 @@ class TestTypesTyDiscoverDirs:
     def test_ty_check_uses_project_flag(self, tmp_path: Path) -> None:
         """ty check is called with --project to prevent scanning parent directories."""
         check_path = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications" / "types-ty" / "check.py"
+            Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "types-ty" / "check.py"
         )
 
         # Verify the --project flag is present in the source to constrain ty to the project dir.
@@ -119,7 +119,7 @@ class TestTestsPytestDiscoverDirs:
         check_path = (
             Path(__file__).resolve().parent.parent.parent
             / "src"
-            / "odk"
+            / "ydk"
             / "verifications"
             / "tests-pytest"
             / "check.py"
@@ -141,7 +141,7 @@ class TestTestsPytestDiscoverDirs:
         check_path = (
             Path(__file__).resolve().parent.parent.parent
             / "src"
-            / "odk"
+            / "ydk"
             / "verifications"
             / "tests-pytest"
             / "check.py"

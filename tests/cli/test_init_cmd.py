@@ -1,4 +1,4 @@
-"""Tests for odk init command."""
+"""Tests for ydk init command."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import yaml
 from typer.testing import CliRunner
 
-from odk.cli import app
+from ydk.cli import app
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,50 +16,50 @@ runner = CliRunner()
 
 
 def test_init_creates_config(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init --name myproject creates .odk/config.yaml."""
+    """ydk init --name myproject creates .ydk/config.yaml."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "myproject"])
     assert result.exit_code == 0
     assert "myproject" in result.output
-    assert (tmp_path / ".odk" / "config.yaml").is_file()
+    assert (tmp_path / ".ydk" / "config.yaml").is_file()
 
 
 def test_init_fails_when_config_exists(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init when config already exists exits non-zero."""
+    """ydk init when config already exists exits non-zero."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-    (tmp_path / ".odk").mkdir()
-    (tmp_path / ".odk" / "config.yaml").write_text("project:\n  name: existing\n")
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: existing\n")
     result = runner.invoke(app, ["init", "--name", "myproject"])
     assert result.exit_code != 0
     assert "already exists" in result.output
 
 
 def test_init_force_overwrites(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init --name myproject --force overwrites existing config."""
+    """ydk init --name myproject --force overwrites existing config."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-    (tmp_path / ".odk").mkdir()
-    (tmp_path / ".odk" / "config.yaml").write_text("project:\n  name: old\n")
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: old\n")
     result = runner.invoke(app, ["init", "--name", "myproject", "--force"])
     assert result.exit_code == 0
     assert "myproject" in result.output
 
 
 def test_init_creates_spec_directory(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init creates the docs/specs/ directory."""
+    """ydk init creates the docs/specs/ directory."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     runner.invoke(app, ["init", "--name", "myproject"])
     assert (tmp_path / "docs" / "specs").is_dir()
 
 
 def test_init_creates_adrs_directory(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init creates the docs/adrs/ directory."""
+    """ydk init creates the docs/adrs/ directory."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     runner.invoke(app, ["init", "--name", "myproject"])
     assert (tmp_path / "docs" / "adrs").is_dir()
 
 
 def test_init_creates_project_rules(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init creates docs/project-rules.md."""
+    """ydk init creates docs/project-rules.md."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     runner.invoke(app, ["init", "--name", "myproject"])
     rules = tmp_path / "docs" / "project-rules.md"
@@ -68,7 +68,7 @@ def test_init_creates_project_rules(tmp_path: Path, monkeypatch: object) -> None
 
 
 def test_init_runs_doctor(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init runs doctor checks at the end."""
+    """ydk init runs doctor checks at the end."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "myproject"])
     assert "Python" in result.output
@@ -76,38 +76,38 @@ def test_init_runs_doctor(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_init_hooks_use_verify_run_subcommand(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init creates hooks that use 'odk verify run --trigger' (not 'odk verify --trigger')."""
+    """ydk init creates hooks that use 'ydk verify run --trigger' (not 'ydk verify --trigger')."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     runner.invoke(app, ["init", "--name", "myproject"])
 
-    pre_commit = tmp_path / ".odk" / "hooks" / "pre-commit"
+    pre_commit = tmp_path / ".ydk" / "hooks" / "pre-commit"
     assert pre_commit.is_file()
     content = pre_commit.read_text()
-    assert "odk verify run --trigger pre-commit" in content
-    assert "odk verify --trigger pre-commit\n" not in content  # must NOT have old syntax
+    assert "ydk verify run --trigger pre-commit" in content
+    assert "ydk verify --trigger pre-commit\n" not in content  # must NOT have old syntax
 
-    pre_push = tmp_path / ".odk" / "hooks" / "pre-push"
+    pre_push = tmp_path / ".ydk" / "hooks" / "pre-push"
     assert pre_push.is_file()
     content = pre_push.read_text()
-    assert "odk verify run --trigger pre-push" in content
-    assert "odk verify --trigger pre-push\n" not in content
+    assert "ydk verify run --trigger pre-push" in content
+    assert "ydk verify --trigger pre-push\n" not in content
 
 
 def test_init_with_remote_flag(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init --remote github sets remote in config."""
+    """ydk init --remote github sets remote in config."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "myproject", "--remote", "github"])
     assert result.exit_code == 0
-    cfg = yaml.safe_load((tmp_path / ".odk" / "config.yaml").read_text())
+    cfg = yaml.safe_load((tmp_path / ".ydk" / "config.yaml").read_text())
     assert cfg["project"]["remote"] == "github"
 
 
 def test_init_with_stack_flag(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init --stack python-fastapi populates verifications and stack field."""
+    """ydk init --stack python-fastapi populates verifications and stack field."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "myproject", "--stack", "python-fastapi"])
     assert result.exit_code == 0
-    cfg = yaml.safe_load((tmp_path / ".odk" / "config.yaml").read_text())
+    cfg = yaml.safe_load((tmp_path / ".ydk" / "config.yaml").read_text())
     assert cfg["project"]["stack"] == "python-fastapi"
     assert "lint-ruff" in cfg["verification"]["enabled"]
     assert "tests-pytest" in cfg["verification"]["enabled"]
@@ -115,27 +115,27 @@ def test_init_with_stack_flag(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_init_with_stack_and_remote(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init --stack python-fastapi --remote github sets both."""
+    """ydk init --stack python-fastapi --remote github sets both."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "api", "--stack", "python-fastapi", "--remote", "github"])
     assert result.exit_code == 0
-    cfg = yaml.safe_load((tmp_path / ".odk" / "config.yaml").read_text())
+    cfg = yaml.safe_load((tmp_path / ".ydk" / "config.yaml").read_text())
     assert cfg["project"]["remote"] == "github"
     assert cfg["project"]["stack"] == "python-fastapi"
 
 
 def test_init_without_stack_has_no_enabled_list(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init without --stack does not populate verification.enabled."""
+    """ydk init without --stack does not populate verification.enabled."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "plain"])
     assert result.exit_code == 0
-    cfg = yaml.safe_load((tmp_path / ".odk" / "config.yaml").read_text())
+    cfg = yaml.safe_load((tmp_path / ".ydk" / "config.yaml").read_text())
     # No verification section or empty enabled list
     assert cfg.get("verification", {}).get("enabled", []) == []
 
 
 def test_init_shows_summary_table(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init prints a Rich summary table with project name, remote, stack, hooks, and schemas."""
+    """ydk init prints a Rich summary table with project name, remote, stack, hooks, and schemas."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "myproject", "--remote", "github", "--stack", "python-fastapi"])
     assert result.exit_code == 0
@@ -146,12 +146,12 @@ def test_init_shows_summary_table(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_init_copies_spec_reviewers(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init copies built-in spec-reviewer YAMLs to .odk/spec-reviewers/."""
+    """ydk init copies built-in spec-reviewer YAMLs to .ydk/spec-reviewers/."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "myproject"])
     assert result.exit_code == 0
 
-    reviewers_dir = tmp_path / ".odk" / "spec-reviewers"
+    reviewers_dir = tmp_path / ".ydk" / "spec-reviewers"
     assert reviewers_dir.is_dir()
     yaml_files = list(reviewers_dir.glob("*.yaml"))
     assert len(yaml_files) == 10
@@ -160,12 +160,12 @@ def test_init_copies_spec_reviewers(tmp_path: Path, monkeypatch: object) -> None
 
 
 def test_init_does_not_overwrite_existing_reviewers(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init --force preserves user-modified reviewer YAMLs."""
+    """ydk init --force preserves user-modified reviewer YAMLs."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     # First init
     runner.invoke(app, ["init", "--name", "myproject"])
     # Modify a reviewer YAML
-    n01 = tmp_path / ".odk" / "spec-reviewers" / "n01.yaml"
+    n01 = tmp_path / ".ydk" / "spec-reviewers" / "n01.yaml"
     n01.write_text("id: N01\nname: Modified\ntools: []\nsystem_prompt: Custom.\n")
     # Force re-init
     runner.invoke(app, ["init", "--name", "myproject", "--force"])
@@ -174,7 +174,7 @@ def test_init_does_not_overwrite_existing_reviewers(tmp_path: Path, monkeypatch:
 
 
 def test_init_installs_subagent_stop_hook(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init installs .claude/hooks/check-task-complete.sh and SubagentStop in settings."""
+    """ydk init installs .claude/hooks/check-task-complete.sh and SubagentStop in settings."""
     import json
 
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
@@ -198,7 +198,7 @@ def test_init_installs_subagent_stop_hook(tmp_path: Path, monkeypatch: object) -
 
 
 def test_init_installs_guard_hook(tmp_path: Path, monkeypatch: object) -> None:
-    """odk init installs .claude/hooks/guard.py with PreToolUse and permissions.allow."""
+    """ydk init installs .claude/hooks/guard.py with PreToolUse and permissions.allow."""
     import json
 
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

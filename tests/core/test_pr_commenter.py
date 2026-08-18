@@ -8,14 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from odk.core.pr_commenter import PRCommenter
-from odk.models.verification import CheckResult, VerificationReport
+from ydk.core.pr_commenter import PRCommenter
+from ydk.models.verification import CheckResult, VerificationReport
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-MARKER = "<!-- odk-verification -->"
+MARKER = "<!-- ydk-verification -->"
 
 
 def _sample_report(*, all_passed: bool = True) -> VerificationReport:
@@ -112,7 +112,7 @@ class TestMarkerDetection:
             '[{"id": "IC_abc123", "body": "some text ' + MARKER + ' more text"},'
             ' {"id": "IC_other", "body": "unrelated comment"}]'
         )
-        with patch("odk.core.pr_commenter.subprocess.run") as mock_run:
+        with patch("ydk.core.pr_commenter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=comments_json,
@@ -123,7 +123,7 @@ class TestMarkerDetection:
     def test_returns_none_when_no_marker(self) -> None:
         commenter = PRCommenter()
         comments_json = '[{"id": "IC_other", "body": "unrelated comment"}]'
-        with patch("odk.core.pr_commenter.subprocess.run") as mock_run:
+        with patch("ydk.core.pr_commenter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=comments_json,
@@ -133,7 +133,7 @@ class TestMarkerDetection:
 
     def test_returns_none_on_empty_comments(self) -> None:
         commenter = PRCommenter()
-        with patch("odk.core.pr_commenter.subprocess.run") as mock_run:
+        with patch("ydk.core.pr_commenter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="[]",
@@ -155,7 +155,7 @@ class TestPostVerificationResults:
 
         with (
             patch.object(commenter, "_find_existing_comment", return_value=None),
-            patch("odk.core.pr_commenter.subprocess.run") as mock_run,
+            patch("ydk.core.pr_commenter.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0)
             commenter.post_verification_results(pr_url, report)
@@ -175,7 +175,7 @@ class TestPostVerificationResults:
 
         with (
             patch.object(commenter, "_find_existing_comment", return_value="IC_abc123"),
-            patch("odk.core.pr_commenter.subprocess.run") as mock_run,
+            patch("ydk.core.pr_commenter.subprocess.run") as mock_run,
         ):
             mock_run.return_value = MagicMock(returncode=0)
             commenter.post_verification_results(pr_url, report)
@@ -199,7 +199,7 @@ class TestSubprocessCalls:
         body = "test comment"
         pr_url = "https://github.com/org/repo/pull/42"
 
-        with patch("odk.core.pr_commenter.subprocess.run") as mock_run:
+        with patch("ydk.core.pr_commenter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             commenter._create_comment(pr_url, body)
 
@@ -211,7 +211,7 @@ class TestSubprocessCalls:
         commenter = PRCommenter()
         body = "updated comment"
 
-        with patch("odk.core.pr_commenter.subprocess.run") as mock_run:
+        with patch("ydk.core.pr_commenter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             commenter._update_comment("IC_abc123", body)
 
@@ -224,7 +224,7 @@ class TestSubprocessCalls:
         commenter = PRCommenter()
         pr_url = "https://github.com/org/repo/pull/42"
 
-        with patch("odk.core.pr_commenter.subprocess.run") as mock_run:
+        with patch("ydk.core.pr_commenter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="auth error")
             with pytest.raises(RuntimeError, match="Failed to create PR comment"):
                 commenter._create_comment(pr_url, "body")
@@ -232,7 +232,7 @@ class TestSubprocessCalls:
     def test_update_raises_on_failure(self) -> None:
         commenter = PRCommenter()
 
-        with patch("odk.core.pr_commenter.subprocess.run") as mock_run:
+        with patch("ydk.core.pr_commenter.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="not found")
             with pytest.raises(RuntimeError, match="Failed to update PR comment"):
                 commenter._update_comment("IC_abc123", "body")
@@ -246,7 +246,7 @@ class TestSubprocessCalls:
 class TestOnCompleteCallback:
     def test_callback_fires_with_report(self, tmp_path: pytest.TempPathFactory) -> None:  # type: ignore[override]
         """The on_complete callback receives the final VerificationReport."""
-        from odk.core.verifier import Verifier
+        from ydk.core.verifier import Verifier
 
         global_dir = tmp_path / "global"  # type: ignore[operator]
         project_dir = tmp_path / "project"  # type: ignore[operator]
@@ -297,13 +297,13 @@ class TestCLIPrFlag:
         """When --pr is provided, post_verification_results is called."""
         from typer.testing import CliRunner
 
-        from odk.cli.verify_cmd import verify_app
+        from ydk.cli.verify_cmd import verify_app
 
         runner = CliRunner()
 
         with (
-            patch("odk.cli.verify_cmd._make_verifier") as mock_mk,
-            patch("odk.core.pr_commenter.PRCommenter.post_verification_results") as mock_post,
+            patch("ydk.cli.verify_cmd._make_verifier") as mock_mk,
+            patch("ydk.core.pr_commenter.PRCommenter.post_verification_results") as mock_post,
         ):
             fake_report = _sample_report(all_passed=True)
             mock_verifier = MagicMock()

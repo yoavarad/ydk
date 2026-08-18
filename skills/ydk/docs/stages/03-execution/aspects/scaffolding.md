@@ -1,0 +1,147 @@
+# Scaffolding
+
+## What Scaffolding Does
+
+Generates deterministic files from templates. Offloads boilerplate so the LLM focuses on business logic. A template generates the same output every time for the same inputs — no hallucination, no variation.
+
+## Component-Driven Scaffolding
+
+Templates can generate code directly from component manifests using `--from` and `--map`.
+The `--from` flag reads the component manifest and extracts variables automatically.
+The `--map` flag provides additional variable mappings not derivable from the manifest.
+
+This ensures generated code matches the component manifest exactly — field names, types, constraints, and response shapes all come from the structured YAML, not from LLM interpretation.
+
+### The `--from` flag
+
+`--from <component-id>` resolves a component manifest ID (e.g., `ydk:route:orders/create`) to its YAML file in `.ydk/components/`, parses the fields, and populates template variables from the manifest content. The template's `from_schemas` field declares which component types it supports.
+
+```bash
+# Generate a route handler from a route component manifest
+ydk scaffold apply fastapi-route --from ydk:route:orders/create
+
+# Generate a data model from an entity component manifest
+ydk scaffold apply python-model --from ydk:entity:orders/Order
+
+# Generate a repository from a contract component manifest
+ydk scaffold apply python-repo --from ydk:contract:data/OrderRepository
+```
+
+### Extra mappings with `--map`
+
+When the manifest does not supply all variables the template needs, use `--map` to provide the remainder:
+
+```bash
+ydk scaffold apply fastapi-route --from ydk:route:orders/create --map "entity_name=Order,entity_snake=order"
+```
+
+### Choosing the right approach
+
+| Scenario | Command |
+|---|---|
+| Component manifest exists | `ydk scaffold apply <tpl> --from <component-id>` |
+| No manifest, ad-hoc variables | `ydk scaffold apply <tpl> --var k=v` |
+| Manifest exists but needs extras | `ydk scaffold apply <tpl> --from <id> --map k=v` |
+
+## Template Anatomy
+
+A template is a folder containing:
+- `manifest.yaml` — metadata, variables, description (loaded into agent context)
+- One or more `.j2` files — Jinja2 templates with `{{variable}}` placeholders
+- Directory structure inside the template = output directory structure
+
+```
+templates/fastapi-route/
+├── manifest.yaml
+├── app/routes/{{entity_snake}}.py.j2          → app/routes/order.py
+├── app/schemas/{{entity_snake}}.py.j2         → app/schemas/order.py
+└── tests/e2e/test_{{entity_snake}}_route.py.j2 → tests/e2e/test_order_route.py
+```
+
+The `.j2` extension is stripped. Filenames are rendered with variables. Directory structure is preserved.
+
+## Manifest Format
+
+```yaml
+name: fastapi-route
+description: |
+  Use when: implementing a new FastAPI route handler for a CRUD entity.
+  Generates: route handler + Pydantic schemas + E2E test.
+  After applying: implement the service method the route calls.
+  Supports --from: ydk:route:* component manifests (extracts method, path, request/response shapes).
+
+variables:
+  entity_name: "Entity name in PascalCase (e.g., Order)"
+  entity_snake: "Entity name in snake_case (e.g., order)"
+  fields: "List of field definitions (name, type, constraints)"
+
+from_schemas:
+  - ydk:route:*             # Which component types this template can read from
+```
+
+All variables are required unless supplied via `--from`. There are no optional variables.
+
+The `description` field is loaded into the agent's context when it runs `ydk scaffold info` — write it as instructions for the agent, not for a human.
+
+The `from_schemas` field declares which component manifest types this template can auto-populate from.
+
+## Template Locations
+
+**Global templates** (ship with YDK): `ydk/templates/`
+**Project-specific templates**: `.ydk/templates/`
+
+YDK searches project-specific first, then global. Project templates override global ones with the same name.
+
+## CLI Commands
+
+```bash
+ydk scaffold list                                         # List all templates
+ydk scaffold info <name>                                  # Show manifest (description + variables)
+ydk scaffold apply <name> --var k=v                       # Apply with individual variables
+ydk scaffold apply <name> --var-file vars.yaml            # Apply with variable file
+ydk scaffold apply <name> --from <component_ref>          # Apply from component manifest
+ydk scaffold apply <name> --from <ref> --map k=v          # Apply from manifest with extra mappings
+ydk scaffold create <name>                                # Create new project-specific template
+```
+
+## Output Paths
+
+Output paths are determined by the template's directory structure, relative to the project root. The project root is where `.ydk/` lives.
+
+No matter where you run the command, outputs are always relative to the project root.
+
+## Generated File Headers
+
+Every generated file gets a header comment (based on file extension):
+- `.py`: `# GENERATED by YDK — do not edit manually`
+- `.ts`/`.js`: `// GENERATED by YDK — do not edit manually`
+- `.md`: `<!-- GENERATED by YDK — do not edit manually -->`
+
+The agent MUST NOT modify generated files. If the template needs to change, change the template and regenerate.
+
+## Creating New Templates
+
+When the agent notices a repeating pattern:
+
+```bash
+ydk scaffold create sample-template --description "Feature boilerplate"
+```
+
+This creates `.ydk/templates/sample-template/manifest.yaml`. The agent then writes the `.j2` files based on the pattern it observed, replacing concrete values with `{{variables}}`.
+
+## When to Scaffold
+
+The task description declares if scaffolding is needed:
+```
+Scaffolding: use fastapi-route template --from ydk:route:orders/create
+```
+
+If the task doesn't mention scaffolding, the agent hand-writes everything. The decomposition in Stage 02 decides which tasks use templates.
+
+## No Composition
+
+Templates don't compose automatically. If you want to apply multiple templates, run `ydk scaffold apply` multiple times. If you want a template that combines others, copy-paste the files into one template.
+
+## No Sync
+
+Templates are one-time generators. No living updates, no bidirectional sync. Generate once, own the output.

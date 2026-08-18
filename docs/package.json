@@ -1,5 +1,5 @@
 {
-  "name": "odk-docs",
+  "name": "ydk-docs",
   "version": "0.17.0",
   "private": true,
   "scripts": {

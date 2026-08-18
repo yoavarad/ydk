@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from odk.core.compaction import TaskCompactor
-from odk.models.compaction import CompactedTask
-from odk.models.pm import AcceptanceCriterion, TaskCreate, TaskDetail
-from odk.repositories.local.frontmatter import parse_frontmatter
-from odk.repositories.local.tasks import LocalTaskRepository
+from ydk.core.compaction import TaskCompactor
+from ydk.models.compaction import CompactedTask
+from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskDetail
+from ydk.repositories.local.frontmatter import parse_frontmatter
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -219,7 +219,7 @@ class TestRepositoryCompaction:
         task = _make_done_task(repo)
         repo.compact_task(task.id)
 
-        from odk.repositories.local.manifest import Manifest
+        from ydk.repositories.local.manifest import Manifest
 
         data = Manifest(tmp_path).load()
         assert task.id in data["tasks"]

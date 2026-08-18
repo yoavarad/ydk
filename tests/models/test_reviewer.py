@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from odk.models.reviewer import ReviewerConfigModel, ReviewReport, ReviewResultModel
+from ydk.models.reviewer import ReviewerConfigModel, ReviewReport, ReviewResultModel
 
 
 class TestReviewerConfigModel:

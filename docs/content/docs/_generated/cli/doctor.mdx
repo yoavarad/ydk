@@ -1,14 +1,14 @@
 ---
-title: "odk doctor"
+title: "ydk doctor"
 description: "CLI reference for environment health checks"
 ---
 
-# `odk doctor`
+# `ydk doctor`
 
-Run health checks on the ODK environment to verify all required tools, configurations, and dependencies are properly set up.
+Run health checks on the YDK environment to verify all required tools, configurations, and dependencies are properly set up.
 
 ```text
- Usage: odk doctor [OPTIONS]
+ Usage: ydk doctor [OPTIONS]
 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │    --help           Show this message and exit.                              │
@@ -18,20 +18,20 @@ Run health checks on the ODK environment to verify all required tools, configura
 ## Usage
 
 ```bash
-$ odk doctor
-ODK Doctor - Environment Health Check
+$ ydk doctor
+YDK Doctor - Environment Health Check
 
 [PASS] Python >= 3.11 (3.12.4)
-[PASS] ODK installed (v2.1.0)
-[PASS] .odk/ directory exists
+[PASS] YDK installed (v2.1.0)
+[PASS] .ydk/ directory exists
 [PASS] config.yaml valid
 [PASS] ChromaDB available
 [PASS] ruff installed (0.8.2)
 [PASS] ty installed (0.1.5)
 [PASS] pytest installed (8.3.4)
 [PASS] git configured (user.name, user.email set)
-[PASS] Catalog path exists (~/.odk/catalog/)
-[WARN] No ignition pack installed -- run `odk catalog install <pack>`
+[PASS] Catalog path exists (~/.ydk/catalog/)
+[WARN] No ignition pack installed -- run `ydk catalog install <pack>`
 
 10 passed, 1 warning, 0 failed
 ```
@@ -39,7 +39,7 @@ ODK Doctor - Environment Health Check
 The doctor command checks:
 
 - Python version compatibility
-- ODK installation and version
+- YDK installation and version
 - Project configuration validity
 - Required tools (ruff, ty, pytest, git)
 - Catalog and ChromaDB availability

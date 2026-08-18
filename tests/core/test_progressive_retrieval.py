@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from odk.core.memory import MemoryEngine
+from ydk.core.memory import MemoryEngine
 
 
 class TestCompactIndex:

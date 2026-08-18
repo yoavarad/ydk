@@ -13,12 +13,12 @@ After your spec passes the Stage 01 quality gate, ignition generates a runnable 
 
 Before running ignition, you need:
 
-1. **Validated spec**: Narratives and component manifests from Stage 01, with `odk spec verify` passing
-2. **Installed ignition pack**: Run `odk catalog list` to confirm. If none is installed, search and install one:
+1. **Validated spec**: Narratives and component manifests from Stage 01, with `ydk spec verify` passing
+2. **Installed ignition pack**: Run `ydk catalog list` to confirm. If none is installed, search and install one:
 
 ```bash
-odk catalog search "python fastapi"
-odk catalog install hexagonal-architecture
+ydk catalog search "python fastapi"
+ydk catalog install hexagonal-architecture
 ```
 
 ## Step 1: Preview the Plan
@@ -26,7 +26,7 @@ odk catalog install hexagonal-architecture
 Always preview before generating:
 
 ```bash
-odk ignite --dry-run
+ydk ignite --dry-run
 ```
 
 This shows every file that will be created, which component manifests drive each file, how many TODOs will be registered, and any components that the pack cannot consume. Review the output carefully -- if the file layout does not match your expectations, you may need a different ignition pack or custom generators.
@@ -34,7 +34,7 @@ This shows every file that will be created, which component manifests drive each
 ## Step 2: Generate the Skeleton
 
 ```bash
-odk ignite
+ydk ignite
 ```
 
 Ignition runs generators as subprocesses, one per component type. Each generator reads the relevant component manifests and produces code files with `GENERATED` headers. After generation, three post-checks run automatically:
@@ -68,13 +68,13 @@ Understand the work that ignition has queued:
 
 ```bash
 # List all registered TODOs
-odk todo list
+ydk todo list
 
 # See overall coverage
-odk todo coverage
+ydk todo coverage
 
 # Inspect a specific TODO
-odk todo show ODK-TODO-001
+ydk todo show YDK-TODO-001
 ```
 
 Each TODO corresponds to a `NotImplementedError` placeholder in the generated code. The TODO ID, file path, line number, and a brief description of what business logic is needed are all captured.
@@ -89,14 +89,14 @@ git commit -m "feat: ignition skeleton from hexagonal-architecture"
 # Create PR for human review
 ```
 
-The PR should include all generated files and the TODO registry (`.odk/todos.yaml`). Include the TODO list summary in the PR description so the reviewer understands the scope of remaining work.
+The PR should include all generated files and the TODO registry (`.ydk/todos.yaml`). Include the TODO list summary in the PR description so the reviewer understands the scope of remaining work.
 
 ## What Happens Next
 
 After the ignition PR is merged:
 
-1. **Stage 02**: Decompose the remaining work into tasks. Use `odk todo assign` to link TODOs to tasks. Tasks are scoped to business logic only -- no boilerplate.
-2. **Stage 03**: Agents implement each task by replacing `NotImplementedError` with real code. `odk task done` auto-verifies that all assigned TODOs are resolved.
+1. **Stage 02**: Decompose the remaining work into tasks. Use `ydk todo assign` to link TODOs to tasks. Tasks are scoped to business logic only -- no boilerplate.
+2. **Stage 03**: Agents implement each task by replacing `NotImplementedError` with real code. `ydk task done` auto-verifies that all assigned TODOs are resolved.
 
 ## Re-Running Ignition
 
@@ -104,10 +104,10 @@ Ignition is idempotent. If you add new component manifests after the initial run
 
 ```bash
 # Only generates files for new/changed components
-odk ignite
+ydk ignite
 
 # Force regeneration of everything
-odk ignite --force
+ydk ignite --force
 ```
 
 Files where you removed the `GENERATED` header are treated as developer-owned and will not be overwritten, even with `--force`.
@@ -115,9 +115,9 @@ Files where you removed the `GENERATED` header are treated as developer-owned an
 ## Configuration
 
 ```yaml
-# .odk/config.yaml
+# .ydk/config.yaml
 ignition:
-  hash_store: .odk/ignition-hashes.json
+  hash_store: .ydk/ignition-hashes.json
   post_checks:
     syntax: true
     circular_imports: true

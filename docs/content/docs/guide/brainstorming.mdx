@@ -9,7 +9,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 Stage 01 is human-owned by design. Coding agents do not participate in brainstorming, and this boundary exists for a reason that becomes clear after watching AI-assisted projects fail: when an LLM writes or heavily influences a specification, the resulting spec reflects the LLM's assumptions about what you want, not what you actually need. The spec ends up comprehensive-looking but shallow, covering obvious cases while missing the domain-specific edge cases that only someone who understands the business can identify.
 
-Your role in Stage 01 is to write specs that are precise enough for an AI agent to implement without asking questions. That means specifying not just the happy path but the error cases, not just the data model but the state transitions, not just the API routes but the authentication requirements and rate limits. ODK provides the tools to structure this thinking and validate the result.
+Your role in Stage 01 is to write specs that are precise enough for an AI agent to implement without asking questions. That means specifying not just the happy path but the error cases, not just the data model but the state transitions, not just the API routes but the authentication requirements and rate limits. YDK provides the tools to structure this thinking and validate the result.
 
 ## Writing Narrative Specs
 
@@ -24,12 +24,12 @@ Scope boundaries are equally important. Explicitly state what is out of scope. I
 For each technical building block mentioned in your spec, create a component manifest:
 
 ```bash
-odk component create entity orders/Order
-odk component create route orders/create
-odk component create error orders/insufficient-balance
+ydk component create entity orders/Order
+ydk component create route orders/create
+ydk component create error orders/insufficient-balance
 ```
 
-Then reference each component in your spec with bracket syntax: `[odk:entity:orders/Order]`. This reference is not decorative -- it is a machine-readable link that ODK validates. Every bracket reference must resolve to an actual YAML file, and every YAML file should be referenced by at least one spec.
+Then reference each component in your spec with bracket syntax: `[ydk:entity:orders/Order]`. This reference is not decorative -- it is a machine-readable link that YDK validates. Every bracket reference must resolve to an actual YAML file, and every YAML file should be referenced by at least one spec.
 
 Fill in the manifest with the precise details: for entities, define every field with its type, whether it is required, default values, and validation constraints. For routes, specify the HTTP method, path, request schema, response schemas, and authentication requirements. The more precise the manifest, the more useful it is for the agent during implementation.
 
@@ -38,7 +38,7 @@ Fill in the manifest with the precise details: for entities, define every field 
 Run the deterministic linker to catch structural issues:
 
 ```bash
-odk component validate
+ydk component validate
 ```
 
 This catches three categories of problems: bracket references that point to nonexistent manifests (you forgot to create the component), manifests that no spec references (orphaned components), and cross-references between manifests that do not resolve (a foreign key pointing to a nonexistent entity).
@@ -48,8 +48,8 @@ This catches three categories of problems: bracket references that point to none
 The AI-powered spec checker provides a deeper quality assessment:
 
 ```bash
-odk spec verify --all
-odk spec results
+ydk spec verify --all
+ydk spec results
 ```
 
 The checker evaluates 18 criteria across 5 groups. The default thresholds are:
@@ -81,13 +81,13 @@ spec_check:
 For UI-heavy projects, the visual companion provides browser-based design annotation during brainstorming:
 
 ```bash
-odk visual start --project-dir .
-odk visual push wireframe.html --filename index.html --session-id abc
-odk visual feedback --session-id abc
+ydk visual start --project-dir .
+ydk visual push wireframe.html --filename index.html --session-id abc
+ydk visual feedback --session-id abc
 ```
 
 The companion starts a Vite dev server with an annotation overlay injected into the page. Users can make selection choices, annotate specific DOM elements (identified by CSS selector, XPath, or text anchor), and draw rectangle regions with comments. This feedback is captured as structured events that inform the spec without requiring the user to describe visual layouts in prose.
 
 <Callout type="info">
-The spec checker uses Amazon Bedrock (Claude Sonnet by default). Configure the model and thresholds in your `.odk/config.yaml` under the `spec_check` section.
+The spec checker uses Amazon Bedrock (Claude Sonnet by default). Configure the model and thresholds in your `.ydk/config.yaml` under the `spec_check` section.
 </Callout>

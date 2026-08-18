@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-from odk.core.checkpoint import CheckpointGenerator, LLMProvider
-from odk.models.checkpoint import CheckpointPreview
-from odk.models.pm import TaskDetail
+from ydk.core.checkpoint import CheckpointGenerator, LLMProvider
+from ydk.models.checkpoint import CheckpointPreview
+from ydk.models.pm import TaskDetail
 
 
 class MockLLMProvider:

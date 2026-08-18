@@ -1,4 +1,4 @@
-"""Tests for odk verification system (plugin-based core/verifier.py)."""
+"""Tests for ydk verification system (plugin-based core/verifier.py)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from odk.core.verifier import VerificationContractError, Verifier, _migrate_trigger, _normalize_trigger
-from odk.models.verification import VerificationReport
+from ydk.core.verifier import VerificationContractError, Verifier, _migrate_trigger, _normalize_trigger
+from ydk.models.verification import VerificationReport
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -272,7 +272,7 @@ class TestSaveProof:
             total_duration_seconds=0.5,
         )
         path = v.save_proof(report)
-        assert path == tmp_path / ".odk" / "proofs" / "verification.json"
+        assert path == tmp_path / ".ydk" / "proofs" / "verification.json"
         assert path.exists()
         data = json.loads(path.read_text())
         assert data["all_passed"] is True
@@ -286,7 +286,7 @@ class TestSaveProof:
             total_duration_seconds=0.1,
         )
         path = v.save_proof(report, task_id="T-042")
-        assert path == tmp_path / ".odk" / "proofs" / "T-042" / "verification.json"
+        assert path == tmp_path / ".ydk" / "proofs" / "T-042" / "verification.json"
         assert path.exists()
 
     def test_creates_directories(self, tmp_path: Path) -> None:
@@ -297,8 +297,8 @@ class TestSaveProof:
             all_passed=False,
             total_duration_seconds=0.0,
         )
-        # Ensure no pre-existing .odk dir
-        assert not (tmp_path / ".odk").exists()
+        # Ensure no pre-existing .ydk dir
+        assert not (tmp_path / ".ydk").exists()
         path = v.save_proof(report)
         assert path.exists()
 
@@ -310,12 +310,12 @@ class TestSaveProof:
 
 class TestBuiltInPlugins:
     def test_global_verifications_directory_exists(self) -> None:
-        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications"
+        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications"
         assert global_dir.is_dir(), f"Expected {global_dir} to exist"
 
     def test_discovers_builtin_plugins(self) -> None:
         """Verifier with no project overrides should find the built-in plugins."""
-        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications"
+        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications"
         v = Verifier(
             project_root=Path("."),
             global_verifications=global_dir,
@@ -328,7 +328,7 @@ class TestBuiltInPlugins:
         assert "tests-pytest" in names
 
     def test_lint_ruff_trigger(self) -> None:
-        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications"
+        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications"
         v = Verifier(
             project_root=Path("."),
             global_verifications=global_dir,
@@ -340,7 +340,7 @@ class TestBuiltInPlugins:
         assert lint.parallel is True
 
     def test_tests_pytest_trigger(self) -> None:
-        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "odk" / "verifications"
+        global_dir = Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications"
         v = Verifier(
             project_root=Path("."),
             global_verifications=global_dir,
