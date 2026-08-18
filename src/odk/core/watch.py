@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import logging
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 logger = logging.getLogger("odk.watch")
 
@@ -232,9 +237,21 @@ class WatchManager:
         Returns True if lock acquired, False if another poll is running.
         """
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock_file = open(self._lock_path, "w")  # noqa: SIM115
         try:
-            fcntl.flock(self._lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self._lock_file = open(self._lock_path, "r+" if self._lock_path.exists() else "w")  # noqa: SIM115
+        except OSError:
+            self._lock_file = None
+            return False
+        try:
+            if sys.platform == "win32":
+                self._lock_file.seek(0, 2)
+                if self._lock_file.tell() == 0:
+                    self._lock_file.write(" ")
+                    self._lock_file.flush()
+                self._lock_file.seek(0)
+                msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(self._lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return True
         except OSError:
             self._lock_file.close()
@@ -244,7 +261,11 @@ class WatchManager:
     def release_lock(self) -> None:
         """Release the poll lock."""
         if self._lock_file is not None:
-            fcntl.flock(self._lock_file, fcntl.LOCK_UN)
+            if sys.platform == "win32":
+                self._lock_file.seek(0)
+                msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(self._lock_file, fcntl.LOCK_UN)
             self._lock_file.close()
             self._lock_file = None
 
