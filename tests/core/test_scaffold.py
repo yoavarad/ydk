@@ -127,7 +127,7 @@ def test_apply_preserves_directory_structure(tmp_path: Path) -> None:
 
     engine = ScaffoldEngine(tmp_path / "empty", global_)
     files = engine.apply("nested", {"x": "val"})
-    paths = {str(f.path) for f in files}
+    paths = {f.path.as_posix() for f in files}
     assert "src/main.py" in paths
     assert "src/lib/helper.py" in paths
 

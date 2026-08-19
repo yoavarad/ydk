@@ -35,14 +35,14 @@ def test_docs_generate_creates_expected_files(tmp_path) -> None:
     for page in expected_cli_pages:
         mdx = output_dir / "cli" / f"{page}.mdx"
         assert mdx.exists(), f"Missing CLI page: {mdx}"
-        content = mdx.read_text()
+        content = mdx.read_text(encoding="utf-8")
         assert content.startswith("---"), f"Missing frontmatter in {page}.mdx"
         assert f"ydk {page}" in content
 
     # Schema reference page
     schemas_mdx = output_dir / "schemas.mdx"
     assert schemas_mdx.exists(), "Missing schemas.mdx"
-    content = schemas_mdx.read_text()
+    content = schemas_mdx.read_text(encoding="utf-8")
     assert "Component Schemas" in content
     # Should contain at least the entity and route schemas
     assert "entity" in content
@@ -55,7 +55,7 @@ def test_docs_generate_cli_pages_have_code_blocks(tmp_path) -> None:
     runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
 
     init_mdx = output_dir / "cli" / "init.mdx"
-    content = init_mdx.read_text()
+    content = init_mdx.read_text(encoding="utf-8")
     assert "```text" in content
     assert "```" in content
 
@@ -67,7 +67,7 @@ def test_docs_generate_group_pages_have_subcommands(tmp_path) -> None:
     assert result.exit_code == 0, result.output
 
     component_mdx = output_dir / "cli" / "component.mdx"
-    content = component_mdx.read_text()
+    content = component_mdx.read_text(encoding="utf-8")
     # component has subcommands — each rendered as ## `ydk component <sub>`
     # Match any subcommand heading (e.g. list, show, validate)
     import re
@@ -84,7 +84,7 @@ def test_docs_generate_schemas_contain_yaml(tmp_path) -> None:
     runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
 
     schemas_mdx = output_dir / "schemas.mdx"
-    content = schemas_mdx.read_text()
+    content = schemas_mdx.read_text(encoding="utf-8")
     assert "```yaml" in content
 
 
