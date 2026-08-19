@@ -197,19 +197,12 @@ needs_chromadb = pytest.mark.skipif(_skip_chromadb, reason="chromadb not install
 
 @pytest.fixture
 def memory_engine(tmp_path):
-    """Create a MemoryEngine with mocked Bedrock embedding function.
+    """Create a MemoryEngine backed by ChromaDB's local default embedding function.
 
-    Uses ChromaDB's default embedding function instead of Bedrock.
+    No AWS/network calls -- MemoryEngine uses ChromaDB's local embedding
+    function directly, so no mocking/override is needed here.
     """
-    import chromadb.utils.embedding_functions as ef_module
-
-    engine = MemoryEngine(chroma_path=tmp_path / "chroma")
-
-    # Override _get_embedding_function to use ChromaDB default (no AWS needed)
-    default_ef = ef_module.DefaultEmbeddingFunction()
-    engine._get_embedding_function = MagicMock(return_value=default_ef)  # type: ignore[assignment]
-
-    return engine
+    return MemoryEngine(chroma_path=tmp_path / "chroma")
 
 
 @pytest.fixture
@@ -248,6 +241,42 @@ class TestIndexFile:
         col = memory_engine._get_collection("test_col")
         all_docs = col.get()
         assert len(all_docs["ids"]) == 2
+
+
+@needs_chromadb
+class TestDimensionMismatch:
+    """Test that a stale-embedding dimension mismatch fails with a clear message."""
+
+    def test_raises_clear_error_on_dimension_mismatch(self, tmp_path) -> None:
+        import chromadb
+
+        chroma_path = tmp_path / "chroma"
+        client = chromadb.PersistentClient(path=str(chroma_path))
+
+        class FakeHighDimEF:
+            """Stand-in for the old 1536-dim Bedrock Titan embedding function."""
+
+            def __call__(self, input):
+                return [[0.1] * 1536 for _ in input]
+
+            def name(self):
+                return "fake-1536"
+
+        # Simulate pre-existing data indexed with the old (higher-dim) embeddings.
+        collection = client.get_or_create_collection(name="extractions", embedding_function=FakeHighDimEF())
+        collection.add(ids=["old-1"], documents=["legacy memory"], embeddings=[[0.1] * 1536])
+
+        engine = MemoryEngine(chroma_path=chroma_path)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            engine._get_collection("extractions")
+
+        message = str(exc_info.value)
+        assert "extractions" in message
+        assert "ydk memory index" in message
+        assert str(chroma_path) in message
+        # Should not leak a raw ChromaDB traceback/type as the primary message.
+        assert "InvalidArgumentError" not in message
 
 
 @needs_chromadb
