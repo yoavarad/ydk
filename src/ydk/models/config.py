@@ -64,7 +64,7 @@ class SpecCheckConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "us.anthropic.claude-sonnet-4-6"
+    model: str = "claude-sonnet-4-6"
     timeout: int = 60
     global_timeout: int = 120
     concurrency: int = 10
@@ -99,11 +99,11 @@ class AIConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: str = "bedrock"
+    provider: str = "anthropic"
     model_tiers: dict[str, str] = {
-        "smart": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-        "fast": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-        "reasoning": "us.anthropic.claude-opus-4-6-v1",
+        "smart": "claude-sonnet-4-6",
+        "fast": "claude-sonnet-4-6",
+        "reasoning": "claude-opus-4-6",
     }
 
 
@@ -114,6 +114,14 @@ class AwsConfig(BaseModel):
 
     profile: str = ""  # AWS profile name. Empty = use default credentials
     region: str = "us-east-1"
+
+
+class AnthropicConfig(BaseModel):
+    """Anthropic API credential settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    api_key_env: str = "ANTHROPIC_API_KEY"
 
 
 class MemoryConfig(BaseModel):
@@ -156,6 +164,7 @@ class YdkConfig(BaseModel):
     execution: ExecutionConfig = ExecutionConfig()
     ai: AIConfig = AIConfig()
     aws: AwsConfig = AwsConfig()
+    anthropic: AnthropicConfig = AnthropicConfig()
     memory: MemoryConfig = MemoryConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()

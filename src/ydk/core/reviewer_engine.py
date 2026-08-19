@@ -1,11 +1,11 @@
-"""Cached fan-out reviewer engine using direct boto3 Converse API.
+"""Cached fan-out reviewer engine using the direct Anthropic Messages API.
 
-Replaces the Strands-based reviewer path with direct ``boto3.converse()``
+Replaces the Strands-based reviewer path with direct ``anthropic.Anthropic``
 calls that share a cached system prefix across all reviewers.  The first
 reviewer call primes the cache; subsequent calls fan out in parallel and
 hit the cached prefix, cutting per-reviewer latency from ~10s to ~2-4s.
 
-Uses Bedrock tool-use with forced ``toolChoice`` to guarantee structured
+Uses Anthropic tool-use with forced ``tool_choice`` to guarantee structured
 JSON output — no fragile text-parsing needed.
 """
 
@@ -14,63 +14,49 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import Any, cast
 
-import boto3
-from botocore.config import Config as BotoConfig
+import anthropic
 
 logger = logging.getLogger("ydk.reviewer_engine")
 
 # Tool schema that forces the model to return structured JSON.
 REVIEW_TOOL_SPEC: dict[str, Any] = {
-    "toolSpec": {
-        "name": "submit_review",
-        "description": "Submit the structured review evaluation result",
-        "inputSchema": {
-            "json": {
-                "type": "object",
-                "properties": {
-                    "score": {"type": "number", "description": "Score from 0-10"},
-                    "reasoning": {"type": "string", "description": "Explanation for the score"},
-                    "suggestions": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Specific actionable suggestions for improvement",
-                    },
-                    "findings": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "line": {"type": "number", "description": "Line number"},
-                                "text": {"type": "string", "description": "The problematic text"},
-                                "issue": {"type": "string", "description": "What's wrong"},
-                            },
-                        },
-                        "description": "Specific findings with line numbers",
+    "name": "submit_review",
+    "description": "Submit the structured review evaluation result",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "score": {"type": "number", "description": "Score from 0-10"},
+            "reasoning": {"type": "string", "description": "Explanation for the score"},
+            "suggestions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Specific actionable suggestions for improvement",
+            },
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "line": {"type": "number", "description": "Line number"},
+                        "text": {"type": "string", "description": "The problematic text"},
+                        "issue": {"type": "string", "description": "What's wrong"},
                     },
                 },
-                "required": ["score", "reasoning", "suggestions", "findings"],
-            }
+                "description": "Specific findings with line numbers",
+            },
         },
-    }
+        "required": ["score", "reasoning", "suggestions", "findings"],
+    },
 }
 
 
 class ReviewerEngine:
-    """Runs spec reviewers using Bedrock Converse API with prompt caching."""
+    """Runs spec reviewers using the Anthropic Messages API with prompt caching."""
 
-    def __init__(self, aws_profile: str | None = None, region: str = "us-east-1"):
-        boto_config = BotoConfig(
-            read_timeout=300,
-            connect_timeout=10,
-            retries={"max_attempts": 2, "mode": "adaptive"},
-        )
-        session = boto3.Session(
-            profile_name=aws_profile or None,
-            region_name=region,
-        )
-        self._client = session.client("bedrock-runtime", config=boto_config)
+    def __init__(self, api_key: str | None = None):
+        self._client = anthropic.Anthropic(api_key=api_key, timeout=300.0, max_retries=2)
 
     # ------------------------------------------------------------------
     # System prompt construction
@@ -80,6 +66,7 @@ class ReviewerEngine:
         """Build system prompt with spec content and cache point."""
         return [
             {
+                "type": "text",
                 "text": (
                     "You are a specification quality evaluator. "
                     "For each criterion, evaluate the document and call the submit_review tool with: "
@@ -88,9 +75,10 @@ class ReviewerEngine:
                 ),
             },
             {
+                "type": "text",
                 "text": f"Here are the specification documents to evaluate:\n\n{spec_content}",
+                "cache_control": {"type": "ephemeral"},
             },
-            {"cachePoint": {"type": "default"}},
         ]
 
     # ------------------------------------------------------------------
@@ -104,35 +92,34 @@ class ReviewerEngine:
         reviewer_id: str,
         reviewer_prompt: str,
     ) -> dict[str, Any]:
-        """Single Bedrock Converse call for one reviewer."""
+        """Single Anthropic Messages API call for one reviewer."""
         start = time.monotonic()
-        logger.info("Reviewer %s: calling Bedrock (%s)", reviewer_id, model_id)
+        logger.info("Reviewer %s: calling Anthropic (%s)", reviewer_id, model_id)
 
         try:
-            response = self._client.converse(
-                modelId=model_id,
-                system=system_blocks,
+            response = self._client.messages.create(
+                model=model_id,
+                max_tokens=8192,
+                temperature=0.0,
+                system=cast("Any", system_blocks),
                 messages=[
                     {
                         "role": "user",
-                        "content": [{"text": reviewer_prompt}],
+                        "content": reviewer_prompt,
                     },
                 ],
-                toolConfig={
-                    "tools": [REVIEW_TOOL_SPEC],
-                    "toolChoice": {"tool": {"name": "submit_review"}},
-                },
-                inferenceConfig={"maxTokens": 8192, "temperature": 0.0},
+                tools=cast("Any", [REVIEW_TOOL_SPEC]),
+                tool_choice={"type": "tool", "name": "submit_review"},
             )
 
             elapsed = time.monotonic() - start
 
             # Log cache metrics
-            usage = response.get("usage", {})
-            cache_read = usage.get("cacheReadInputTokens", 0)
-            cache_write = usage.get("cacheWriteInputTokens", 0)
-            input_tokens = usage.get("inputTokens", 0)
-            output_tokens = usage.get("outputTokens", 0)
+            usage = response.usage
+            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            output_tokens = getattr(usage, "output_tokens", 0) or 0
             logger.info(
                 "Reviewer %s: done in %.1fs — input=%d, output=%d, cache_read=%d, cache_write=%d",
                 reviewer_id,
@@ -143,26 +130,25 @@ class ReviewerEngine:
                 cache_write,
             )
 
-            # Extract structured data from toolUse block
-            content = response.get("output", {}).get("message", {}).get("content", [])
-            for block in content:
-                if "toolUse" in block:
-                    data = block["toolUse"]["input"]
-                    return {
-                        "reviewer_id": reviewer_id,
-                        "score": int(data.get("score", 0)),
-                        "reasoning": str(data.get("reasoning", "")),
-                        "suggestions": [str(s) for s in data.get("suggestions", [])],
-                        "findings": data.get("findings", []),
-                        "elapsed_seconds": elapsed,
-                    }
+            # Extract structured data from tool_use block
+            tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+            if tool_use_block is not None:
+                data = cast("dict[str, Any]", cast("Any", tool_use_block).input)
+                return {
+                    "reviewer_id": reviewer_id,
+                    "score": int(data.get("score", 0)),
+                    "reasoning": str(data.get("reasoning", "")),
+                    "suggestions": [str(s) for s in data.get("suggestions", [])],
+                    "findings": data.get("findings", []),
+                    "elapsed_seconds": elapsed,
+                }
 
-            # No toolUse block found — should not happen with forced toolChoice
-            logger.warning("Reviewer %s: no toolUse block in response", reviewer_id)
+            # No tool_use block found — should not happen with forced tool_choice
+            logger.warning("Reviewer %s: no tool_use block in response", reviewer_id)
             return {
                 "reviewer_id": reviewer_id,
                 "score": 0,
-                "reasoning": "No toolUse block in Bedrock response (unexpected)",
+                "reasoning": "No tool_use block in Anthropic response (unexpected)",
                 "suggestions": [],
                 "findings": [],
                 "elapsed_seconds": elapsed,
@@ -181,7 +167,7 @@ class ReviewerEngine:
                 "reviewer_id": reviewer_id,
                 "score": 0,
                 "passed": False,
-                "reasoning": f"BEDROCK ERROR after {elapsed:.1f}s: {type(exc).__name__}: {str(exc)[:200]}",
+                "reasoning": f"ANTHROPIC ERROR after {elapsed:.1f}s: {type(exc).__name__}: {str(exc)[:200]}",
                 "suggestions": [],
                 "findings": [],
                 "elapsed_seconds": elapsed,
@@ -208,8 +194,8 @@ class ReviewerEngine:
             spec_content: The specification text to review.
             reviewers: List of reviewer dicts, each with keys:
                 id, name, system_prompt, model_tier, threshold, group.
-            model_tiers: Map of tier name to Bedrock model ID
-                (e.g. ``{"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}``).
+            model_tiers: Map of tier name to Anthropic model ID
+                (e.g. ``{"smart": "claude-sonnet-4-6"}``).
             max_workers: Maximum parallel threads for fan-out phase.
 
         Returns:
