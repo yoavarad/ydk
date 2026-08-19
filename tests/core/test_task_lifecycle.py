@@ -135,7 +135,7 @@ def test_done_runs_verifications(
 
     mock_verifier.run_all.assert_called_once_with(
         trigger="pre-push",
-        context={"project_root": "/tmp/project", "task_id": "T-001"},
+        context={"project_root": str(Path("/tmp/project")), "task_id": "T-001"},
     )
     assert result["passed"] is True
 

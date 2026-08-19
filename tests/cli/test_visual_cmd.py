@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -46,8 +47,12 @@ def test_visual_start(tmp_path, monkeypatch):
 def test_visual_stop(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     session = _fake_session(tmp_path)
-    with patch("os.killpg"), patch("os.getpgid", return_value=9999):
-        result = runner.invoke(app, ["visual", "stop", session.id, "--project-dir", str(tmp_path)])
+    if os.name != "nt":
+        with patch("os.killpg"), patch("os.getpgid", return_value=9999):
+            result = runner.invoke(app, ["visual", "stop", session.id, "--project-dir", str(tmp_path)])
+    else:
+        with patch("os.kill"):
+            result = runner.invoke(app, ["visual", "stop", session.id, "--project-dir", str(tmp_path)])
     assert result.exit_code == 0
     assert "stopped" in result.output
 

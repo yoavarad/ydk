@@ -198,7 +198,10 @@ class VisualEngine:
 
         if session.pid is not None:
             with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(os.getpgid(session.pid), signal.SIGTERM)
+                if os.name != "nt":
+                    os.killpg(os.getpgid(session.pid), signal.SIGTERM)
+                else:
+                    os.kill(session.pid, signal.SIGTERM)
 
         state_dir = Path(session.state_dir)
         (state_dir / "server-stopped").touch()

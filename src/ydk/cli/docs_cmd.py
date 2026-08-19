@@ -92,7 +92,7 @@ def _generate_cli_page(slug: str, info: dict[str, str], output_dir: Path) -> Pat
                 ]
             )
 
-    dest.write_text("\n".join(lines))
+    dest.write_text("\n".join(lines), encoding="utf-8")
     return dest
 
 
@@ -105,18 +105,22 @@ def _extract_subcommands(help_text: str) -> list[str]:
         │ list   Description  │
         │ show   Description  │
         ╰─────────────────────╯
+
+    Rich falls back to square corners (``┌ ┐ └ ┘``) instead of rounded ones
+    (``╭ ╮ ╰ ╯``) in some terminal modes (e.g. legacy Windows consoles), so
+    both styles must be recognized.
     """
     subcommands: list[str] = []
     in_commands = False
     for line in help_text.splitlines():
         stripped = line.strip()
-        # Detect the Commands section header (Rich box style)
-        if "Commands" in stripped and stripped.startswith("╭"):
+        # Detect the Commands section header (Rich box style, either corner style)
+        if "Commands" in stripped and stripped.startswith(("╭", "┌")):
             in_commands = True
             continue
         if in_commands:
             # End of box
-            if stripped.startswith("╰"):
+            if stripped.startswith(("╰", "└")):
                 break
             # Content rows start with │
             if stripped.startswith("│") and stripped.endswith("│"):
@@ -150,11 +154,11 @@ def _generate_schemas_page(output_dir: Path) -> Path:
 
     if not _SCHEMAS_DIR.is_dir():
         lines.append("No schemas directory found.")
-        dest.write_text("\n".join(lines))
+        dest.write_text("\n".join(lines), encoding="utf-8")
         return dest
 
     for schema_file in sorted(_SCHEMAS_DIR.glob("*.yaml")):
-        raw = yaml.safe_load(schema_file.read_text())
+        raw = yaml.safe_load(schema_file.read_text(encoding="utf-8"))
         if not raw or not isinstance(raw, dict):
             continue
 
@@ -169,13 +173,13 @@ def _generate_schemas_page(output_dir: Path) -> Path:
                 description,
                 "",
                 "```yaml",
-                schema_file.read_text().rstrip(),
+                schema_file.read_text(encoding="utf-8").rstrip(),
                 "```",
                 "",
             ]
         )
 
-    dest.write_text("\n".join(lines))
+    dest.write_text("\n".join(lines), encoding="utf-8")
     return dest
 
 

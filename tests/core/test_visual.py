@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -152,8 +153,12 @@ class TestVisualEngineSessionLifecycle:
             mock_popen.return_value = mock_proc
             session = engine.start_session()
 
-        with patch("os.killpg"), patch("os.getpgid", return_value=12345):
-            engine.stop_session(session.id)
+        if os.name != "nt":
+            with patch("os.killpg"), patch("os.getpgid", return_value=12345):
+                engine.stop_session(session.id)
+        else:
+            with patch("os.kill"):
+                engine.stop_session(session.id)
 
         sentinel = Path(session.state_dir) / "server-stopped"
         assert sentinel.exists()
