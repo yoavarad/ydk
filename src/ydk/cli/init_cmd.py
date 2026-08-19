@@ -185,11 +185,21 @@ if file_path.startswith(cwd):
 root = Path(cwd)
 
 # --- GUARD: no-manual-pr and no-direct-push ---
-if tool_name == "Bash" and ("gh pr create" in command or "gh pr merge" in command):
+# Stage 01 (brainstorming) has no task ID yet, so \'ydk task done\' can\'t be used
+# to PR narratives/component manifests. Allow manual PRs only in that stage.
+_stage_file = root / ".ydk" / "state.json"
+_stage = "00"
+if _stage_file.exists():
+    try:
+        _stage = json.loads(_stage_file.read_text()).get("stage", "00")
+    except Exception:
+        pass
+
+if tool_name == "Bash" and ("gh pr create" in command or "gh pr merge" in command) and _stage != "01":
     sys.stderr.write("BLOCKED: Use \'ydk task done\' to create PRs — it captures verification proof.\\n")
     sys.exit(2)
 # git push is allowed — ydk task done needs it internally
-# Only gh pr create is blocked (forces proof-based PRs)
+# Only gh pr create is blocked (forces proof-based PRs), except in stage 01
 
 # --- GUARD: no-proof-tamper ---
 if tool_name in ("Edit", "Write") and ".ydk/proofs/" in file_path and "summary.md" not in file_path:
