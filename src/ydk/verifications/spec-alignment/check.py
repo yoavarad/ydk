@@ -2,7 +2,7 @@
 """Verification plugin: spec-alignment.
 
 Evaluates whether changed code aligns with referenced spec files
-across 6 dimensions using a Strands Agent with Bedrock.
+across 6 dimensions using a Strands Agent with the Anthropic API.
 
 Uses git diff output (not full files) to focus on what actually changed.
 
@@ -125,16 +125,15 @@ def run_check(context: dict) -> dict:
     changed_files = context.get("changed_files", [])
     spec_refs = context.get("spec_refs", [])
     config = context.get("config", {})
-    aws_config = config.get("aws", {})
-    aws_profile = aws_config.get("profile", "")
-    aws_region = aws_config.get("region", "us-east-1")
+    anthropic_config = config.get("anthropic", {})
+    api_key_env = anthropic_config.get("api_key_env", "ANTHROPIC_API_KEY")
     spec_check_config = config.get("spec_check", {})
-    model_id = spec_check_config.get("model", "us.anthropic.claude-sonnet-4-6")
+    model_id = spec_check_config.get("model", "claude-sonnet-4-6")
 
     # Check strands-agents availability
     try:
         from strands import Agent
-        from strands.models.bedrock import BedrockModel
+        from strands.models.anthropic import AnthropicModel
     except ImportError:
         return {
             "name": "spec-alignment",
@@ -144,25 +143,13 @@ def run_check(context: dict) -> dict:
             "detail": {"skipped": True},
         }
 
-    # Set AWS profile if configured
-    if aws_profile:
-        os.environ["AWS_PROFILE"] = aws_profile
-
-    # Check AWS credentials
-    try:
-        import boto3
-
-        session = boto3.Session(
-            profile_name=aws_profile if aws_profile else None,
-            region_name=aws_region,
-        )
-        sts = session.client("sts")
-        sts.get_caller_identity()
-    except Exception:
+    # Check Anthropic API key
+    api_key = os.getenv(api_key_env)
+    if not api_key:
         return {
             "name": "spec-alignment",
             "passed": True,
-            "output": "SKIPPED: AWS credentials not configured",
+            "output": f"SKIPPED: {api_key_env} not configured",
             "duration_seconds": 0,
             "detail": {"skipped": True},
         }
@@ -196,12 +183,13 @@ def run_check(context: dict) -> dict:
 
     # Build system prompt with spec content as cached prefix
     from strands import Agent
-    from strands.models.bedrock import BedrockModel
+    from strands.models.anthropic import AnthropicModel
 
-    bedrock_model = BedrockModel(
+    anthropic_model = AnthropicModel(
+        client_args={"api_key": api_key},
         model_id=model_id,
-        region_name=aws_region,
-        temperature=0.0,
+        max_tokens=8192,
+        params={"temperature": 0.0},
     )
 
     system_prompt_with_spec = (
@@ -209,7 +197,7 @@ def run_check(context: dict) -> dict:
     )
 
     agent = Agent(
-        model=bedrock_model,
+        model=anthropic_model,
         system_prompt=system_prompt_with_spec,
     )
 
