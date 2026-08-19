@@ -112,14 +112,13 @@ def e2e_project(tmp_path):
 class TestFullTaskLifecycle:
     """Test that ydk task start → implement → done creates a real PR."""
 
-    def test_task_done_creates_github_pr(self, e2e_project):
+    def test_task_done_creates_github_pr(self, e2e_project, monkeypatch):
         """The complete lifecycle creates a real GitHub PR with correct base branch."""
-        from unittest.mock import MagicMock
-
         from ydk.core.events import EventBus
         from ydk.core.git_worktree import WorktreeManager
         from ydk.core.task_lifecycle import TaskLifecycle
         from ydk.core.verifier import Verifier
+        from ydk.repositories.github.tasks import GitHubTaskRepository
 
         project = e2e_project["project"]
         base_branch = e2e_project["base_branch"]
@@ -144,20 +143,16 @@ class TestFullTaskLifecycle:
         issue_number = issue_url.split("/")[-1]
         e2e_project["cleanup_issues"].append(issue_number)
 
-        # Step 2: Set up TaskLifecycle with mocked repo
-        mock_repo = MagicMock()
-        mock_repo.get_task.return_value = MagicMock(
-            title="E2E lifecycle test",
-            status="open",
-            gates=[],
-            story_id=None,
-            spec_refs=[],
-            component_refs=[],
-        )
-        mock_repo.check_dependencies.return_value = []
+        # Step 2: Set up TaskLifecycle with the real GitHub-backed repository.
+        # GitHubTaskRepository shells out to the gh CLI, which infers the
+        # target repo from the git remote of the current working directory,
+        # so point the process at the cloned e2e project for the duration
+        # of the test (gh CLI itself is the allowed system boundary here).
+        monkeypatch.chdir(project)
+        repo = GitHubTaskRepository()
 
         lifecycle = TaskLifecycle(
-            repo=mock_repo,
+            repo=repo,
             events=EventBus(),
             worktree_mgr=WorktreeManager(project),
             verifier=Verifier(project_root=project, enabled_plugins=[]),
