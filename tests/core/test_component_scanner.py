@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 
-from ydk.core.component_scanner import ComponentScanner, LLMProvider
+from ydk.core.component_scanner import ComponentScanner
+from ydk.core.llm_provider import LLMProvider
 from ydk.models.component import SchemaDefinition, SchemaField
 
 

@@ -4,24 +4,16 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from ydk.models.compaction import CompactedTask
 
 if TYPE_CHECKING:
+    from ydk.core.llm_provider import LLMProvider
     from ydk.models.pm import TaskDetail
 
 
 _COMPACTABLE_STATUSES = frozenset({"done", "closed"})
-
-
-@runtime_checkable
-class LLMProvider(Protocol):
-    """Protocol for LLM providers used by the compactor."""
-
-    def invoke(self, prompt: str) -> str:
-        """Send a prompt to an LLM and return the text response."""
-        ...
 
 
 def _build_compaction_prompt(task: TaskDetail) -> str:

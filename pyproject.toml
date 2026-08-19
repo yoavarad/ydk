@@ -17,6 +17,7 @@ dependencies = [
     "strands-agents>=0.1",
     "strands-agents-tools>=0.1",
     "chromadb>=1.0",
+    "anthropic>=0.123.0",
 ]
 
 [project.optional-dependencies]

@@ -5,21 +5,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from ydk.models.checkpoint import BlastRadiusSpot, CheckpointPreview, ReviewConcern
 
 if TYPE_CHECKING:
+    from ydk.core.llm_provider import LLMProvider
     from ydk.models.pm import TaskDetail
-
-
-@runtime_checkable
-class LLMProvider(Protocol):
-    """Protocol for LLM providers used by the checkpoint generator."""
-
-    def invoke(self, prompt: str) -> str:
-        """Send a prompt to an LLM and return the text response."""
-        ...
 
 
 def _parse_diff_stats(diff: str) -> tuple[list[str], int, int]:

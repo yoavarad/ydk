@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 
-from ydk.core.checkpoint import CheckpointGenerator, LLMProvider
+from ydk.core.checkpoint import CheckpointGenerator
+from ydk.core.llm_provider import LLMProvider
 from ydk.models.checkpoint import CheckpointPreview
 from ydk.models.pm import TaskDetail
 
