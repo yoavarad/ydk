@@ -29,6 +29,7 @@ from ydk.models.pm import TaskCreate
 if TYPE_CHECKING:
     from ydk.core.git_worktree import WorktreeManager
     from ydk.core.verifier import Verifier
+    from ydk.models.verification import CheckResult
     from ydk.repositories.protocols import LifecycleTaskRepository
 
 logger = logging.getLogger("ydk.task_lifecycle")
@@ -276,6 +277,17 @@ class TaskLifecycle:
         pr_builder = PRBodyBuilder()
         pr_body = pr_builder.build(task_id, proof_dir)
 
+        # Final gate: validate the PR body itself. This must run *after* the
+        # body is built (the plugin needs the real pr_body in context), so it
+        # cannot be part of the earlier verification batch — running it there
+        # would always fail since no PR body exists yet at that point.
+        skip_pr_body_check = bool(skip_plugins) and "pr-body-validation" in skip_plugins
+        if not skip_pr_body_check:
+            pr_body_check = self._run_pr_body_validation(pr_body, context)
+            if pr_body_check is not None and not pr_body_check.passed:
+                self._repo.add_comment(task_id, f"**pr-body-validation FAILED:**\n{pr_body_check.output}")
+                return {"passed": False, "error": pr_body_check.output, "pr_body_check": pr_body_check}
+
         # Create PR with deterministic body (task already fetched above for UI check)
         pr_url = self._create_pr(task_id, task=task, report=report, pr_body_override=pr_body)
 
@@ -299,6 +311,24 @@ class TaskLifecycle:
         if todo_warnings:
             result["todo_warnings"] = todo_warnings
         return result
+
+    def _run_pr_body_validation(self, pr_body: str, context: dict[str, object]) -> CheckResult | None:
+        """Run the ``pr-body-validation`` plugin as a final gate before PR creation.
+
+        Invoked explicitly (by name) rather than through the normal
+        trigger-based batch, since it depends on the real PR body which
+        only exists once ``pr_builder.build()`` has run. Returns ``None``
+        when the plugin isn't installed, in which case the gate is a no-op.
+        """
+        plugins = self._verifier.discover_plugins()
+        matched = self._verifier.filter_by_name(plugins, "pr-body-validation")
+        if not matched:
+            return None
+
+        plugin_context = dict(context)
+        plugin_context["pr_body"] = pr_body
+        results = asyncio.run(self._verifier.run_layer(matched, plugin_context))
+        return results[0] if results else None
 
     def _check_todo_resolution(self, task_id: str) -> list[str]:
         """Check if TODOs assigned to this task are resolved.
@@ -563,6 +593,7 @@ class TaskLifecycle:
         Falls back to a local reference if ``gh`` is not available or fails.
         """
         import shutil
+        import tempfile
 
         worktree = self._worktree.get_worktree_path(task_id)
         cwd = str(worktree) if worktree else str(self._root)
@@ -598,24 +629,36 @@ class TaskLifecycle:
                 except (json.JSONDecodeError, OSError):
                     pass
 
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "create",
-                    "--title",
-                    f"Task {task_id}: {getattr(task, 'title', task_id)}",
-                    "--body",
-                    pr_body,
-                    "--head",
-                    actual_branch,
-                    "--base",
-                    base_branch,
-                ],
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-            )
+            # Pass the body via --body-file rather than inline: proof-rich
+            # bodies can be tens of KB, which overflows the Windows
+            # CreateProcess command-line length limit (WinError 206) when
+            # passed as a literal argument.
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as body_file:
+                body_file.write(pr_body)
+                body_file_path = body_file.name
+
+            try:
+                result = subprocess.run(
+                    [
+                        "gh",
+                        "pr",
+                        "create",
+                        "--title",
+                        f"Task {task_id}: {getattr(task, 'title', task_id)}",
+                        "--body-file",
+                        body_file_path,
+                        "--head",
+                        actual_branch,
+                        "--base",
+                        base_branch,
+                    ],
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                Path(body_file_path).unlink(missing_ok=True)
+
             if result.returncode == 0:
                 url = result.stdout.strip()
                 if url:

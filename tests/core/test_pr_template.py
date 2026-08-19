@@ -264,7 +264,7 @@ class TestDetailsBlockHelper:
         result = _details_block("my summary", "some content")
         assert "<details>" in result
         assert "<summary>my summary</summary>" in result
-        assert "```\nsome content\n```" in result
+        assert "```text\nsome content\n```" in result
         assert "</details>" in result
 
     def test_empty_content_shows_no_output(self) -> None:

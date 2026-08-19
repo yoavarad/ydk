@@ -191,7 +191,7 @@ class PRBodyBuilder:
 def _details_block(summary: str, raw_content: str) -> str:
     """Build a single ``<details>`` block with raw content in a code fence."""
     content = raw_content.strip() if raw_content.strip() else "(no output)"
-    return f"<details>\n<summary>{summary}</summary>\n\n```\n{content}\n```\n\n</details>\n"
+    return f"<details>\n<summary>{summary}</summary>\n\n```text\n{content}\n```\n\n</details>\n"
 
 
 def _extract_summary_line(label: str, raw: str) -> str:

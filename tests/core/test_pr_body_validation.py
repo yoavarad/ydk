@@ -129,6 +129,47 @@ class TestValidatePrBody:
 
 
 # ---------------------------------------------------------------------------
+# Regression test for issue #26: PRBodyBuilder's real output must pass
+# pr-body-validation once the ordering + fence-tagging bugs are fixed.
+# ---------------------------------------------------------------------------
+
+
+class TestPRBodyBuilderOutputPassesValidation:
+    """Prove that PRBodyBuilder.build()'s real output satisfies the plugin."""
+
+    def test_realistic_pr_body_passes_validation(self, tmp_path: Path) -> None:
+        import json
+
+        from ydk.core.pr_template import PRBodyBuilder
+
+        proof_dir = tmp_path / ".ydk" / "proofs" / "T-026"
+        proof_dir.mkdir(parents=True)
+        (proof_dir / "summary.md").write_text("Fixed the pr-body-validation ordering bug.")
+
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "pytest.txt").write_text("PASSED (2.0s)\n\n5 passed in 2.0s")
+
+        report_data = {
+            "timestamp": "2026-08-19T00:00:00Z",
+            "checks": [
+                {"name": "pytest", "passed": True, "output": "5 passed", "duration_seconds": 2.0, "detail": None},
+            ],
+            "all_passed": True,
+            "total_duration_seconds": 2.0,
+        }
+        (proof_dir / "verification-report.json").write_text(json.dumps(report_data))
+
+        body = PRBodyBuilder().build("T-026", proof_dir)
+
+        mod = _load_check_module()
+        result = mod.validate_pr_body(body, changed_files=[])
+
+        assert result["passed"] is True, result["details"]
+        assert result["missing"] == []
+
+
+# ---------------------------------------------------------------------------
 # Tests for _build_pr_body including verification output
 # ---------------------------------------------------------------------------
 
