@@ -16,6 +16,7 @@ def _cfg(*, provider: str = "anthropic", model_tiers: dict[str, str] | None = No
         anthropic=AnthropicConfig(api_key_env="ANTHROPIC_API_KEY"),
     )
 
+
 # ---------------------------------------------------------------------------
 # AnthropicLLMProvider (mocks the anthropic SDK client — a system boundary)
 # ---------------------------------------------------------------------------
