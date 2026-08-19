@@ -13,7 +13,6 @@ from ydk.models.task import Task
 from ydk.output.console import console
 
 if TYPE_CHECKING:
-    from ydk.core.complexity_scorer import LLMProvider
     from ydk.core.task_lifecycle import TaskLifecycle
     from ydk.models.complexity import ComplexityScore
     from ydk.models.gate import Gate
@@ -1510,10 +1509,13 @@ def analyze_complexity(
     from rich.table import Table
 
     from ydk.core.complexity_scorer import ComplexityScorer
+    from ydk.core.config import load_config
+    from ydk.core.llm_provider import get_llm_provider
 
     repo = _get_repo()
 
-    llm_provider = _get_llm_provider()
+    cfg = load_config()
+    llm_provider = get_llm_provider(cfg)
     scorer = ComplexityScorer(llm_provider=llm_provider)
 
     scores: list[ComplexityScore] = []
@@ -1729,36 +1731,6 @@ def tdd(
     except (ValueError, FileNotFoundError, KeyError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
-
-
-def _get_llm_provider() -> LLMProvider | None:
-    """Try to construct an LLM provider from project config.
-
-    Uses ``cfg.aws`` for credentials and ``cfg.ai`` for model selection.
-    Falls back to ``None`` (default score) when boto3 is unavailable or
-    no AWS profile is configured.
-    """
-    try:
-        import boto3
-
-        from ydk.core.config import load_config
-
-        cfg = load_config()
-
-        session_kwargs: dict[str, str] = {}
-        if cfg.aws.profile:
-            session_kwargs["profile_name"] = cfg.aws.profile
-        if cfg.aws.region:
-            session_kwargs["region_name"] = cfg.aws.region
-
-        session = boto3.Session(**session_kwargs)
-        bedrock = session.client("bedrock-runtime")
-
-        model_id = cfg.ai.model_tiers.get("fast", "us.anthropic.claude-sonnet-4-20250514-v1:0")
-
-        return _BedrockLLMProvider(client=bedrock, model_id=model_id)
-    except Exception:
-        return None
 
 
 @task_app.command("review-comments")
@@ -1982,28 +1954,3 @@ def scaffold_batch(
     console.print("  [bold]T-FINAL[/bold] added — depends on all tasks, verifies zero xfail")
 
 
-class _BedrockLLMProvider:
-    """Minimal LLM provider backed by AWS Bedrock ``converse`` API."""
-
-    def __init__(self, client: object, model_id: str) -> None:
-        self._client: object = client
-        self._model_id = model_id
-
-    def invoke(self, prompt: str) -> str:
-        """Send *prompt* to Bedrock and return the text response."""
-        import json
-
-        response = self._client.invoke_model(  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
-            modelId=self._model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(
-                {
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": prompt}],
-                }
-            ),
-        )
-        result = json.loads(response["body"].read())
-        return result["content"][0]["text"]  # type: ignore[no-any-return]

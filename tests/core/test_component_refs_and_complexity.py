@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from ydk.core.complexity_scorer import ComplexityScorer
 from ydk.models.pm import TaskCreate, TaskDetail
@@ -100,31 +100,3 @@ class TestAnalyzeComplexityProvider:
         assert result.score == 7
         assert result.reasoning == "Cross-cutting concern"
         mock_provider.invoke.assert_called_once()
-
-    def test_get_llm_provider_uses_aws_config(self) -> None:
-        """_get_llm_provider should create a boto3 session with the configured profile."""
-        import sys
-
-        mock_boto3 = MagicMock()
-        mock_session = MagicMock()
-        mock_client = MagicMock()
-        mock_boto3.Session.return_value = mock_session
-        mock_session.client.return_value = mock_client
-
-        with patch.dict(sys.modules, {"boto3": mock_boto3}), patch("ydk.core.config.load_config") as mock_load:
-            mock_cfg = MagicMock()
-            mock_cfg.aws.profile = "my-test-profile"
-            mock_cfg.aws.region = "us-west-2"
-            mock_cfg.ai.model_tiers = {"fast": "us.anthropic.claude-sonnet-4-20250514-v1:0"}
-            mock_load.return_value = mock_cfg
-
-            from ydk.cli.task_cmd import _get_llm_provider
-
-            provider = _get_llm_provider()
-
-        assert provider is not None
-        mock_boto3.Session.assert_called_once_with(
-            profile_name="my-test-profile",
-            region_name="us-west-2",
-        )
-        mock_session.client.assert_called_once_with("bedrock-runtime")
