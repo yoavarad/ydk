@@ -77,6 +77,38 @@ class TestNoManualPr:
         )
         assert result.returncode == 0
 
+    def test_allows_gh_pr_create_in_stage_01(self, guard_script: Path, tmp_path: Path) -> None:
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "state.json").write_text(json.dumps({"stage": "01"}))
+
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "gh pr create --title 'test' --body 'test'"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0
+
+    def test_blocks_gh_pr_create_in_stage_02(self, guard_script: Path, tmp_path: Path) -> None:
+        ydk_dir = tmp_path / ".ydk"
+        ydk_dir.mkdir()
+        (ydk_dir / "state.json").write_text(json.dumps({"stage": "02"}))
+
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "gh pr create --title 'test' --body 'test'"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 2
+
 
 class TestNoProofTamper:
     """GUARD: no-proof-tamper blocks edits to .ydk/proofs/ (except summary.md)."""
