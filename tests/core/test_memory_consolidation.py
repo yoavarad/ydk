@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from ydk.core.memory_consolidation import MemoryConsolidator
 from ydk.models.consolidation import ConsolidationReport, DuplicateGroup
 
@@ -105,9 +107,10 @@ class TestMergeDuplicates:
 
 class TestAudit:
     def test_audit_report_structure(self) -> None:
+        recent = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         docs = [
-            {"id": "a", "text": "recent", "topic": "auth", "created_at": "2026-04-28T00:00:00Z"},
-            {"id": "b", "text": "also recent", "topic": "auth", "created_at": "2026-04-28T00:00:00Z"},
+            {"id": "a", "text": "recent", "topic": "auth", "created_at": recent},
+            {"id": "b", "text": "also recent", "topic": "auth", "created_at": recent},
         ]
         similarities = {
             "recent": [{"id": "b", "similarity": 0.5}],
@@ -122,7 +125,8 @@ class TestAudit:
         assert report.stale_count == 0
 
     def test_audit_counts_stale(self) -> None:
-        docs = [{"id": "a", "text": "old", "topic": "auth", "created_at": "2025-01-01T00:00:00Z"}]
+        old = (datetime.now(UTC) - timedelta(days=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        docs = [{"id": "a", "text": "old", "topic": "auth", "created_at": old}]
         store = FakeVectorStore(docs=docs, similarities={"old": []})
         consolidator = MemoryConsolidator(store=store)
         report = consolidator.audit()
