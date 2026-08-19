@@ -173,12 +173,12 @@ def load_all_reviewers(
 
 
 # ---------------------------------------------------------------------------
-# ReviewerAgent — wraps a Strands Agent for one criterion
+# ReviewerAgent — runs deterministic tools + Claude judgment for one criterion
 # ---------------------------------------------------------------------------
 
 
 class ReviewerAgent:
-    """Wraps a Strands Agent for a single verification criterion."""
+    """Runs deterministic tools then Claude judgment for a single verification criterion."""
 
     def __init__(self, config: ReviewerConfig, model_config: dict[str, Any]) -> None:
         self._config = config
@@ -427,7 +427,7 @@ def run_all_sync(
     Args:
         spec_content: The specification text to review.
         reviewers_dir: Directory containing reviewer YAML files.
-        model_config: AWS/model configuration for Strands agents.
+        model_config: Anthropic API key/model configuration for reviewer agents.
         threshold_overrides: Group-level threshold overrides.
         max_workers: Maximum parallel agents.
         rubric_filter: Optional group name to filter reviewers.
@@ -436,7 +436,7 @@ def run_all_sync(
         Sorted list of ReviewResult instances.
     """
     total_start = time.monotonic()
-    aws_config = model_config or {}
+    reviewer_model_config = model_config or {}
     reviewers = load_all_reviewers(reviewers_dir, threshold_overrides=threshold_overrides)
 
     if rubric_filter is not None:
@@ -455,7 +455,7 @@ def run_all_sync(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_map = {}
         for cfg in reviewers:
-            future = executor.submit(run_reviewer, cfg, spec_content, aws_config)
+            future = executor.submit(run_reviewer, cfg, spec_content, reviewer_model_config)
             future_map[future] = cfg.id
 
         for future in as_completed(future_map):
