@@ -3,6 +3,7 @@
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -72,7 +73,33 @@ def main() -> None:
     level = config.get("level", "all")
     start = time.time()
 
+    # Skip gracefully when pytest isn't installed (e.g. non-Python project)
+    if shutil.which("pytest") is None:
+        check_result = {
+            "name": "tests-pytest",
+            "passed": True,
+            "output": "pytest not found on PATH — skipped (non-Python project?)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": None,
+        }
+        json.dump(check_result, sys.stdout)
+        sys.exit(0)
+        return
+
     test_dir = _discover_test_dir(project_root)
+
+    # Skip gracefully when there's no test directory to run (e.g. non-Python project)
+    if not (Path(project_root) / test_dir).is_dir():
+        check_result = {
+            "name": "tests-pytest",
+            "passed": True,
+            "output": f"No '{test_dir}/' directory found — skipped (non-Python project?)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": None,
+        }
+        json.dump(check_result, sys.stdout)
+        sys.exit(0)
+        return
 
     # Scope to changed files when available
     changed_files = context.get("changed_files")

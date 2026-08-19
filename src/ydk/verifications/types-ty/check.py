@@ -7,6 +7,7 @@ verification on task branches.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -27,6 +28,19 @@ def main() -> None:
     context = json.loads(sys.stdin.read())
     project_root = context["project_root"]
     start = time.time()
+
+    # Skip gracefully when ty isn't installed (e.g. non-Python project)
+    if shutil.which("ty") is None:
+        check_result = {
+            "name": "types-ty",
+            "passed": True,
+            "output": "ty not found on PATH — skipped (non-Python project?)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": None,
+        }
+        json.dump(check_result, sys.stdout)
+        sys.exit(0)
+        return
 
     # Scope to changed files when available (avoids blocking on generated file errors)
     changed_files = context.get("changed_files")

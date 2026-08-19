@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import typer
@@ -12,6 +14,23 @@ import typer
 from ydk.core.config import init_config
 from ydk.core.doctor import CheckSeverity, Doctor
 from ydk.output.console import console
+
+
+def _python_command() -> str:
+    """Return a python invocation usable in generated hook commands.
+
+    Prefers the interpreter currently running (always resolvable), falling
+    back to a bare ``python`` on PATH. Avoids hardcoding ``python3``, which
+    is often missing or an unusable stub on Windows.
+    """
+    return sys.executable or shutil.which("python") or "python"
+
+
+def _make_executable(path: Path) -> None:
+    """Set the executable bit on POSIX. No-op on Windows (no chmod bit there)."""
+    if os.name != "nt":
+        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
 
 # ---------------------------------------------------------------------------
 # GitHub templates
@@ -109,10 +128,10 @@ def _install_github_templates() -> None:
     issue_dir = github_dir / "ISSUE_TEMPLATE"
     issue_dir.mkdir(parents=True, exist_ok=True)
 
-    (issue_dir / "task.md").write_text(_ISSUE_TEMPLATE_TASK)
-    (issue_dir / "story.md").write_text(_ISSUE_TEMPLATE_STORY)
-    (issue_dir / "epic.md").write_text(_ISSUE_TEMPLATE_EPIC)
-    (github_dir / "PULL_REQUEST_TEMPLATE.md").write_text(_PR_TEMPLATE)
+    (issue_dir / "task.md").write_text(_ISSUE_TEMPLATE_TASK, encoding="utf-8")
+    (issue_dir / "story.md").write_text(_ISSUE_TEMPLATE_STORY, encoding="utf-8")
+    (issue_dir / "epic.md").write_text(_ISSUE_TEMPLATE_EPIC, encoding="utf-8")
+    (github_dir / "PULL_REQUEST_TEMPLATE.md").write_text(_PR_TEMPLATE, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -122,13 +141,30 @@ def _install_github_templates() -> None:
 _GUARD_SCRIPT = '''\
 #!/usr/bin/env python3
 """YDK unified guard hook — all guard checks in one script."""
-import json, sys, select
+import json, sys, threading
 from pathlib import Path
 
-# Read stdin (Claude Code pipes tool context as JSON)
-if select.select([sys.stdin], [], [], 0.5)[0]:
-    raw = sys.stdin.read()
-else:
+# Read stdin (Claude Code pipes tool context as JSON).
+# A POSIX-only readiness check on sys.stdin would raise on Windows, so a
+# background thread with a join timeout is used instead — it works the
+# same way on every platform and still fails open (allows the action) if
+# no data shows up within the timeout.
+def _read_stdin(timeout=0.5):
+    box = {}
+    def _reader():
+        try:
+            box["data"] = sys.stdin.read()
+        except Exception:
+            box["data"] = ""
+    t = threading.Thread(target=_reader, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        return None  # No data in time = allow
+    return box.get("data", "")
+
+raw = _read_stdin(0.5)
+if raw is None:
     sys.exit(0)  # No data = allow
 
 try:
@@ -242,12 +278,14 @@ def _install_claude_hooks() -> None:
         'echo "The session cannot end until the task is properly completed with a PR."\n'
         "exit 2\n"
     )
-    check_script.chmod(0o755)
+    if os.name != "nt":
+        check_script.chmod(0o755)
 
     # Unified PreToolUse guard script
     guard_script = hooks_dir / "guard.py"
-    guard_script.write_text(_GUARD_SCRIPT)
-    guard_script.chmod(0o755)
+    guard_script.write_text(_GUARD_SCRIPT, encoding="utf-8")
+    if os.name != "nt":
+        guard_script.chmod(0o755)
 
     settings_path = claude_dir / "settings.json"
 
@@ -269,23 +307,33 @@ def _install_claude_hooks() -> None:
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "python3 .claude/hooks/guard.py",
-                        }
-                    ],
-                },
-            ],
-            "SubagentStop": [
-                {
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": "bash .claude/hooks/check-task-complete.sh",
+                            "command": f"{_python_command()} .claude/hooks/guard.py",
                         }
                     ],
                 },
             ],
         },
     }
+
+    # bash/sh may not be resolvable on plain Windows (no Git Bash/WSL) —
+    # skip wiring the SubagentStop hook rather than installing a command
+    # that will fail every time it's invoked.
+    if shutil.which("bash") is not None:
+        settings["hooks"]["SubagentStop"] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash .claude/hooks/check-task-complete.sh",
+                    }
+                ],
+            },
+        ]
+    else:
+        console.print(
+            "[yellow]Warning: 'bash' not found on PATH — skipping SubagentStop hook "
+            "(check-task-complete.sh) install.[/yellow]"
+        )
 
     if settings_path.exists():
         existing = json.loads(settings_path.read_text())
@@ -301,20 +349,27 @@ def _install_hooks() -> None:
     hooks_dir = Path(".ydk/hooks")
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
+    # Resolve a python command at hook-run time rather than baking in a
+    # path — the hook script is checked into the repo and may run on a
+    # different machine/PATH than the one that ran `ydk init`. Falls back
+    # from python3 -> python since neither name is guaranteed present.
+    _py_resolve = "PY=$(command -v python3 || command -v python || echo python3)\n"
+
     pre_commit = hooks_dir / "pre-commit"
-    pre_commit.write_text("#!/bin/sh\nydk verify run --trigger pre-commit\n")
-    pre_commit.chmod(pre_commit.stat().st_mode | stat.S_IEXEC)
+    pre_commit.write_text("#!/bin/sh\nydk verify run --trigger pre-commit\n", encoding="utf-8")
+    _make_executable(pre_commit)
 
     pre_push = hooks_dir / "pre-push"
     pre_push.write_text(
         "#!/bin/sh\n"
         "# Skip verification if ydk task done already ran it recently\n"
-        'VERIFIED_FLAG=".ydk/.verified"\n'
+        + _py_resolve
+        + 'VERIFIED_FLAG=".ydk/.verified"\n'
         'if [ -f "$VERIFIED_FLAG" ]; then\n'
         '  VERIFIED_TS=$(cat "$VERIFIED_FLAG")\n'
-        '  NOW=$(python3 -c "import time; print(time.time())")\n'
-        "  AGE=$(python3 -c \"print(float('$NOW') - float('$VERIFIED_TS'))\")\n"
-        "  EXPIRED=$(python3 -c \"print(1 if float('$AGE') > 300 else 0)\")\n"
+        '  NOW=$("$PY" -c "import time; print(time.time())")\n'
+        "  AGE=$(\"$PY\" -c \"print(float('$NOW') - float('$VERIFIED_TS'))\")\n"
+        '  EXPIRED=$("$PY" -c "print(1 if float(\'$AGE\') > 300 else 0)")\n'
         '  if [ "$EXPIRED" = "0" ]; then\n'
         '    echo "Pre-push: skipping verification (ydk task done verified recently)"\n'
         '    rm -f "$VERIFIED_FLAG"\n'
@@ -324,11 +379,11 @@ def _install_hooks() -> None:
         "fi\n"
         "ydk verify run --trigger pre-push\n"
     )
-    pre_push.chmod(pre_push.stat().st_mode | stat.S_IEXEC)
+    _make_executable(pre_push)
 
     commit_msg = hooks_dir / "commit-msg"
-    commit_msg.write_text('#!/bin/sh\npython3 -m ydk.hooks.commit_msg "$1"\n')
-    commit_msg.chmod(commit_msg.stat().st_mode | stat.S_IEXEC)
+    commit_msg.write_text(f'#!/bin/sh\n{_py_resolve}"$PY" -m ydk.hooks.commit_msg "$1"\n', encoding="utf-8")
+    _make_executable(commit_msg)
 
     subprocess.run(
         ["git", "config", "core.hooksPath", ".ydk/hooks"],
@@ -382,7 +437,7 @@ def init_command(
     adrs_dir.mkdir(parents=True, exist_ok=True)
     if not rules_file.exists():
         rules_file.parent.mkdir(parents=True, exist_ok=True)
-        rules_file.write_text("# Project Rules\n\nConventions, preferences, and domain knowledge.\n")
+        rules_file.write_text("# Project Rules\n\nConventions, preferences, and domain knowledge.\n", encoding="utf-8")
 
     # Copy built-in spec-reviewers to project
     _install_spec_reviewers(config)

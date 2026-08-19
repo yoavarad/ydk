@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import yaml
@@ -180,10 +181,12 @@ def test_init_installs_subagent_stop_hook(tmp_path: Path, monkeypatch: object) -
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     runner.invoke(app, ["init", "--name", "myproject"])
 
-    # Verify the hook script is installed and executable
+    # Verify the hook script is installed (executable bit only applies on POSIX —
+    # Windows has no chmod concept, see init_cmd._make_executable)
     hook_script = tmp_path / ".claude" / "hooks" / "check-task-complete.sh"
     assert hook_script.is_file()
-    assert hook_script.stat().st_mode & 0o100  # executable
+    if os.name != "nt":
+        assert hook_script.stat().st_mode & 0o100  # executable
     content = hook_script.read_text()
     assert "active-task.json" in content
     assert "exit 2" in content
@@ -204,12 +207,14 @@ def test_init_installs_guard_hook(tmp_path: Path, monkeypatch: object) -> None:
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     runner.invoke(app, ["init", "--name", "myproject"])
 
-    # Verify guard.py is installed and executable
+    # Verify guard.py is installed (executable bit only applies on POSIX)
     guard_script = tmp_path / ".claude" / "hooks" / "guard.py"
     assert guard_script.is_file()
-    assert guard_script.stat().st_mode & 0o100  # executable
+    if os.name != "nt":
+        assert guard_script.stat().st_mode & 0o100  # executable
     content = guard_script.read_text()
-    assert "select.select" in content
+    assert "threading" in content
+    assert "select.select(" not in content  # POSIX-only, crashes on Windows
     assert "no-manual-pr" in content
     assert "no-proof-tamper" in content
     assert "no-noqa" in content
@@ -232,3 +237,80 @@ def test_init_installs_guard_hook(tmp_path: Path, monkeypatch: object) -> None:
     assert "Read(*)" in settings["permissions"]["allow"]
     assert "Edit(*)" in settings["permissions"]["allow"]
     assert "Write(*)" in settings["permissions"]["allow"]
+
+
+def test_python_command_prefers_sys_executable() -> None:
+    """_python_command() returns sys.executable, not a hardcoded 'python3'."""
+    import sys
+
+    from ydk.cli.init_cmd import _python_command
+
+    assert _python_command() == sys.executable
+
+
+def test_make_executable_noop_on_windows(tmp_path: Path, monkeypatch: object) -> None:
+    """_make_executable() does not call chmod when os.name == 'nt'."""
+    from ydk.cli import init_cmd
+
+    monkeypatch.setattr(init_cmd.os, "name", "nt")  # type: ignore[attr-defined]
+    f = tmp_path / "script.sh"
+    f.write_text("#!/bin/sh\necho hi\n")
+    called = False
+
+    def _fake_chmod(*args: object, **kwargs: object) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(type(f), "chmod", _fake_chmod)  # type: ignore[attr-defined]
+    init_cmd._make_executable(f)
+    assert called is False
+
+
+def test_make_executable_chmods_on_posix(tmp_path: Path, monkeypatch: object) -> None:
+    """_make_executable() calls chmod when os.name != 'nt'."""
+    from ydk.cli import init_cmd
+
+    monkeypatch.setattr(init_cmd.os, "name", "posix")  # type: ignore[attr-defined]
+    f = tmp_path / "script.sh"
+    f.write_text("#!/bin/sh\necho hi\n")
+    called = False
+
+    def _fake_chmod(self: object, mode: int) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(type(f), "chmod", _fake_chmod)  # type: ignore[attr-defined]
+    init_cmd._make_executable(f)
+    assert called is True
+
+
+def test_init_skips_subagent_stop_hook_when_bash_missing(tmp_path: Path, monkeypatch: object) -> None:
+    """ydk init skips wiring SubagentStop when bash isn't on PATH (plain Windows)."""
+    import json
+
+    from ydk.cli import init_cmd
+
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(init_cmd.shutil, "which", lambda name: None if name == "bash" else "/usr/bin/" + name)
+    runner.invoke(app, ["init", "--name", "myproject"])
+
+    settings_path = tmp_path / ".claude" / "settings.json"
+    settings = json.loads(settings_path.read_text())
+    assert "SubagentStop" not in settings["hooks"]
+    # PreToolUse guard hook must still be installed regardless
+    assert "PreToolUse" in settings["hooks"]
+
+
+def test_install_hooks_resolve_python_dynamically(tmp_path: Path, monkeypatch: object) -> None:
+    """Generated .ydk/hooks/pre-push and commit-msg resolve python at run time, not 'python3'."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    runner.invoke(app, ["init", "--name", "myproject"])
+
+    pre_push = (tmp_path / ".ydk" / "hooks" / "pre-push").read_text()
+    assert "command -v python3" in pre_push
+    assert "command -v python" in pre_push
+    assert '"$PY" -c' in pre_push
+
+    commit_msg = (tmp_path / ".ydk" / "hooks" / "commit-msg").read_text()
+    assert "command -v python3" in commit_msg
+    assert '"$PY" -m ydk.hooks.commit_msg' in commit_msg
