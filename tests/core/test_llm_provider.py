@@ -6,7 +6,15 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ydk.core.llm_provider import AnthropicLLMProvider, LLMProvider, get_llm_provider
-from ydk.models.config import AIConfig
+from ydk.models.config import AIConfig, AnthropicConfig, YdkConfig
+
+
+def _cfg(*, provider: str = "anthropic", model_tiers: dict[str, str] | None = None) -> YdkConfig:
+    return YdkConfig(
+        project={"name": "test"},
+        ai=AIConfig(provider=provider, model_tiers=model_tiers or {"fast": "claude-sonnet-5"}),
+        anthropic=AnthropicConfig(api_key_env="ANTHROPIC_API_KEY"),
+    )
 
 # ---------------------------------------------------------------------------
 # AnthropicLLMProvider (mocks the anthropic SDK client — a system boundary)
@@ -63,7 +71,7 @@ class TestAnthropicLLMProvider:
 
 class TestGetLlmProvider:
     def test_returns_anthropic_provider_for_anthropic_config(self) -> None:
-        cfg = AIConfig(provider="anthropic", model_tiers={"fast": "claude-sonnet-5"})
+        cfg = _cfg()
 
         with patch("anthropic.Anthropic") as mock_anthropic_cls:
             mock_client = MagicMock()
@@ -74,14 +82,15 @@ class TestGetLlmProvider:
         assert isinstance(provider, AnthropicLLMProvider)
         assert provider._client is mock_client
         assert provider._model_id == "claude-sonnet-5"
+        mock_anthropic_cls.assert_called_once()
 
     def test_returns_none_for_unknown_provider(self) -> None:
-        cfg = AIConfig(provider="does-not-exist", model_tiers={})
+        cfg = _cfg(provider="does-not-exist", model_tiers={})
 
         assert get_llm_provider(cfg) is None
 
     def test_returns_none_on_exception(self) -> None:
-        cfg = AIConfig(provider="anthropic", model_tiers={"fast": "claude-sonnet-5"})
+        cfg = _cfg()
 
         with patch("anthropic.Anthropic", side_effect=RuntimeError("boom")):
             assert get_llm_provider(cfg) is None

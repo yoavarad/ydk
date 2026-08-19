@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from ydk.models.config import AIConfig
+    from ydk.models.config import YdkConfig
 
 
 @runtime_checkable
@@ -37,11 +37,14 @@ class AnthropicLLMProvider:
         return ""
 
 
-def _build_anthropic_provider(cfg: AIConfig) -> LLMProvider:
+def _build_anthropic_provider(cfg: YdkConfig) -> LLMProvider:
+    import os
+
     import anthropic
 
-    client = anthropic.Anthropic()
-    model_id = cfg.model_tiers.get("fast", "claude-sonnet-5")
+    api_key = os.getenv(cfg.anthropic.api_key_env)
+    client = anthropic.Anthropic(api_key=api_key)
+    model_id = cfg.ai.model_tiers.get("fast", "claude-sonnet-4-6")
     return AnthropicLLMProvider(client=client, model_id=model_id)
 
 
@@ -50,14 +53,14 @@ _PROVIDER_BUILDERS = {
 }
 
 
-def get_llm_provider(cfg: AIConfig) -> LLMProvider | None:
-    """Construct an LLMProvider from an AIConfig, dispatching on ``cfg.provider``.
+def get_llm_provider(cfg: YdkConfig) -> LLMProvider | None:
+    """Construct an LLMProvider from a YdkConfig, dispatching on ``cfg.ai.provider``.
 
     Fails open: returns ``None`` on any error (missing import, missing
     config, unknown provider, etc.) instead of raising.
     """
     try:
-        builder = _PROVIDER_BUILDERS.get(cfg.provider)
+        builder = _PROVIDER_BUILDERS.get(cfg.ai.provider)
         if builder is None:
             return None
         return builder(cfg)
