@@ -112,12 +112,14 @@ def apply_auth(request: httpx.Request) -> httpx.Request:
         request.headers["X-API-Key"] = api_key
     return request
 
+
 # oauth_token strategy
 def apply_auth(request: httpx.Request) -> httpx.Request:
     token = os.environ.get("MYAPP_AUTH_TOKEN", "")
     if token:
         request.headers["Authorization"] = f"Bearer {token}"
     return request
+
 
 # none strategy
 def apply_auth(request: httpx.Request) -> httpx.Request:
@@ -154,15 +156,19 @@ The HTTP client defines a typed exception hierarchy in `src/client/http_client.p
 ```python
 class ApiError(Exception):
     """Base API error."""
+
     def __init__(self, status_code: int, message: str) -> None:
         self.status_code = status_code
         self.message = message
 
+
 class NotFoundError(ApiError):
     """Resource not found (404)."""
 
+
 class AuthError(ApiError):
     """Authentication or authorization failure (401/403)."""
+
 
 class ServerError(ApiError):
     """Server-side error (5xx)."""
@@ -235,9 +241,11 @@ import pytest
 from typer.testing import CliRunner
 from src.main import app
 
+
 @pytest.fixture
 def runner():
     return CliRunner()
+
 
 @pytest.fixture
 def cli_app():
@@ -261,9 +269,7 @@ BASE_URL = "http://localhost:8000"
 @respx.mock
 def test_users_list_success():
     """Test users list -- happy path."""
-    respx.get(f"{BASE_URL}/users").mock(
-        return_value=Response(200, json=[{"id": "1"}])
-    )
+    respx.get(f"{BASE_URL}/users").mock(return_value=Response(200, json=[{"id": "1"}]))
     result = runner.invoke(app, ["users", "list"])
     assert result.exit_code == 0
 
@@ -271,9 +277,7 @@ def test_users_list_success():
 @respx.mock
 def test_users_list_not_found():
     """Test users list -- 404 error handling."""
-    respx.get(f"{BASE_URL}/users").mock(
-        return_value=Response(404, text="Not found")
-    )
+    respx.get(f"{BASE_URL}/users").mock(return_value=Response(404, text="Not found"))
     result = runner.invoke(app, ["users", "list"])
     assert result.exit_code == 1
 
@@ -281,9 +285,7 @@ def test_users_list_not_found():
 @respx.mock
 def test_users_get_success():
     """Test users get -- happy path with path argument."""
-    respx.get(f"{BASE_URL}/users/test-id").mock(
-        return_value=Response(200, json={"id": "test-id"})
-    )
+    respx.get(f"{BASE_URL}/users/test-id").mock(return_value=Response(200, json={"id": "test-id"}))
     result = runner.invoke(app, ["users", "get", "test-id"])
     assert result.exit_code == 0
 
@@ -291,9 +293,7 @@ def test_users_get_success():
 @respx.mock
 def test_users_get_not_found():
     """Test users get -- 404 error handling."""
-    respx.get(f"{BASE_URL}/users/missing-id").mock(
-        return_value=Response(404, text="Not found")
-    )
+    respx.get(f"{BASE_URL}/users/missing-id").mock(return_value=Response(404, text="Not found"))
     result = runner.invoke(app, ["users", "get", "missing-id"])
     assert result.exit_code == 1
 ```
