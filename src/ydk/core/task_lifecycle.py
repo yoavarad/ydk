@@ -593,6 +593,7 @@ class TaskLifecycle:
         Falls back to a local reference if ``gh`` is not available or fails.
         """
         import shutil
+        import tempfile
 
         worktree = self._worktree.get_worktree_path(task_id)
         cwd = str(worktree) if worktree else str(self._root)
@@ -628,24 +629,36 @@ class TaskLifecycle:
                 except (json.JSONDecodeError, OSError):
                     pass
 
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "create",
-                    "--title",
-                    f"Task {task_id}: {getattr(task, 'title', task_id)}",
-                    "--body",
-                    pr_body,
-                    "--head",
-                    actual_branch,
-                    "--base",
-                    base_branch,
-                ],
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-            )
+            # Pass the body via --body-file rather than inline: proof-rich
+            # bodies can be tens of KB, which overflows the Windows
+            # CreateProcess command-line length limit (WinError 206) when
+            # passed as a literal argument.
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as body_file:
+                body_file.write(pr_body)
+                body_file_path = body_file.name
+
+            try:
+                result = subprocess.run(
+                    [
+                        "gh",
+                        "pr",
+                        "create",
+                        "--title",
+                        f"Task {task_id}: {getattr(task, 'title', task_id)}",
+                        "--body-file",
+                        body_file_path,
+                        "--head",
+                        actual_branch,
+                        "--base",
+                        base_branch,
+                    ],
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                Path(body_file_path).unlink(missing_ok=True)
+
             if result.returncode == 0:
                 url = result.stdout.strip()
                 if url:

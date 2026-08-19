@@ -239,6 +239,42 @@ def test_create_pr_returns_local_reference(
     assert "T-001" in url
 
 
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_uses_body_file_not_inline_arg(
+    mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, mock_worktree: MagicMock
+) -> None:
+    """_create_pr passes the body via --body-file, not inline --body.
+
+    A large proof-rich PR body passed as a literal --body argument
+    overflows Windows' CreateProcess command-line length limit
+    (WinError 206). --body-file writes it to a temp file instead.
+    """
+    mock_worktree.get_worktree_path.return_value = None
+    big_body = "proof output\n" * 5000  # large enough to overflow an inline arg on Windows
+    captured_file_content: list[str] = []
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            body_file_path = args[args.index("--body-file") + 1]
+            captured_file_content.append(Path(body_file_path).read_text(encoding="utf-8"))
+            return MagicMock(returncode=0, stdout="https://github.com/org/repo/pull/1\n")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/T-001\n")
+        return MagicMock(returncode=0)  # git push
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    url = lifecycle._create_pr("T-001", pr_body_override=big_body)
+
+    assert url == "https://github.com/org/repo/pull/1"
+    create_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"])
+    create_args = create_call.args[0]
+    assert "--body" not in create_args
+    assert "--body-file" in create_args
+    assert captured_file_content == [big_body]
+
+
 def test_discover_creates_new_task_linked_to_parent(lifecycle: TaskLifecycle, mock_repo: MagicMock) -> None:
     """discover() creates a new task with the parent as a dependency."""
     new_id = lifecycle.discover("T-001", "Fix edge case", "Found a bug")
