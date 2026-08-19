@@ -7,7 +7,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from ydk.core.complexity_scorer import ComplexityScorer, LLMProvider, _build_prompt
+from ydk.core.complexity_scorer import ComplexityScorer, _build_prompt
+from ydk.core.llm_provider import LLMProvider
 from ydk.models.complexity import ComplexityScore
 from ydk.models.pm import TaskDetail
 

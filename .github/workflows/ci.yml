@@ -14,9 +14,9 @@ jobs:
       - name: Check branch naming convention
         run: |
           BRANCH="${{ github.head_ref }}"
-          if ! echo "$BRANCH" | grep -qE '^(feat|fix|docs|chore|refactor|test|ci|perf|release)/[a-z0-9-]+$'; then
+          if ! echo "$BRANCH" | grep -qE '^(feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+$'; then
             echo "ERROR: branch '$BRANCH' does not follow convention: type/description"
-            echo "Valid types: feat fix docs chore refactor test ci perf release"
+            echo "Valid types: feat fix docs chore refactor test ci perf release task"
             echo "Example: feat/add-telemetry"
             exit 1
           fi
