@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,7 @@ class TestCaptureCommand:
         pc = ProofCapture(proof_dir)
         path = pc.capture_command(
             "stderr-test",
-            ["python3", "-c", "import sys; sys.stderr.write('err msg')"],
+            [sys.executable, "-c", "import sys; sys.stderr.write('err msg')"],
         )
         assert "err msg" in path.read_text()
 
@@ -60,7 +61,11 @@ class TestCaptureCommand:
 
     def test_cwd_is_respected(self, proof_dir: Path, tmp_path: Path) -> None:
         pc = ProofCapture(proof_dir)
-        path = pc.capture_command("pwd-test", ["pwd"], cwd=tmp_path)
+        path = pc.capture_command(
+            "pwd-test",
+            [sys.executable, "-c", "import os; print(os.getcwd())"],
+            cwd=tmp_path,
+        )
         content = path.read_text().strip()
         assert Path(content).resolve() == tmp_path.resolve()
 

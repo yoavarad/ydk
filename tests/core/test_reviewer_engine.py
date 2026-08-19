@@ -1,10 +1,11 @@
 """Unit tests for the cached fan-out reviewer engine.
 
-All tests mock the boto3 client — no real Bedrock calls.
+All tests mock the anthropic client — no real Anthropic API calls.
 """
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ydk.core.reviewer_engine import REVIEW_TOOL_SPEC, ReviewerEngine
@@ -24,34 +25,27 @@ def _mock_converse_response(
     output_tokens: int = 50,
     cache_read: int = 0,
     cache_write: int = 0,
-) -> dict:
-    """Build a mock Bedrock Converse response with a toolUse block."""
-    return {
-        "output": {
-            "message": {
-                "content": [
-                    {
-                        "toolUse": {
-                            "toolUseId": "mock-id",
-                            "name": "submit_review",
-                            "input": {
-                                "score": score,
-                                "reasoning": reasoning,
-                                "suggestions": suggestions or [],
-                                "findings": findings or [],
-                            },
-                        }
-                    }
-                ],
-            },
-        },
-        "usage": {
-            "inputTokens": input_tokens,
-            "outputTokens": output_tokens,
-            "cacheReadInputTokens": cache_read,
-            "cacheWriteInputTokens": cache_write,
-        },
-    }
+) -> SimpleNamespace:
+    """Build a mock Anthropic Messages API response with a tool_use block."""
+    return SimpleNamespace(
+        content=[
+            SimpleNamespace(
+                type="tool_use",
+                input={
+                    "score": score,
+                    "reasoning": reasoning,
+                    "suggestions": suggestions or [],
+                    "findings": findings or [],
+                },
+            )
+        ],
+        usage=SimpleNamespace(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_input_tokens=cache_read,
+            cache_creation_input_tokens=cache_write,
+        ),
+    )
 
 
 def _make_reviewers(count: int = 3, tier: str = "smart") -> list[dict]:
@@ -69,8 +63,8 @@ def _make_reviewers(count: int = 3, tier: str = "smart") -> list[dict]:
 
 
 MODEL_TIERS = {
-    "smart": "us.anthropic.claude-sonnet-4-6-v1:0",
-    "fast": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "smart": "claude-sonnet-4-6",
+    "fast": "claude-haiku-4-5",
 }
 
 
@@ -84,10 +78,10 @@ class TestBuildSystemBlocks:
         engine = ReviewerEngine.__new__(ReviewerEngine)
         blocks = engine._build_system_blocks("# My Spec\nSome content")
 
-        assert len(blocks) == 3
+        assert len(blocks) == 2
         assert "text" in blocks[0]
         assert "text" in blocks[1]
-        assert blocks[2] == {"cachePoint": {"type": "default"}}
+        assert blocks[1]["cache_control"] == {"type": "ephemeral"}
 
     def test_spec_content_embedded(self):
         engine = ReviewerEngine.__new__(ReviewerEngine)
@@ -103,34 +97,32 @@ class TestBuildSystemBlocks:
 
 class TestReviewToolSpec:
     def test_tool_spec_structure(self):
-        assert "toolSpec" in REVIEW_TOOL_SPEC
-        spec = REVIEW_TOOL_SPEC["toolSpec"]
-        assert spec["name"] == "submit_review"
-        schema = spec["inputSchema"]["json"]
+        assert REVIEW_TOOL_SPEC["name"] == "submit_review"
+        schema = REVIEW_TOOL_SPEC["input_schema"]
         assert set(schema["required"]) == {"score", "reasoning", "suggestions", "findings"}
 
     def test_findings_schema_has_line_text_issue(self):
-        findings_items = REVIEW_TOOL_SPEC["toolSpec"]["inputSchema"]["json"]["properties"]["findings"]["items"]
+        findings_items = REVIEW_TOOL_SPEC["input_schema"]["properties"]["findings"]["items"]
         assert "line" in findings_items["properties"]
         assert "text" in findings_items["properties"]
         assert "issue" in findings_items["properties"]
 
 
 # ---------------------------------------------------------------------------
-# _call_reviewer — toolUse extraction
+# _call_reviewer — tool_use extraction
 # ---------------------------------------------------------------------------
 
 
 class TestCallReviewer:
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_extracts_tooluse_result(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_extracts_tooluse_result(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
-        mock_client.converse.return_value = _mock_converse_response(
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_client.messages.create.return_value = _mock_converse_response(
             score=9, reasoning="Excellent", suggestions=["Do X"], findings=[{"line": 1, "text": "foo", "issue": "bar"}]
         )
 
-        engine = ReviewerEngine(aws_profile="test", region="us-east-1")
+        engine = ReviewerEngine(api_key="test")
         system_blocks = engine._build_system_blocks("# Spec")
         result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
@@ -141,71 +133,72 @@ class TestCallReviewer:
         assert len(result["findings"]) == 1
         assert result["findings"][0]["line"] == 1
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_passes_tool_config(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_passes_tool_config(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
-        mock_client.converse.return_value = _mock_converse_response()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_client.messages.create.return_value = _mock_converse_response()
 
-        engine = ReviewerEngine(aws_profile="test", region="us-east-1")
+        engine = ReviewerEngine(api_key="test")
         system_blocks = engine._build_system_blocks("# Spec")
         engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
-        call_kwargs = mock_client.converse.call_args[1]
-        assert "toolConfig" in call_kwargs
-        assert call_kwargs["toolConfig"]["toolChoice"] == {"tool": {"name": "submit_review"}}
-        assert call_kwargs["inferenceConfig"]["maxTokens"] == 8192
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_review"}
+        assert call_kwargs["max_tokens"] == 8192
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_missing_tooluse_block_returns_zero(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_missing_tooluse_block_returns_zero(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
-        # Response with text instead of toolUse (shouldn't happen, but handle gracefully)
-        mock_client.converse.return_value = {
-            "output": {"message": {"content": [{"text": "oops"}]}},
-            "usage": {"inputTokens": 10, "outputTokens": 5},
-        }
+        mock_anthropic.Anthropic.return_value = mock_client
+        # Response with text instead of tool_use (shouldn't happen, but handle gracefully)
+        mock_client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="oops")],
+            usage=SimpleNamespace(
+                input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            ),
+        )
 
-        engine = ReviewerEngine(aws_profile="test", region="us-east-1")
+        engine = ReviewerEngine(api_key="test")
         system_blocks = engine._build_system_blocks("# Spec")
         result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
         assert result["score"] == 0
-        assert "No toolUse block" in result["reasoning"]
+        assert "No tool_use block" in result["reasoning"]
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_bedrock_exception_handled(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_anthropic_exception_handled(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
-        mock_client.converse.side_effect = Exception("Throttled")
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_client.messages.create.side_effect = Exception("Throttled")
 
-        engine = ReviewerEngine(aws_profile="test", region="us-east-1")
+        engine = ReviewerEngine(api_key="test")
         system_blocks = engine._build_system_blocks("# Spec")
         result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
         assert result["score"] == 0
-        assert "BEDROCK ERROR" in result["reasoning"]
+        assert "ANTHROPIC ERROR" in result["reasoning"]
 
 
 # ---------------------------------------------------------------------------
-# run_all — mocked boto3 client
+# run_all — mocked anthropic client
 # ---------------------------------------------------------------------------
 
 
 class TestRunAll:
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_basic_flow(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_basic_flow(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
         # First call: cache write; subsequent: cache read
-        mock_client.converse.side_effect = [
+        mock_client.messages.create.side_effect = [
             _mock_converse_response(score=9, reasoning="Excellent", cache_write=5000),
             _mock_converse_response(score=7, reasoning="Decent", suggestions=["Improve X"], cache_read=5000),
             _mock_converse_response(score=8, reasoning="Good", cache_read=5000),
         ]
 
-        engine = ReviewerEngine(aws_profile="test", region="us-east-1")
+        engine = ReviewerEngine(api_key="test")
         results = engine.run_all(
             spec_content="# Test Spec",
             reviewers=_make_reviewers(3),
@@ -214,27 +207,27 @@ class TestRunAll:
         )
 
         assert len(results) == 3
-        assert mock_client.converse.call_count == 3
+        assert mock_client.messages.create.call_count == 3
         # Results sorted by reviewer_id
         ids = [r["reviewer_id"] for r in results]
         assert ids == sorted(ids)
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_empty_reviewers(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_empty_reviewers(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
         engine = ReviewerEngine()
         results = engine.run_all("# Spec", [], MODEL_TIERS)
         assert results == []
-        mock_client.converse.assert_not_called()
+        mock_client.messages.create.assert_not_called()
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_bedrock_error_handled(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_anthropic_error_handled(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
-        mock_client.converse.side_effect = Exception("Throttled")
+        mock_client.messages.create.side_effect = Exception("Throttled")
 
         engine = ReviewerEngine()
         results = engine.run_all(
@@ -245,14 +238,14 @@ class TestRunAll:
 
         assert len(results) == 1
         assert results[0]["score"] == 0
-        assert "BEDROCK ERROR" in results[0]["reasoning"]
+        assert "ANTHROPIC ERROR" in results[0]["reasoning"]
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_model_tier_resolution(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_model_tier_resolution(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
-        mock_client.converse.return_value = _mock_converse_response()
+        mock_client.messages.create.return_value = _mock_converse_response()
 
         engine = ReviewerEngine()
         reviewers = [
@@ -276,24 +269,24 @@ class TestRunAll:
         engine.run_all("# Spec", reviewers, MODEL_TIERS)
 
         # First call (prime) uses smart model
-        first_call_kwargs = mock_client.converse.call_args_list[0][1]
-        assert first_call_kwargs["modelId"] == MODEL_TIERS["smart"]
+        first_call_kwargs = mock_client.messages.create.call_args_list[0][1]
+        assert first_call_kwargs["model"] == MODEL_TIERS["smart"]
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_per_tier_cache_priming(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_per_tier_cache_priming(self, mock_anthropic):
         """Each model tier should prime its own cache independently."""
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
         call_order: list[tuple[str, str]] = []
 
         def track_calls(**kwargs):
-            model_id = kwargs["modelId"]
-            user_text = kwargs["messages"][0]["content"][0]["text"]
+            model_id = kwargs["model"]
+            user_text = kwargs["messages"][0]["content"]
             call_order.append((model_id, user_text))
             return _mock_converse_response()
 
-        mock_client.converse.side_effect = track_calls
+        mock_client.messages.create.side_effect = track_calls
 
         engine = ReviewerEngine()
         reviewers = [
@@ -332,7 +325,7 @@ class TestRunAll:
         ]
         engine.run_all("# Spec", reviewers, MODEL_TIERS)
 
-        assert mock_client.converse.call_count == 4
+        assert mock_client.messages.create.call_count == 4
 
         # Verify smart-tier calls use Sonnet model
         smart_calls = [(m, t) for m, t in call_order if m == MODEL_TIERS["smart"]]
@@ -345,21 +338,21 @@ class TestRunAll:
         assert call_order[0][0] == MODEL_TIERS["smart"]
         assert call_order[0][1] == "Smart eval 1"
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_mixed_tiers_each_get_correct_model(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_mixed_tiers_each_get_correct_model(self, mock_anthropic):
         """Reviewers with different tiers should each use their tier's model."""
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
         models_used: dict[str, str] = {}
 
         def track_calls(**kwargs):
-            model_id = kwargs["modelId"]
-            user_text = kwargs["messages"][0]["content"][0]["text"]
+            model_id = kwargs["model"]
+            user_text = kwargs["messages"][0]["content"]
             models_used[user_text] = model_id
             return _mock_converse_response()
 
-        mock_client.converse.side_effect = track_calls
+        mock_client.messages.create.side_effect = track_calls
 
         engine = ReviewerEngine()
         reviewers = [
@@ -385,12 +378,12 @@ class TestRunAll:
         assert models_used["smart_prompt"] == MODEL_TIERS["smart"]
         assert models_used["fast_prompt"] == MODEL_TIERS["fast"]
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_passed_threshold(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_passed_threshold(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
-        mock_client.converse.return_value = _mock_converse_response(score=7)
+        mock_client.messages.create.return_value = _mock_converse_response(score=7)
 
         engine = ReviewerEngine()
         reviewers = [
@@ -400,12 +393,12 @@ class TestRunAll:
 
         assert results[0]["passed"] is False  # 7 < 8
 
-    @patch("ydk.core.reviewer_engine.boto3")
-    def test_passed_at_threshold(self, mock_boto3):
+    @patch("ydk.core.reviewer_engine.anthropic")
+    def test_passed_at_threshold(self, mock_anthropic):
         mock_client = MagicMock()
-        mock_boto3.Session.return_value.client.return_value = mock_client
+        mock_anthropic.Anthropic.return_value = mock_client
 
-        mock_client.converse.return_value = _mock_converse_response(score=8)
+        mock_client.messages.create.return_value = _mock_converse_response(score=8)
 
         engine = ReviewerEngine()
         reviewers = [

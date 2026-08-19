@@ -18,8 +18,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003 — used at runtime
-from typing import Any
+from typing import Any, cast
 
+import anthropic
 import yaml
 
 try:
@@ -172,12 +173,12 @@ def load_all_reviewers(
 
 
 # ---------------------------------------------------------------------------
-# ReviewerAgent — wraps a Strands Agent for one criterion
+# ReviewerAgent — runs deterministic tools + Claude judgment for one criterion
 # ---------------------------------------------------------------------------
 
 
 class ReviewerAgent:
-    """Wraps a Strands Agent for a single verification criterion."""
+    """Runs deterministic tools then Claude judgment for a single verification criterion."""
 
     def __init__(self, config: ReviewerConfig, model_config: dict[str, Any]) -> None:
         self._config = config
@@ -231,52 +232,48 @@ class ReviewerAgent:
             )
 
     def _run_with_llm(self, spec_content: str) -> ReviewResult:
-        """Run with full Strands Agent (LLM + tools)."""
-        import boto3
-        from strands import Agent
-        from strands.models.bedrock import BedrockModel
+        """Run deterministic tools first, then ask Claude to judge the findings."""
+        from ydk.core.reviewer_engine import REVIEW_TOOL_SPEC
 
-        logger.debug("Reviewer %s: creating Bedrock session", self._config.id)
-        api_start = time.monotonic()
-        session = boto3.Session(
-            region_name=self._model_config.get("region", "us-east-1"),
-            profile_name=self._model_config.get("profile") or None,
-        )
-        model = BedrockModel(
-            model_id=self._model_config.get("model_id", "us.anthropic.claude-sonnet-4-6"),
-            boto_session=session,
-            temperature=0.0,
-        )
+        logger.debug("Reviewer %s: running deterministic tools", self._config.id)
+        tools_result = self._run_tools_only(spec_content)
 
-        agent = Agent(
-            model=model,
-            system_prompt=self._config.system_prompt,
-            tools=list(self._config.tools),
-            callback_handler=None,
-        )
-        logger.debug(
-            "Reviewer %s: Bedrock agent ready in %.1fs",
-            self._config.id,
-            time.monotonic() - api_start,
-        )
+        model_id = self._model_config.get("model_id", "claude-sonnet-4-6")
+        api_key = self._model_config.get("api_key")
+
+        client = anthropic.Anthropic(api_key=api_key, timeout=300.0, max_retries=2)
 
         user_message = (
             "Here is the specification document to review:\n\n"
             "--- SPEC START ---\n"
             f"{spec_content}\n"
             "--- SPEC END ---\n\n"
-            "Run your tools first on the spec content above, then apply your judgment. "
-            "Return your assessment as JSON."
+            "Deterministic tool findings:\n"
+            f"{tools_result.findings}\n\n"
+            "Use your judgment to assess these findings (some may be false positives) "
+            "and call the submit_review tool with your final assessment."
         )
 
         call_start = time.monotonic()
-        response = agent(user_message)
+        response = client.messages.create(
+            model=model_id,
+            max_tokens=8192,
+            temperature=0.0,
+            system=self._config.system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+            tools=cast("Any", [REVIEW_TOOL_SPEC]),
+            tool_choice={"type": "tool", "name": "submit_review"},
+        )
         logger.debug(
-            "Reviewer %s: Bedrock API call completed in %.1fs",
+            "Reviewer %s: Anthropic API call completed in %.1fs",
             self._config.id,
             time.monotonic() - call_start,
         )
-        return self._parse_response(str(response))
+
+        tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+        if tool_use_block is None:
+            return self._fallback_result(str(response.content))
+        return self._parse_response(json.dumps(cast("Any", tool_use_block).input))
 
     def _run_tools_only(self, spec_content: str) -> ReviewResult:
         """Run only deterministic tools (no LLM)."""
@@ -430,7 +427,7 @@ def run_all_sync(
     Args:
         spec_content: The specification text to review.
         reviewers_dir: Directory containing reviewer YAML files.
-        model_config: AWS/model configuration for Strands agents.
+        model_config: Anthropic API key/model configuration for reviewer agents.
         threshold_overrides: Group-level threshold overrides.
         max_workers: Maximum parallel agents.
         rubric_filter: Optional group name to filter reviewers.
@@ -439,7 +436,7 @@ def run_all_sync(
         Sorted list of ReviewResult instances.
     """
     total_start = time.monotonic()
-    aws_config = model_config or {}
+    reviewer_model_config = model_config or {}
     reviewers = load_all_reviewers(reviewers_dir, threshold_overrides=threshold_overrides)
 
     if rubric_filter is not None:
@@ -458,7 +455,7 @@ def run_all_sync(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_map = {}
         for cfg in reviewers:
-            future = executor.submit(run_reviewer, cfg, spec_content, aws_config)
+            future = executor.submit(run_reviewer, cfg, spec_content, reviewer_model_config)
             future_map[future] = cfg.id
 
         for future in as_completed(future_map):
