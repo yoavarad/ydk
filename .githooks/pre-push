@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """ydk pre-push hook — branch rules, unit tests."""
 
-import subprocess, sys, time
+import shutil, subprocess, sys, time
+from pathlib import Path
 
 RESET      = "\033[0m"
 BOLD       = "\033[1m"
@@ -116,16 +117,21 @@ else:
 
 # 3. Unit tests
 t0 = step("unit tests")
-result = run(["uv", "run", "pytest", "tests/", "-q", "--tb=short"])
-if result.returncode != 0:
-    lines = (result.stdout + result.stderr).strip().splitlines()
-    step_fail(t0, "\n".join(lines[-10:]))
-    failed = True
+if shutil.which("uv") is None:
+    step_skip("uv not found on PATH")
+elif not Path("pyproject.toml").exists() or not Path("tests").is_dir():
+    step_skip("no Python project detected (missing pyproject.toml or tests/)")
 else:
-    last_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
-    step_pass(t0)
-    if "passed" in last_line:
-        print(f"    {FG_GRAY}{last_line}{RESET}", flush=True)
+    result = run(["uv", "run", "pytest", "tests/", "-q", "--tb=short"])
+    if result.returncode != 0:
+        lines = (result.stdout + result.stderr).strip().splitlines()
+        step_fail(t0, "\n".join(lines[-10:]))
+        failed = True
+    else:
+        last_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+        step_pass(t0)
+        if "passed" in last_line:
+            print(f"    {FG_GRAY}{last_line}{RESET}", flush=True)
 
 if failed:
     finish_fail()

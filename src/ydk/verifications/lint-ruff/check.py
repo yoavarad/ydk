@@ -8,6 +8,7 @@ reviewing changes before committing.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -95,6 +96,19 @@ def main() -> None:
     project_root = context["project_root"]
     auto_fix = context.get("auto_fix", False)
     start = time.time()
+
+    # Skip gracefully when ruff isn't installed (e.g. non-Python project)
+    if shutil.which("ruff") is None:
+        result = {
+            "name": "lint-ruff",
+            "passed": True,
+            "output": "ruff not found on PATH — skipped (non-Python project?)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": None,
+        }
+        json.dump(result, sys.stdout)
+        sys.exit(0)
+        return
 
     # Scope to changed files when available
     changed_files = context.get("changed_files")

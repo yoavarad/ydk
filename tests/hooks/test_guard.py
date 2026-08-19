@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 def guard_script(tmp_path: Path) -> Path:
     """Write guard.py to tmp_path and return its path."""
     script = tmp_path / "guard.py"
-    script.write_text(_GUARD_SCRIPT)
+    script.write_text(_GUARD_SCRIPT, encoding="utf-8")
     script.chmod(0o755)
     return script
 
