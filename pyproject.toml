@@ -3,7 +3,7 @@ name = "ydk"
 
 
 
-version = "0.52.1"
+version = "0.52.2"
 
 description = "YDK — Yoav Development Kit"
 requires-python = ">=3.13"
@@ -102,7 +102,7 @@ name = "cz_conventional_commits"
 
 
 
-version = "0.52.1"
+version = "0.52.2"
 
 tag_format = "v$version"
 version_files = [
