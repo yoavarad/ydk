@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import textwrap
 from pathlib import Path  # noqa: TC003
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -349,6 +350,52 @@ class TestReviewerAgentParsing:
         assert result.score == 0
         assert result.passed is False
         assert "Failed to parse" in result.reasoning
+
+
+class TestRunWithLlm:
+    """Test _run_with_llm calls Anthropic Messages API with a forced tool_choice."""
+
+    def _mock_tool_use_response(self, **overrides: object) -> SimpleNamespace:
+        data = {
+            "score": 9,
+            "reasoning": "Well written spec.",
+            "suggestions": ["Minor improvement possible."],
+            "findings": [{"line": 5, "text": "minor issue", "issue": "could be clearer"}],
+        }
+        data.update(overrides)
+        return SimpleNamespace(content=[SimpleNamespace(type="tool_use", input=data)])
+
+    def test_calls_messages_create_with_forced_tool_choice(self) -> None:
+        config = _make_config(tools=[_empty_tool])
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
+
+        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
+            mock_client = MagicMock()
+            mock_anthropic.Anthropic.return_value = mock_client
+            mock_client.messages.create.return_value = self._mock_tool_use_response()
+
+            result = agent._run_with_llm("some spec content")
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_review"}
+        assert result.score == 9
+        assert result.reasoning == "Well written spec."
+        assert len(result.findings) == 1
+
+    def test_parses_tool_use_block_into_review_result(self) -> None:
+        config = _make_config(tools=[_empty_tool])
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
+
+        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
+            mock_client = MagicMock()
+            mock_anthropic.Anthropic.return_value = mock_client
+            mock_client.messages.create.return_value = self._mock_tool_use_response(score=6, reasoning="Needs work.")
+
+            result = agent._run_with_llm("some spec content")
+
+        assert result.reviewer_id == "T01"
+        assert result.score == 6
+        assert result.passed is False  # 6 < threshold 8
 
 
 class TestReviewerAgentGracefulDegradation:

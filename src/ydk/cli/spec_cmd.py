@@ -45,10 +45,10 @@ def _strands_available() -> bool:
         return False
 
 
-def _boto3_available() -> bool:
-    """Check if boto3 is importable (for cached fan-out engine)."""
+def _anthropic_available() -> bool:
+    """Check if anthropic is importable (for cached fan-out engine)."""
     try:
-        import boto3  # noqa: F401
+        import anthropic  # noqa: F401
 
         return True
     except ImportError:
@@ -83,8 +83,8 @@ def _run_reviewer_agents(
 ) -> tuple[list[ReviewResult], dict[str, list[dict[str, object]]]]:
     """Run parallel reviewer agents against spec content.
 
-    Prefers the cached fan-out engine (direct boto3 Converse API with
-    prompt caching).  Falls back to the Strands-based path if boto3 is
+    Prefers the cached fan-out engine (direct Anthropic Messages API with
+    prompt caching).  Falls back to the Strands-based path if anthropic is
     not available.
     """
     from ydk.models.config import YdkConfig
@@ -127,23 +127,22 @@ def _run_reviewer_agents(
             )
 
     # --- Cached fan-out engine (preferred) ---
-    if _boto3_available():
+    if _anthropic_available():
         return _run_cached_fanout(spec_content, config, reviewers, verbose=verbose)
 
     # --- Strands fallback ---
     if verbose:
-        typer.echo("  [fallback] boto3 not available, using Strands agents")
+        typer.echo("  [fallback] anthropic not available, using Strands agents")
 
-    aws_config: dict[str, str] = {
-        "profile": config.aws.profile,
-        "region": config.aws.region,
+    model_config: dict[str, Any] = {
+        "api_key": None,
         "model_id": config.spec_check.model,
     }
 
     results = run_all_sync(
         spec_content,
         reviewers_dir,
-        model_config=aws_config,
+        model_config=model_config,
         threshold_overrides=threshold_overrides,
         max_workers=config.spec_check.concurrency,
         rubric_filter=rubric_filter,
@@ -158,7 +157,7 @@ def _run_cached_fanout(
     *,
     verbose: bool = False,
 ) -> tuple[list[ReviewResult], dict[str, list[dict[str, object]]]]:
-    """Run reviewers via the cached fan-out engine (direct boto3 Converse API).
+    """Run reviewers via the cached fan-out engine (direct Anthropic Messages API).
 
     Returns:
         A tuple of (review results, deterministic findings per reviewer ID).
@@ -231,10 +230,7 @@ def _run_cached_fanout(
         )
 
     # Create engine and run
-    engine = ReviewerEngine(
-        aws_profile=config.aws.profile or None,
-        region=config.aws.region,
-    )
+    engine = ReviewerEngine(api_key=None)
 
     model_tiers = config.ai.model_tiers
 
@@ -871,10 +867,10 @@ def verify(
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
     """Run unified quality verification: components, references, and reviewer agents."""
-    # Early check: guard against broken installs where boto3 is missing
-    if not _boto3_available() and not _strands_available():
+    # Early check: guard against broken installs where anthropic is missing
+    if not _anthropic_available() and not _strands_available():
         console.print(
-            "[red]Error:[/red] Spec reviewers require boto3 (a core YDK dependency).\n"
+            "[red]Error:[/red] Spec reviewers require anthropic (a core YDK dependency).\n"
             "Your installation appears broken. Reinstall with: uv pip install ydk"
         )
         raise typer.Exit(code=1)
@@ -898,7 +894,7 @@ def verify(
     else:
         spec_files = git.changed_files(config.project.spec_location, base_ref=base_ref, extension=".md")
 
-    llm_available = _boto3_available() or _strands_available()
+    llm_available = _anthropic_available() or _strands_available()
 
     if not spec_files and not all_files:
         console.print("[yellow]No changed spec files found.[/yellow]")
