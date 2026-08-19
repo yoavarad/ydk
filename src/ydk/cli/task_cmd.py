@@ -1952,5 +1952,3 @@ def scaffold_batch(
     console.print(f"  {len(epics)} epic(s), {len(stories)} story(ies), {len(tasks)} task(s)")
     console.print(f"  Covering {len(items)} TODO(s)")
     console.print("  [bold]T-FINAL[/bold] added — depends on all tasks, verifies zero xfail")
-
-
