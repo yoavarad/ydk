@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -57,11 +57,11 @@ class _FakeScorer:
         return [self.score_task(t) for t in tasks]
 
 
-def _patch_for_cli(repo: _FakeRepo, scorer: _FakeScorer):
+def _patch_for_cli(repo: _FakeRepo, scorer: _FakeScorer, llm_provider: object | None = None):
     """Return combined patch context managers for the CLI command."""
     return (
         patch("ydk.cli.task_cmd._get_repo", return_value=repo),
-        patch("ydk.cli.task_cmd._get_llm_provider", return_value=None),
+        patch("ydk.core.llm_provider.get_llm_provider", return_value=llm_provider),
         patch("ydk.core.complexity_scorer.ComplexityScorer", return_value=scorer),
     )
 
@@ -107,3 +107,45 @@ class TestAnalyzeComplexityOutput:
         data = json.loads(result.output)
         assert len(data) == 1
         assert data[0]["score"] == 3
+
+
+class TestAnalyzeComplexityProviderWiring:
+    """Test that analyze_complexity routes through ydk.core.llm_provider.get_llm_provider."""
+
+    def test_none_provider_still_scores(self) -> None:
+        """When get_llm_provider returns None, the CLI still produces default scores."""
+        task = _make_task_detail("T-001", "Add login")
+        score = _make_score("T-001", 5)
+        repo = _FakeRepo([task])
+        scorer = _FakeScorer([score])
+
+        with (
+            patch("ydk.cli.task_cmd._get_repo", return_value=repo),
+            patch("ydk.core.llm_provider.get_llm_provider", return_value=None) as mock_get_provider,
+            patch("ydk.core.complexity_scorer.ComplexityScorer", return_value=scorer) as mock_scorer_cls,
+        ):
+            result = runner.invoke(app, ["task", "analyze-complexity", "--task-id", "T-001"])
+
+        assert result.exit_code == 0
+        mock_get_provider.assert_called_once()
+        assert mock_scorer_cls.call_args.kwargs["llm_provider"] is None
+
+    def test_working_provider_is_passed_to_scorer(self) -> None:
+        """When get_llm_provider returns a provider, it is forwarded to ComplexityScorer."""
+        task = _make_task_detail("T-001", "Add login")
+        score = _make_score("T-001", 8)
+        repo = _FakeRepo([task])
+        scorer = _FakeScorer([score])
+        fake_provider = MagicMock()
+        fake_provider.invoke.return_value = "some response"
+
+        with (
+            patch("ydk.cli.task_cmd._get_repo", return_value=repo),
+            patch("ydk.core.llm_provider.get_llm_provider", return_value=fake_provider) as mock_get_provider,
+            patch("ydk.core.complexity_scorer.ComplexityScorer", return_value=scorer) as mock_scorer_cls,
+        ):
+            result = runner.invoke(app, ["task", "analyze-complexity", "--task-id", "T-001"])
+
+        assert result.exit_code == 0
+        mock_get_provider.assert_called_once()
+        assert mock_scorer_cls.call_args.kwargs["llm_provider"] is fake_provider
