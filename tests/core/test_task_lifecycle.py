@@ -42,6 +42,12 @@ def mock_worktree() -> MagicMock:
 @pytest.fixture
 def mock_verifier() -> MagicMock:
     v = MagicMock()
+    # By default, the pr-body-validation plugin is "not installed" so the
+    # final PR-body gate in done() is a no-op and existing tests that don't
+    # care about it aren't affected. Tests that exercise the gate override
+    # discover_plugins/filter_by_name/run_layer explicitly.
+    v.discover_plugins.return_value = []
+    v.filter_by_name.return_value = []
     return v
 
 
@@ -369,6 +375,110 @@ def test_done_skip_plugin_still_fails_if_other_plugins_fail(
 
     # lint still fails
     assert result["passed"] is False
+
+
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_runs_pr_body_validation_after_body_is_built(
+    mock_subprocess: MagicMock,
+    lifecycle: TaskLifecycle,
+    mock_verifier: MagicMock,
+    mock_worktree: MagicMock,
+) -> None:
+    """done() invokes pr-body-validation by name, after the real PR body exists."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+
+    fake_plugin = MagicMock()
+    mock_verifier.discover_plugins.return_value = [fake_plugin]
+    mock_verifier.filter_by_name.return_value = [fake_plugin]
+    mock_verifier.run_layer = AsyncMock(
+        return_value=[CheckResult(name="pr-body-validation", passed=True, output="PASS", duration_seconds=0.1)]
+    )
+
+    result = lifecycle.done("T-001")
+
+    assert result["passed"] is True
+    mock_verifier.filter_by_name.assert_called_once_with([fake_plugin], "pr-body-validation")
+    run_layer_args = mock_verifier.run_layer.call_args[0]
+    assert run_layer_args[0] == [fake_plugin]
+    assert "## Summary" in run_layer_args[1]["pr_body"]
+
+
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_blocks_pr_when_pr_body_validation_fails(
+    mock_subprocess: MagicMock,
+    lifecycle: TaskLifecycle,
+    mock_verifier: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+) -> None:
+    """done() blocks PR creation when the pr-body-validation gate fails."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+
+    fake_plugin = MagicMock()
+    mock_verifier.discover_plugins.return_value = [fake_plugin]
+    mock_verifier.filter_by_name.return_value = [fake_plugin]
+    mock_verifier.run_layer = AsyncMock(
+        return_value=[
+            CheckResult(
+                name="pr-body-validation",
+                passed=False,
+                output="FAIL: Missing requirements: console_block",
+                duration_seconds=0.1,
+            )
+        ]
+    )
+
+    result = lifecycle.done("T-001")
+
+    assert result["passed"] is False
+    assert "pr_url" not in result
+    mock_subprocess.run.assert_not_called()
+    assert mock_repo.add_comment.call_args[0][0] == "T-001"
+    assert "pr-body-validation FAILED" in mock_repo.add_comment.call_args[0][1]
+
+
+def test_done_skip_plugins_bypasses_pr_body_validation_gate(
+    lifecycle: TaskLifecycle,
+    mock_verifier: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+) -> None:
+    """skip_plugins=['pr-body-validation'] skips the gate instead of blocking the PR."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+
+    fake_plugin = MagicMock()
+    mock_verifier.discover_plugins.return_value = [fake_plugin]
+    mock_verifier.filter_by_name.return_value = [fake_plugin]
+    mock_verifier.run_layer = AsyncMock(
+        return_value=[CheckResult(name="pr-body-validation", passed=False, output="FAIL", duration_seconds=0.1)]
+    )
+
+    with patch("ydk.core.task_lifecycle.subprocess"):
+        result = lifecycle.done("T-001", skip_plugins=["pr-body-validation"])
+
+    assert result["passed"] is True
+    mock_verifier.run_layer.assert_not_called()
 
 
 def test_check_xfail_removed_detects_remaining_markers(

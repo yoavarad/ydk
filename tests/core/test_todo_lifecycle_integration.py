@@ -51,6 +51,9 @@ def lifecycle(project: Path, passing_report: VerificationReport) -> TaskLifecycl
     verifier = MagicMock()
     verifier.run_all = AsyncMock(return_value=passing_report)
     verifier.save_proof.return_value = project / ".ydk" / "proofs" / "T-001" / "proof.json"
+    # pr-body-validation "not installed" so the final PR-body gate is a no-op.
+    verifier.discover_plugins.return_value = []
+    verifier.filter_by_name.return_value = []
 
     worktree = MagicMock()
     worktree.get_worktree_path.return_value = None

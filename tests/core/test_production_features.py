@@ -59,6 +59,10 @@ def mock_worktree() -> MagicMock:
 @pytest.fixture
 def mock_verifier() -> MagicMock:
     v = MagicMock()
+    # pr-body-validation "not installed" by default so the final PR-body
+    # gate in done() is a no-op for tests that don't exercise it directly.
+    v.discover_plugins.return_value = []
+    v.filter_by_name.return_value = []
     return v
 
 
