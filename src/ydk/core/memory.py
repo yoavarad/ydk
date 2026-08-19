@@ -1,4 +1,4 @@
-"""ChromaDB-backed memory with Bedrock embeddings."""
+"""ChromaDB-backed memory with local (no-API) embeddings."""
 
 from __future__ import annotations
 
@@ -13,21 +13,26 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 from ydk.models.memory import MemoryScore
 
 if TYPE_CHECKING:
+    from chromadb import Collection
+
     from ydk.core.bm25_index import BM25Index
 
 logger = logging.getLogger("ydk.memory")
 
 
 class MemoryEngine:
-    """ChromaDB-backed memory with Bedrock embeddings."""
+    """ChromaDB-backed memory with local (no-API) embeddings."""
 
     def __init__(
         self,
         chroma_path: str | Path = ".ydk/memory/chroma",
         aws_profile: str = "",
-        embedding_model: str = "cohere.embed-english-v3",
+        embedding_model: str = "all-MiniLM-L6-v2",
         aws_region: str = "us-east-1",
     ):
+        # aws_profile/aws_region/embedding_model are accepted-but-unused: kept only
+        # for backward compat with existing callers (e.g. memory_cmd.py) now that
+        # embeddings run locally via ChromaDB's DefaultEmbeddingFunction.
         self._chroma_path = Path(chroma_path)
         self._aws_profile = aws_profile
         self._embedding_model = embedding_model
@@ -35,9 +40,10 @@ class MemoryEngine:
         self._client = None  # type: ignore[assignment]
         self._bm25_index_path = self._chroma_path.parent / "bm25_index.json"
         self._bm25: BM25Index | None = None
+        self._dim_checked_collections: set[str] = set()
 
     def _get_client(self):  # noqa: ANN202
-        """Lazy init ChromaDB client with Bedrock embeddings."""
+        """Lazy init ChromaDB client with local embeddings."""
         if self._client is None:
             try:
                 import chromadb
@@ -48,26 +54,65 @@ class MemoryEngine:
         return self._client
 
     def _get_embedding_function(self):  # noqa: ANN202
-        """Get Bedrock embedding function for ChromaDB."""
+        """Get ChromaDB's local default embedding function (no API, no network calls).
+
+        Runs a MiniLM model locally via onnxruntime -- no AWS/Bedrock dependency.
+        ``aws_profile``/``aws_region``/``embedding_model`` are accepted for backward
+        config compatibility but are unused by this local function.
+        """
         try:
-            import boto3
-            from chromadb.utils.embedding_functions import AmazonBedrockEmbeddingFunction
+            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
         except ImportError as exc:
             msg = "Install memory support: uv pip install ydk[memory]"
             raise ImportError(msg) from exc
 
-        session = boto3.Session(profile_name=self._aws_profile) if self._aws_profile else boto3.Session()
-        return AmazonBedrockEmbeddingFunction(
-            session=session,
-            model_name=self._embedding_model,
-            region_name=self._aws_region,
-        )
+        return DefaultEmbeddingFunction()
 
     def _get_collection(self, name: str):  # noqa: ANN202
-        """Get or create a ChromaDB collection."""
+        """Get or create a ChromaDB collection.
+
+        Raises a clear RuntimeError (instead of a raw ChromaDB traceback) if
+        the collection already holds embeddings with a different dimensionality
+        than the current embedding function -- e.g. leftover 1536-dim vectors
+        from the old Bedrock Titan integration colliding with the local
+        384-dim MiniLM function.
+        """
         client = self._get_client()
         ef = self._get_embedding_function()
-        return client.get_or_create_collection(name=name, embedding_function=ef)
+        collection = client.get_or_create_collection(name=name, embedding_function=ef)
+        self._check_dimension_compat(collection)
+        return collection
+
+    def _check_dimension_compat(self, collection: Collection) -> None:
+        """Detect a stored-embedding dimension mismatch and fail with a clear message.
+
+        ChromaDB raises InvalidArgumentError the first time a query/add runs
+        against a collection whose stored vectors have a different
+        dimensionality than the active embedding function. Trigger that check
+        once per collection (per engine instance) with a cheap no-op query so
+        callers get an actionable message instead of a raw traceback on
+        whatever operation happens to run first.
+        """
+        if collection.name in self._dim_checked_collections:
+            return
+        self._dim_checked_collections.add(collection.name)
+
+        if collection.count() == 0:
+            return
+
+        from chromadb.errors import InvalidArgumentError
+
+        try:
+            collection.query(query_texts=[" "], n_results=1)
+        except InvalidArgumentError as exc:
+            msg = (
+                f"Memory collection {collection.name!r} at {self._chroma_path} was indexed "
+                "with a different embedding dimensionality than the current embedding "
+                "function produces (likely leftover data from the old Bedrock Titan "
+                f"embeddings). Delete {self._chroma_path} (or the configured chroma_path) "
+                "and re-run `ydk memory index` to rebuild."
+            )
+            raise RuntimeError(msg) from exc
 
     def _get_bm25(self) -> BM25Index:
         """Lazy init BM25 index."""

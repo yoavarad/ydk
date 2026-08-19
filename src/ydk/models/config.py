@@ -129,7 +129,9 @@ class MemoryConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    embedding_model: str = "amazon.titan-embed-text-v2:0"
+    # Not currently read: the local embedding backend (chromadb's
+    # DefaultEmbeddingFunction) hardcodes MiniLM-L6 and has no model-name override.
+    embedding_model: str = "all-MiniLM-L6-v2"
     auto_bootstrap: bool = True
     auto_extract: bool = True
     chroma_path: str = ".ydk/memory/chroma"
