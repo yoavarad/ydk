@@ -84,8 +84,9 @@ def _run_reviewer_agents(
     """Run parallel reviewer agents against spec content.
 
     Prefers the cached fan-out engine (direct Anthropic Messages API with
-    prompt caching).  Falls back to the Strands-based path if anthropic is
-    not available.
+    prompt caching).  Falls back to the simpler per-reviewer path if
+    anthropic is not available (defensive only — anthropic is a hard
+    dependency, so this branch should not normally be reachable).
     """
     from ydk.models.config import YdkConfig
 
@@ -130,12 +131,12 @@ def _run_reviewer_agents(
     if _anthropic_available():
         return _run_cached_fanout(spec_content, config, reviewers, verbose=verbose)
 
-    # --- Strands fallback ---
+    # --- Simpler per-reviewer fallback (anthropic unavailable) ---
     if verbose:
-        typer.echo("  [fallback] anthropic not available, using Strands agents")
+        typer.echo("  [fallback] anthropic not available, using per-reviewer path")
 
     model_config: dict[str, Any] = {
-        "api_key": None,
+        "api_key": os.getenv(config.anthropic.api_key_env),
         "model_id": config.spec_check.model,
     }
 
@@ -230,7 +231,7 @@ def _run_cached_fanout(
         )
 
     # Create engine and run
-    engine = ReviewerEngine(api_key=None)
+    engine = ReviewerEngine(api_key=os.getenv(config.anthropic.api_key_env))
 
     model_tiers = config.ai.model_tiers
 
@@ -904,10 +905,6 @@ def verify(
     if spec_files:
         if verbose:
             typer.echo(f"Files: {', '.join(spec_files)}")
-
-        aws_profile = config.aws.profile
-        if aws_profile:
-            os.environ["AWS_PROFILE"] = aws_profile
 
         spec_content = git.read_content(spec_files)
 

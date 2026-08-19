@@ -409,6 +409,7 @@ class TestRunCachedFanoutIntegration:
             config.__class__ = YdkConfig
             config.aws.profile = "test"
             config.aws.region = "us-east-1"
+            config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
             config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
             config.spec_check.concurrency = 4
 
@@ -473,6 +474,7 @@ class TestRunCachedFanoutIntegration:
             config.__class__ = YdkConfig
             config.aws.profile = "test"
             config.aws.region = "us-east-1"
+            config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
             config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
             config.spec_check.concurrency = 4
 

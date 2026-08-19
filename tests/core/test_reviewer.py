@@ -397,6 +397,23 @@ class TestRunWithLlm:
         assert result.score == 6
         assert result.passed is False  # 6 < threshold 8
 
+    def test_missing_tool_use_block_returns_fallback_result(self) -> None:
+        config = _make_config(tools=[_empty_tool])
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
+
+        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
+            mock_client = MagicMock()
+            mock_anthropic.Anthropic.return_value = mock_client
+            mock_client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="I refuse to call the tool.")]
+            )
+
+            result = agent._run_with_llm("some spec content")
+
+        assert result.score == 0
+        assert result.passed is False
+        assert "Failed to parse reviewer response" in result.reasoning
+
 
 class TestReviewerAgentGracefulDegradation:
     """Test that the agent falls back to tools-only when LLM is unavailable."""
