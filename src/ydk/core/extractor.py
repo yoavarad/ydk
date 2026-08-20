@@ -1,18 +1,19 @@
 """LLM-based memory extraction from development session transcripts.
 
-Uses Strands Agents with Amazon Bedrock to send a transcript to an LLM
-and parse structured memory entries from the response.
+Sends a transcript to the configured LLM provider and parses structured
+memory entries from the response.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
+
+    from ydk.core.llm_provider import LLMProvider
 
 EXTRACTION_PROMPT = """\
 You are a memory extraction agent observing a completed development session transcript.
@@ -109,19 +110,10 @@ class ExtractedMemory:
 
 
 class MemoryExtractor:
-    """Extract structured memories from conversation transcripts using an LLM.
+    """Extract structured memories from conversation transcripts using an LLM."""
 
-    Requires the ``strands-agents`` package (install via ``uv pip install ydk[ai]``).
-    Uses Amazon Bedrock as the model provider.
-    """
-
-    def __init__(
-        self,
-        aws_profile: str = "",
-        model: str = "us.anthropic.claude-sonnet-4-6",
-    ) -> None:
-        self._aws_profile = aws_profile
-        self._model = model
+    def __init__(self, llm_provider: LLMProvider | None = None) -> None:
+        self._llm_provider = llm_provider
 
     def extract_from_transcript(
         self,
@@ -145,12 +137,13 @@ class MemoryExtractor:
         if not conversation.strip():
             return []
 
-        agent = self._build_agent()
+        provider = self._llm_provider or self._build_provider()
 
         user_message = self._build_user_message(conversation, task_context)
-        result = agent(user_message)
+        prompt = f"{EXTRACTION_PROMPT}\n\n{user_message}"
+        result = provider.invoke(prompt)
 
-        return self._parse_response(str(result))
+        return self._parse_response(result)
 
     def extract_from_jsonl(
         self,
@@ -167,28 +160,19 @@ class MemoryExtractor:
         conversation = format_as_conversation(messages)
         return self.extract_from_transcript(conversation, task_context)
 
-    def _build_agent(self) -> Callable[..., Any]:
-        """Create a Strands Agent configured for memory extraction."""
-        try:
-            from strands import Agent
-            from strands.models.bedrock import BedrockModel
-        except ImportError:
-            raise ImportError("Memory extraction requires strands-agents: uv pip install ydk[ai]") from None
+    @staticmethod
+    def _build_provider() -> LLMProvider:
+        """Construct the configured LLM provider for memory extraction."""
+        from ydk.core.config import load_config
+        from ydk.core.llm_provider import get_llm_provider
 
-        import boto3
-
-        session = boto3.Session(
-            profile_name=self._aws_profile if self._aws_profile else None,
-        )
-        model = BedrockModel(
-            model_id=self._model,
-            boto_session=session,
-        )
-        return Agent(
-            model=model,
-            system_prompt=EXTRACTION_PROMPT,
-            tools=[],
-        )
+        provider = get_llm_provider(load_config())
+        if provider is None:
+            raise ImportError(
+                "Memory extraction requires a configured LLM provider "
+                "(set ANTHROPIC_API_KEY and ai.provider in .ydk/config.yaml)"
+            )
+        return provider
 
     @staticmethod
     def _build_user_message(conversation: str, task_context: str) -> str:

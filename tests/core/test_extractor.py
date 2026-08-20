@@ -136,9 +136,8 @@ class TestExtractFromTranscript:
         result = extractor.extract_from_transcript("   \n  \n  ")
         assert result == []
 
-    @patch("ydk.core.extractor.MemoryExtractor._build_agent")
-    def test_calls_agent_and_parses_response(self, mock_build_agent: MagicMock) -> None:
-        mock_agent = MagicMock()
+    def test_calls_provider_and_parses_response(self) -> None:
+        mock_provider = MagicMock()
         llm_response = json.dumps(
             [
                 {
@@ -157,10 +156,9 @@ class TestExtractFromTranscript:
                 },
             ]
         )
-        mock_agent.return_value = llm_response
-        mock_build_agent.return_value = mock_agent
+        mock_provider.invoke.return_value = llm_response
 
-        extractor = MemoryExtractor()
+        extractor = MemoryExtractor(llm_provider=mock_provider)
         result = extractor.extract_from_transcript("[User]\nAdd JWT auth\n\n[Assistant]\nDone.")
 
         assert len(result) == 2
@@ -169,27 +167,24 @@ class TestExtractFromTranscript:
         assert result[1].memory_type == "gotcha"
         assert result[1].importance == "high"
 
-        # Verify the agent was called with a message containing the conversation
-        call_args = mock_agent.call_args[0][0]
+        # Verify the provider was invoked with a prompt containing the conversation
+        call_args = mock_provider.invoke.call_args[0][0]
         assert "JWT auth" in call_args
 
-    @patch("ydk.core.extractor.MemoryExtractor._build_agent")
-    def test_includes_task_context_in_message(self, mock_build_agent: MagicMock) -> None:
-        mock_agent = MagicMock()
-        mock_agent.return_value = "[]"
-        mock_build_agent.return_value = mock_agent
+    def test_includes_task_context_in_message(self) -> None:
+        mock_provider = MagicMock()
+        mock_provider.invoke.return_value = "[]"
 
-        extractor = MemoryExtractor()
+        extractor = MemoryExtractor(llm_provider=mock_provider)
         extractor.extract_from_transcript("some convo", task_context="T-042: Add auth")
 
-        call_args = mock_agent.call_args[0][0]
+        call_args = mock_provider.invoke.call_args[0][0]
         assert "T-042" in call_args
         assert "some convo" in call_args
 
 
 class TestExtractFromJsonl:
-    @patch("ydk.core.extractor.MemoryExtractor._build_agent")
-    def test_parses_jsonl_then_extracts(self, mock_build_agent: MagicMock, tmp_path) -> None:
+    def test_parses_jsonl_then_extracts(self, tmp_path) -> None:
         # Write a minimal JSONL fixture
         jsonl = tmp_path / "session.jsonl"
         lines = [
@@ -198,8 +193,8 @@ class TestExtractFromJsonl:
         ]
         jsonl.write_text("\n".join(lines))
 
-        mock_agent = MagicMock()
-        mock_agent.return_value = json.dumps(
+        mock_provider = MagicMock()
+        mock_provider.invoke.return_value = json.dumps(
             [
                 {
                     "memory_type": "discovery",
@@ -210,9 +205,8 @@ class TestExtractFromJsonl:
                 }
             ]
         )
-        mock_build_agent.return_value = mock_agent
 
-        extractor = MemoryExtractor()
+        extractor = MemoryExtractor(llm_provider=mock_provider)
         result = extractor.extract_from_jsonl(jsonl)
 
         assert len(result) == 1
@@ -246,11 +240,11 @@ class TestAbandonedExtraction:
         assert "rejected" in EXTRACTION_PROMPT.lower()
 
 
-class TestStrandsImportError:
-    def test_raises_clear_error_when_strands_missing(self) -> None:
+class TestNoProviderConfigured:
+    def test_raises_clear_error_when_no_llm_provider_configured(self) -> None:
         extractor = MemoryExtractor()
         with (
-            patch.dict("sys.modules", {"strands": None, "strands.models.bedrock": None}),
-            pytest.raises(ImportError, match="strands-agents"),
+            patch("ydk.core.llm_provider.get_llm_provider", return_value=None),
+            pytest.raises(ImportError, match="LLM provider"),
         ):
-            extractor._build_agent()
+            extractor._build_provider()
