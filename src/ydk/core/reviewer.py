@@ -17,11 +17,13 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from pathlib import Path  # noqa: TC003 — used at runtime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import anthropic
 import yaml
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 try:
     from strands import tool as strands_tool
