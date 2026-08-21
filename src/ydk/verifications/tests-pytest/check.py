@@ -10,6 +10,22 @@ import time
 from pathlib import Path
 
 
+def _resolve_tool(project_root: str, tool: str) -> str | None:
+    """Resolve ``tool`` to the project's own venv when present, else PATH.
+
+    A bare PATH lookup can resolve a different, unrelated installation (e.g.
+    a global Python's Scripts directory) ahead of the project's own
+    virtualenv, silently running checks against the wrong environment.
+    Returns ``None`` if the tool can't be found anywhere.
+    """
+    venv_dir = "Scripts" if sys.platform == "win32" else "bin"
+    suffix = ".exe" if sys.platform == "win32" else ""
+    candidate = Path(project_root) / ".venv" / venv_dir / f"{tool}{suffix}"
+    if candidate.is_file():
+        return str(candidate)
+    return shutil.which(tool)
+
+
 def _discover_test_dir(project_root: str) -> str:
     """Discover the test directory that exists in the project."""
     root = Path(project_root)
@@ -73,8 +89,10 @@ def main() -> None:
     level = config.get("level", "all")
     start = time.time()
 
+    pytest_bin = _resolve_tool(project_root, "pytest")
+
     # Skip gracefully when pytest isn't installed (e.g. non-Python project)
-    if shutil.which("pytest") is None:
+    if pytest_bin is None:
         check_result = {
             "name": "tests-pytest",
             "passed": True,
@@ -106,7 +124,7 @@ def main() -> None:
     if changed_files:
         scoped_tests = _find_test_files(project_root, test_dir, changed_files)
         if scoped_tests:
-            cmd = ["pytest", *scoped_tests, "-v", "--tb=short"]
+            cmd = [pytest_bin, *scoped_tests, "-v", "--tb=short"]
         else:
             # No matching test files found — pass (nothing to test for these files)
             check_result = {
@@ -120,13 +138,13 @@ def main() -> None:
             sys.exit(0)
             return
     elif level == "unit":
-        cmd = ["pytest", f"{test_dir}/unit/", "-v", "--tb=short"]
+        cmd = [pytest_bin, f"{test_dir}/unit/", "-v", "--tb=short"]
     elif level == "integration":
-        cmd = ["pytest", f"{test_dir}/integration/", "-v", "--tb=short"]
+        cmd = [pytest_bin, f"{test_dir}/integration/", "-v", "--tb=short"]
     elif level == "e2e":
-        cmd = ["pytest", f"{test_dir}/e2e/", "-v", "--tb=short"]
+        cmd = [pytest_bin, f"{test_dir}/e2e/", "-v", "--tb=short"]
     else:
-        cmd = ["pytest", f"{test_dir}/", "-v", "--tb=short"]
+        cmd = [pytest_bin, f"{test_dir}/", "-v", "--tb=short"]
 
     result = subprocess.run(
         cmd,

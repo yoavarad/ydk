@@ -24,6 +24,19 @@ def _discover_dirs(project_root: str) -> list[str]:
     return dirs
 
 
+def _resolve_ruff(project_root: str) -> str:
+    """Resolve the ``ruff`` binary, preferring the project's own venv over PATH.
+
+    A bare PATH lookup can resolve a different, unrelated installation (e.g.
+    a global Python's Scripts directory) ahead of the project's own
+    virtualenv, silently running the check against the wrong environment.
+    """
+    venv_dir = "Scripts" if sys.platform == "win32" else "bin"
+    suffix = ".exe" if sys.platform == "win32" else ""
+    candidate = Path(project_root) / ".venv" / venv_dir / f"ruff{suffix}"
+    return str(candidate) if candidate.is_file() else "ruff"
+
+
 def _count_violations(output: str) -> int:
     """Count the number of violation lines in ruff output.
 
@@ -43,7 +56,7 @@ def _count_violations(output: str) -> int:
     return sum(1 for line in output.strip().splitlines() if line.strip() and ":" in line)
 
 
-def _run_auto_fix(project_root: str, check_dirs: list[str]) -> tuple[int, int]:
+def _run_auto_fix(ruff_bin: str, project_root: str, check_dirs: list[str]) -> tuple[int, int]:
     """Run ruff auto-fix and ruff format, return (fixed_count, remaining_count).
 
     1. Count violations before fix
@@ -54,7 +67,7 @@ def _run_auto_fix(project_root: str, check_dirs: list[str]) -> tuple[int, int]:
     """
     # Count violations before fix
     before = subprocess.run(
-        ["ruff", "check", *check_dirs],
+        [ruff_bin, "check", *check_dirs],
         capture_output=True,
         text=True,
         cwd=project_root,
@@ -63,7 +76,7 @@ def _run_auto_fix(project_root: str, check_dirs: list[str]) -> tuple[int, int]:
 
     # Fix lint issues
     subprocess.run(
-        ["ruff", "check", "--fix", *check_dirs],
+        [ruff_bin, "check", "--fix", *check_dirs],
         capture_output=True,
         text=True,
         cwd=project_root,
@@ -71,7 +84,7 @@ def _run_auto_fix(project_root: str, check_dirs: list[str]) -> tuple[int, int]:
 
     # Fix formatting
     subprocess.run(
-        ["ruff", "format", *check_dirs],
+        [ruff_bin, "format", *check_dirs],
         capture_output=True,
         text=True,
         cwd=project_root,
@@ -79,7 +92,7 @@ def _run_auto_fix(project_root: str, check_dirs: list[str]) -> tuple[int, int]:
 
     # Count remaining violations
     after = subprocess.run(
-        ["ruff", "check", *check_dirs],
+        [ruff_bin, "check", *check_dirs],
         capture_output=True,
         text=True,
         cwd=project_root,
@@ -97,8 +110,10 @@ def main() -> None:
     auto_fix = context.get("auto_fix", False)
     start = time.time()
 
+    ruff_bin = _resolve_ruff(project_root)
+
     # Skip gracefully when ruff isn't installed (e.g. non-Python project)
-    if shutil.which("ruff") is None:
+    if not Path(ruff_bin).is_file() and shutil.which(ruff_bin) is None:
         result = {
             "name": "lint-ruff",
             "passed": True,
@@ -134,18 +149,18 @@ def main() -> None:
     remaining_count = 0
 
     if auto_fix:
-        auto_fixed_count, remaining_count = _run_auto_fix(project_root, check_dirs)
+        auto_fixed_count, remaining_count = _run_auto_fix(ruff_bin, project_root, check_dirs)
 
     # Run format check
     fmt_result = subprocess.run(
-        ["ruff", "format", "--check", *check_dirs],
+        [ruff_bin, "format", "--check", *check_dirs],
         capture_output=True,
         text=True,
         cwd=project_root,
     )
     # Run lint check
     lint_result = subprocess.run(
-        ["ruff", "check", *check_dirs],
+        [ruff_bin, "check", *check_dirs],
         capture_output=True,
         text=True,
         cwd=project_root,

@@ -12,7 +12,50 @@ import sys
 import time
 from pathlib import Path
 
-RUFF_SELECT = "E,F,I,ANN001,ANN002,ANN201,ANN202,ANN401,B,UP,RUF,PT,SIM,PERF,FAST,D101,D102,D103"
+RUFF_SELECT = "E,F,I,ANN001,ANN002,ANN201,ANN202,ANN401,B,UP,RUF,PT,SIM,PERF,FAST,D101,D102,D103,TC"
+
+
+def _resolve_venv_binary(project_root: str, tool: str) -> str:
+    """Resolve ``tool`` to the project's own venv when present, else bare name for PATH.
+
+    A bare PATH lookup can resolve a different, unrelated installation (e.g.
+    a global Python's Scripts directory) ahead of the project's own
+    virtualenv, silently running checks against the wrong environment.
+    """
+    venv_dir = "Scripts" if sys.platform == "win32" else "bin"
+    suffix = ".exe" if sys.platform == "win32" else ""
+    candidate = Path(project_root) / ".venv" / venv_dir / f"{tool}{suffix}"
+    return str(candidate) if candidate.is_file() else tool
+
+
+def _discover_ty_dirs(project_root: str, src_dirs: list[str]) -> list[str]:
+    """Narrow ``src_dirs`` for ty specifically, expanding around a catalog directory.
+
+    A ``src/ydk/catalog`` directory (this project's own scaffolding templates
+    for other projects) is expanded around rather than passed as part of
+    ``src`` -- those templates aren't first-party source and commonly fail
+    type checking in isolation. ty's own ``--exclude`` flag proved unreliable
+    for this in practice, so it's excluded by omission instead. Only affects
+    the ty invocation -- ruff still formats/lints the catalog normally.
+    """
+    root = Path(project_root)
+    catalog = root / "src" / "ydk" / "catalog"
+    if "src" not in src_dirs or not catalog.is_dir():
+        return src_dirs
+
+    dirs = [d for d in src_dirs if d != "src"]
+    dirs += sorted(
+        f"src/ydk/{child.name}"
+        for child in (root / "src" / "ydk").iterdir()
+        if child != catalog and child.name != "__pycache__"
+    )
+    return dirs
+
+
+def _build_ty_cmd(ty_cmd: str, project_root: str, src_dirs: list[str]) -> list[str]:
+    """Build the ``ty check`` command."""
+    ty_dirs = _discover_ty_dirs(project_root, src_dirs)
+    return [ty_cmd, "check", *ty_dirs, "--python-version", "3.12"]
 
 
 def main() -> None:
@@ -27,14 +70,8 @@ def main() -> None:
     messages: list[str] = []
 
     root = Path(project_root)
-
-    # Determine ruff binary
-    venv_ruff = root / ".venv" / "bin" / "ruff"
-    ruff_cmd = str(venv_ruff) if venv_ruff.is_file() else "ruff"
-
-    # Determine ty binary
-    venv_ty = root / ".venv" / "bin" / "ty"
-    ty_cmd = str(venv_ty) if venv_ty.is_file() else "ty"
+    ruff_cmd = _resolve_venv_binary(project_root, "ruff")
+    ty_cmd = _resolve_venv_binary(project_root, "ty")
 
     src_dirs = [d for d in ["app", "src"] if (root / d).is_dir()]
     test_dir = "tests" if (root / "tests").is_dir() else None
@@ -84,7 +121,7 @@ def main() -> None:
     # ty -- full project (src dirs only, skip tests to avoid false positives)
     if shutil.which(ty_cmd) or Path(ty_cmd).is_file():
         ty_result = subprocess.run(
-            [ty_cmd, "check", *src_dirs, "--python-version", "3.12"],
+            _build_ty_cmd(ty_cmd, project_root, src_dirs),
             capture_output=True,
             text=True,
             cwd=project_root,
