@@ -2948,7 +2948,6 @@ version = "0.52.2"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
-    { name = "boto3" },
     { name = "chromadb" },
     { name = "jinja2" },
     { name = "pydantic" },
@@ -2977,7 +2976,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.123.0" },
-    { name = "boto3", specifier = ">=1.35" },
     { name = "chromadb", specifier = ">=1.0" },
     { name = "commitizen", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.115" },
