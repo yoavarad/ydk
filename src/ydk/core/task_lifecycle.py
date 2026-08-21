@@ -174,10 +174,17 @@ class TaskLifecycle:
         done_start = time.monotonic()
         logger.info("Completing task %s — running verifications", task_id)
 
+        # Resolve the task's actual worktree so verification scans the tree
+        # the task was implemented in, not wherever this process's cwd
+        # happens to be (e.g. `ydk task done` invoked from the main
+        # checkout instead of from inside the worktree). Falls back to
+        # self._root when worktree isolation is off or no worktree exists.
+        scan_root = self._worktree.get_worktree_path(task_id) or self._root
+
         # Collect files associated with this task's TODOs for scoped verification
         from ydk.core.todo_manager import TodoManager
 
-        todo_mgr = TodoManager(self._root)
+        todo_mgr = TodoManager(scan_root)
         try:
             all_todos = todo_mgr.list_todos()
             task_todos = [t for t in all_todos if t.task_id == task_id]
@@ -188,7 +195,7 @@ class TaskLifecycle:
 
         # Build context scoped to task files
         context: dict[str, object] = {
-            "project_root": str(self._root),
+            "project_root": str(scan_root),
             "task_id": task_id,
         }
         if task_files:

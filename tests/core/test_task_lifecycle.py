@@ -9,6 +9,7 @@ import pytest
 
 from ydk.core.events import EventBus
 from ydk.core.task_lifecycle import TaskLifecycle
+from ydk.core.verifier import Verifier
 from ydk.models.pm import DependencyStatus, TaskCreate, TaskDetail
 from ydk.models.verification import CheckResult, VerificationReport
 
@@ -632,3 +633,56 @@ def test_done_removes_active_task_file(
 
     assert result["passed"] is True
     assert not active_file.exists(), "active-task.json should be removed after successful done"
+
+
+def test_done_scopes_verification_to_worktree_not_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test for #37: content-scanning plugins must scan the task's
+    worktree, not wherever the process cwd happened to be when the lifecycle
+    was constructed.
+
+    Simulates ``ydk task done`` invoked from the main checkout (cwd) while the
+    task's actual files live in a separate worktree. Runs the real
+    ``python-file-length`` plugin (a real content-scanning verification
+    plugin, not a mock) and asserts it scans the worktree — not the cwd-bound
+    project_root — by placing an over-limit file only inside the worktree.
+    """
+    main_root = tmp_path / "main"
+    worktree_root = tmp_path / "worktree"
+    main_root.mkdir()
+    (worktree_root / "app").mkdir(parents=True)
+
+    # Oversized file only exists in the worktree. If verification scans
+    # main_root (the old cwd-bound project_root) it silently misses this
+    # violation, since main_root has no app/ directory at all.
+    big_file = worktree_root / "app" / "big.py"
+    big_file.write_text("\n".join(f"x{i} = {i}" for i in range(400)))
+
+    # Process cwd is main_root, simulating `ydk task done` invoked from the
+    # main checkout rather than from inside the task's worktree.
+    monkeypatch.chdir(main_root)
+
+    mock_repo = MagicMock()
+    mock_repo.get_task.return_value = TaskDetail(id="T-037", title="Test task", story_id="S-001")
+
+    mock_worktree = MagicMock()
+    mock_worktree.get_worktree_path.return_value = worktree_root
+
+    verifier = Verifier(project_root=main_root, enabled_plugins=["python-file-length"], use_cache=False)
+
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=EventBus(),
+        worktree_mgr=mock_worktree,
+        verifier=verifier,
+        project_root=main_root,
+    )
+
+    result = lc.done("T-037")
+
+    assert result["passed"] is False, "verification should have caught the over-limit file in the worktree"
+    check = result["report"].checks[0]
+    assert check.name == "python-file-length"
+    assert "big.py" in check.output
