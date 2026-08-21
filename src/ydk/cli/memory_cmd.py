@@ -35,8 +35,6 @@ def _get_engine(cfg: YdkConfig) -> object:  # type: ignore[return-type]  # Memor
     return MemoryEngine(
         chroma_path=cfg.memory.chroma_path,
         embedding_model=cfg.memory.embedding_model,
-        aws_profile=cfg.aws.profile,
-        aws_region=cfg.aws.region,
     )
 
 
@@ -48,10 +46,7 @@ def _get_extractor(cfg: YdkConfig | None = None) -> object:  # type: ignore[retu
         console.print("[red]strands-agents is not installed.[/red] Install with: uv pip install 'ydk[ai]'")
         raise typer.Exit(code=1) from None
 
-    aws_profile = ""
-    if cfg:
-        aws_profile = cfg.aws.profile
-    return MemoryExtractor(aws_profile=aws_profile)
+    return MemoryExtractor()
 
 
 @memory_app.command()
@@ -278,72 +273,48 @@ def _run_llm_retrospective(
     sprint: str | None,
 ) -> dict | None:
     """Run LLM analysis on sprint data. Returns structured proposals or None."""
+    from ydk.core.config import load_config
+    from ydk.core.llm_provider import get_llm_provider
+
+    provider = get_llm_provider(load_config())
+    if provider is None:
+        return None
+
+    system_prompt = (
+        "You are a sprint retrospective analyst. "
+        "Given completed task data, identify patterns, suggest templates, "
+        "and recommend rules for future sprints.\n\n"
+        "Respond with ONLY valid JSON:\n"
+        '{"patterns": ["..."], "templates": ["..."], "rules": ["..."], "summary": "..."}'
+    )
+
+    task_data = "\n".join(f"- {t.id}: {t.title}" for t in tasks)
+    prompt = (
+        f"{system_prompt}\n\n"
+        f"Sprint: {sprint or 'current'}\n"
+        f"Completed tasks:\n{task_data}\n\n"
+        "Analyze this sprint data. What patterns emerged? "
+        "What should be templated? What rules should be added?"
+    )
+
     try:
-        from ydk.core.config import load_config
+        response_text = provider.invoke(prompt)
+    except Exception:
+        return None
 
-        cfg = load_config()
-        aws_profile = cfg.aws.profile
-        aws_region = cfg.aws.region
-        model_id = cfg.spec_check.model
-
-        import os
-
-        if aws_profile:
-            os.environ["AWS_PROFILE"] = aws_profile
-
-        # Check AWS credentials
-        import boto3
-
-        session = boto3.Session(
-            profile_name=aws_profile if aws_profile else None,
-            region_name=aws_region,
-        )
-        sts = session.client("sts")
-        sts.get_caller_identity()
-
-        from strands import Agent
-        from strands.models.bedrock import BedrockModel
-
-        bedrock_model = BedrockModel(
-            model_id=model_id,
-            region_name=aws_region,
-            temperature=0.0,
-        )
-
-        system_prompt = (
-            "You are a sprint retrospective analyst. "
-            "Given completed task data, identify patterns, suggest templates, "
-            "and recommend rules for future sprints.\n\n"
-            "Respond with ONLY valid JSON:\n"
-            '{"patterns": ["..."], "templates": ["..."], "rules": ["..."], "summary": "..."}'
-        )
-
-        agent = Agent(
-            model=bedrock_model,
-            system_prompt=system_prompt,
-        )
-
-        task_data = "\n".join(f"- {t.id}: {t.title}" for t in tasks)
-        user_message = (
-            f"Sprint: {sprint or 'current'}\n"
-            f"Completed tasks:\n{task_data}\n\n"
-            "Analyze this sprint data. What patterns emerged? "
-            "What should be templated? What rules should be added?"
-        )
-
-        response = agent(user_message)
-        response_text = str(response)
-
+    try:
+        parsed = json.loads(response_text)
+    except json.JSONDecodeError:
+        start_idx = response_text.find("{")
+        end_idx = response_text.rfind("}") + 1
+        if start_idx < 0 or end_idx <= start_idx:
+            return None
         try:
-            return json.loads(response_text)  # type: ignore[no-any-return]
+            parsed = json.loads(response_text[start_idx:end_idx])
         except json.JSONDecodeError:
-            start_idx = response_text.find("{")
-            end_idx = response_text.rfind("}") + 1
-            if start_idx >= 0 and end_idx > start_idx:
-                return json.loads(response_text[start_idx:end_idx])  # type: ignore[no-any-return]
-    except (ImportError, Exception):
-        pass
-    return None
+            return None
+
+    return parsed if isinstance(parsed, dict) else None
 
 
 @memory_app.command()

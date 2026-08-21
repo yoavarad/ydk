@@ -9,15 +9,16 @@ YAML output format.
 from __future__ import annotations
 
 import json
-import sys
 import time
-import types
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
+
+if TYPE_CHECKING:
+    import types
 
 from ydk.core.events import EventBus
 from ydk.core.task_lifecycle import TaskLifecycle
@@ -404,18 +405,11 @@ class TestScreenshotCapture:
 class TestRetrospectiveLLM:
     """Item 7: Memory retrospective with real LLM implementation."""
 
-    def test_run_llm_retrospective_returns_none_without_strands(self) -> None:
-        """_run_llm_retrospective gracefully returns None when strands not available."""
+    def test_run_llm_retrospective_returns_none_without_provider(self) -> None:
+        """_run_llm_retrospective gracefully returns None when no LLM provider is configured."""
         from ydk.cli.memory_cmd import _run_llm_retrospective
 
-        original_import = __import__
-
-        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-            if name in ("strands", "strands.models.bedrock"):
-                raise ImportError(f"No module named '{name}'")
-            return original_import(name, *args, **kwargs)
-
-        with patch("builtins.__import__", side_effect=mock_import):
+        with patch("ydk.core.llm_provider.get_llm_provider", return_value=None):
             tasks = [MagicMock(id="T-001", title="Task 1")]
             result = _run_llm_retrospective(tasks, None)
         assert result is None
@@ -433,26 +427,10 @@ class TestRetrospectiveLLM:
             }
         )
 
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.return_value = ai_response
-        mock_agent_cls = MagicMock(return_value=mock_agent_instance)
-        mock_bedrock_cls = MagicMock()
-        mock_boto3 = MagicMock()
+        mock_provider = MagicMock()
+        mock_provider.invoke.return_value = ai_response
 
-        mock_strands_mod = types.ModuleType("strands")
-        mock_strands_mod.Agent = mock_agent_cls
-        mock_bedrock_mod = types.ModuleType("strands.models.bedrock")
-        mock_bedrock_mod.BedrockModel = mock_bedrock_cls
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands_mod,
-                "strands.models": types.ModuleType("strands.models"),
-                "strands.models.bedrock": mock_bedrock_mod,
-                "boto3": mock_boto3,
-            },
-        ):
+        with patch("ydk.core.llm_provider.get_llm_provider", return_value=mock_provider):
             tasks = [MagicMock(id="T-001", title="Task 1")]
             result = _run_llm_retrospective(tasks, "sprint-1")
 

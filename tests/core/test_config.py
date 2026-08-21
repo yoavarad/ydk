@@ -70,25 +70,25 @@ class TestGetConfigValue:
         assert get_config_value(config, "totally.missing.path") is None
 
 
-class TestAwsConfig:
-    def test_ydk_config_with_aws_profile(self) -> None:
+class TestAwsConfigRemoved:
+    def test_ydk_config_has_no_aws_field(self) -> None:
+        """AwsConfig was deleted (issue #23) -- YdkConfig no longer has an ``aws`` field."""
+        data = {
+            **DEFAULT_CONFIG,
+            "project": {**DEFAULT_CONFIG["project"], "name": "x"},
+        }
+        cfg = YdkConfig.model_validate(data)
+        assert not hasattr(cfg, "aws")
+
+    def test_ydk_config_rejects_aws_key(self) -> None:
+        """An ``aws:`` section in config.yaml is now rejected (model_config extra='forbid')."""
         data = {
             **DEFAULT_CONFIG,
             "project": {**DEFAULT_CONFIG["project"], "name": "x"},
             "aws": {"profile": "my-profile", "region": "us-west-2"},
         }
-        cfg = YdkConfig.model_validate(data)
-        assert cfg.aws.profile == "my-profile"
-        assert cfg.aws.region == "us-west-2"
-
-    def test_ydk_config_with_empty_aws_profile_is_default(self) -> None:
-        data = {
-            **DEFAULT_CONFIG,
-            "project": {**DEFAULT_CONFIG["project"], "name": "x"},
-        }
-        cfg = YdkConfig.model_validate(data)
-        assert cfg.aws.profile == ""
-        assert cfg.aws.region == "us-east-1"
+        with pytest.raises(ValidationError):
+            YdkConfig.model_validate(data)
 
 
 class TestSetConfigValue:

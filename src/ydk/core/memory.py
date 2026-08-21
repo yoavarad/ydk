@@ -26,17 +26,13 @@ class MemoryEngine:
     def __init__(
         self,
         chroma_path: str | Path = ".ydk/memory/chroma",
-        aws_profile: str = "",
         embedding_model: str = "all-MiniLM-L6-v2",
-        aws_region: str = "us-east-1",
     ):
-        # aws_profile/aws_region/embedding_model are accepted-but-unused: kept only
-        # for backward compat with existing callers (e.g. memory_cmd.py) now that
-        # embeddings run locally via ChromaDB's DefaultEmbeddingFunction.
+        # embedding_model is accepted-but-unused: kept only for backward compat
+        # with existing callers (e.g. memory_cmd.py) now that embeddings run
+        # locally via ChromaDB's DefaultEmbeddingFunction.
         self._chroma_path = Path(chroma_path)
-        self._aws_profile = aws_profile
         self._embedding_model = embedding_model
-        self._aws_region = aws_region
         self._client = None  # type: ignore[assignment]
         self._bm25_index_path = self._chroma_path.parent / "bm25_index.json"
         self._bm25: BM25Index | None = None
@@ -57,8 +53,8 @@ class MemoryEngine:
         """Get ChromaDB's local default embedding function (no API, no network calls).
 
         Runs a MiniLM model locally via onnxruntime -- no AWS/Bedrock dependency.
-        ``aws_profile``/``aws_region``/``embedding_model`` are accepted for backward
-        config compatibility but are unused by this local function.
+        ``embedding_model`` is accepted for backward config compatibility but is
+        unused by this local function.
         """
         try:
             from chromadb.utils.embedding_functions import DefaultEmbeddingFunction

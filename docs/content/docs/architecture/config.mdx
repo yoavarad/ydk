@@ -14,7 +14,7 @@ All YDK configuration lives in `.ydk/config.yaml` and is validated against the `
 ```bash
 ydk config show                                    # Show full config
 ydk config get spec_check.thresholds.completeness  # Get a value via dot notation
-ydk config set aws.region eu-west-1                # Set a value with validation
+ydk config set spec_check.timeout 90                # Set a value with validation
 ydk config validate                                # Validate the current config
 ```
 
@@ -69,13 +69,6 @@ Controls the AI-powered specification quality evaluator.
 | `max_parallel_agents` | int | `5` | Maximum agents running concurrently |
 | `task_timeout_minutes` | int | `30` | Maximum time per task before timeout warning |
 | `worktree_isolation` | bool | `True` | Create separate git worktrees for each task |
-
-## AwsConfig
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `profile` | str | `""` | AWS profile name for Bedrock access (empty = default credentials) |
-| `region` | str | `"us-east-1"` | AWS region for Bedrock API calls |
 
 ## MemoryConfig
 

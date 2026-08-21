@@ -38,10 +38,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "task_timeout_minutes": 30,
         "worktree_isolation": True,
     },
-    "aws": {
-        "profile": "",
-        "region": "us-east-1",
-    },
 }
 
 

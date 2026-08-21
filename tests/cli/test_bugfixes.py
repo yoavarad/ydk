@@ -367,22 +367,20 @@ def test_task_unblock_nonexistent_friendly_error() -> None:
         assert "Error:" in result.output
 
 
-# ─── Fix 9: aws.profile is read in spec check ────────────────────────────
+# ─── Fix 9: spec check passes the loaded YdkConfig through to reviewer agents ──
 
 
 @patch("ydk.cli.spec_cmd._strands_available", return_value=True)
 @patch("ydk.cli.spec_cmd._run_reviewer_agents")
-def test_spec_check_reads_aws_profile(
+def test_spec_check_passes_config_to_reviewer_agents(
     mock_run: MagicMock, mock_strands: MagicMock, tmp_path: Path, monkeypatch: object
 ) -> None:
-    """ydk spec verify passes config (with aws.profile) to reviewer agents."""
+    """ydk spec verify passes the loaded YdkConfig to reviewer agents."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
 
-    # Set up config with aws.profile
-    config = {**DEFAULT_CONFIG, "aws": {"profile": "my-test-profile", "region": "us-east-1"}}
     config_dir = tmp_path / ".ydk"
     config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / "config.yaml").write_text(yaml.dump(config, default_flow_style=False))
+    (config_dir / "config.yaml").write_text(yaml.dump(DEFAULT_CONFIG, default_flow_style=False))
 
     spec_dir = tmp_path / "docs" / "specs"
     spec_dir.mkdir(parents=True)
@@ -400,4 +398,3 @@ def test_spec_check_reads_aws_profile(
 
     cfg = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
     assert isinstance(cfg, YdkConfig)
-    assert cfg.aws.profile == "my-test-profile"

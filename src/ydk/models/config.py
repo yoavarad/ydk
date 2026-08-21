@@ -107,15 +107,6 @@ class AIConfig(BaseModel):
     }
 
 
-class AwsConfig(BaseModel):
-    """AWS credential and region settings."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    profile: str = ""  # AWS profile name. Empty = use default credentials
-    region: str = "us-east-1"
-
-
 class AnthropicConfig(BaseModel):
     """Anthropic API credential settings."""
 
@@ -165,7 +156,6 @@ class YdkConfig(BaseModel):
     task_management: TaskManagementConfig = TaskManagementConfig()
     execution: ExecutionConfig = ExecutionConfig()
     ai: AIConfig = AIConfig()
-    aws: AwsConfig = AwsConfig()
     anthropic: AnthropicConfig = AnthropicConfig()
     memory: MemoryConfig = MemoryConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
