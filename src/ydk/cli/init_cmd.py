@@ -22,8 +22,14 @@ def _python_command() -> str:
     Prefers the interpreter currently running (always resolvable), falling
     back to a bare ``python`` on PATH. Avoids hardcoding ``python3``, which
     is often missing or an unusable stub on Windows.
+
+    Hook commands are executed through a POSIX-style shell (git-bash) even
+    on Windows, which treats backslashes as escape characters and mangles
+    a raw ``sys.executable`` path (e.g. ``C:\\Users\\...``). Forward
+    slashes are accepted by the Windows API and survive shell parsing.
     """
-    return sys.executable or shutil.which("python") or "python"
+    command = sys.executable or shutil.which("python") or "python"
+    return command.replace("\\", "/")
 
 
 def _make_executable(path: Path) -> None:
@@ -317,7 +323,7 @@ def _install_claude_hooks() -> None:
                     "hooks": [
                         {
                             "type": "command",
-                            "command": f"{_python_command()} .claude/hooks/guard.py",
+                            "command": (f"{_python_command()} {guard_script.resolve().as_posix()}"),
                         }
                     ],
                 },
@@ -361,9 +367,21 @@ def _install_hooks() -> None:
 
     # Resolve a python command at hook-run time rather than baking in a
     # path — the hook script is checked into the repo and may run on a
-    # different machine/PATH than the one that ran `ydk init`. Falls back
-    # from python3 -> python since neither name is guaranteed present.
-    _py_resolve = "PY=$(command -v python3 || command -v python || echo python3)\n"
+    # different machine/PATH than the one that ran `ydk init`. Prefers the
+    # project's own venv first: on Windows, a bare `python3`/`python` on
+    # PATH commonly resolves to the Microsoft Store alias stub (which
+    # errors instead of running) when no system-wide interpreter is
+    # installed, even though the project's real venv is right there.
+    _py_resolve = (
+        "TOPLEVEL=$(git rev-parse --show-toplevel)\n"
+        'if [ -x "$TOPLEVEL/.venv/Scripts/python.exe" ]; then\n'
+        '  PY="$TOPLEVEL/.venv/Scripts/python.exe"\n'
+        'elif [ -x "$TOPLEVEL/.venv/bin/python" ]; then\n'
+        '  PY="$TOPLEVEL/.venv/bin/python"\n'
+        "else\n"
+        "  PY=$(command -v python3 || command -v python || echo python3)\n"
+        "fi\n"
+    )
 
     pre_commit = hooks_dir / "pre-commit"
     pre_commit.write_text("#!/bin/sh\nydk verify run --trigger pre-commit\n", encoding="utf-8")
