@@ -245,7 +245,16 @@ def test_python_command_prefers_sys_executable() -> None:
 
     from ydk.cli.init_cmd import _python_command
 
-    assert _python_command() == sys.executable
+    assert _python_command() == sys.executable.replace("\\", "/")
+
+
+def test_python_command_uses_forward_slashes() -> None:
+    """Hook commands run through git-bash even on Windows, which mangles
+    backslashes (e.g. ``\\Users`` -> ``Users``). _python_command() must
+    never return a path containing a backslash."""
+    from ydk.cli.init_cmd import _python_command
+
+    assert "\\" not in _python_command()
 
 
 def test_make_executable_noop_on_windows(tmp_path: Path, monkeypatch: object) -> None:
@@ -307,10 +316,13 @@ def test_install_hooks_resolve_python_dynamically(tmp_path: Path, monkeypatch: o
     runner.invoke(app, ["init", "--name", "myproject"])
 
     pre_push = (tmp_path / ".ydk" / "hooks" / "pre-push").read_text()
+    assert ".venv/Scripts/python.exe" in pre_push
+    assert ".venv/bin/python" in pre_push
     assert "command -v python3" in pre_push
     assert "command -v python" in pre_push
     assert '"$PY" -c' in pre_push
 
     commit_msg = (tmp_path / ".ydk" / "hooks" / "commit-msg").read_text()
+    assert ".venv/Scripts/python.exe" in commit_msg
     assert "command -v python3" in commit_msg
     assert '"$PY" -m ydk.hooks.commit_msg' in commit_msg
