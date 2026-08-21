@@ -2944,7 +2944,7 @@ wheels = [
 
 [[package]]
 name = "ydk"
-version = "0.52.2"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
