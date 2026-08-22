@@ -1,0 +1,7 @@
+name: dotnet-build
+description: Build the .NET solution/project (dotnet build)
+trigger: git:pre-push
+parallel: true
+timeout: 120
+requires: []
+supports_auto_fix: false
