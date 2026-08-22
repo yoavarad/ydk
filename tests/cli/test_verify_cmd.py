@@ -173,6 +173,55 @@ class TestVerifyRetry:
         assert '"name": "types"' in result.output
 
 
+class TestVerifyRunChangedFiles:
+    def test_pre_push_trigger_injects_changed_files(self, monkeypatch) -> None:
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+        monkeypatch.setattr(
+            "ydk.services.git.LocalGitService.changed_files",
+            lambda self, directory, base_ref="main", extension="": ["src/foo.py", "README.md"],
+        )
+        result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push"])
+        assert result.exit_code == 0
+        assert mock_run_all.call_args.kwargs["context"]["changed_files"] == ["src/foo.py", "README.md"]
+
+    def test_pre_push_retry_path_injects_changed_files(self, monkeypatch) -> None:
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+        monkeypatch.setattr(
+            "ydk.services.git.LocalGitService.changed_files",
+            lambda self, directory, base_ref="main", extension="": ["src/foo.py"],
+        )
+        result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push", "--retry", "3"])
+        assert result.exit_code == 0
+        assert mock_run_all.call_args.kwargs["context"]["changed_files"] == ["src/foo.py"]
+
+    def test_pre_push_empty_changed_files_not_injected(self, monkeypatch) -> None:
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+        monkeypatch.setattr(
+            "ydk.services.git.LocalGitService.changed_files",
+            lambda self, directory, base_ref="main", extension="": [],
+        )
+        result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push"])
+        assert result.exit_code == 0
+        assert "changed_files" not in mock_run_all.call_args.kwargs["context"]
+
+    def test_non_pre_push_trigger_does_not_inject_changed_files(self, monkeypatch) -> None:
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+        result = runner.invoke(app, ["verify", "run", "--trigger", "pre-commit"])
+        assert result.exit_code == 0
+        assert "changed_files" not in mock_run_all.call_args.kwargs["context"]
+
+    def test_default_manual_trigger_does_not_inject_changed_files(self, monkeypatch) -> None:
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+        result = runner.invoke(app, ["verify", "run"])
+        assert result.exit_code == 0
+        assert "changed_files" not in mock_run_all.call_args.kwargs["context"]
+
+
 class TestVerifyList:
     def test_shows_plugins(self, monkeypatch) -> None:
         monkeypatch.setattr(
