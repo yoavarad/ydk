@@ -7,8 +7,12 @@ build/
 .ydk/memory/chroma/
 .ydk/proofs/
 .ydk/.verified
+.ydk/active-task.json
 ydk-task-lifecycle-*
 docs/node_modules/
 docs/.next/
 docs/.source/
 MagicMock/
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
