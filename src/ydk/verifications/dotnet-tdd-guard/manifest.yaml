@@ -1,0 +1,6 @@
+name: dotnet-tdd-guard
+description: Ensure all staged .cs source files have corresponding *Tests.cs files
+trigger: git:pre-commit
+parallel: true
+timeout: 30
+requires: []
