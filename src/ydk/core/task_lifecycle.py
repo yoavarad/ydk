@@ -301,6 +301,7 @@ class TaskLifecycle:
         # Post proof to issue
         proof_summary = "\n".join(f"OK {c.name} ({c.duration_seconds}s)" for c in report.checks)
         self._repo.add_comment(task_id, f"## Verification Proof\n\n{proof_summary}\n\nPR: {pr_url}")
+        self._repo.update_status(task_id, "in-review")
         self._repo.remove_label(task_id, "in-progress")
         self._repo.add_label(task_id, "in-review")
 
