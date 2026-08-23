@@ -41,11 +41,18 @@ def run(
     v = _make_verifier(use_cache=not no_cache)
     context: dict[str, object] = {"project_root": str(v._root.resolve())}
 
+    effective_trigger = trigger or "manual"
+    if effective_trigger == "pre-push":
+        from ydk.services.git import LocalGitService
+
+        changed_files = LocalGitService(cwd=str(v._root)).changed_files(".", base_ref="main", extension="")
+        if changed_files:
+            context["changed_files"] = changed_files
+
     # Retry loop path -- only for full runs (no --name filter)
     if max_retries is not None and name is None:
         from ydk.core.auto_repair import RepairLoop
 
-        effective_trigger = trigger or "manual"
         loop = RepairLoop()
         result = asyncio.run(loop.run(v, max_retries=max_retries, trigger=effective_trigger, context=context))
 
