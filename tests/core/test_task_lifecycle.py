@@ -190,6 +190,7 @@ def test_done_creates_pr_when_verification_passes(
     assert result["passed"] is True
     assert "pr_url" in result
     # Should have posted proof comment and updated labels
+    mock_repo.update_status.assert_called_once_with("T-001", "in-review")
     mock_repo.remove_label.assert_called_once_with("T-001", "in-progress")
     mock_repo.add_label.assert_called_once_with("T-001", "in-review")
 
