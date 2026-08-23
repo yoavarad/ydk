@@ -57,12 +57,17 @@ def _is_ui_file(filepath: str) -> bool:
     return False
 
 
-def _needs_screenshots(changed_files: list[str]) -> bool:
-    """Return True if any changed file is a UI file."""
-    return any(_is_ui_file(f) for f in changed_files)
+def _needs_screenshots(changed_files: list[str] | None) -> bool:
+    """Return True if any changed file is a UI file.
+
+    ``changed_files`` may be explicitly ``None`` (not just absent) -- callers
+    like ``Verifier.run_all()`` use ``None`` as a "scope to everything" signal
+    for other plugins, and that same context dict gets reused here.
+    """
+    return any(_is_ui_file(f) for f in changed_files or [])
 
 
-def validate_pr_body(body: str, changed_files: list[str]) -> dict:
+def validate_pr_body(body: str, changed_files: list[str] | None) -> dict:
     """Validate a PR body and return a structured result.
 
     Returns a dict with:
