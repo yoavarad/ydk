@@ -1,0 +1,7 @@
+name: dotnet-quality
+description: "Thin bundle: runs dotnet-build + dotnet-format (dotnet-test excluded)"
+trigger: git:pre-push
+parallel: true
+timeout: 240
+requires: []
+supports_auto_fix: false
