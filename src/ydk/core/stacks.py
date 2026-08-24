@@ -59,6 +59,13 @@ STACKS: dict[str, dict[str, Any]] = {
             "terraform-dangling-resources",
         ],
     },
+    "dotnet": {
+        "verifications": [
+            "dotnet-build",
+            "dotnet-format",
+            "dotnet-test",
+        ],
+    },
 }
 
 
