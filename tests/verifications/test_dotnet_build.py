@@ -199,3 +199,50 @@ class TestMain:
 
         assert data["passed"] is False
         assert "error CS1002" in data["output"]
+
+    def test_skips_when_only_non_dotnet_files_changed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """changed_files present but none touch .cs/.csproj/.sln -> skip without invoking dotnet CLI."""
+        mod = _load_check_module()
+        with patch("subprocess.run") as mock_run:
+            data = _run_main(monkeypatch, mod, {"project_root": str(tmp_path), "changed_files": ["README.md"]})
+        mock_run.assert_not_called()
+        assert data["passed"] is True
+        assert "skipped" in data["output"].lower()
+
+    def test_runs_normally_when_cs_file_changed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """changed_files present and includes a .cs file -> normal flow continues."""
+        mod = _load_check_module()
+        fake_sdks = subprocess.CompletedProcess(args=[], returncode=0, stdout="8.0.100\n")
+        with (
+            patch("shutil.which", return_value="/usr/bin/dotnet"),
+            patch("subprocess.run", return_value=fake_sdks),
+        ):
+            data = _run_main(monkeypatch, mod, {"project_root": str(tmp_path), "changed_files": ["src/Foo.cs"]})
+        assert data["passed"] is True
+        assert "No .sln/.csproj found" in data["output"]
+
+    def test_absent_changed_files_runs_unconditionally(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No changed_files key at all (older caller) -> current unconditional behavior preserved."""
+        mod = _load_check_module()
+        fake_sdks = subprocess.CompletedProcess(args=[], returncode=0, stdout="8.0.100\n")
+        with (
+            patch("shutil.which", return_value="/usr/bin/dotnet"),
+            patch("subprocess.run", return_value=fake_sdks),
+        ):
+            data = _run_main(monkeypatch, mod, {"project_root": str(tmp_path)})
+        assert data["passed"] is True
+        assert "No .sln/.csproj found" in data["output"]
+
+    def test_runs_normally_when_uppercase_cs_extension_changed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Extension match is case-insensitive -- 'Main.CS' must not be skipped."""
+        mod = _load_check_module()
+        fake_sdks = subprocess.CompletedProcess(args=[], returncode=0, stdout="8.0.100\n")
+        with (
+            patch("shutil.which", return_value="/usr/bin/dotnet"),
+            patch("subprocess.run", return_value=fake_sdks),
+        ):
+            data = _run_main(monkeypatch, mod, {"project_root": str(tmp_path), "changed_files": ["src/Main.CS"]})
+        assert data["passed"] is True
+        assert "No .sln/.csproj found" in data["output"]

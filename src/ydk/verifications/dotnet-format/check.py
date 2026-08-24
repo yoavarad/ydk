@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 _EXCLUDED_DIR_PARTS = {"bin", "obj", ".git", ".ydk", ".vs", "node_modules"}
+_DOTNET_EXTENSIONS = (".cs", ".csproj", ".sln")
 
 
 def _has_sdk(dotnet_bin: str) -> bool:
@@ -60,6 +61,19 @@ def main() -> None:
     context = json.loads(sys.stdin.read())
     project_root = context["project_root"]
     start = time.time()
+
+    changed_files = context.get("changed_files")
+    if changed_files and not any(f.lower().endswith(_DOTNET_EXTENSIONS) for f in changed_files):
+        result = {
+            "name": "dotnet-format",
+            "passed": True,
+            "output": "No .cs/.csproj/.sln files changed — skipped",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": None,
+        }
+        json.dump(result, sys.stdout)
+        sys.exit(0)
+        return
 
     dotnet_bin = shutil.which("dotnet")
     if dotnet_bin is None or not _has_sdk(dotnet_bin):
