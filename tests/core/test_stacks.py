@@ -23,6 +23,15 @@ def test_terraform_stack_exists() -> None:
     assert "terraform" in STACKS
 
 
+def test_dotnet_stack_exists() -> None:
+    assert "dotnet" in STACKS
+
+
+def test_dotnet_stack_verifications() -> None:
+    stack = get_stack("dotnet")
+    assert stack["verifications"] == ["dotnet-build", "dotnet-format", "dotnet-test"]
+
+
 def test_get_stack_returns_verifications() -> None:
     stack = get_stack("python-fastapi")
     assert "lint-ruff" in stack["verifications"]
