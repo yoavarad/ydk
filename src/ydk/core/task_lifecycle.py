@@ -671,8 +671,13 @@ class TaskLifecycle:
                 url = result.stdout.strip()
                 if url:
                     return url
-            else:
-                logger.warning("gh pr create failed: %s", result.stderr.strip()[:200])
+                logger.warning("gh pr create succeeded but printed no PR URL for task %s", task_id)
+                raise RuntimeError(f"gh pr create for task {task_id} succeeded but produced no PR URL")
 
-        # Fallback: return a local reference
+            stderr = result.stderr.strip() if result.stderr else ""
+            logger.warning("gh pr create failed: %s", stderr[:200])
+            detail = stderr or "no error output captured"
+            raise RuntimeError(f"gh pr create failed for task {task_id}: {detail}")
+
+        # Fallback: return a local reference (only reached when gh is unavailable)
         return f"local://{task_id}/pr-pending"
