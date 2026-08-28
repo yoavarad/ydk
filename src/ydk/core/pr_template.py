@@ -12,6 +12,24 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_MAX_BLOCK_CHARS = 2000
+"""Per-block cap on raw proof content embedded in the PR body.
+
+Keeps a single verification plugin's output (which can run to hundreds of
+KB, e.g. verbose pytest output) from blowing past GitHub's 65536-char PR
+body limit.
+"""
+
+_MAX_SECTION_CHARS = 20000
+"""Per-section cap (plugins section, reviews section) on total block chars.
+
+Bounds the total size contributed by each section regardless of how many
+proof files exist, so a large number of plugins/reviews cannot blow past
+GitHub's 65536-char PR body limit even though each block is individually
+capped by ``_MAX_BLOCK_CHARS``.
+"""
+
+
 class PRBodyBuilder:
     """Build a deterministic PR body from proof artifacts on disk."""
 
@@ -35,8 +53,8 @@ class PRBodyBuilder:
             parts.append("")
 
         # --- Verification Results ---
-        plugin_section = self._plugins_section(proof_dir)
-        review_section = self._reviews_section(proof_dir)
+        plugin_section = self._plugins_section(task_id, proof_dir)
+        review_section = self._reviews_section(task_id, proof_dir)
         media_section = self._media_section(proof_dir)
 
         has_any_verification = bool(plugin_section or review_section or media_section)
@@ -71,32 +89,76 @@ class PRBodyBuilder:
     # Section builders
     # ------------------------------------------------------------------
 
-    def _plugins_section(self, proof_dir: Path) -> str:
-        """Build collapsible blocks for each plugin output file."""
+    def _plugins_section(self, task_id: str, proof_dir: Path) -> str:
+        """Build collapsible blocks for each plugin output file.
+
+        Blocks are accumulated only while the running section total stays
+        under ``_MAX_SECTION_CHARS``; once the budget would be exceeded,
+        remaining plugins are listed by name in a single omission note
+        instead of being rendered in full.
+        """
         plugins_dir = proof_dir / "plugins"
         if not plugins_dir.is_dir():
             return ""
         blocks: list[str] = []
+        omitted: list[str] = []
+        total_chars = 0
         for plugin_file in sorted(plugins_dir.glob("*.txt")):
-            raw = plugin_file.read_text()
             plugin_name = plugin_file.stem.replace("-", " ").replace("_", " ")
+            if total_chars >= _MAX_SECTION_CHARS:
+                omitted.append(plugin_name)
+                continue
+            raw = plugin_file.read_text()
             status = "PASS" if raw.startswith("PASSED") else "FAIL"
             summary_text = f"{plugin_name} — {status}"
-            blocks.append(_details_block(summary_text, raw))
+            proof_relpath = f".ydk/proofs/{task_id}/plugins/{plugin_file.name}"
+            content = _truncate_raw(raw, proof_relpath)
+            block = _details_block(summary_text, content)
+            blocks.append(block)
+            total_chars += len(block)
+        if omitted:
+            names = ", ".join(omitted)
+            blocks.append(
+                f"> **{len(omitted)} more plugin(s) omitted from this PR body to stay under "
+                f"GitHub's size limit:** {names}. "
+                f"See `.ydk/proofs/{task_id}/plugins/` for full output.\n"
+            )
         return "\n".join(blocks) if blocks else ""
 
-    def _reviews_section(self, proof_dir: Path) -> str:
-        """Build collapsible blocks for each AI review output file."""
+    def _reviews_section(self, task_id: str, proof_dir: Path) -> str:
+        """Build collapsible blocks for each AI review output file.
+
+        Blocks are accumulated only while the running section total stays
+        under ``_MAX_SECTION_CHARS``; once the budget would be exceeded,
+        remaining reviews are listed by name in a single omission note
+        instead of being rendered in full.
+        """
         reviews_dir = proof_dir / "reviews"
         if not reviews_dir.is_dir():
             return ""
         blocks: list[str] = []
+        omitted: list[str] = []
+        total_chars = 0
         for review_file in sorted(reviews_dir.glob("*.txt")):
-            raw = review_file.read_text()
             reviewer_name = review_file.stem.replace("-", " ").replace("_", " ")
+            if total_chars >= _MAX_SECTION_CHARS:
+                omitted.append(reviewer_name)
+                continue
+            raw = review_file.read_text()
             score = _extract_review_score(raw)
             summary_text = f"{reviewer_name} — {score}"
-            blocks.append(_details_block(summary_text, raw))
+            proof_relpath = f".ydk/proofs/{task_id}/reviews/{review_file.name}"
+            content = _truncate_raw(raw, proof_relpath)
+            block = _details_block(summary_text, content)
+            blocks.append(block)
+            total_chars += len(block)
+        if omitted:
+            names = ", ".join(omitted)
+            blocks.append(
+                f"> **{len(omitted)} more review(s) omitted from this PR body to stay under "
+                f"GitHub's size limit:** {names}. "
+                f"See `.ydk/proofs/{task_id}/reviews/` for full output.\n"
+            )
         return "\n".join(blocks) if blocks else ""
 
     def _media_section(self, proof_dir: Path) -> str:
@@ -186,6 +248,22 @@ class PRBodyBuilder:
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
+
+
+def _truncate_raw(raw: str, proof_relpath: str) -> str:
+    """Truncate *raw* proof output to ``_MAX_BLOCK_CHARS``, keeping the tail.
+
+    The tail is kept (rather than the head) because failure diagnostics
+    usually appear at the end of tool output. A note pointing at the full
+    proof file (*proof_relpath*, a logical repo-relative path) is prepended
+    when truncation happens.
+    """
+    if len(raw) <= _MAX_BLOCK_CHARS:
+        return raw
+    note = f"... (truncated, {len(raw)} bytes total, see {proof_relpath} for full output)\n"
+    tail_chars = max(_MAX_BLOCK_CHARS - len(note), 0)
+    tail = raw[-tail_chars:] if tail_chars else ""
+    return note + tail
 
 
 def _details_block(summary: str, raw_content: str) -> str:

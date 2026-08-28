@@ -120,9 +120,11 @@ def test_block_updates_status_and_labels(lifecycle: TaskLifecycle, mock_repo: Ma
     assert "Blocked (code)" in mock_repo.add_comment.call_args[0][1]
 
 
+@patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
 def test_done_runs_verifications(
     mock_subprocess: MagicMock,
+    mock_which: MagicMock,
     lifecycle: TaskLifecycle,
     mock_verifier: MagicMock,
     mock_worktree: MagicMock,
@@ -166,9 +168,11 @@ def test_done_fails_when_verification_fails(
     assert "Verification FAILED" in mock_repo.add_comment.call_args[0][1]
 
 
+@patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
 def test_done_creates_pr_when_verification_passes(
     mock_subprocess: MagicMock,
+    mock_which: MagicMock,
     lifecycle: TaskLifecycle,
     mock_verifier: MagicMock,
     mock_repo: MagicMock,
@@ -277,6 +281,60 @@ def test_create_pr_uses_body_file_not_inline_arg(
     assert captured_file_content == [big_body]
 
 
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_raises_when_gh_pr_create_fails(
+    mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, mock_worktree: MagicMock
+) -> None:
+    """_create_pr raises instead of silently falling back to local:// when
+    gh is available but `gh pr create` fails for real (e.g. PR body too long)."""
+    mock_worktree.get_worktree_path.return_value = None
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(
+                returncode=1,
+                stdout="",
+                stderr="GraphQL: Body is too long (maximum is 65536 characters) (createPullRequest)",
+            )
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/T-001\n")
+        return MagicMock(returncode=0)  # git push
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    with pytest.raises(RuntimeError) as exc_info:
+        lifecycle._create_pr("T-001", pr_body_override="some body")
+
+    message = str(exc_info.value)
+    assert "T-001" in message
+    assert "Body is too long" in message
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_raises_when_gh_pr_create_returns_empty_stdout(
+    mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, mock_worktree: MagicMock
+) -> None:
+    """_create_pr raises when gh pr create exits 0 but prints no URL, rather
+    than silently falling back to local://."""
+    mock_worktree.get_worktree_path.return_value = None
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/T-001\n")
+        return MagicMock(returncode=0)  # git push
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    with pytest.raises(RuntimeError) as exc_info:
+        lifecycle._create_pr("T-001", pr_body_override="some body")
+
+    assert "T-001" in str(exc_info.value)
+
+
 def test_discover_creates_new_task_linked_to_parent(lifecycle: TaskLifecycle, mock_repo: MagicMock) -> None:
     """discover() creates a new task with the parent as a dependency."""
     new_id = lifecycle.discover("T-001", "Fix edge case", "Found a bug")
@@ -367,7 +425,11 @@ def test_done_skip_plugin_rejects_passing_plugin(lifecycle: TaskLifecycle, mock_
         lifecycle.done("T-001", skip_plugins=["lint"])
 
 
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
 def test_done_skip_plugin_allows_genuinely_failing_plugin(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
     lifecycle: TaskLifecycle,
     mock_verifier: MagicMock,
     mock_repo: MagicMock,
@@ -415,9 +477,11 @@ def test_done_skip_plugin_still_fails_if_other_plugins_fail(
     assert result["passed"] is False
 
 
+@patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
 def test_done_runs_pr_body_validation_after_body_is_built(
     mock_subprocess: MagicMock,
+    mock_which: MagicMock,
     lifecycle: TaskLifecycle,
     mock_verifier: MagicMock,
     mock_worktree: MagicMock,
@@ -512,7 +576,7 @@ def test_done_skip_plugins_bypasses_pr_body_validation_gate(
         return_value=[CheckResult(name="pr-body-validation", passed=False, output="FAIL", duration_seconds=0.1)]
     )
 
-    with patch("ydk.core.task_lifecycle.subprocess"):
+    with patch("ydk.core.task_lifecycle.subprocess"), patch("shutil.which", return_value=None):
         result = lifecycle.done("T-001", skip_plugins=["pr-body-validation"])
 
     assert result["passed"] is True
@@ -597,9 +661,11 @@ def test_derive_test_files_maps_services_to_unit(lifecycle: TaskLifecycle) -> No
     assert "tests/unit/test_strategy_service.py" in result
 
 
+@patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
 def test_done_removes_active_task_file(
     mock_subprocess: MagicMock,
+    mock_which: MagicMock,
     mock_repo: MagicMock,
     mock_worktree: MagicMock,
     mock_verifier: MagicMock,

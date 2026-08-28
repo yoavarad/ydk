@@ -10,10 +10,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from ydk.core.pr_template import (
+    _MAX_BLOCK_CHARS,
     PRBodyBuilder,
     _details_block,
     _extract_review_score,
     _extract_summary_line,
+    _truncate_raw,
 )
 
 
@@ -89,6 +91,38 @@ class TestPluginsSection:
         body = builder.build("T-001", proof_dir)
         assert "### Verification Plugins" not in body
 
+    def test_large_plugin_output_is_truncated(self, proof_dir: Path) -> None:
+        """A huge plugin proof file (e.g. verbose pytest output) must not blow
+        past GitHub's 65536-char PR body limit -- it should be truncated,
+        keeping the tail (most useful for diagnosing failures) and pointing
+        to the full proof file."""
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        marker = "END-OF-OUTPUT-MARKER"
+        huge = "PASSED (1.0s)\n" + ("line of output\n" * 20000) + marker
+        (plugins_dir / "tests-pytest.txt").write_text(huge)
+
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+
+        assert len(body) < 10000
+        assert "truncated" in body.lower()
+        assert ".ydk/proofs/T-001/plugins/tests-pytest.txt" in body
+        assert marker in body
+
+    def test_multiple_large_plugins_total_body_under_github_limit(self, proof_dir: Path) -> None:
+        """Even with several large plugin outputs, the whole PR body must
+        stay under GitHub's 65536-char limit."""
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        for name in ("aaa-check", "bbb-check", "ccc-check"):
+            (plugins_dir / f"{name}.txt").write_text("PASSED (1.0s)\n" + ("x" * 50000))
+
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+
+        assert len(body) < 65536
+
 
 class TestReviewsSection:
     def test_reviews_section_rendered(self, proof_dir: Path) -> None:
@@ -112,6 +146,21 @@ class TestReviewsSection:
         builder = PRBodyBuilder()
         body = builder.build("T-001", proof_dir)
         assert "### AI Reviews" not in body
+
+    def test_large_review_output_is_truncated(self, proof_dir: Path) -> None:
+        reviews_dir = proof_dir / "reviews"
+        reviews_dir.mkdir()
+        marker = "END-OF-REVIEW-MARKER"
+        huge = "Score: 8/10\n" + ("line of review\n" * 20000) + marker
+        (reviews_dir / "claude-review.txt").write_text(huge)
+
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+
+        assert len(body) < 10000
+        assert "truncated" in body.lower()
+        assert ".ydk/proofs/T-001/reviews/claude-review.txt" in body
+        assert marker in body
 
 
 class TestMediaSection:
@@ -281,3 +330,79 @@ class TestReviewScoreExtraction:
 
     def test_no_score(self) -> None:
         assert _extract_review_score("Looks fine.") == "N/A"
+
+
+class TestTruncateRawBlockCap:
+    def test_truncated_output_never_exceeds_block_cap(self) -> None:
+        """The note prepended on truncation must be accounted for in the
+        cap, not added on top of a full-length tail."""
+        raw = "x" * 100000
+        proof_relpath = ".ydk/proofs/T-001/plugins/some-very-long-plugin-file-name.txt"
+        result = _truncate_raw(raw, proof_relpath)
+        assert len(result) <= _MAX_BLOCK_CHARS
+
+    def test_truncated_output_keeps_tail_marker(self) -> None:
+        marker = "END-MARKER"
+        raw = ("x" * 10000) + marker
+        result = _truncate_raw(raw, ".ydk/proofs/T-001/plugins/p.txt")
+        assert marker in result
+        assert len(result) <= _MAX_BLOCK_CHARS
+
+
+class TestSectionBudget:
+    def test_many_plugins_stay_under_section_and_body_budget(self, proof_dir: Path) -> None:
+        """With a dozen+ plugin proof files, the section (and whole body)
+        must stay well under GitHub's 65536-char limit, and an omission
+        note must name at least one omitted plugin."""
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        for i in range(20):
+            (plugins_dir / f"plugin-{i:02d}.txt").write_text("PASSED (1.0s)\n" + ("x" * 3000))
+
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+
+        assert len(body) < 65536
+        assert "omitted" in body.lower()
+        assert "plugin 19" in body
+
+    def test_few_plugins_all_included_no_omission(self, proof_dir: Path) -> None:
+        """With only a few plugins that already fit under the section
+        budget, no premature omission should occur (matches prior
+        single/triple-large-plugin behavior)."""
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        for name in ("aaa-check", "bbb-check", "ccc-check"):
+            (plugins_dir / f"{name}.txt").write_text("PASSED (1.0s)\n" + ("x" * 50000))
+
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+
+        assert "omitted" not in body.lower()
+        assert "aaa check" in body
+        assert "bbb check" in body
+        assert "ccc check" in body
+
+    def test_many_reviews_stay_under_section_and_body_budget(self, proof_dir: Path) -> None:
+        reviews_dir = proof_dir / "reviews"
+        reviews_dir.mkdir()
+        for i in range(20):
+            (reviews_dir / f"reviewer-{i:02d}.txt").write_text("Score: 8/10\n" + ("x" * 3000))
+
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+
+        assert len(body) < 65536
+        assert "omitted" in body.lower()
+        assert "reviewer 19" in body
+
+    def test_few_reviews_all_included_no_omission(self, proof_dir: Path) -> None:
+        reviews_dir = proof_dir / "reviews"
+        reviews_dir.mkdir()
+        (reviews_dir / "claude-review.txt").write_text("Score: 8/10\nGood implementation.")
+
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+
+        assert "omitted" not in body.lower()
+        assert "claude review" in body
