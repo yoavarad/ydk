@@ -20,5 +20,11 @@
         ]
       }
     ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Creating a git worktree under .ydk/ (e.g. .ydk/worktrees/) is safe and does not need confirmation -- these are machine-local, gitignored, and used by the YDK execution stage for task isolation."
+    ]
   }
 }
