@@ -15,6 +15,7 @@ import json
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
 
@@ -39,9 +40,17 @@ def _fake_result(returncode: int, stdout: str = "", stderr: str = "") -> object:
     return type("FakeCompletedProcess", (), {"returncode": returncode, "stdout": stdout, "stderr": stderr})()
 
 
-def _run_main(mod: types.ModuleType, monkeypatch: pytest.MonkeyPatch, project_root: Path) -> dict:
+def _run_main(
+    mod: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    project_root: Path,
+    changed_files: list[str] | None = None,
+) -> dict:
     """Run mod.main() with stdin/stdout wired to an in-process context dict."""
-    stdin = io.StringIO(json.dumps({"project_root": str(project_root)}))
+    context: dict[str, object] = {"project_root": str(project_root)}
+    if changed_files is not None:
+        context["changed_files"] = changed_files
+    stdin = io.StringIO(json.dumps(context))
     stdout = io.StringIO()
     monkeypatch.setattr(sys, "stdin", stdin)
     monkeypatch.setattr(sys, "stdout", stdout)
@@ -219,3 +228,51 @@ class TestMainFormatResult:
 
         assert data["passed"] is False
         assert "Foo.cs" in data["output"]
+
+
+class TestChangedFilesScoping:
+    """main() skips when changed_files is present but touches nothing .NET-related."""
+
+    def test_skips_when_only_non_dotnet_files_changed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        mod = _load_check_module()
+        mock_run = Mock(side_effect=AssertionError("subprocess.run should not be called"))
+        monkeypatch.setattr(mod.subprocess, "run", mock_run)
+
+        data = _run_main(mod, monkeypatch, tmp_path, changed_files=["README.md"])
+
+        mock_run.assert_not_called()
+        assert data["passed"] is True
+        assert "skipped" in data["output"].lower()
+
+    def test_runs_normally_when_cs_file_changed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        mod = _load_check_module()
+        monkeypatch.setattr(mod.shutil, "which", lambda name: "dotnet")
+        monkeypatch.setattr(mod, "_has_sdk", lambda dotnet_bin: True)
+
+        data = _run_main(mod, monkeypatch, tmp_path, changed_files=["src/Foo.cs"])
+
+        assert data["passed"] is True
+        assert "no .sln/.csproj" in data["output"].lower()
+
+    def test_absent_changed_files_runs_unconditionally(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        mod = _load_check_module()
+        monkeypatch.setattr(mod.shutil, "which", lambda name: "dotnet")
+        monkeypatch.setattr(mod, "_has_sdk", lambda dotnet_bin: True)
+
+        data = _run_main(mod, monkeypatch, tmp_path)
+
+        assert data["passed"] is True
+        assert "no .sln/.csproj" in data["output"].lower()
+
+    def test_runs_normally_when_uppercase_cs_extension_changed(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Extension match is case-insensitive -- 'Main.CS' must not be skipped."""
+        mod = _load_check_module()
+        monkeypatch.setattr(mod.shutil, "which", lambda name: "dotnet")
+        monkeypatch.setattr(mod, "_has_sdk", lambda dotnet_bin: True)
+
+        data = _run_main(mod, monkeypatch, tmp_path, changed_files=["src/Main.CS"])
+
+        assert data["passed"] is True
+        assert "no .sln/.csproj" in data["output"].lower()
