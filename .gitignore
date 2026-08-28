@@ -9,6 +9,7 @@ build/
 .ydk/proofs/
 .ydk/.verified
 .ydk/active-task.json
+.ydk/cache/
 ydk-task-lifecycle-*
 docs/node_modules/
 docs/.next/
