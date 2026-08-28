@@ -70,8 +70,11 @@ def lifecycle(project: Path, passing_report: VerificationReport) -> TaskLifecycl
     )
 
 
+@patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
-def test_done_auto_resolves_todos(mock_subprocess: MagicMock, lifecycle: TaskLifecycle, project: Path) -> None:
+def test_done_auto_resolves_todos(
+    mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, project: Path
+) -> None:
     """When task done runs, assigned TODOs whose NotImplementedError is gone get marked done."""
     mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="", stderr="")
 
@@ -94,8 +97,11 @@ def test_done_auto_resolves_todos(mock_subprocess: MagicMock, lifecycle: TaskLif
     assert item.status == TodoStatus.DONE
 
 
+@patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
-def test_done_warns_on_unresolved_todos(mock_subprocess: MagicMock, lifecycle: TaskLifecycle, project: Path) -> None:
+def test_done_warns_on_unresolved_todos(
+    mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, project: Path
+) -> None:
     """When task done runs, TODOs still containing NotImplementedError produce warnings."""
     mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="", stderr="")
 

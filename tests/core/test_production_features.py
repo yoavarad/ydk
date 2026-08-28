@@ -508,10 +508,12 @@ class TestGitTemplatesInit:
 class TestPrePushVerifiedFlag:
     """Item 9: Pre-push hook respects .ydk/.verified flag."""
 
+    @patch("shutil.which", return_value=None)
     @patch("ydk.core.task_lifecycle.subprocess")
     def test_done_writes_verified_flag(
         self,
         mock_subprocess: MagicMock,
+        mock_which: MagicMock,
         mock_repo: MagicMock,
         mock_worktree: MagicMock,
         mock_verifier: MagicMock,
