@@ -13,7 +13,7 @@ The repository is meant to be read by coding agents first. Humans should only ne
 1. Clone this repository.
 
 ```bash
-git clone https://github.com/oaltagar-personal/ydk.git
+git clone https://github.com/yoavarad/ydk.git
 cd ydk
 ```
 
@@ -68,6 +68,8 @@ Stage 03: Execution
 Stage 04: Learning and Improvement
 ```
 
+For small, self-contained changes that do not need the full task hierarchy (a typo fix, a one-line config change), YDK also provides a Quick Dev fast path (`ydk task quick`) that creates a lightweight task and branch directly, skipping dependency tracking and complexity scoring. The same verification checks used by full tasks can still be run before merging.
+
 ### Stage 01: Brainstorming And Design
 
 The agent helps turn a vague idea into implementation-ready specifications.
@@ -90,7 +92,7 @@ Tasks should be small enough for focused execution, tied back to the design, and
 
 The agent implements tasks with proof.
 
-This stage emphasizes TDD, verification, code review, and pull-request discipline. The agent should not simply claim that something works. It should produce evidence: tests, lint/type checks where applicable, screenshots or browser proof for UI work, and a clear account of what changed.
+This stage emphasizes TDD, verification, code review, and pull-request discipline. The agent should not simply claim that something works. It should produce evidence: tests, lint/type checks where applicable, screenshots or browser proof for UI work, and a clear account of what changed. Verification plugins exist for Python projects, with a growing set of plugins for .NET projects as well.
 
 ### Stage 04: Learning And Improvement
 
@@ -119,6 +121,9 @@ skills/ydk/
 
 src/ydk/
   CLI implementation used by agents and automation
+
+docs/
+  Documentation site (getting started, concepts, guides, architecture)
 
 tests/
   Verification for the CLI and process tooling
