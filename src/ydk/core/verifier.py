@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -24,6 +25,39 @@ from ydk.core.verification_cache import VerificationCache
 from ydk.models.verification import CheckResult, VerificationReport
 
 logger = logging.getLogger("ydk.verifier")
+
+
+def _load_dotenv(path: Path) -> dict[str, str]:
+    """Parse a .env file into a dict, tolerating UTF-16 BOMs written by Windows tools.
+
+    Does not override anything — precedence with real env vars is handled by the caller.
+    """
+    if not path.is_file():
+        return {}
+
+    raw = path.read_bytes()
+    if raw.startswith(b"\xff\xfe"):
+        encoding, raw = "utf-16-le", raw[2:]
+    elif raw.startswith(b"\xfe\xff"):
+        encoding, raw = "utf-16-be", raw[2:]
+    elif raw.startswith(b"\xef\xbb\xbf"):
+        encoding, raw = "utf-8-sig", raw
+    else:
+        encoding = "utf-8"
+    text = raw.decode(encoding)
+
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        values[key] = value
+    return values
 
 
 class VerificationContractError(Exception):
@@ -230,6 +264,8 @@ class Verifier:
         import sys as _sys
 
         input_json = json.dumps(context)
+        dotenv_vars = _load_dotenv(self._root / ".env")
+        env = {**dotenv_vars, **os.environ}
         result = subprocess.run(
             [_sys.executable, str(plugin.check_script)],
             input=input_json,
@@ -237,6 +273,7 @@ class Verifier:
             text=True,
             timeout=plugin.timeout,
             cwd=str(self._root),
+            env=env,
         )
 
         if result.returncode == 2:

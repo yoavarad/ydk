@@ -21,26 +21,20 @@ This workflow runs on every pull request and every push to main. It has four job
 
 **Test** installs all dependencies and runs `pytest tests/ -q --tb=short -x --ignore=tests/fixtures`. The `-x` flag stops on first failure for fast feedback. The `--ignore=tests/fixtures` flag excludes test fixture files that are not actual test files.
 
-## bump.yml: Automatic Version Bumping
+## Versioning: manual `cz bump` + tag-sync
 
-Triggered on pushes to main (skipping commits that start with `bump:`), this workflow handles automatic versioning:
+<Callout type="warn">
+There is no workflow that auto-bumps the version on merge to main. Version bumps are triggered manually, from a tag pushed on the feature branch, before the PR merges.
+</Callout>
 
-1. Checks out the repository with full git history (needed for commitizen to analyze all commits)
-2. Runs `cz bump --yes` which reads the conventional commits since the last tag, determines the version increment (patch for fixes, minor for features, major for breaking changes), and updates the version
-3. Runs `uv lock` to update the lockfile with the new version
-4. Amends the bump commit to include the lockfile changes
-5. Pushes the commit and the new version tag
+The flow:
 
-This means every merge to main that includes conventional commits automatically produces a new version tag. There is no manual version management.
+1. On your feature branch, run `cz bump --yes` (or `cz bump --dry-run` to preview first). Commitizen reads the conventional commits since the last version tag / bump commit and determines the increment: `fix` → patch, `feat` → minor, `BREAKING CHANGE` → major. It updates `version` in `pyproject.toml` and creates a local `vX.Y.Z` tag.
+2. `git push origin <branch> --tags` (or `--follow-tags`) pushes both the branch and the new tag.
+3. **`version-from-tag.yml`** runs on PR open/sync/reopen. It checks whether a `vX.Y.Z` tag points at the PR's HEAD commit; if so, it rewrites `pyproject.toml:version` to match and commits `chore(release): set version to X from tag vX` back onto the PR branch, so the version bump is visible in the PR diff for review. It only runs for branches in this repository (not forks).
+4. **`release.yml`** fires independently, on any `v*` tag push — it doesn't wait for the PR to merge. It creates a GitHub Release with the tag name as the title and auto-generates release notes from the commits since the previous tag.
 
-## release.yml: GitHub Releases
-
-Triggered when a `v*` tag is pushed (which happens automatically from the bump workflow):
-
-1. Creates a GitHub Release with the tag name as the release title
-2. Auto-generates release notes from the commits since the previous tag
-
-This produces a clean release history where each release links to the commits that comprise it.
+Because `release.yml` triggers on the tag push itself (step 2), the GitHub Release can go live *before* the PR merges. There is no automatic version management on push-to-main — every bump starts with a manually run `cz bump` on a branch.
 
 ## Local Git Hooks
 

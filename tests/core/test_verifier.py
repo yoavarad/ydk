@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from ydk.core.verifier import VerificationContractError, Verifier, _migrate_trigger, _normalize_trigger
+from ydk.core.verifier import VerificationContractError, Verifier, _load_dotenv, _migrate_trigger, _normalize_trigger
 from ydk.models.verification import VerificationReport
 
 # ---------------------------------------------------------------------------
@@ -547,6 +547,54 @@ class TestNormalizeTrigger:
 
     def test_custom_namespace_passthrough(self) -> None:
         assert _normalize_trigger("ci:deploy") == "ci:deploy"
+
+
+class TestLoadDotenv:
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        assert _load_dotenv(tmp_path / ".env") == {}
+
+    def test_parses_utf8_env_file(self, tmp_path: Path) -> None:
+        env_path = tmp_path / ".env"
+        env_path.write_text('FOO=bar\n# comment\n\nBAZ="quoted value"\n', encoding="utf-8")
+        assert _load_dotenv(env_path) == {"FOO": "bar", "BAZ": "quoted value"}
+
+    def test_parses_utf16_le_bom_env_file(self, tmp_path: Path) -> None:
+        env_path = tmp_path / ".env"
+        content = "ANTHROPIC_API_KEY=sk-test-123\n"
+        raw = content.encode("utf-16-le")
+        assert raw[:2] != b"\xff\xfe"  # encode() alone has no BOM; prepend explicitly
+        env_path.write_bytes(b"\xff\xfe" + raw)
+        assert _load_dotenv(env_path) == {"ANTHROPIC_API_KEY": "sk-test-123"}
+
+
+class TestRunCheckScriptEnv:
+    def test_dotenv_var_visible_to_subprocess(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.delenv("DOTENV_ONLY_VAR", raising=False)
+        (tmp_path / ".env").write_text("DOTENV_ONLY_VAR=from_dotenv\n", encoding="utf-8")
+        check_code = (
+            "import json, os, sys\n"
+            "sys.stdin.read()\n"
+            'json.dump({"name": "env_check", "passed": True, '
+            '"output": os.environ.get("DOTENV_ONLY_VAR", ""), "duration_seconds": 0.0}, sys.stdout)\n'
+        )
+        v = _make_verifier(tmp_path, monkeypatch, global_plugins={"env_check": {"check_code": check_code}})
+        plugins = v.discover_plugins()
+        result = asyncio.run(v.run_plugin(plugins[0], {"project_root": str(tmp_path)}))
+        assert result.output == "from_dotenv"
+
+    def test_real_env_not_overridden_by_dotenv(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("SHARED_VAR", "from_real_env")
+        (tmp_path / ".env").write_text("SHARED_VAR=from_dotenv\n", encoding="utf-8")
+        check_code = (
+            "import json, os, sys\n"
+            "sys.stdin.read()\n"
+            'json.dump({"name": "env_check", "passed": True, '
+            '"output": os.environ.get("SHARED_VAR", ""), "duration_seconds": 0.0}, sys.stdout)\n'
+        )
+        v = _make_verifier(tmp_path, monkeypatch, global_plugins={"env_check": {"check_code": check_code}})
+        plugins = v.discover_plugins()
+        result = asyncio.run(v.run_plugin(plugins[0], {"project_root": str(tmp_path)}))
+        assert result.output == "from_real_env"
 
 
 class TestFilterByTriggerShorthand:
