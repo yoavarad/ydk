@@ -33,6 +33,7 @@ Start with `skills/ydk/SKILL.md`. It is the entry point agents should load befor
 ## Key Rules
 
 - **Conventional commits** -- `type(scope): description`. Types: feat, fix, docs, chore, refactor, test, ci, perf, release.
+- **Versioning is manual** -- run `cz bump` on your branch and push the tag before merging; nothing auto-bumps on merge to main. See `docs/content/docs/architecture/ci-cd.mdx` ("Versioning: manual `cz bump` + tag-sync").
 - **TDD mandatory** -- write tests before implementation. Every source file must have a corresponding test file.
 - **No mocks of internal classes** -- mock only at system boundaries (LLM, ChromaDB, git subprocess, gh CLI).
 - **No hold-the-line** -- all lint/type violations must be fixed, not suppressed. Zero tolerance for new violations.
