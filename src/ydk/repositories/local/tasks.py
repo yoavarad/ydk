@@ -169,6 +169,15 @@ class LocalTaskRepository:
             gates=gates,
         )
 
+    def _frontmatter_status(self, task_id: str) -> str:
+        """Read a task's status straight from its .md frontmatter (source of truth)."""
+        file_path = self._tasks_dir / f"{task_id}.md"
+        if not file_path.exists():
+            return "open"
+        content = file_path.read_text(encoding="utf-8")
+        fm, _ = parse_frontmatter(content)
+        return fm.get("status", "open")
+
     def task_exists(self, task_id: str) -> bool:
         """Check if a task ID exists in the local repository."""
         file_path = self._tasks_dir / f"{task_id}.md"
@@ -182,18 +191,19 @@ class LocalTaskRepository:
         data = self._manifest.load()
         results: list[TaskSummary] = []
         for tid, info in data.get("tasks", {}).items():
-            if state != "all" and info.get("status", "open") != state:
+            status = self._frontmatter_status(tid)
+            if state != "all" and status != state:
                 continue
             raw_deps = info.get("dependencies", [])
             blocking_ids = _extract_blocking_dep_ids(raw_deps)
             deps_met = all(
-                data["tasks"].get(d) is not None and data["tasks"][d].get("status") == "done" for d in blocking_ids
+                data["tasks"].get(d) is not None and self._frontmatter_status(d) == "done" for d in blocking_ids
             )
             results.append(
                 TaskSummary(
                     id=tid,
                     title=info["title"],
-                    status=info.get("status", "open"),
+                    status=status,
                     dependencies_met=deps_met,
                 )
             )
@@ -217,11 +227,13 @@ class LocalTaskRepository:
 
         results: list[TaskSummary] = []
         for tid, info in all_tasks.items():
-            if info.get("status", "open") != "open":
+            if self._frontmatter_status(tid) != "open":
                 continue
             raw_deps = info.get("dependencies", [])
             blocking_ids = _extract_blocking_dep_ids(raw_deps)
-            deps_met = all(all_tasks.get(d) is not None and all_tasks[d].get("status") == "done" for d in blocking_ids)
+            deps_met = all(
+                all_tasks.get(d) is not None and self._frontmatter_status(d) == "done" for d in blocking_ids
+            )
             if not deps_met:
                 continue
             results.append(
