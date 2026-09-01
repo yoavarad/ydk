@@ -123,6 +123,25 @@ class TestListReadyExcludesNonOpen:
         assert len(ready) == 0
 
 
+class TestListReadyFrontmatterSourceOfTruth:
+    def test_stale_manifest_status_ignored_in_favor_of_frontmatter(self, tmp_path: Path) -> None:
+        """Hand-edited frontmatter status must win over stale manifest cache."""
+        repo = LocalTaskRepository(tmp_path)
+        t = repo.create_task(_make_task(title="Hand-edited"))
+
+        # Simulate an out-of-band edit: frontmatter says done, manifest still says open.
+        file_path = tmp_path / "tasks" / f"{t.id}.md"
+        content = file_path.read_text(encoding="utf-8")
+        content = content.replace("status: open", "status: done")
+        file_path.write_text(content, encoding="utf-8")
+
+        ready = repo.list_ready()
+        assert t.id not in [r.id for r in ready]
+
+        done_tasks = repo.list_tasks(state="done")
+        assert t.id in [d.id for d in done_tasks]
+
+
 class TestListReadyRanking:
     def test_ranked_by_dependent_count_descending(self, tmp_path: Path) -> None:
         """Tasks with more dependents (tasks that depend on them) rank higher."""
