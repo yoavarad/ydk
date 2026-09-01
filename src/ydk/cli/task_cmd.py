@@ -1851,6 +1851,69 @@ def _fetch_review_comments(task_id: str) -> list[dict[str, object]]:
     return parsed
 
 
+def _find_task_pr(task_id: str) -> dict[str, object] | None:
+    """Find the PR associated with a task via gh CLI.
+
+    Matches headRefName against task/{task_id} (exact) or task/{task_id}-*
+    (slugged), per the branch-naming scheme in TaskLifecycle.start(). Returns
+    the JSON dict of the most recently created matching PR, or None if none
+    found / gh call fails.
+    """
+    import json
+    import subprocess
+
+    cmd = [
+        "gh",
+        "pr",
+        "list",
+        "--json",
+        "number,url,state,headRefName,mergedAt,createdAt",
+        "--state",
+        "all",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    try:
+        prs = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    exact = f"task/{task_id}"
+    prefix = f"task/{task_id}-"
+    matches = [pr for pr in prs if pr.get("headRefName") == exact or str(pr.get("headRefName", "")).startswith(prefix)]
+    if not matches:
+        return None
+
+    matches.sort(key=lambda pr: pr.get("createdAt") or "", reverse=True)
+    return cast("dict[str, object]", matches[0])
+
+
+@task_app.command()
+def close(
+    task_id: str = typer.Argument(..., help="Task ID to close (reconcile status from PR merge state)"),
+) -> None:
+    """Reconcile a task's status to done based on its PR's merge state."""
+    task_id = _resolve_task_id(task_id)
+    pr = _find_task_pr(task_id)
+    if pr is None:
+        typer.echo(f"Error: No PR found for task {task_id}", err=True)
+        raise typer.Exit(code=1)
+
+    if pr.get("state") != "MERGED":
+        typer.echo(f"PR #{pr.get('number')} for task {task_id} is not merged (state: {pr.get('state')})")
+        return
+
+    repo = _get_repo()
+    try:
+        repo.update_status(task_id, "done")
+        typer.echo(f"Task {task_id} closed: PR #{pr.get('number')} merged -> status done")
+    except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+
+
 @task_app.command("scaffold-batch")
 def scaffold_batch(
     output: str = typer.Option("batch-tasks.yaml", "--output", "-o", help="Output file path"),
