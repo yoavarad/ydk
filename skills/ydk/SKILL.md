@@ -321,6 +321,7 @@ ydk task comment <id> "msg"            # Post comment to task issue (replaces pl
 ydk task block <id> --reason X         # Mark task as blocked
 ydk task done <id>                     # Verify + create PR + post proof (prints pass/fail per plugin, shows PR URL or first 3 lines of failure)
 ydk task done <id> --skip-plugin <name>  # Skip a genuinely failing plugin (verified internally)
+ydk task close <id>                    # After PR merge: check merge state via gh, transition status to done (status does NOT auto-update on merge — run this to reconcile, or to recover a task stuck at open/in-review)
 ydk task add-subtask <id>              # Create discovered subtask linked to parent
 ydk task tdd <id> --stage red|green|refactor  # Set TDD phase on task
 ydk task quick "description"           # Fast path for small changes
@@ -541,7 +542,7 @@ Apply across all stages. Read when relevant:
 1. **New project**: Enter Stage 01 → `ydk catalog search` for packs → brainstorm specs + produce component manifests → run spec-check → PR
 2. **Specs ready**: Enter Stage 01.5 → `ydk ignite` → verify skeleton runs + app starts → review TODOs
 3. **Skeleton ready**: Enter Stage 02 → decompose with component_refs → `ydk todo assign` TODOs to tasks → validate DAG → plan sprint
-4. **Task assigned**: Enter Stage 03 → implement TODOs with TDD (guards auto-enforced) → `ydk task done` shows pass/fail per plugin → PR → review
+4. **Task assigned**: Enter Stage 03 → implement TODOs with TDD (guards auto-enforced) → `ydk task done` shows pass/fail per plugin → PR → review → merge → `ydk task close <id>` to reconcile status to done
 5. **Sprint done**: Enter Stage 04 → capture lessons → update ADRs/rules
 6. **Quick fix**: `ydk task quick "description"` → fast path for small changes
 7. **Not sure**: `ydk doctor` → check environment health and get next steps
