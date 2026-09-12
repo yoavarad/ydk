@@ -31,6 +31,34 @@ class TestFindTaskPr:
             pr = _find_task_pr("T-001")
         assert pr is None
 
+    def test_includes_limit_flag_in_gh_command(self) -> None:
+        fake_result = MagicMock(returncode=0, stdout="[]")
+        with patch("subprocess.run", return_value=fake_result) as mock_run:
+            _find_task_pr("T-001")
+        cmd = mock_run.call_args[0][0]
+        assert "--limit" in cmd
+
+    def test_matches_branch_with_different_leading_type_segment(self) -> None:
+        """Branches from other schemes (e.g. quickdev's chore/qd-... or docs/qd-...)
+        should match on the last path segment, case-insensitively, independent
+        of the leading type prefix.
+        """
+        prs = [
+            {
+                "number": 50,
+                "url": "https://example.com/50",
+                "state": "OPEN",
+                "headRefName": "chore/qd-7583d5-fix-thing",
+                "mergedAt": None,
+                "createdAt": "2026-01-01T00:00:00Z",
+            }
+        ]
+        fake_result = MagicMock(returncode=0, stdout=json.dumps(prs))
+        with patch("subprocess.run", return_value=fake_result):
+            pr = _find_task_pr("QD-7583d5")
+        assert pr is not None
+        assert pr["number"] == 50
+
     def test_matches_exact_branch_name(self) -> None:
         prs = [
             {
@@ -64,6 +92,25 @@ class TestFindTaskPr:
             pr = _find_task_pr("T-001")
         assert pr is not None
         assert pr["number"] == 43
+
+    def test_matches_task_prefix_case_insensitively(self) -> None:
+        """task_id may be stored mixed-case (e.g. T-A1B2C3D4) while branches are
+        always lowercased; matching must be case-insensitive."""
+        prs = [
+            {
+                "number": 60,
+                "url": "https://example.com/60",
+                "state": "OPEN",
+                "headRefName": "task/t-a1b2c3d4-fix-thing",
+                "mergedAt": None,
+                "createdAt": "2026-01-01T00:00:00Z",
+            }
+        ]
+        fake_result = MagicMock(returncode=0, stdout=json.dumps(prs))
+        with patch("subprocess.run", return_value=fake_result):
+            pr = _find_task_pr("T-A1B2C3D4")
+        assert pr is not None
+        assert pr["number"] == 60
 
     def test_does_not_match_prefix_collision(self) -> None:
         """Querying T-001 must not match a PR on branch task/T-0010."""
