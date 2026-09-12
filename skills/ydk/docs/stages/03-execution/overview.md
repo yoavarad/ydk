@@ -38,6 +38,7 @@ ydk task comment <id>   → Post progress updates throughout
 ydk verify run           → Run verifications (with --auto-fix, --retry, --repair as needed)
 ydk task done <id>       → Run ALL verifications → create PR with proof
                          → Human reviews → approves → merge
+ydk task close <id>      → Check PR merge state → reconcile status to done (dependents unblock)
 ```
 
 ## Git Workflow

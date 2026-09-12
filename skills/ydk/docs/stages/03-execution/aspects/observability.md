@@ -70,12 +70,14 @@ YDK posts to the task issue at these milestones — no more, no less:
 | `ydk task comment` | Progress message (you provide the message) |
 | `ydk task block` | Blocked reason + what's needed from human |
 | `ydk task done` | Verification proof summary + PR link |
+| `ydk task close` | Nothing posted — reconciles status only (see below) |
 | `ydk task add-subtask` | New task created, linked to origin |
 
 Labels are also updated automatically:
 - `ydk task start` → adds `in-progress`
 - `ydk task block` → adds `blocked-by-code` or `blocked-by-decision`, removes `in-progress`
 - `ydk task done` → adds `in-review`, removes `in-progress`
+- `ydk task close` → sets `done`, but only if the task's PR is actually merged; otherwise leaves status untouched. This is the only path to `done` — `ydk task done` never sets it directly, so run `ydk task close <id>` after the PR merges.
 
 ## What You See Without Any Extra Setup
 

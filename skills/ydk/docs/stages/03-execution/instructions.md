@@ -305,13 +305,23 @@ The ONLY mandatory human intervention point.
 **What happens:**
 - Human sees the PR with proof in the description
 - Human reviews the diff + proof artifacts
-- Human approves → merge → task auto-closes → dependents unblock
+- Human approves → merge
 - Human requests changes → the watch system detects the comment and resumes the agent session
 
 **After merge:**
+- Status does NOT auto-transition to `done` on merge — `ydk task done` only ever sets `in-review`. You MUST run `ydk task close <task_id>` to reconcile: it checks the task's PR merge state via `gh` and, if merged, sets status to `done`. Safe to run even if the task is stuck at `open` (e.g. a session died before `ydk task done` reached its status-update step) — it looks up the PR by branch, not by current status.
 - YDK cleans up the worktree and feature branch
-- Dependent tasks become unblocked
+- Dependent tasks become unblocked only after `ydk task close` runs (readiness checks read status from the task's `.md` frontmatter, which `ydk task close` is what actually updates to `done`)
 - The next agent can pick up newly unblocked tasks
+
+**`ydk task close <task_id>`:**
+```bash
+ydk task close T-a1b2c3d4
+# Task T-a1b2c3d4 closed: PR #47 merged -> status done
+```
+- If no PR is found for the task: errors, exits 1, no state changed
+- If the PR exists but isn't merged yet: reports "not merged", exits 0, no state changed
+- You MAY run this any time to check/reconcile a task's status against its PR's real merge state
 
 ### 10. PR Review Feedback Loop
 
