@@ -231,9 +231,7 @@ class LocalTaskRepository:
                 continue
             raw_deps = info.get("dependencies", [])
             blocking_ids = _extract_blocking_dep_ids(raw_deps)
-            deps_met = all(
-                all_tasks.get(d) is not None and self._frontmatter_status(d) == "done" for d in blocking_ids
-            )
+            deps_met = all(all_tasks.get(d) is not None and self._frontmatter_status(d) == "done" for d in blocking_ids)
             if not deps_met:
                 continue
             results.append(
