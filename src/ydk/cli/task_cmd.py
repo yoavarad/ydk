@@ -1854,8 +1854,9 @@ def _fetch_review_comments(task_id: str) -> list[dict[str, object]]:
 def _find_task_pr(task_id: str) -> dict[str, object] | None:
     """Find the PR associated with a task via gh CLI.
 
-    Matches headRefName against task/{task_id} (exact) or task/{task_id}-*
-    (slugged), per the branch-naming scheme in TaskLifecycle.start(). Returns
+    Matches the last "/"-separated segment of headRefName against task_id
+    (exact) or task_id-* (slugged), case-insensitively, independent of the
+    branch's leading type segment (e.g. task/, chore/qd-, docs/qd-). Returns
     the JSON dict of the most recently created matching PR, or None if none
     found / gh call fails.
     """
@@ -1870,6 +1871,8 @@ def _find_task_pr(task_id: str) -> dict[str, object] | None:
         "number,url,state,headRefName,mergedAt,createdAt",
         "--state",
         "all",
+        "--limit",
+        "500",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0 or not result.stdout.strip():
@@ -1880,9 +1883,14 @@ def _find_task_pr(task_id: str) -> dict[str, object] | None:
     except json.JSONDecodeError:
         return None
 
-    exact = f"task/{task_id}"
-    prefix = f"task/{task_id}-"
-    matches = [pr for pr in prs if pr.get("headRefName") == exact or str(pr.get("headRefName", "")).startswith(prefix)]
+    task_id_lower = task_id.lower()
+    prefix = f"{task_id_lower}-"
+
+    def _matches(pr: dict[str, object]) -> bool:
+        segment = str(pr.get("headRefName", "")).rsplit("/", 1)[-1].lower()
+        return segment == task_id_lower or segment.startswith(prefix)
+
+    matches = [pr for pr in prs if _matches(pr)]
     if not matches:
         return None
 
