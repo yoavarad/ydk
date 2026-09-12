@@ -18,10 +18,22 @@ def _generate_task_id(description: str) -> str:
     return f"QD-{h}"
 
 
+_CONVENTIONAL_TYPES = frozenset({"feat", "fix", "docs", "chore", "refactor", "test", "ci", "perf", "release", "task"})
+
+
+def _branch_type(description: str) -> str:
+    """Derive a CI-allowed branch type prefix from a conventional-commit-style description."""
+    if ":" in description:
+        candidate = description.split(":", 1)[0].strip().lower()
+        if candidate in _CONVENTIONAL_TYPES:
+            return candidate
+    return "chore"
+
+
 def _slugify(text: str, max_len: int = 40) -> str:
     """Convert text to a branch-safe slug."""
     slug = text.lower()
-    slug = "".join(c if c.isalnum() or c == "-" else "-" for c in slug)
+    slug = "".join(c if (c.isascii() and c.isalnum()) or c == "-" else "-" for c in slug)
     # Collapse multiple hyphens
     while "--" in slug:
         slug = slug.replace("--", "-")
@@ -57,7 +69,8 @@ class QuickDevSetup:
         Returns a QuickDevContext with everything a coding agent needs.
         """
         task_id = _generate_task_id(description)
-        branch = f"quickdev/{task_id}-{_slugify(description)}"
+        branch_type = _branch_type(description)
+        branch = f"{branch_type}/{task_id.lower()}-{_slugify(description)}"
 
         # Write a minimal task file
         tasks_dir = project_root / ".ydk" / "tasks"

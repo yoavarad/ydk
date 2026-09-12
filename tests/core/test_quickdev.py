@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -94,4 +95,48 @@ class TestQuickDevSetup:
         setup = QuickDevSetup()
         result = setup.setup("update readme", tmp_path)
         assert result.testing_guidance != ""
-        assert result.branch.startswith("quickdev/")
+        assert result.branch.startswith("chore/")
+
+
+class TestBranchNaming:
+    """Branch names must satisfy the CI branch-name gate (.github/workflows/ci.yml)."""
+
+    CI_BRANCH_RE = re.compile(r"^(feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+$")
+
+    def _init_repo(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "init"],
+            cwd=str(tmp_path),
+            capture_output=True,
+        )
+
+    def test_conventional_prefix_is_used_as_branch_type(self, tmp_path: Path) -> None:
+        self._init_repo(tmp_path)
+        result = QuickDevSetup().setup("docs: update the readme", tmp_path)
+        assert result.branch.startswith("docs/")
+        assert self.CI_BRANCH_RE.match(result.branch)
+
+    def test_no_conventional_prefix_defaults_to_chore(self, tmp_path: Path) -> None:
+        self._init_repo(tmp_path)
+        result = QuickDevSetup().setup("make it faster", tmp_path)
+        assert result.branch.startswith("chore/")
+        assert self.CI_BRANCH_RE.match(result.branch)
+
+    def test_non_ascii_description_yields_ascii_only_branch(self, tmp_path: Path) -> None:
+        self._init_repo(tmp_path)
+        result = QuickDevSetup().setup("fix café — açcént bug", tmp_path)
+        assert self.CI_BRANCH_RE.match(result.branch)
+
+    def test_task_id_is_lowercased_in_branch_but_not_in_task_file(self, tmp_path: Path) -> None:
+        self._init_repo(tmp_path)
+        result = QuickDevSetup().setup("fix the bug", tmp_path)
+
+        assert "QD-" in result.task_id
+        assert "QD-" not in result.branch
+        assert result.task_id.lower() in result.branch
+        assert self.CI_BRANCH_RE.match(result.branch)
+
+        task_file = tmp_path / ".ydk" / "tasks" / f"{result.task_id}.md"
+        content = task_file.read_text()
+        assert f"id: {result.task_id}" in content
