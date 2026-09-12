@@ -48,6 +48,11 @@ class TestBuild:
         body = builder.build("T-001", proof_dir)
         assert "Generated with [YDK]" in body
 
+    def test_includes_closes_reference(self, proof_dir: Path) -> None:
+        builder = PRBodyBuilder()
+        body = builder.build("T-001", proof_dir)
+        assert "Closes #T-001" in body
+
     def test_handles_all_files_missing_gracefully(self, proof_dir: Path) -> None:
         builder = PRBodyBuilder()
         body = builder.build("T-001", proof_dir)

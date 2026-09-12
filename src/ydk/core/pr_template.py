@@ -80,6 +80,10 @@ class PRBodyBuilder:
             parts.append(test_plan)
             parts.append("")
 
+        # --- Closing reference ---
+        parts.append(f"Closes #{task_id}")
+        parts.append("")
+
         # --- Footer ---
         parts.append("\U0001f916 Generated with [YDK](https://github.com/oaltagar-personal/ydk)")
 
