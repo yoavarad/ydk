@@ -73,6 +73,8 @@ class PRCommenter:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             return None
@@ -89,6 +91,8 @@ class PRCommenter:
             ["gh", "pr", "comment", pr_url, "--body", body],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             raise RuntimeError(f"Failed to create PR comment: {result.stderr}")
@@ -116,6 +120,8 @@ class PRCommenter:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             raise RuntimeError(f"Failed to update PR comment: {result.stderr}")

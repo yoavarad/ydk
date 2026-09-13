@@ -279,6 +279,10 @@ def test_create_pr_uses_body_file_not_inline_arg(
     assert "--body" not in create_args
     assert "--body-file" in create_args
     assert captured_file_content == [big_body]
+    assert create_call.kwargs.get("encoding") == "utf-8"
+
+    rev_parse_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:2] == ["git", "rev-parse"])
+    assert rev_parse_call.kwargs.get("encoding") == "utf-8"
 
 
 @patch("shutil.which", return_value="/usr/bin/gh")
@@ -409,6 +413,96 @@ def test_start_with_base_branch_no_worktree_isolation(
     assert call_args[1] == "checkout"
     assert call_args[2] == "-b"
     assert "develop" in call_args
+
+
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_build_pr_body_uses_utf8_encoding_for_git_diff(
+    mock_subprocess: MagicMock, lifecycle: TaskLifecycle, mock_worktree: MagicMock
+) -> None:
+    """_build_pr_body's git diff subprocess call uses explicit utf-8 encoding."""
+    mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="")
+
+    lifecycle._build_pr_body("T-001")
+
+    diff_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:2] == ["git", "diff"])
+    assert diff_call.kwargs.get("encoding") == "utf-8"
+
+
+def test_start_writes_active_task_file_with_utf8_encoding(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
+) -> None:
+    """start() writes .ydk/active-task.json with explicit utf-8 encoding."""
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+    with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+        lc.start("T-001")
+    assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
+
+
+def test_write_verified_flag_uses_utf8_encoding(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
+) -> None:
+    """_write_verified_flag writes with explicit utf-8 encoding."""
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+    with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+        lc._write_verified_flag()
+    assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_reads_active_task_file_with_utf8_encoding(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """_create_pr reads .ydk/active-task.json with explicit utf-8 encoding."""
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+    mock_worktree.get_worktree_path.return_value = None
+
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(parents=True, exist_ok=True)
+    active_file = ydk_dir / "active-task.json"
+    active_file.write_text('{"task_id": "T-001", "base_branch": "main"}', encoding="utf-8")
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(returncode=0, stdout="https://github.com/org/repo/pull/1\n")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/T-001\n")
+        return MagicMock(returncode=0)  # git push
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    with patch.object(Path, "read_text", autospec=True, wraps=Path.read_text) as mock_read_text:
+        lc._create_pr("T-001", pr_body_override="body")
+
+    active_file_call = next(c for c in mock_read_text.call_args_list if c.args[0] == active_file)
+    assert active_file_call.kwargs.get("encoding") == "utf-8"
 
 
 def test_done_skip_plugin_rejects_passing_plugin(lifecycle: TaskLifecycle, mock_verifier: MagicMock) -> None:

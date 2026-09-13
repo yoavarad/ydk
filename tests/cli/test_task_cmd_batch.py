@@ -60,6 +60,7 @@ class TestTwoPassBatchCreation:
             patch("ydk.repositories.factory.get_epic_repository", return_value=mock_epic_repo),
             patch("ydk.repositories.factory.get_story_repository", return_value=mock_story_repo),
             patch("ydk.cli.task_cmd._ensure_labels"),
+            patch("pathlib.Path.write_text", autospec=True) as mock_write_text,
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
 
@@ -67,6 +68,10 @@ class TestTwoPassBatchCreation:
         assert mock_epic_repo.create_epic.call_count == 1
         assert mock_story_repo.create_story.call_count == 1
         assert mock_task_repo.create_task.call_count == 2
+
+        mapping_calls = [c for c in mock_write_text.call_args_list if c.args[0].name == "batch-mapping.json"]
+        assert mapping_calls
+        assert all(c.kwargs.get("encoding") == "utf-8" for c in mapping_calls)
 
         # Story should be created with resolved epic ID
         story_call = mock_story_repo.create_story.call_args[0][0]
@@ -643,6 +648,28 @@ class TestPlanWavesUnresolvedDeps:
 
         assert result.exit_code == 0
         assert "Warning" not in result.output
+
+
+class TestScaffoldBatch:
+    def test_writes_output_with_utf8_encoding(self, tmp_path: Path, monkeypatch: object) -> None:
+        from ydk.models.todo import TodoItem
+
+        monkeypatch.chdir(tmp_path)
+        mock_mgr = MagicMock()
+        mock_mgr.list_todos.return_value = [
+            TodoItem(id="YDK-TODO-1", file="app/core/services/billing/service.py", line=10, method="charge"),
+        ]
+
+        output_path = tmp_path / "batch-tasks.yaml"
+
+        with (
+            patch("ydk.core.todo_manager.TodoManager", return_value=mock_mgr),
+            patch("pathlib.Path.write_text", autospec=True) as mock_write_text,
+        ):
+            result = runner.invoke(app, ["task", "scaffold-batch", "--output", str(output_path)])
+
+        assert result.exit_code == 0, result.output
+        assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
 # -- Helpers -------------------------------------------------------------------

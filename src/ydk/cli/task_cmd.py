@@ -80,7 +80,7 @@ def _resolve_task_id(raw_id: str) -> str:
         mapping_file = Path(".ydk") / "batch-mapping.json"
         if mapping_file.exists():
             try:
-                mapping = _json.loads(mapping_file.read_text())
+                mapping = _json.loads(mapping_file.read_text(encoding="utf-8"))
                 resolved = mapping.get(raw_id.upper())
                 if resolved:
                     return resolved
@@ -543,7 +543,7 @@ def create_batch(
     mapping_dir = Path(".ydk")
     mapping_dir.mkdir(parents=True, exist_ok=True)
     mapping_file = mapping_dir / "batch-mapping.json"
-    mapping_file.write_text(_json_batch.dumps(id_map, indent=2))
+    mapping_file.write_text(_json_batch.dumps(id_map, indent=2), encoding="utf-8")
 
     # --- Pass 2: Update task dependencies with resolved IDs ---
     for task_defn in data.get("tasks", []) or []:
@@ -1781,7 +1781,7 @@ def _fetch_review_comments(task_id: str) -> list[dict[str, object]]:
         "--state",
         "all",
     ]
-    result = subprocess.run(find_pr_cmd, capture_output=True, text=True)
+    result = subprocess.run(find_pr_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0 or not result.stdout.strip():
         return []
 
@@ -1803,7 +1803,7 @@ def _fetch_review_comments(task_id: str) -> list[dict[str, object]]:
         "--jq",
         ".",
     ]
-    result = subprocess.run(comments_cmd, capture_output=True, text=True)
+    result = subprocess.run(comments_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         return []
 
@@ -1832,7 +1832,7 @@ def _fetch_review_comments(task_id: str) -> list[dict[str, object]]:
         "--json",
         "reviewThreads",
     ]
-    result = subprocess.run(threads_cmd, capture_output=True, text=True)
+    result = subprocess.run(threads_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode == 0 and result.stdout.strip():
         try:
             data = json.loads(result.stdout)
@@ -2031,7 +2031,7 @@ def scaffold_batch(
         "tasks": tasks,
     }
 
-    output_path.write_text(_yaml.dump(batch, default_flow_style=False, sort_keys=False))
+    output_path.write_text(_yaml.dump(batch, default_flow_style=False, sort_keys=False), encoding="utf-8")
     console.print(f"[green]Batch YAML written to {output_path}[/green]")
     console.print(f"  {len(epics)} epic(s), {len(stories)} story(ies), {len(tasks)} task(s)")
     console.print(f"  Covering {len(items)} TODO(s)")

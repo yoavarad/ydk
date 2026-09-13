@@ -1,5 +1,8 @@
 """CLI wiring — register all subcommands on the root app."""
 
+import contextlib
+import sys
+
 from ydk.cli.catalog_cmd import catalog_app
 from ydk.cli.change_cmd import change_app
 from ydk.cli.component_cmd import component_app
@@ -18,6 +21,19 @@ from ydk.cli.todo_cmd import todo_app
 from ydk.cli.verify_cmd import verify_app
 from ydk.cli.visual_cmd import visual_app
 from ydk.cli.watch_cmd import watch_app
+
+
+def _reconfigure_streams_utf8() -> None:
+    """Reconfigure stdout/stderr to UTF-8, tolerating streams without .reconfigure()."""
+    for _stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(_stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        with contextlib.suppress(AttributeError, ValueError):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+_reconfigure_streams_utf8()
 
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(change_app, name="change")

@@ -23,14 +23,16 @@ class TestChangedFilesUnit:
             result = svc.changed_files("docs", base_ref="main", extension=".md")
         assert result == ["docs/a.md", "docs/b.md"]
         mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_falls_back_to_ls_files_on_diff_failure(self) -> None:
         svc = LocalGitService()
         fail_result = MagicMock(returncode=128, stdout="", stderr="fatal: bad ref")
         ok_result = MagicMock(returncode=0, stdout="docs/a.md\ndocs/b.txt\n")
-        with patch("subprocess.run", side_effect=[fail_result, ok_result]):
+        with patch("subprocess.run", side_effect=[fail_result, ok_result]) as mock_run:
             result = svc.changed_files("docs", base_ref="nonexistent", extension=".md")
         assert result == ["docs/a.md"]
+        assert all(call.kwargs.get("encoding") == "utf-8" for call in mock_run.call_args_list)
 
     def test_returns_empty_on_no_output(self) -> None:
         svc = LocalGitService()
@@ -46,8 +48,9 @@ class TestCurrentBranchUnit:
     def test_returns_branch_name(self) -> None:
         svc = LocalGitService()
         fake_result = MagicMock(returncode=0, stdout="feature/cool\n")
-        with patch("subprocess.run", return_value=fake_result):
+        with patch("subprocess.run", return_value=fake_result) as mock_run:
             assert svc.current_branch() == "feature/cool"
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_raises_on_failure(self) -> None:
         svc = LocalGitService()
@@ -131,6 +134,13 @@ class TestReadContentIntegration:
     def test_empty_list(self) -> None:
         svc = LocalGitService()
         assert svc.read_content([]) == ""
+
+    def test_reads_text_as_utf8(self, git_repo: Path) -> None:
+        svc = LocalGitService()
+        target = git_repo / "docs" / "one.md"
+        with patch.object(Path, "read_text", return_value="# One", autospec=True) as mock_read_text:
+            svc.read_content([str(target)])
+        assert mock_read_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
 class TestChangedFilesIntegration:

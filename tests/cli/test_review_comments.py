@@ -59,13 +59,15 @@ class TestFetchReviewComments:
                 return api_result
             return threads_result
 
-        with patch("subprocess.run", side_effect=mock_run):
+        with patch("subprocess.run", side_effect=mock_run) as mock_run_patch:
             comments = _fetch_review_comments("T-001")
 
         assert len(comments) == 2
         assert comments[0]["path"] == "src/app/config.py"
         assert comments[0]["line"] == 12
         assert comments[0]["author"] == "oz"
+        assert mock_run_patch.call_count == 3
+        assert all(c.kwargs.get("encoding") == "utf-8" for c in mock_run_patch.call_args_list)
 
     def test_marks_resolved_threads(self) -> None:
         pr_list_result = MagicMock(returncode=0, stdout=json.dumps([{"number": 42, "url": "https://example.com"}]))

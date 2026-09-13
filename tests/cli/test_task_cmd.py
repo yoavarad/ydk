@@ -2,18 +2,30 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
 from ydk.cli import app
+from ydk.cli.task_cmd import _resolve_task_id
 from ydk.models.pm import TaskDetail, TaskSummary
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 runner = CliRunner()
+
+
+def test_resolve_task_id_reads_mapping_with_utf8_encoding(tmp_path: Path, monkeypatch) -> None:
+    """_resolve_task_id reads .ydk/batch-mapping.json with explicit utf-8 encoding."""
+    monkeypatch.chdir(tmp_path)
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir()
+    (ydk_dir / "batch-mapping.json").write_text('{"T-001": "42"}', encoding="utf-8")
+
+    with patch("pathlib.Path.read_text", autospec=True, wraps=Path.read_text) as mock_read_text:
+        resolved = _resolve_task_id("T-001")
+
+    assert resolved == "42"
+    assert mock_read_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
 def test_task_validate_dag_valid(tmp_path: Path) -> None:

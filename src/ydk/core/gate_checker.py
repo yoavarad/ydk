@@ -33,6 +33,8 @@ class GateChecker:
             ["gh", "pr", "view", pr_url, "--json", "state", "--jq", ".state"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             return False
@@ -53,6 +55,8 @@ class GateChecker:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             return False

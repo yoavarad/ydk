@@ -32,6 +32,7 @@ def setup_ydk_logger(
         log_dir / "ydk.log",
         maxBytes=10_000_000,
         backupCount=5,
+        encoding="utf-8",
     )
     file_handler.setLevel(logging.DEBUG)
 

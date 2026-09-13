@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -69,6 +70,19 @@ class TestCaptureCommand:
         content = path.read_text().strip()
         assert Path(content).resolve() == tmp_path.resolve()
 
+    def test_subprocess_run_uses_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        fake_result = MagicMock(stdout="ok", stderr="")
+        with patch("subprocess.run", return_value=fake_result) as mock_run:
+            pc.capture_command("my-check", ["echo", "ok"])
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
+
+    def test_output_file_written_with_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+            pc.capture_command("my-check", ["echo", "ok"])
+        assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
+
 
 class TestSaveReport:
     def test_creates_plugin_files(self, proof_dir: Path) -> None:
@@ -83,6 +97,14 @@ class TestSaveReport:
         assert (plugins_dir / "ty_check.txt").exists()
         assert (plugins_dir / "pytest.txt").exists()
         assert len(artifacts.plugin_outputs) == 4
+
+    def test_plugin_and_report_files_written_with_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        report = _make_report()
+        with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+            pc.save_report(report)
+        assert mock_write_text.call_args_list
+        assert all(call.kwargs.get("encoding") == "utf-8" for call in mock_write_text.call_args_list)
 
     def test_creates_json_report(self, proof_dir: Path) -> None:
         pc = ProofCapture(proof_dir)
@@ -173,6 +195,16 @@ class TestCheckStatus:
         assert status.all_passed is False
         assert "No verification report found" in status.failed_checks
 
+    def test_reads_report_with_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        report = _make_report()
+        pc.save_report(report)
+        real_content = (proof_dir / "verification-report.json").read_text(encoding="utf-8")
+
+        with patch.object(Path, "read_text", autospec=True, return_value=real_content) as mock_read_text:
+            ProofCapture.check_status(proof_dir)
+        assert mock_read_text.call_args.kwargs.get("encoding") == "utf-8"
+
 
 class TestWriteSummary:
     def test_writes_summary_file(self, proof_dir: Path) -> None:
@@ -181,6 +213,12 @@ class TestWriteSummary:
         assert path.exists()
         assert path.read_text() == "This is the agent summary."
         assert path.name == "summary.md"
+
+    def test_writes_with_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+            pc.write_summary("T-001", "This is the agent summary.")
+        assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
 class TestListScreenshots:
@@ -237,6 +275,19 @@ class TestCapturePlugin:
         pc.capture_plugin("test-plugin", ["echo", "ok"])
         assert plugins_dir.is_dir()
 
+    def test_subprocess_run_uses_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        fake_result = MagicMock(stdout="ok", stderr="")
+        with patch("subprocess.run", return_value=fake_result) as mock_run:
+            pc.capture_plugin("lint-ruff", ["echo", "ok"])
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
+
+    def test_output_file_written_with_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+            pc.capture_plugin("lint-ruff", ["echo", "ok"])
+        assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
+
 
 class TestSaveReview:
     def test_saves_review_to_reviews_dir(self, proof_dir: Path) -> None:
@@ -253,3 +304,9 @@ class TestSaveReview:
         assert not reviews_dir.exists()
         pc.save_review("reviewer-x", "content")
         assert reviews_dir.is_dir()
+
+    def test_writes_with_utf8_encoding(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+            pc.save_review("reviewer-x", "content")
+        assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"

@@ -21,6 +21,8 @@ class LocalGitService:
             ["git", "diff", base_ref, "--name-only", "--", directory],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=self._cwd,
         )
         if result.returncode != 0:
@@ -29,6 +31,8 @@ class LocalGitService:
                 ["git", "ls-files", "--", directory],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 cwd=self._cwd,
             )
 
@@ -51,7 +55,7 @@ class LocalGitService:
             path = Path(filepath)
             if not path.is_file():
                 continue
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             sections.append(f"# File: {filepath}\n\n{content}")
         return "\n\n---\n\n".join(sections)
 
@@ -61,6 +65,8 @@ class LocalGitService:
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=self._cwd,
         )
         if result.returncode != 0:

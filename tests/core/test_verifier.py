@@ -6,6 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -128,6 +129,14 @@ class TestDiscoverPlugins:
         v = _make_verifier(tmp_path, monkeypatch)
         assert v.discover_plugins() == []
 
+    def test_reads_manifest_with_utf8_encoding(self, tmp_path: Path, monkeypatch) -> None:
+        v = _make_verifier(tmp_path, monkeypatch, global_plugins={"lint": {}})
+        with patch.object(Path, "read_text", autospec=True, wraps=Path.read_text) as mock_read_text:
+            v.discover_plugins()
+        manifest_calls = [c for c in mock_read_text.call_args_list if c.args[0].name == "manifest.yaml"]
+        assert manifest_calls
+        assert all(c.kwargs.get("encoding") == "utf-8" for c in manifest_calls)
+
 
 # ---------------------------------------------------------------------------
 # filter methods
@@ -185,6 +194,18 @@ class TestRunPlugin:
         assert result.passed is False
         assert "FAILED" in result.output
 
+    def test_subprocess_run_uses_utf8_encoding(self, tmp_path: Path, monkeypatch) -> None:
+        v = _make_verifier(tmp_path, monkeypatch, global_plugins={"ok_check": {}})
+        plugins = v.discover_plugins()
+        fake_result = MagicMock(
+            returncode=0,
+            stdout=json.dumps({"name": "ok_check", "passed": True, "output": "ok", "duration_seconds": 0.1}),
+            stderr="",
+        )
+        with patch("subprocess.run", return_value=fake_result) as mock_run:
+            asyncio.run(v.run_plugin(plugins[0], {"project_root": str(tmp_path)}))
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
+
 
 # ---------------------------------------------------------------------------
 # run_layer
@@ -218,6 +239,21 @@ class TestRunLayer:
         plugins = v.discover_plugins()
         results = asyncio.run(v.run_layer(plugins, {"project_root": str(tmp_path)}))
         assert len(results) == 2
+
+
+# ---------------------------------------------------------------------------
+# _get_changed_files
+# ---------------------------------------------------------------------------
+
+
+class TestGetChangedFiles:
+    def test_subprocess_run_uses_utf8_encoding(self, tmp_path: Path) -> None:
+        v = Verifier(project_root=tmp_path)
+        fake_result = MagicMock(returncode=0, stdout="file1.py\nfile2.py\n")
+        with patch("subprocess.run", return_value=fake_result) as mock_run:
+            result = v._get_changed_files()
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
+        assert result == ["file1.py", "file2.py"]
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +337,18 @@ class TestSaveProof:
         assert not (tmp_path / ".ydk").exists()
         path = v.save_proof(report)
         assert path.exists()
+
+    def test_writes_with_utf8_encoding(self, tmp_path: Path) -> None:
+        v = Verifier(project_root=tmp_path)
+        report = VerificationReport(
+            timestamp="2026-04-26T00:00:00Z",
+            checks=[],
+            all_passed=True,
+            total_duration_seconds=0.5,
+        )
+        with patch.object(Path, "write_text", autospec=True) as mock_write_text:
+            v.save_proof(report)
+        assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
 # ---------------------------------------------------------------------------
