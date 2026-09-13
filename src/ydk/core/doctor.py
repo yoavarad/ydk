@@ -53,6 +53,7 @@ class Doctor:
             self._check_type_checker,
             self._check_remote_cli,
             self._check_jinja2,
+            self._check_task_pr_drift,
         ]
         return [check() for check in checks]
 
@@ -252,3 +253,47 @@ class Doctor:
             return CheckResult("Jinja2", CheckSeverity.ok, "Jinja2 available")
         except ImportError:
             return CheckResult("Jinja2", CheckSeverity.warning, "Jinja2 not installed")
+
+    def _check_task_pr_drift(self) -> CheckResult:
+        """Flag tasks whose status disagrees with their PR's real merge state."""
+        if shutil.which("gh") is None:
+            return CheckResult(
+                "Task/PR drift",
+                CheckSeverity.ok,
+                "Skipped — gh not found (local mode only)",
+            )
+
+        try:
+            from ydk.repositories.factory import get_task_repository
+
+            repo = get_task_repository()
+            summaries = repo.list_tasks(state="all")
+        except Exception:
+            return CheckResult(
+                "Task/PR drift",
+                CheckSeverity.warning,
+                "Could not check — task repository unavailable",
+            )
+
+        candidates = [s for s in summaries if s.status in ("open", "in-review")]
+        if not candidates:
+            return CheckResult("Task/PR drift", CheckSeverity.ok, "No task/PR status drift detected")
+
+        from ydk.core.task_pr_lookup import find_task_pr, list_prs
+
+        prs = list_prs()
+        drifted = []
+        for s in candidates:
+            pr = find_task_pr(s.id, prs=prs)
+            if pr is not None and pr.get("state") == "MERGED":
+                drifted.append(f"{s.id} is {s.status} but PR #{pr['number']} merged — run: ydk task close {s.id}")
+
+        if not drifted:
+            return CheckResult("Task/PR drift", CheckSeverity.ok, "No task/PR status drift detected")
+
+        return CheckResult(
+            "Task/PR drift",
+            CheckSeverity.warning,
+            f"{len(drifted)} task(s) with merged PRs not marked done",
+            detail="\n".join(drifted),
+        )

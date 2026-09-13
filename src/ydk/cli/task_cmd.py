@@ -1852,50 +1852,10 @@ def _fetch_review_comments(task_id: str) -> list[dict[str, object]]:
 
 
 def _find_task_pr(task_id: str) -> dict[str, object] | None:
-    """Find the PR associated with a task via gh CLI.
+    """Find the PR associated with a task. Thin CLI wrapper over the shared core lookup."""
+    from ydk.core.task_pr_lookup import find_task_pr
 
-    Matches the last "/"-separated segment of headRefName against task_id
-    (exact) or task_id-* (slugged), case-insensitively, independent of the
-    branch's leading type segment (e.g. task/, chore/qd-, docs/qd-). Returns
-    the JSON dict of the most recently created matching PR, or None if none
-    found / gh call fails.
-    """
-    import json
-    import subprocess
-
-    cmd = [
-        "gh",
-        "pr",
-        "list",
-        "--json",
-        "number,url,state,headRefName,mergedAt,createdAt",
-        "--state",
-        "all",
-        "--limit",
-        "500",
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
-
-    try:
-        prs = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return None
-
-    task_id_lower = task_id.lower()
-    prefix = f"{task_id_lower}-"
-
-    def _matches(pr: dict[str, object]) -> bool:
-        segment = str(pr.get("headRefName", "")).rsplit("/", 1)[-1].lower()
-        return segment == task_id_lower or segment.startswith(prefix)
-
-    matches = [pr for pr in prs if _matches(pr)]
-    if not matches:
-        return None
-
-    matches.sort(key=lambda pr: pr.get("createdAt") or "", reverse=True)
-    return cast("dict[str, object]", matches[0])
+    return find_task_pr(task_id)
 
 
 @task_app.command()
@@ -1920,6 +1880,59 @@ def close(
     except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
+
+
+@task_app.command("sync")
+def sync(ctx: typer.Context) -> None:
+    """Bulk-reconcile open/in-review tasks' status against their PRs' merge state."""
+    import shutil
+
+    from ydk.core.task_pr_lookup import find_task_pr, list_prs
+
+    if shutil.which("gh") is None:
+        typer.echo("gh not found — skipping task/PR sync (local mode only)")
+        return
+
+    repo = _get_repo()
+    summaries = repo.list_tasks(state="all")
+    candidates = [s for s in summaries if s.status in ("open", "in-review")]
+
+    if not candidates:
+        if not format_or_echo(ctx, {"reconciled": [], "skipped": []}):
+            typer.echo("No in-review or open tasks to reconcile.")
+        return
+
+    reconciled: list[dict[str, object]] = []
+    skipped: list[dict[str, object]] = []
+
+    prs = list_prs()
+    for s in candidates:
+        pr = find_task_pr(s.id, prs=prs)
+        if pr is None:
+            skipped.append({"id": s.id, "reason": "no PR found"})
+            continue
+        if pr.get("state") != "MERGED":
+            skipped.append({"id": s.id, "reason": f"PR #{pr.get('number')} not merged (state: {pr.get('state')})"})
+            continue
+        try:
+            repo.update_status(s.id, "done")
+            reconciled.append({"id": s.id, "pr_number": pr.get("number")})
+        except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
+            skipped.append({"id": s.id, "reason": str(exc)})
+
+    if format_or_echo(ctx, {"reconciled": reconciled, "skipped": skipped}):
+        return
+
+    if reconciled:
+        typer.echo("Reconciled:")
+        for item in reconciled:
+            typer.echo(f"  {item['id']}: PR #{item['pr_number']} merged -> status done")
+    if skipped:
+        typer.echo("Skipped:")
+        for item in skipped:
+            typer.echo(f"  {item['id']}: {item['reason']}")
+    if not reconciled and not skipped:
+        typer.echo("No in-review or open tasks to reconcile.")
 
 
 @task_app.command("scaffold-batch")
