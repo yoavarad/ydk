@@ -22,6 +22,7 @@ class TestCheckPrMerged:
         with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="MERGED\n", stderr="")
             assert checker.check_pr_merged("https://github.com/org/repo/pull/42") is True
+            assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_returns_false_when_open(self, checker) -> None:
         with patch("ydk.core.gate_checker.subprocess.run") as mock_run:
@@ -41,6 +42,7 @@ class TestCheckCiPassed:
                 args=[], returncode=0, stdout="completed\tsuccess\n", stderr=""
             )
             assert checker.check_ci_passed("https://github.com/org/repo/actions/runs/123") is True
+            assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_returns_false_when_in_progress(self, checker) -> None:
         with patch("ydk.core.gate_checker.subprocess.run") as mock_run:

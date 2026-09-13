@@ -661,7 +661,7 @@ def _dump_report_files(
 
     # -- Plain text dump (no ANSI) --
     txt_path = reports_dir / f"spec-verify-{timestamp}.txt"
-    file_console = Console(file=open(str(txt_path), "w"), force_terminal=False, width=120)  # noqa: SIM115
+    file_console = Console(file=open(str(txt_path), "w", encoding="utf-8"), force_terminal=False, width=120)  # noqa: SIM115
 
     separator = "=" * 63
 
@@ -803,7 +803,7 @@ def _dump_report_files(
             "broken_cross_refs": len(report.linker_result.broken_cross_refs),
         },
     }
-    json_path.write_text(json.dumps(json_data, indent=2, default=str))
+    json_path.write_text(json.dumps(json_data, indent=2, default=str), encoding="utf-8")
 
     # Also write to the configured results_path for the ignition gate
     try:
@@ -812,12 +812,12 @@ def _dump_report_files(
         cfg = _lc()
         results_path = Path(cfg.spec_check.results_path)
         results_path.parent.mkdir(parents=True, exist_ok=True)
-        results_path.write_text(json.dumps(json_data, indent=2, default=str))
+        results_path.write_text(json.dumps(json_data, indent=2, default=str), encoding="utf-8")
     except Exception:
         # Fallback: write to default location
         default_results = Path(".ydk/spec-check-results.json")
         default_results.parent.mkdir(parents=True, exist_ok=True)
-        default_results.write_text(json.dumps(json_data, indent=2, default=str))
+        default_results.write_text(json.dumps(json_data, indent=2, default=str), encoding="utf-8")
 
     if not quiet:
         console.print(f" Reports written to {reports_dir}/")

@@ -37,6 +37,7 @@ class TestFindTaskPr:
             _find_task_pr("T-001")
         cmd = mock_run.call_args[0][0]
         assert "--limit" in cmd
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_matches_branch_with_different_leading_type_segment(self) -> None:
         """Branches from other schemes (e.g. quickdev's chore/qd-... or docs/qd-...)

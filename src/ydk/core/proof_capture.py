@@ -34,6 +34,8 @@ class ProofCapture:
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(cwd) if cwd else None,
         )
         output = result.stdout
@@ -41,7 +43,7 @@ class ProofCapture:
             output += "\n" + result.stderr if output else result.stderr
 
         out_path = self._proof_dir / f"{name}.txt"
-        out_path.write_text(output)
+        out_path.write_text(output, encoding="utf-8")
         return out_path
 
     # ------------------------------------------------------------------
@@ -63,12 +65,12 @@ class ProofCapture:
             out_path = plugins_dir / f"{safe_name}.txt"
             status_line = f"{'PASSED' if check.passed else 'FAILED'} ({check.duration_seconds}s)"
             content = f"{status_line}\n\n{check.output}"
-            out_path.write_text(content)
+            out_path.write_text(content, encoding="utf-8")
             plugin_outputs[check.name] = out_path
 
         # Save the full report as JSON
         report_path = self._proof_dir / "verification-report.json"
-        report_path.write_text(report.model_dump_json(indent=2))
+        report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
         task_id = report.task_id or self._proof_dir.name
 
@@ -94,6 +96,8 @@ class ProofCapture:
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(cwd) if cwd else None,
         )
         output = result.stdout
@@ -101,7 +105,7 @@ class ProofCapture:
             output += "\n" + result.stderr if output else result.stderr
 
         out_path = plugins_dir / f"{plugin_name}.txt"
-        out_path.write_text(output)
+        out_path.write_text(output, encoding="utf-8")
         return out_path
 
     def save_review(self, reviewer_id: str, content: str) -> Path:
@@ -109,7 +113,7 @@ class ProofCapture:
         reviews_dir = self._proof_dir / "reviews"
         reviews_dir.mkdir(parents=True, exist_ok=True)
         out_path = reviews_dir / f"{reviewer_id}.txt"
-        out_path.write_text(content)
+        out_path.write_text(content, encoding="utf-8")
         return out_path
 
     # ------------------------------------------------------------------
@@ -119,7 +123,7 @@ class ProofCapture:
     def write_summary(self, task_id: str, summary: str) -> Path:
         """Write the agent-authored summary to ``summary.md``."""
         path = self._proof_dir / "summary.md"
-        path.write_text(summary)
+        path.write_text(summary, encoding="utf-8")
         return path
 
     # ------------------------------------------------------------------
@@ -155,6 +159,6 @@ class ProofCapture:
 
         from ydk.models.verification import VerificationReport
 
-        report = VerificationReport.model_validate_json(report_path.read_text())
+        report = VerificationReport.model_validate_json(report_path.read_text(encoding="utf-8"))
         failed = [c.name for c in report.checks if not c.passed]
         return ProofStatus(all_passed=report.all_passed, failed_checks=failed)

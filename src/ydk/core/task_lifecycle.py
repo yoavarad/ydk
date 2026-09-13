@@ -119,7 +119,7 @@ class TaskLifecycle:
         }
         active_task_file = self._root / ".ydk" / "active-task.json"
         active_task_file.parent.mkdir(parents=True, exist_ok=True)
-        active_task_file.write_text(json.dumps(active_task_context))
+        active_task_file.write_text(json.dumps(active_task_context), encoding="utf-8")
 
         # Update status
         self._repo.update_status(task_id, "in-progress")
@@ -482,7 +482,7 @@ class TaskLifecycle:
         """
         flag_path = self._root / ".ydk" / ".verified"
         flag_path.parent.mkdir(parents=True, exist_ok=True)
-        flag_path.write_text(str(time.time()))
+        flag_path.write_text(str(time.time()), encoding="utf-8")
 
     def _build_pr_body(
         self,
@@ -522,6 +522,8 @@ class TaskLifecycle:
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         changed_files = [f.strip() for f in diff_result.stdout.strip().splitlines() if f.strip()]
         if changed_files:
@@ -624,6 +626,8 @@ class TaskLifecycle:
                 cwd=cwd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             actual_branch = branch_result.stdout.strip()
 
@@ -632,7 +636,7 @@ class TaskLifecycle:
             base_branch = "main"
             if active_task_file.exists():
                 try:
-                    task_ctx = json.loads(active_task_file.read_text())
+                    task_ctx = json.loads(active_task_file.read_text(encoding="utf-8"))
                     base_branch = task_ctx.get("base_branch", "main")
                 except (json.JSONDecodeError, OSError):
                     pass
@@ -663,6 +667,8 @@ class TaskLifecycle:
                     cwd=cwd,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                 )
             finally:
                 Path(body_file_path).unlink(missing_ok=True)

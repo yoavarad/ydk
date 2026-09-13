@@ -119,6 +119,7 @@ class TestMarkerDetection:
             )
             comment_id = commenter._find_existing_comment("https://github.com/org/repo/pull/42")
             assert comment_id == "IC_abc123"
+            assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_returns_none_when_no_marker(self) -> None:
         commenter = PRCommenter()
@@ -206,6 +207,7 @@ class TestSubprocessCalls:
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]
             assert cmd == ["gh", "pr", "comment", pr_url, "--body", body]
+            assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_update_uses_gh_api(self) -> None:
         commenter = PRCommenter()
@@ -219,6 +221,7 @@ class TestSubprocessCalls:
             cmd = mock_run.call_args[0][0]
             assert "gh" in cmd
             assert "api" in cmd
+            assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_create_raises_on_failure(self) -> None:
         commenter = PRCommenter()

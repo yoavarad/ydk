@@ -31,7 +31,7 @@ def list_prs(limit: int = _PR_LIST_LIMIT) -> list[dict[str, object]]:
         str(limit),
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError:
         return []
     if result.returncode != 0 or not result.stdout.strip():

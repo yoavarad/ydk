@@ -271,6 +271,8 @@ class Verifier:
             input=input_json,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=plugin.timeout,
             cwd=str(self._root),
             env=env,
@@ -332,6 +334,8 @@ class Verifier:
             cwd=str(self._root),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().splitlines()
@@ -402,12 +406,12 @@ class Verifier:
         proofs_dir.mkdir(parents=True, exist_ok=True)
 
         path = proofs_dir / "verification.json"
-        path.write_text(report.model_dump_json(indent=2))
+        path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
         return path
 
     def _load_plugin(self, manifest_path: Path, check_path: Path) -> VerificationPlugin:
         """Load a single plugin from its manifest.yaml and check.py."""
-        data = yaml.safe_load(manifest_path.read_text())
+        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         return VerificationPlugin(
             name=data["name"],
             description=data.get("description", ""),

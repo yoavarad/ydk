@@ -682,6 +682,27 @@ class TestReportFileDump:
         assert "\x1b[" not in content  # No ANSI escape codes
         assert "YDK Spec Verification Report" in content
 
+    def test_txt_file_opened_with_utf8_encoding(self, tmp_path: Path, monkeypatch: object) -> None:
+        """The plain-text report file is opened with explicit utf-8 encoding."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        results = _make_reviewer_results(3)
+        report, _ = _make_report_and_scores(results)
+
+        with patch("ydk.cli.spec_cmd.open", create=True) as mock_open:
+            mock_open.return_value = MagicMock()
+            _dump_report_files(
+                report=report,
+                reviewer_results=results,
+                deterministic_findings={},
+                duration_seconds=1.0,
+                project_name="encoding-test",
+                file_count=1,
+                component_count=1,
+            )
+
+        txt_open_call = next(c for c in mock_open.call_args_list if str(c.args[0]).endswith(".txt"))
+        assert txt_open_call.kwargs.get("encoding") == "utf-8"
+
     def test_json_structure(self, tmp_path: Path, monkeypatch: object) -> None:
         """JSON dump must have expected top-level keys."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
@@ -713,6 +734,29 @@ class TestReportFileDump:
         assert "N01" in data["deterministic_findings"]
         assert "component_checks" in data
         assert "reference_integrity" in data
+
+    def test_json_files_written_with_utf8_encoding(self, tmp_path: Path, monkeypatch: object) -> None:
+        """All JSON report files are written with explicit utf-8 encoding."""
+        from pathlib import Path as _Path
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        results = _make_reviewer_results(3)
+        report, _ = _make_report_and_scores(results)
+
+        with patch.object(_Path, "write_text", autospec=True, wraps=_Path.write_text) as mock_write_text:
+            _dump_report_files(
+                report=report,
+                reviewer_results=results,
+                deterministic_findings={},
+                duration_seconds=5.0,
+                project_name="json-encoding-test",
+                file_count=2,
+                component_count=8,
+            )
+
+        json_calls = [c for c in mock_write_text.call_args_list if str(c.args[0]).endswith(".json")]
+        assert json_calls
+        assert all(c.kwargs.get("encoding") == "utf-8" for c in json_calls)
 
     def test_no_truncation_in_file(self, tmp_path: Path, monkeypatch: object) -> None:
         """All findings must appear in the text dump — no truncation."""

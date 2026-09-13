@@ -42,6 +42,12 @@ class TestListPrs:
         assert "--limit" in cmd
         assert "500" in cmd
 
+    def test_calls_subprocess_run_with_utf8_encoding(self) -> None:
+        fake_result = MagicMock(returncode=0, stdout="[]")
+        with patch("ydk.core.task_pr_lookup.subprocess.run", return_value=fake_result) as mock_run:
+            list_prs()
+        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
+
     def test_returns_empty_list_when_gh_binary_missing_mid_call(self) -> None:
         """TOCTOU: gh disappears between an upstream `shutil.which("gh")` guard
         and this call (or list_prs() is invoked with no upstream guard at all).
