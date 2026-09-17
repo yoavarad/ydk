@@ -64,7 +64,10 @@ STACKS: dict[str, dict[str, Any]] = {
             "dotnet-build",
             "dotnet-format",
             "dotnet-test",
+            "dotnet-quality",
+            "dotnet-tdd-guard",
         ],
+        "templates": ["dotnet-webapi-clean"],
     },
 }
 
