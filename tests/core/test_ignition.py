@@ -202,6 +202,22 @@ class TestRegisterTodos:
         ]
         assert engine._register_todos(files) == 0
 
+    def test_counts_csharp_not_implemented(self, tmp_path: Path) -> None:
+        engine = IgnitionEngine(tmp_path)
+        files = [
+            GeneratedFile(
+                path="Services/FooService.cs",
+                content=(
+                    "public class FooService {\n"
+                    "    public void Run() {\n"
+                    "        throw new NotImplementedException();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            ),
+        ]
+        assert engine._register_todos(files) == 1
+
 
 class TestIgniteFull:
     def test_ignite_no_pack_raises(self, tmp_path: Path) -> None:
