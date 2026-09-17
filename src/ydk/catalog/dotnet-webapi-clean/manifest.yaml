@@ -1,0 +1,40 @@
+generators:
+  - id: solution-scaffold
+    script: generators/solution_scaffold.py
+    inputs: []
+  - id: program-and-config
+    script: generators/program_and_config.py
+    inputs: []
+  - id: domain-entities
+    script: generators/domain_entities.py
+    inputs: [entity]
+  - id: efcore-dbcontext
+    script: generators/efcore_dbcontext.py
+    inputs: [entity]
+  - id: repository-interfaces
+    script: generators/repository_interfaces.py
+    inputs: [entity, contract]
+  - id: repository-implementations
+    script: generators/repository_implementations.py
+    inputs: [entity]
+  - id: service-stubs
+    script: generators/service_stubs.py
+    inputs: [contract]
+  - id: api-endpoints
+    script: generators/api_endpoints.py
+    inputs: [route, contract]
+  - id: dependency-injection
+    script: generators/dependency_injection.py
+    inputs: [entity, contract]
+  - id: fake-repositories
+    script: generators/fake_repositories.py
+    inputs: [entity]
+  - id: unit-test-stubs
+    script: generators/unit_test_stubs.py
+    inputs: [contract, entity]
+  - id: endpoint-test-stubs
+    script: generators/endpoint_test_stubs.py
+    inputs: [route]
+  - id: entity-test-stubs
+    script: generators/entity_test_stubs.py
+    inputs: [entity]
