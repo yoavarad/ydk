@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ydk.core.compaction import TaskCompactor
+from ydk.core.task_pr_lookup import find_task_pr, list_prs
 from ydk.models.gate import Gate, GateStatus, GateType
 from ydk.models.pm import (
     BLOCKING_DEPENDENCY_TYPES,
@@ -214,6 +215,11 @@ class LocalTaskRepository:
 
         Ranked by number of dependents (descending), then by task ID as a
         stable tiebreaker (approximates creation order).
+
+        A blocking dependency whose frontmatter is not yet "done" but whose PR
+        has merged counts as met (parity with the GitHub backend) and is healed
+        to "done" on disk. The PR list is fetched at most once per call, and
+        only when needed; if ``gh`` is unavailable the dependency stays unmet.
         """
         data = self._manifest.load()
         all_tasks = data.get("tasks", {})
@@ -225,13 +231,29 @@ class LocalTaskRepository:
             for dep_id in _extract_blocking_dep_ids(raw_deps):
                 dependents_count[dep_id] = dependents_count.get(dep_id, 0) + 1
 
+        prs: list[dict[str, object]] | None = None
+
+        def dep_met(dep_id: str) -> bool:
+            nonlocal prs
+            if dep_id not in all_tasks:
+                return False
+            if self._frontmatter_status(dep_id) == "done":
+                return True
+            if prs is None:
+                prs = list_prs()
+            pr = find_task_pr(dep_id, prs)
+            if pr is None or pr.get("state") != "MERGED":
+                return False
+            self.update_status(dep_id, "done")
+            return True
+
         results: list[TaskSummary] = []
         for tid, info in all_tasks.items():
             if self._frontmatter_status(tid) != "open":
                 continue
             raw_deps = info.get("dependencies", [])
             blocking_ids = _extract_blocking_dep_ids(raw_deps)
-            deps_met = all(all_tasks.get(d) is not None and self._frontmatter_status(d) == "done" for d in blocking_ids)
+            deps_met = all(dep_met(d) for d in blocking_ids)
             if not deps_met:
                 continue
             results.append(
