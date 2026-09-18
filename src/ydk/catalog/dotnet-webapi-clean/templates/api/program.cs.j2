@@ -1,0 +1,13 @@
+var builder = WebApplication.CreateBuilder(args);
+
+// TODO(dependency-injection generator): application/infrastructure service
+// registrations are appended here by downstream generators.
+
+var app = builder.Build();
+
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
+   .WithName("HealthCheck");
+
+app.Run();
+
+public partial class Program { }
