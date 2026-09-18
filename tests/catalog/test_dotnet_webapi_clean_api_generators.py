@@ -222,7 +222,7 @@ class TestApiEndpointsContent:
             "request": {"body": {"total": {"type": "decimal", "required": True}, "note": {"type": "string"}}},
         }
         content = _endpoints_file(tmp_path, [route], [SAMPLE_CONTRACT])
-        assert "public sealed record CreateOrderRequest(decimal Total, string Note);" in content
+        assert "public sealed record CreateOrderRequest(string Note, decimal Total);" in content
         assert "await orderService.CreateOrder(request.Total);" in content
 
     def test_snake_case_route_params_become_camel_case(self, tmp_path: Path) -> None:
