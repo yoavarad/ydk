@@ -83,9 +83,12 @@ class TestDomainEntitiesGenerator:
         assert "public DateTime CreatedAt { get; set; }" in content
         assert "public int? CategoryId { get; set; }" in content
 
-    def test_namespace_derived_from_project_root(self, tmp_path: Path) -> None:
+    def test_namespace_is_fixed_unprefixed_domain_entities(self, tmp_path: Path) -> None:
+        """Namespace is a fixed "Domain.Entities" literal (not derived from
+        YDK_PROJECT_ROOT/project_namespace()) so it always matches the
+        `using Domain.Entities;` every other generator in this pack hardcodes."""
         files = _run_generator("domain_entities.py", [ITEM_ENTITY], tmp_path / "my-webapi")
-        assert "namespace MyWebapi.Domain.Entities;" in files[0]["content"]
+        assert "namespace Domain.Entities;" in files[0]["content"]
 
     def test_output_is_valid_json_array_of_path_content(self, tmp_path: Path) -> None:
         files = _run_generator("domain_entities.py", [ITEM_ENTITY], tmp_path / "proj")
@@ -112,6 +115,15 @@ class TestEfCoreDbContextGenerator:
         assert "public DbSet<Item> Items => Set<Item>();" in dbcontext
         assert "UseSqlite(" in dbcontext
         assert "ApplyConfigurationsFromAssembly" in dbcontext
+
+    def test_dbcontext_namespace_is_fixed_unprefixed(self, tmp_path: Path) -> None:
+        """Namespace/using are fixed literals (not derived from YDK_PROJECT_ROOT),
+        matching what repository_implementations.py hardcodes (`using
+        Infrastructure.Persistence;`) and domain_entities.py declares."""
+        files = _run_generator("efcore_dbcontext.py", [ITEM_ENTITY], tmp_path / "my-webapi")
+        dbcontext = next(f for f in files if f["path"].endswith("AppDbContext.cs"))["content"]
+        assert "namespace Infrastructure.Persistence;" in dbcontext
+        assert "using Domain.Entities;" in dbcontext
 
     def test_configuration_has_key_and_required_fields(self, tmp_path: Path) -> None:
         files = _run_generator("efcore_dbcontext.py", [ITEM_ENTITY], tmp_path / "my-webapi")

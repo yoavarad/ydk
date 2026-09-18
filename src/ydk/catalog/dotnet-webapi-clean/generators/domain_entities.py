@@ -17,11 +17,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
-from _dotnet_common import csharp_type, derive_entity_name, iter_fields, project_namespace, to_pascal_case
+from _dotnet_common import csharp_type, derive_entity_name, iter_fields, to_pascal_case
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+# Fixed, unprefixed namespace -- matches the "Domain.Entities" namespace every
+# other generator in this pack (Application/Infrastructure/Api layers, plus
+# the test-stub generators) already hardcodes in its `using Domain.Entities;`
+# statements. Not derived from project_namespace()/YDK_PROJECT_ROOT, so the
+# declared namespace here always matches what everything else imports.
+ENTITY_NAMESPACE = "Domain.Entities"
 
-def build_entity_context(entity: dict, namespace: str) -> dict:
+
+def build_entity_context(entity: dict) -> dict:
     """Build the Jinja2 template context for one entity's POCO class."""
     properties = []
     for fname, fdef in iter_fields(entity):
@@ -36,7 +43,7 @@ def build_entity_context(entity: dict, namespace: str) -> dict:
         )
 
     return {
-        "namespace": f"{namespace}.Domain.Entities",
+        "namespace": ENTITY_NAMESPACE,
         "name": derive_entity_name(entity),
         "properties": properties,
     }
@@ -52,8 +59,6 @@ def main() -> None:
     if not isinstance(entities, list):
         entities = []
 
-    namespace = project_namespace()
-
     templates_dir = Path(__file__).parent.parent / "templates" / "domain"
     env = Environment(
         loader=FileSystemLoader(str(templates_dir)),
@@ -65,7 +70,7 @@ def main() -> None:
 
     output = []
     for entity in entities:
-        context = build_entity_context(entity, namespace)
+        context = build_entity_context(entity)
         content = template.render(**context).rstrip() + "\n"
         output.append({"path": f"Domain/Entities/{context['name']}.cs", "content": content})
 

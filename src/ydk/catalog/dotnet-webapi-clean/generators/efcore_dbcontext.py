@@ -21,8 +21,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
-from _dotnet_common import derive_entity_name, iter_fields, pluralize, project_namespace, to_pascal_case
+from _dotnet_common import derive_entity_name, iter_fields, pluralize, to_pascal_case
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+# Fixed, unprefixed namespaces -- match the "Domain.Entities" /
+# "Infrastructure.Persistence*" namespaces every other generator in this pack
+# already hardcodes (e.g. repository_implementations.py's `using
+# Infrastructure.Persistence;`). Not derived from project_namespace()/
+# YDK_PROJECT_ROOT, so these always match what everything else imports.
+ENTITY_NAMESPACE = "Domain.Entities"
+PERSISTENCE_NAMESPACE = "Infrastructure.Persistence"
+CONFIGURATIONS_NAMESPACE = "Infrastructure.Persistence.Configurations"
 
 
 def _build_property_chain(fdef: dict) -> str:
@@ -46,7 +55,7 @@ def _build_property_chain(fdef: dict) -> str:
     return "".join(chain_parts)
 
 
-def build_dbcontext_context(entities: list[dict], namespace: str) -> dict:
+def build_dbcontext_context(entities: list[dict]) -> dict:
     """Build the Jinja2 template context for AppDbContext.cs."""
     entity_list = []
     for entity in entities:
@@ -54,13 +63,13 @@ def build_dbcontext_context(entities: list[dict], namespace: str) -> dict:
         entity_list.append({"name": name, "dbset_name": pluralize(name)})
 
     return {
-        "namespace": f"{namespace}.Infrastructure.Persistence",
-        "entity_namespace": f"{namespace}.Domain.Entities",
+        "namespace": PERSISTENCE_NAMESPACE,
+        "entity_namespace": ENTITY_NAMESPACE,
         "entities": entity_list,
     }
 
 
-def build_configuration_context(entity: dict, namespace: str) -> dict:
+def build_configuration_context(entity: dict) -> dict:
     """Build the Jinja2 template context for one entity's {Name}Configuration.cs."""
     name = derive_entity_name(entity)
     pk_property = None
@@ -79,8 +88,8 @@ def build_configuration_context(entity: dict, namespace: str) -> dict:
     table_name = entity.get("table_name") or pluralize(name)
 
     return {
-        "namespace": f"{namespace}.Infrastructure.Persistence.Configurations",
-        "entity_namespace": f"{namespace}.Domain.Entities",
+        "namespace": CONFIGURATIONS_NAMESPACE,
+        "entity_namespace": ENTITY_NAMESPACE,
         "name": name,
         "table_name": table_name,
         "pk_property": pk_property,
@@ -98,8 +107,6 @@ def main() -> None:
     if not isinstance(entities, list):
         entities = []
 
-    namespace = project_namespace()
-
     templates_dir = Path(__file__).parent.parent / "templates" / "infrastructure"
     env = Environment(
         loader=FileSystemLoader(str(templates_dir)),
@@ -111,14 +118,14 @@ def main() -> None:
     output = []
 
     dbcontext_template = env.get_template("dbcontext.cs.j2")
-    dbcontext_context = build_dbcontext_context(entities, namespace)
+    dbcontext_context = build_dbcontext_context(entities)
     content = dbcontext_template.render(**dbcontext_context).rstrip() + "\n"
     output.append({"path": "Infrastructure/Persistence/AppDbContext.cs", "content": content})
 
     config_template = env.get_template("entity_configuration.cs.j2")
     for entity in entities:
         try:
-            context = build_configuration_context(entity, namespace)
+            context = build_configuration_context(entity)
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)

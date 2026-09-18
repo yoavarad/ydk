@@ -2,10 +2,13 @@
 """
 Generator: program-and-config
 Emits the baseline ASP.NET Core Minimal API host bootstrap for the Api project:
-  - src/Api/Program.cs                       (Minimal API hosting + DI bootstrap)
-  - src/Api/appsettings.json
-  - src/Api/appsettings.Development.json
-  - src/Api/Properties/launchSettings.json
+  - Api/Program.cs                       (Minimal API hosting + DI bootstrap)
+  - Api/appsettings.json
+  - Api/appsettings.Development.json
+  - Api/Properties/launchSettings.json
+
+Api/ is unprefixed (no src/ nesting) to match solution_scaffold.py's Api
+project directory and every other content generator in this pack.
 
 Input: none (inputs: [] in manifest.yaml) -- always emits the same baseline
 bootstrap, unconditionally.
@@ -23,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _context.naming import ROOT_NAMESPACE
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-API_DIR = "src/Api"
+API_DIR = "Api"
 
 
 def main() -> None:

@@ -20,11 +20,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
-from _dotnet_common import derive_name, project_namespace, service_and_entity_name
+from _dotnet_common import derive_name, service_and_entity_name
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+# Fixed, unprefixed namespace -- matches AppDbContext's namespace as declared
+# by efcore_dbcontext.py (not derived from project_namespace()/YDK_PROJECT_ROOT,
+# so it always matches).
+DBCONTEXT_NAMESPACE = "Infrastructure.Persistence"
 
-def build_context(entities: list[dict], contracts: list[dict], namespace: str) -> dict:
+
+def build_context(entities: list[dict], contracts: list[dict]) -> dict:
     """Build the Jinja2 template context for ServiceCollectionExtensions.cs."""
     repositories = []
     for entity in entities:
@@ -37,8 +42,7 @@ def build_context(entities: list[dict], contracts: list[dict], namespace: str) -
         services.append({"interface": f"I{service_name}", "implementation": service_name})
 
     return {
-        # AppDbContext is declared in {project_namespace}.Infrastructure.Persistence by efcore_dbcontext.
-        "dbcontext_namespace": f"{namespace}.Infrastructure.Persistence",
+        "dbcontext_namespace": DBCONTEXT_NAMESPACE,
         "repositories": repositories,
         "services": services,
     }
@@ -66,7 +70,7 @@ def main() -> None:
     )
     template = env.get_template("service_collection_extensions.cs.j2")
 
-    context = build_context(entities, contracts, project_namespace())
+    context = build_context(entities, contracts)
     content = template.render(**context).rstrip() + "\n"
 
     print(json.dumps([{"path": "Api/ServiceCollectionExtensions.cs", "content": content}]))
