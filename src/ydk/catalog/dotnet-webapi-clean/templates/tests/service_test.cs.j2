@@ -1,0 +1,25 @@
+namespace Tests.Services;
+
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Xunit;
+using Application.Services;
+using Domain.Entities;
+using Tests.Fakes;
+
+public class {{ service_name }}Tests
+{
+{% for method in methods %}
+    [Fact]
+    public async Task {{ method.name }}_ThrowsNotImplemented()
+    {
+        var {{ repo_param }} = new {{ fake_repo_type }}();
+        var service = new {{ service_name }}({{ repo_param }});
+
+        // TODO: replace with a real assertion once {{ service_name }}.{{ method.name }} is implemented.
+        await Assert.ThrowsAsync<NotImplementedException>(() => service.{{ method.name }}({{ method.args }}));
+    }
+
+{% endfor %}
+}
