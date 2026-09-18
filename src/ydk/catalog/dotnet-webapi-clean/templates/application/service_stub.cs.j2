@@ -1,0 +1,24 @@
+namespace Application.Services;
+
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Application.Interfaces;
+using Domain.Entities;
+
+public class {{ service_name }} : I{{ service_name }}
+{
+    private readonly I{{ entity_name }}Repository _{{ repo_param }};
+
+    public {{ service_name }}(I{{ entity_name }}Repository {{ repo_param }})
+    {
+        _{{ repo_param }} = {{ repo_param }};
+    }
+{% for method in methods %}
+
+    public {{ method.task_return }} {{ method.name }}({% for p in method.params %}{{ p.type }} {{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %})
+    {
+        throw new NotImplementedException();
+    }
+{% endfor %}
+}

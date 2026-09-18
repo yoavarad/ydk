@@ -1,0 +1,13 @@
+namespace Application.Services;
+
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Domain.Entities;
+
+public interface I{{ service_name }}
+{
+{% for method in methods %}
+    {{ method.task_return }} {{ method.name }}({% for p in method.params %}{{ p.type }} {{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %});
+{% endfor %}
+}
