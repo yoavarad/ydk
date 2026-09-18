@@ -1,0 +1,25 @@
+namespace Tests.EntityTests;
+
+using System;
+using Domain.Entities;
+using Xunit;
+
+public class {{ name }}Tests
+{
+    [Fact]
+    public void CanSetAndGetProperties()
+    {
+        var entity = new {{ name }}();
+{% for prop in properties %}
+        var {{ prop.var_name }} = {{ prop.sample }};
+{% endfor %}
+
+{% for prop in properties %}
+        entity.{{ prop.name }} = {{ prop.var_name }};
+{% endfor %}
+
+{% for prop in properties %}
+        Assert.Equal({{ prop.var_name }}, entity.{{ prop.name }});
+{% endfor %}
+    }
+}

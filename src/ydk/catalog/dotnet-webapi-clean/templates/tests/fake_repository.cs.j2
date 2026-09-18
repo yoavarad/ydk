@@ -1,0 +1,42 @@
+namespace Tests.Fakes;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Application.Interfaces;
+using Domain.Entities;
+
+public class Fake{{ name }}Repository : I{{ name }}Repository
+{
+    private readonly Dictionary<{{ pk_type }}, {{ name }}> _items = new();
+
+    public Task<{{ name }}?> GetByIdAsync({{ pk_type }} id)
+    {
+        _items.TryGetValue(id, out var entity);
+        return Task.FromResult(entity);
+    }
+
+    public Task<IEnumerable<{{ name }}>> ListAsync()
+    {
+        return Task.FromResult<IEnumerable<{{ name }}>>(_items.Values.ToList());
+    }
+
+    public Task<{{ name }}> AddAsync({{ name }} entity)
+    {
+        _items[entity.{{ pk_property }}] = entity;
+        return Task.FromResult(entity);
+    }
+
+    public Task UpdateAsync({{ name }} entity)
+    {
+        _items[entity.{{ pk_property }}] = entity;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync({{ pk_type }} id)
+    {
+        _items.Remove(id);
+        return Task.CompletedTask;
+    }
+}
