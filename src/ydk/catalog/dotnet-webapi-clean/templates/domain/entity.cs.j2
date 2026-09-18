@@ -1,0 +1,8 @@
+namespace {{ namespace }};
+
+public class {{ name }}
+{
+{% for prop in properties %}
+    public {{ prop.type }} {{ prop.name }} { get; set; }{{ prop.suffix }}
+{% endfor %}
+}

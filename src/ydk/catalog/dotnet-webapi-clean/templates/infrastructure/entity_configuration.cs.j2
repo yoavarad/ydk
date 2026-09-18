@@ -1,0 +1,18 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using {{ entity_namespace }};
+
+namespace {{ namespace }};
+
+public class {{ name }}Configuration : IEntityTypeConfiguration<{{ name }}>
+{
+    public void Configure(EntityTypeBuilder<{{ name }}> builder)
+    {
+        builder.ToTable("{{ table_name }}");
+
+        builder.HasKey(x => x.{{ pk_property }});
+{% for prop in properties %}
+        builder.Property(x => x.{{ prop.name }}){{ prop.chain }};
+{% endfor %}
+    }
+}
