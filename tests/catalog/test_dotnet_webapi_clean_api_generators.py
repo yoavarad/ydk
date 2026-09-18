@@ -308,8 +308,10 @@ class TestDependencyInjection:
         assert "using Application.Interfaces;" in content
         assert "using Application.Services;" in content
         assert "using Infrastructure.Persistence.Repositories;" in content
-        # DbContext lives in {project_namespace}.Infrastructure.Persistence (efcore_dbcontext generator).
-        assert "using Shop.Infrastructure.Persistence;" in content
+        # AppDbContext lives in the fixed "Infrastructure.Persistence" namespace
+        # (efcore_dbcontext.py) -- not derived from YDK_PROJECT_ROOT, so this
+        # always matches regardless of the project directory's name.
+        assert "using Infrastructure.Persistence;" in content
 
     def test_service_name_derivation_matches_service_stubs(self, tmp_path: Path) -> None:
         contract = {"id": "ydk:contract:billing/Invoice", "methods": {}}

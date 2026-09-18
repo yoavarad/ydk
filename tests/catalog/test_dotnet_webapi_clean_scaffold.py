@@ -164,11 +164,11 @@ class TestSolutionScaffoldGenerator:
         assert "WebApiClean.sln" in paths
         assert ".editorconfig" in paths
         assert "Directory.Build.props" in paths
-        assert "src/Domain/WebApiClean.Domain.csproj" in paths
-        assert "src/Application/WebApiClean.Application.csproj" in paths
-        assert "src/Infrastructure/WebApiClean.Infrastructure.csproj" in paths
-        assert "src/Api/WebApiClean.Api.csproj" in paths
-        assert "tests/WebApiClean.Tests/WebApiClean.Tests.csproj" in paths
+        assert "Domain/WebApiClean.Domain.csproj" in paths
+        assert "Application/WebApiClean.Application.csproj" in paths
+        assert "Infrastructure/WebApiClean.Infrastructure.csproj" in paths
+        assert "Api/WebApiClean.Api.csproj" in paths
+        assert "WebApiClean.Tests/WebApiClean.Tests.csproj" in paths
 
     def test_sln_references_all_projects(self) -> None:
         files = _run_generator("solution_scaffold.py")
@@ -184,7 +184,7 @@ class TestSolutionScaffoldGenerator:
     def test_infrastructure_references_sqlite(self) -> None:
         files = _run_generator("solution_scaffold.py")
         infra_csproj = next(
-            f["content"] for f in files if f["path"] == "src/Infrastructure/WebApiClean.Infrastructure.csproj"
+            f["content"] for f in files if f["path"] == "Infrastructure/WebApiClean.Infrastructure.csproj"
         )
         assert "Microsoft.EntityFrameworkCore.Sqlite" in infra_csproj
 
@@ -202,25 +202,25 @@ class TestProgramAndConfigGenerator:
         files = _run_generator("program_and_config.py")
         paths = {f["path"] for f in files}
         assert paths == {
-            "src/Api/Program.cs",
-            "src/Api/appsettings.json",
-            "src/Api/appsettings.Development.json",
-            "src/Api/Properties/launchSettings.json",
+            "Api/Program.cs",
+            "Api/appsettings.json",
+            "Api/appsettings.Development.json",
+            "Api/Properties/launchSettings.json",
         }
 
     def test_program_cs_has_minimal_api_bootstrap(self) -> None:
         files = _run_generator("program_and_config.py")
-        program_cs = next(f["content"] for f in files if f["path"] == "src/Api/Program.cs")
+        program_cs = next(f["content"] for f in files if f["path"] == "Api/Program.cs")
         assert "WebApplication.CreateBuilder" in program_cs
         assert "app.Run()" in program_cs
 
     def test_appsettings_are_valid_json(self) -> None:
         files = _run_generator("program_and_config.py")
-        for path in ("src/Api/appsettings.json", "src/Api/appsettings.Development.json"):
+        for path in ("Api/appsettings.json", "Api/appsettings.Development.json"):
             content = next(f["content"] for f in files if f["path"] == path)
             json.loads(content)  # must not raise
 
     def test_launch_settings_is_valid_json(self) -> None:
         files = _run_generator("program_and_config.py")
-        content = next(f["content"] for f in files if f["path"] == "src/Api/Properties/launchSettings.json")
+        content = next(f["content"] for f in files if f["path"] == "Api/Properties/launchSettings.json")
         json.loads(content)  # must not raise

@@ -3,13 +3,18 @@
 Generator: solution-scaffold
 Emits the baseline .NET solution/project skeleton for the dotnet-webapi-clean pack:
   - {Solution}.sln
-  - src/Domain/{Solution}.Domain.csproj
-  - src/Application/{Solution}.Application.csproj
-  - src/Infrastructure/{Solution}.Infrastructure.csproj
-  - src/Api/{Solution}.Api.csproj
-  - tests/{Solution}.Tests/{Solution}.Tests.csproj
+  - Domain/{Solution}.Domain.csproj
+  - Application/{Solution}.Application.csproj
+  - Infrastructure/{Solution}.Infrastructure.csproj
+  - Api/{Solution}.Api.csproj
+  - {Solution}.Tests/{Solution}.Tests.csproj
   - .editorconfig
   - Directory.Build.props
+
+Project directories are unprefixed (no src/ or tests/ nesting) to match the
+paths every content generator across this pack already emits (Domain/,
+Application/, Infrastructure/, Api/, {Solution}.Tests/), so generated .cs
+files land inside each project's default SDK-style compile glob.
 
 TargetFramework is net8.0 (set via Directory.Build.props). Infrastructure
 references the SQLite EF Core provider (Microsoft.EntityFrameworkCore.Sqlite).
@@ -39,15 +44,15 @@ CSHARP_PROJECT_TYPE_GUID = "{FAE04EC0-301F-11D3-BF4B-0000F81FE1F7}"
 _GUID_NAMESPACE = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 
 PROJECT_DEFS = [
-    {"key": "domain", "suffix": "Domain", "dir": "src/Domain", "template": "domain.csproj.j2"},
-    {"key": "application", "suffix": "Application", "dir": "src/Application", "template": "application.csproj.j2"},
+    {"key": "domain", "suffix": "Domain", "dir": "Domain", "template": "domain.csproj.j2"},
+    {"key": "application", "suffix": "Application", "dir": "Application", "template": "application.csproj.j2"},
     {
         "key": "infrastructure",
         "suffix": "Infrastructure",
-        "dir": "src/Infrastructure",
+        "dir": "Infrastructure",
         "template": "infrastructure.csproj.j2",
     },
-    {"key": "api", "suffix": "Api", "dir": "src/Api", "template": "api.csproj.j2"},
+    {"key": "api", "suffix": "Api", "dir": "Api", "template": "api.csproj.j2"},
     {"key": "tests", "suffix": "Tests", "dir": None, "template": "tests.csproj.j2"},
 ]
 
@@ -61,7 +66,7 @@ def build_context() -> dict:
     projects = []
     for defn in PROJECT_DEFS:
         name = f"{ROOT_NAMESPACE}.{defn['suffix']}"
-        project_dir = defn["dir"] or f"tests/{name}"
+        project_dir = defn["dir"] or name
         projects.append(
             {
                 "key": defn["key"],
