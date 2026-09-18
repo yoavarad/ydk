@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from typing import TYPE_CHECKING
+from unittest.mock import patch
+
+import pytest
 
 from ydk.models.pm import Dependency, DependencyType, TaskCreate
 
@@ -23,6 +28,31 @@ def _make_task(**overrides: object) -> TaskCreate:
     }
     defaults.update(overrides)
     return TaskCreate(**defaults)
+
+
+_GH_RUN = "ydk.core.task_pr_lookup.subprocess.run"
+
+
+@pytest.fixture(autouse=True)
+def _gh_unavailable():
+    """Keep tests hermetic: by default the `gh` subprocess boundary is unavailable."""
+    with patch(_GH_RUN, side_effect=FileNotFoundError("gh not found")):
+        yield
+
+
+def _pr(task_id: str, state: str = "MERGED") -> dict[str, object]:
+    return {
+        "number": 1,
+        "url": "https://example.test/pr/1",
+        "state": state,
+        "headRefName": f"task/{task_id}-slug",
+        "mergedAt": "2026-01-01T00:00:00Z" if state == "MERGED" else None,
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+
+
+def _gh_result(prs: list[dict[str, object]]) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(prs), stderr="")
 
 
 class TestListReadyEmpty:
@@ -176,3 +206,93 @@ class TestListReadyRanking:
         ready = repo.list_ready()
         popular_task = next(t for t in ready if t.id == popular.id)
         assert popular_task.dependents_count == 2
+
+
+class TestListReadyAutoDetectsMergedPr:
+    def test_merged_pr_meets_dep_and_heals_frontmatter(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep = repo.create_task(_make_task(title="Dependency"))
+        main = repo.create_task(_make_task(title="Main", dependencies=[dep.id]))
+
+        with patch(_GH_RUN, return_value=_gh_result([_pr(dep.id)])):
+            ready = repo.list_ready()
+
+        assert main.id in [t.id for t in ready]
+        assert repo._frontmatter_status(dep.id) == "done"
+
+    def test_healed_dep_needs_no_gh_on_next_call(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep = repo.create_task(_make_task(title="Dependency"))
+        main = repo.create_task(_make_task(title="Main", dependencies=[dep.id]))
+
+        with patch(_GH_RUN, return_value=_gh_result([_pr(dep.id)])):
+            repo.list_ready()
+        with patch(_GH_RUN, side_effect=AssertionError("gh must not be called")):
+            ready = repo.list_ready()
+
+        assert main.id in [t.id for t in ready]
+
+    def test_unmerged_pr_leaves_dep_unmet(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep = repo.create_task(_make_task(title="Dependency"))
+        main = repo.create_task(_make_task(title="Main", dependencies=[dep.id]))
+
+        with patch(_GH_RUN, return_value=_gh_result([_pr(dep.id, state="OPEN")])):
+            ready = repo.list_ready()
+
+        assert main.id not in [t.id for t in ready]
+        assert repo._frontmatter_status(dep.id) == "open"
+
+    def test_no_pr_leaves_dep_unmet(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep = repo.create_task(_make_task(title="Dependency"))
+        main = repo.create_task(_make_task(title="Main", dependencies=[dep.id]))
+
+        with patch(_GH_RUN, return_value=_gh_result([])):
+            ready = repo.list_ready()
+
+        assert main.id not in [t.id for t in ready]
+        assert repo._frontmatter_status(dep.id) == "open"
+
+    def test_gh_unavailable_leaves_dep_unmet_without_error(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep = repo.create_task(_make_task(title="Dependency"))
+        main = repo.create_task(_make_task(title="Main", dependencies=[dep.id]))
+
+        with patch(_GH_RUN, side_effect=FileNotFoundError("gh not found")):
+            ready = repo.list_ready()
+
+        assert main.id not in [t.id for t in ready]
+        assert repo._frontmatter_status(dep.id) == "open"
+
+    def test_gh_failure_leaves_dep_unmet_without_error(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep = repo.create_task(_make_task(title="Dependency"))
+        main = repo.create_task(_make_task(title="Main", dependencies=[dep.id]))
+        failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
+
+        with patch(_GH_RUN, return_value=failed):
+            ready = repo.list_ready()
+
+        assert main.id not in [t.id for t in ready]
+
+    def test_pr_list_fetched_once_for_many_deps(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep_a = repo.create_task(_make_task(title="Dep A"))
+        dep_b = repo.create_task(_make_task(title="Dep B"))
+        main = repo.create_task(_make_task(title="Main", dependencies=[dep_a.id, dep_b.id]))
+
+        with patch(_GH_RUN, return_value=_gh_result([_pr(dep_a.id), _pr(dep_b.id)])) as mock_run:
+            ready = repo.list_ready()
+
+        assert main.id in [t.id for t in ready]
+        assert mock_run.call_count == 1
+
+    def test_non_blocking_dep_never_queries_gh(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        dep = repo.create_task(_make_task(title="Dependency"))
+        related = Dependency(task_id=dep.id, type=DependencyType.RELATED)
+        repo.create_task(_make_task(title="Main", dependencies=[related]))
+
+        with patch(_GH_RUN, side_effect=AssertionError("gh must not be called")):
+            repo.list_ready()
