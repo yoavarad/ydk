@@ -29,7 +29,13 @@ def test_dotnet_stack_exists() -> None:
 
 def test_dotnet_stack_verifications() -> None:
     stack = get_stack("dotnet")
-    assert stack["verifications"] == ["dotnet-build", "dotnet-format", "dotnet-test"]
+    assert stack["verifications"] == [
+        "dotnet-build",
+        "dotnet-format",
+        "dotnet-test",
+        "dotnet-quality",
+        "dotnet-tdd-guard",
+    ]
 
 
 def test_get_stack_returns_verifications() -> None:
