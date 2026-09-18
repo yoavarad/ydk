@@ -1,0 +1,36 @@
+namespace Api.Endpoints;
+
+using System;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Application.Services;
+
+public static class {{ tag }}Endpoints
+{
+{% for record in records %}
+    public sealed record {{ record.name }}({% for f in record.fields %}{{ f.type }} {{ f.name }}{% if not loop.last %}, {% endif %}{% endfor %});
+
+{% endfor %}
+    public static IEndpointRouteBuilder Map{{ tag }}Endpoints(this IEndpointRouteBuilder app)
+    {
+{% for route in routes %}
+        app.{{ route.map_call }}("{{ route.path }}", async ({{ route.params }}) =>
+        {
+{% if route.returns_value %}
+            var result = await {{ route.invocation }};
+{% else %}
+            await {{ route.invocation }};
+{% endif %}
+{% for line in route.return_lines %}
+            {{ line }}
+{% endfor %}
+        }).WithTags("{{ tag }}");
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+
+        return app;
+    }
+}
