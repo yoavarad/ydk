@@ -5,13 +5,47 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+import typer
 from typer.testing import CliRunner
 
 from ydk.cli import app
-from ydk.cli.task_cmd import _resolve_task_id
-from ydk.models.pm import TaskDetail, TaskSummary
+from ydk.cli.task_cmd import _parse_depends_on_arg, _resolve_task_id
+from ydk.models.pm import Dependency, DependencyType, TaskDetail, TaskSummary
 
 runner = CliRunner()
+
+
+def test_parse_depends_on_arg_comma_separated_single_flag() -> None:
+    """A single --depends-on value with comma-joined deps splits into separate entries."""
+    result = _parse_depends_on_arg(["103:blocks,104:blocks"])
+    assert result == ["103", "104"]
+
+
+def test_parse_depends_on_arg_comma_separated_mixed_types() -> None:
+    """Comma-joined deps with mixed types parse independently."""
+    result = _parse_depends_on_arg(["103:validates,104:blocks"])
+    assert len(result) == 2
+    assert result[0] == Dependency(task_id="103", type=DependencyType.VALIDATES)
+    assert result[1] == "104"
+
+
+def test_parse_depends_on_arg_repeated_flag_unchanged() -> None:
+    """Repeated --depends-on flags still work as before."""
+    result = _parse_depends_on_arg(["103:blocks", "104:blocks"])
+    assert result == ["103", "104"]
+
+
+def test_parse_depends_on_arg_no_comma_no_colon() -> None:
+    """A single bare id with no comma or colon is returned unchanged."""
+    result = _parse_depends_on_arg(["103"])
+    assert result == ["103"]
+
+
+def test_parse_depends_on_arg_invalid_type_raises() -> None:
+    """An invalid dependency type still raises typer.BadParameter."""
+    with pytest.raises(typer.BadParameter):
+        _parse_depends_on_arg(["103:bogus"])
 
 
 def test_resolve_task_id_reads_mapping_with_utf8_encoding(tmp_path: Path, monkeypatch) -> None:

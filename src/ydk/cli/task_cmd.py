@@ -119,18 +119,19 @@ def _parse_depends_on_arg(raw: list[str]) -> list[str | Dependency]:
 
     result: list[str | Dependency] = []
     for item in raw:
-        if ":" in item:
-            task_id, type_str = item.rsplit(":", 1)
-            if type_str not in _VALID_DEP_TYPES:
-                valid = ", ".join(sorted(_VALID_DEP_TYPES))
-                raise typer.BadParameter(f"Invalid dependency type '{type_str}'. Must be one of: {valid}")
-            dep_type = DependencyType(type_str)
-            if dep_type == DependencyType.BLOCKS:
-                result.append(task_id)
+        for sub_item in (s.strip() for s in item.split(",")):
+            if ":" in sub_item:
+                task_id, type_str = sub_item.rsplit(":", 1)
+                if type_str not in _VALID_DEP_TYPES:
+                    valid = ", ".join(sorted(_VALID_DEP_TYPES))
+                    raise typer.BadParameter(f"Invalid dependency type '{type_str}'. Must be one of: {valid}")
+                dep_type = DependencyType(type_str)
+                if dep_type == DependencyType.BLOCKS:
+                    result.append(task_id)
+                else:
+                    result.append(Dependency(task_id=task_id, type=dep_type))
             else:
-                result.append(Dependency(task_id=task_id, type=dep_type))
-        else:
-            result.append(item)
+                result.append(sub_item)
     return result
 
 
