@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\[[0-9;]*m")
 
 
 class TestFindTaskPr:
@@ -406,7 +409,8 @@ class TestCloseHelp:
     def _help() -> str:
         result = runner.invoke(task_app, ["close", "--help"], env={"COLUMNS": "200", "NO_COLOR": "1"})
         assert result.exit_code == 0
-        return " ".join(result.output.split())
+        # Typer forces ANSI styling on GitHub Actions (GITHUB_ACTIONS) even when NO_COLOR is set.
+        return " ".join(_ANSI.sub("", result.output).split())
 
     def test_help_explains_when_to_run_and_status_not_auto_updated(self) -> None:
         out = self._help()
