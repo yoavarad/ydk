@@ -76,7 +76,7 @@ def test_done_auto_resolves_todos(
     mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, project: Path
 ) -> None:
     """When task done runs, assigned TODOs whose NotImplementedError is gone get marked done."""
-    mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="", stderr="")
+    mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     # Set up a TODO assigned to task T-001
     todo_mgr = TodoManager(project)
@@ -103,7 +103,7 @@ def test_done_warns_on_unresolved_todos(
     mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, project: Path
 ) -> None:
     """When task done runs, TODOs still containing NotImplementedError produce warnings."""
-    mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="", stderr="")
+    mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
     todo_mgr = TodoManager(project)
 

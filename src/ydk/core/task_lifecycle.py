@@ -163,6 +163,22 @@ class TaskLifecycle:
             return {data["task_id"]: {"base_branch": data.get("base_branch", "main")}}
         return {}
 
+    @staticmethod
+    def _normalize_base_branch(base_branch: str) -> str:
+        """Strip a remote prefix from a base branch ref.
+
+        active-task.json stores the git ref used to create the
+        worktree/branch from (e.g. ``"origin/main"``), which is correct for
+        that purpose but is a local remote-tracking ref, not a GitHub branch
+        name. ``gh pr create --base`` needs the bare branch name
+        (``"main"``), so strip a leading ``"<remote>/"`` segment before using
+        the value as a PR base. A value with no remote prefix (e.g.
+        ``"main"``) passes through unchanged.
+        """
+        if "/" in base_branch:
+            return base_branch.split("/", 1)[1]
+        return base_branch
+
     def plan(self, task_id: str, plan_text: str) -> None:
         """Post implementation plan."""
         self._repo.add_comment(task_id, f"## Implementation Plan\n\n{plan_text}")
@@ -641,11 +657,18 @@ class TaskLifecycle:
         cwd = str(worktree) if worktree else str(self._root)
 
         # Push the branch
-        subprocess.run(
+        push_result = subprocess.run(
             ["git", "push", "-u", "origin", "HEAD"],
             cwd=cwd,
             capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
+        if push_result.returncode != 0:
+            stderr = push_result.stderr.strip() if push_result.stderr else ""
+            logger.warning("git push failed for task %s: %s", task_id, stderr[:200])
+            raise RuntimeError(f"git push failed for task {task_id}: {stderr or 'no error output captured'}")
 
         # Use override body if provided, else build from report
         pr_body = pr_body_override or self._build_pr_body(task_id, task=task, report=report)
@@ -670,7 +693,8 @@ class TaskLifecycle:
             # base branch.
             active_task_file = self._root / ".ydk" / "active-task.json"
             active_tasks = self._read_active_tasks(active_task_file)
-            base_branch = active_tasks.get(task_id, {}).get("base_branch", "main")
+            raw_base_branch = active_tasks.get(task_id, {}).get("base_branch", "main")
+            base_branch = self._normalize_base_branch(raw_base_branch)
 
             # Pass the body via --body-file rather than inline: proof-rich
             # bodies can be tens of KB, which overflows the Windows
