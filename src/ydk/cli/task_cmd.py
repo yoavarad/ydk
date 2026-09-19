@@ -65,7 +65,15 @@ def _warn_missing_test_strategy(test_strategy: str, ctx: typer.Context) -> None:
         typer.echo("WARNING: Task has no test strategy.", err=True)
 
 
-task_app = typer.Typer(name="task", help="Task management and validation")
+task_app = typer.Typer(
+    name="task",
+    help=(
+        "Task management and validation\n\n"
+        "Lifecycle: start -> done -> (merge) -> close. `start` opens a worktree, `done` opens the PR, "
+        "and `close` reconciles one task to done once its PR is merged. "
+        "Use `sync` to reconcile all open/in-review tasks in bulk."
+    ),
+)
 
 
 def _resolve_task_id(raw_id: str) -> str:
@@ -1953,7 +1961,12 @@ def close(
 
 @task_app.command("sync")
 def sync(ctx: typer.Context) -> None:
-    """Bulk-reconcile open/in-review tasks' status against their PRs' merge state."""
+    """Bulk-reconcile open/in-review tasks' status against their PRs' merge state.
+
+    This is the bulk version of `ydk task close`. Prefer `ydk task close <id>` to
+    reconcile a single task, or to close a task that has no PR of its own. Prefer
+    `ydk task sync` to sweep every open/in-review task at once.
+    """
     import shutil
 
     from ydk.core.task_pr_lookup import find_task_pr, list_prs
