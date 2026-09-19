@@ -142,6 +142,51 @@ class TestEfCoreDbContextGenerator:
         assert files[0]["path"] == "Infrastructure/Persistence/AppDbContext.cs"
         assert "DbSet<" not in files[0]["content"]
 
+    def test_empty_entities_omits_using_for_namespace_that_would_not_exist(self, tmp_path: Path) -> None:
+        """With zero entities, Domain.Entities is never generated anywhere in the
+        solution (domain_entities.py emits nothing) -- an unconditional `using` for
+        it would be CS0246 (#127)."""
+        files = _run_generator("efcore_dbcontext.py", [], tmp_path / "proj")
+        assert "using Domain.Entities;" not in files[0]["content"]
+
+    def test_missing_entity_env_still_emits_dbcontext_with_no_dbsets(self, tmp_path: Path) -> None:
+        """An entirely-unset YDK_COMPONENTS_ENTITY means the project has zero
+        entity components (e.g. a zero-component baseline) -- not a
+        misconfiguration. AppDbContext.cs must still be emitted since
+        dependency_injection.py always wires AddDbContext<AppDbContext>()
+        unconditionally (#127)."""
+        import os
+
+        env = {k: v for k, v in os.environ.items() if k != "YDK_COMPONENTS_ENTITY"}
+        result = subprocess.run(
+            [sys.executable, str(GENERATORS_DIR / "efcore_dbcontext.py")],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        files = json.loads(result.stdout.strip())
+        assert len(files) == 1
+        assert files[0]["path"] == "Infrastructure/Persistence/AppDbContext.cs"
+        assert "DbSet<" not in files[0]["content"]
+
+    def test_entity_env_pointing_to_missing_file_fails_loudly(self, tmp_path: Path) -> None:
+        import os
+
+        env = {**os.environ, "YDK_COMPONENTS_ENTITY": str(tmp_path / "does-not-exist.yaml")}
+        result = subprocess.run(
+            [sys.executable, str(GENERATORS_DIR / "efcore_dbcontext.py")],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode != 0
+        assert "YDK_COMPONENTS_ENTITY" in result.stderr
+
     def test_entity_without_primary_key_fails_loudly(self, tmp_path: Path) -> None:
         no_pk_entity = {
             "id": "ydk:entity:sample/Widget",

@@ -1,0 +1,14 @@
+namespace Api.Endpoints;
+
+using Microsoft.AspNetCore.Routing;
+
+public static class GeneratedEndpoints
+{
+    public static IEndpointRouteBuilder MapGeneratedEndpoints(this IEndpointRouteBuilder app)
+    {
+{% for tag in tags %}
+        app.Map{{ tag }}Endpoints();
+{% endfor %}
+        return app;
+    }
+}

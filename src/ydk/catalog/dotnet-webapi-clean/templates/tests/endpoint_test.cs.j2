@@ -1,5 +1,6 @@
 namespace Tests.Endpoints;
 
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -28,9 +29,10 @@ public class {{ tag }}EndpointsTests : IClassFixture<WebApplicationFactory<Progr
         var response = await client.{{ case.call }}("{{ case.path }}");
 {% endif %}
 
-        // TODO: assert the real status code/body once {{ tag }}Endpoints are wired into
-        // Program.cs and the backing service is implemented.
-        Assert.NotNull(response);
+        // {{ tag }}Endpoints is wired into Program.cs via MapGeneratedEndpoints(), so the
+        // route must resolve. The backing service is still a stub (task #105) and may
+        // throw/500 -- only 404 (route not found) is asserted against here.
+        Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 
 {% endfor %}

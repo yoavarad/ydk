@@ -12,11 +12,10 @@ Route grouping mirrors api_endpoints.py exactly (same route_tag/
 tag_class_prefix helpers, reused directly rather than duplicated) so each
 {Tag}EndpointsTests.cs exercises the matching {Tag}Endpoints.cs.
 
-Since Program.cs does not yet wire AddApplicationServices()/Map{Tag}Endpoints()
-calls (left for a later task) and the backing services still throw
-NotImplementedException (task #105), each test only asserts that a response
-comes back -- a TODO comment marks where real status/body assertions belong
-once wiring + implementation land.
+Program.cs wires Map{Tag}Endpoints() via the always-present MapGeneratedEndpoints()
+aggregate (task #127), so each test asserts the route resolves (status != 404).
+The backing services are still stubs that throw NotImplementedException (task
+#105), so a full status/body assertion isn't made here.
 
 Input: YDK route components
 Output: {Solution}.Tests/Endpoints/{Tag}EndpointsTests.cs per route tag

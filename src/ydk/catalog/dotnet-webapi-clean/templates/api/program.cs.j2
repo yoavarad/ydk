@@ -1,9 +1,13 @@
+using Api;
+using Api.Endpoints;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// TODO(dependency-injection generator): application/infrastructure service
-// registrations are appended here by downstream generators.
+builder.Services.AddApplicationServices(builder.Configuration);
 
 var app = builder.Build();
+
+app.MapGeneratedEndpoints();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
    .WithName("HealthCheck");

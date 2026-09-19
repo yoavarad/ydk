@@ -120,9 +120,12 @@ def _endpoints_env(tmp_path: Path, routes: list[dict], contracts: list[dict] | N
 
 
 def _endpoints_file(tmp_path: Path, routes: list[dict], contracts: list[dict] | None = None) -> str:
+    """Return the content of the single per-tag endpoints file, ignoring the
+    always-present GeneratedEndpoints.cs aggregate."""
     files = _run_generator("api_endpoints.py", _endpoints_env(tmp_path, routes, contracts))
-    assert len(files) == 1
-    return files[0]["content"]
+    tag_files = [f for f in files if f["path"] != "Api/Endpoints/GeneratedEndpoints.cs"]
+    assert len(tag_files) == 1
+    return tag_files[0]["content"]
 
 
 @pytest.fixture
@@ -130,12 +133,39 @@ def endpoints_content(tmp_path: Path) -> str:
     return _endpoints_file(tmp_path, SAMPLE_ROUTES, [SAMPLE_CONTRACT])
 
 
+class TestGeneratedEndpointsAggregate:
+    """Api/Endpoints/GeneratedEndpoints.cs -- always emitted so Program.cs can
+    call app.MapGeneratedEndpoints() unconditionally, per-tag or empty."""
+
+    def test_aggregate_calls_each_tag_extension(self, tmp_path: Path) -> None:
+        other = {**SAMPLE_ROUTES[0], "id": "ydk:route:customers/list", "path": "/customers", "maps_to_use_case": ""}
+        env = _endpoints_env(tmp_path, [*SAMPLE_ROUTES, other], [SAMPLE_CONTRACT])
+        files = _run_generator("api_endpoints.py", env)
+        aggregate = next(f["content"] for f in files if f["path"] == "Api/Endpoints/GeneratedEndpoints.cs")
+        assert "namespace Api.Endpoints;" in aggregate
+        assert "public static class GeneratedEndpoints" in aggregate
+        assert "MapGeneratedEndpoints(this IEndpointRouteBuilder app)" in aggregate
+        assert "app.MapCustomersEndpoints();" in aggregate
+        assert "app.MapOrdersEndpoints();" in aggregate
+        assert "return app;" in aggregate
+
+    def test_aggregate_is_deterministic(self, tmp_path: Path) -> None:
+        env = _endpoints_env(tmp_path, SAMPLE_ROUTES, [SAMPLE_CONTRACT])
+        first = _run_generator("api_endpoints.py", env)
+        second = _run_generator("api_endpoints.py", env)
+        assert first == second
+
+
 class TestApiEndpointsOutput:
     def test_emits_one_file_per_tag(self, tmp_path: Path) -> None:
         other = {**SAMPLE_ROUTES[0], "id": "ydk:route:customers/list", "path": "/customers", "maps_to_use_case": ""}
         env = _endpoints_env(tmp_path, [*SAMPLE_ROUTES, other], [SAMPLE_CONTRACT])
         files = _run_generator("api_endpoints.py", env)
-        assert [f["path"] for f in files] == ["Api/Endpoints/CustomersEndpoints.cs", "Api/Endpoints/OrdersEndpoints.cs"]
+        assert [f["path"] for f in files] == [
+            "Api/Endpoints/CustomersEndpoints.cs",
+            "Api/Endpoints/OrdersEndpoints.cs",
+            "Api/Endpoints/GeneratedEndpoints.cs",
+        ]
 
     def test_explicit_tag_wins_over_path_segment(self, tmp_path: Path) -> None:
         route = {**SAMPLE_ROUTES[0], "path": "/api/v1/things", "tag": "inventory"}
@@ -147,11 +177,33 @@ class TestApiEndpointsOutput:
         files = _run_generator("api_endpoints.py", _endpoints_env(tmp_path, [route], [SAMPLE_CONTRACT]))
         assert files[0]["path"] == "Api/Endpoints/OrdersEndpoints.cs"
 
-    def test_no_routes_emits_no_files(self, tmp_path: Path) -> None:
-        assert _run_generator("api_endpoints.py", _endpoints_env(tmp_path, [], [SAMPLE_CONTRACT])) == []
+    def test_no_routes_emits_only_generated_endpoints_aggregate(self, tmp_path: Path) -> None:
+        files = _run_generator("api_endpoints.py", _endpoints_env(tmp_path, [], [SAMPLE_CONTRACT]))
+        assert [f["path"] for f in files] == ["Api/Endpoints/GeneratedEndpoints.cs"]
+        content = files[0]["content"]
+        assert "public static class GeneratedEndpoints" in content
+        assert "MapGeneratedEndpoints(this IEndpointRouteBuilder app)" in content
+        assert "app.Map" not in content
+        assert "return app;" in content
 
-    def test_missing_route_env_fails_loudly(self) -> None:
+    def test_missing_route_env_emits_only_generated_endpoints_aggregate(self) -> None:
+        """An entirely-unset YDK_COMPONENTS_ROUTE means the project has zero route
+        components (e.g. a zero-component baseline) -- not a misconfiguration."""
         env = {k: v for k, v in os.environ.items() if k != "YDK_COMPONENTS_ROUTE"}
+        result = subprocess.run(
+            [sys.executable, str(GENERATORS_DIR / "api_endpoints.py")],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        files = json.loads(result.stdout.strip())
+        assert [f["path"] for f in files] == ["Api/Endpoints/GeneratedEndpoints.cs"]
+
+    def test_route_env_pointing_to_missing_file_fails_loudly(self, tmp_path: Path) -> None:
+        env = {**os.environ, "YDK_COMPONENTS_ROUTE": str(tmp_path / "does-not-exist.yaml")}
         result = subprocess.run(
             [sys.executable, str(GENERATORS_DIR / "api_endpoints.py")],
             capture_output=True,
@@ -325,8 +377,39 @@ class TestDependencyInjection:
         assert "AddDbContext<AppDbContext>" in content
         assert "AddScoped" not in content
 
-    def test_missing_entity_env_fails_loudly(self) -> None:
-        env = {k: v for k, v in os.environ.items() if k != "YDK_COMPONENTS_ENTITY"}
+    def test_no_components_omits_usings_for_namespaces_that_would_not_exist(self, tmp_path: Path) -> None:
+        """With zero repositories/services, Application.Interfaces, Application.Services,
+        and Infrastructure.Persistence.Repositories are never generated anywhere in the
+        solution -- an unconditional `using` for them would be CS0246 (#127)."""
+        files = _run_generator("dependency_injection.py", _di_env(tmp_path, [], []))
+        content = files[0]["content"]
+        assert "using Application.Interfaces;" not in content
+        assert "using Application.Services;" not in content
+        assert "using Infrastructure.Persistence.Repositories;" not in content
+        assert "using Infrastructure.Persistence;" in content
+
+    def test_missing_entity_and_contract_env_still_wires_dbcontext(self) -> None:
+        """Entirely-unset entity/contract env vars mean the project has zero
+        components of those types (e.g. a zero-component baseline) -- not a
+        misconfiguration. AddApplicationServices must still be emitted so
+        Program.cs's unconditional call to it still compiles."""
+        env = {k: v for k, v in os.environ.items() if k not in ("YDK_COMPONENTS_ENTITY", "YDK_COMPONENTS_CONTRACT")}
+        result = subprocess.run(
+            [sys.executable, str(GENERATORS_DIR / "dependency_injection.py")],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        files = json.loads(result.stdout.strip())
+        content = files[0]["content"]
+        assert "AddDbContext<AppDbContext>" in content
+        assert "AddScoped" not in content
+
+    def test_entity_env_pointing_to_missing_file_fails_loudly(self, tmp_path: Path) -> None:
+        env = {**os.environ, "YDK_COMPONENTS_ENTITY": str(tmp_path / "does-not-exist.yaml")}
         result = subprocess.run(
             [sys.executable, str(GENERATORS_DIR / "dependency_injection.py")],
             capture_output=True,
@@ -340,7 +423,10 @@ class TestDependencyInjection:
 
 
 class TestTemplatesExist:
-    @pytest.mark.parametrize("template_path", ["api/endpoints.cs.j2", "api/service_collection_extensions.cs.j2"])
+    @pytest.mark.parametrize(
+        "template_path",
+        ["api/endpoints.cs.j2", "api/service_collection_extensions.cs.j2", "api/generated_endpoints.cs.j2"],
+    )
     def test_template_file_exists(self, template_path: str) -> None:
         assert (PACK_ROOT / "templates" / template_path).is_file()
 

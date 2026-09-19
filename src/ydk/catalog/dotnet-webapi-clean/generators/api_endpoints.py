@@ -7,9 +7,13 @@ thin-route-delegates-to-service style as python-fastapi-hexagonal's fastapi_rout
 Routes are grouped per tag; each group becomes a static {Tag}Endpoints class exposing
 an ``IEndpointRouteBuilder.Map{Tag}Endpoints()`` extension method.
 
-Input: YDK route components (required) + contract components (used to resolve service
-methods, parameter names/types and nullable returns; optional).
-Output: Api/Endpoints/{Tag}Endpoints.cs per route tag
+Input: YDK route components (optional -- an unset YDK_COMPONENTS_ROUTE means the
+project has no route components, e.g. a zero-component baseline) + contract
+components (used to resolve service methods, parameter names/types and nullable
+returns; optional).
+Output: Api/Endpoints/{Tag}Endpoints.cs per route tag, plus a
+Api/Endpoints/GeneratedEndpoints.cs aggregate that always exists (even with zero
+tags) so Program.cs can call app.MapGeneratedEndpoints() unconditionally.
 """
 
 from __future__ import annotations
@@ -301,11 +305,19 @@ def _load_yaml_list(path: str) -> list[dict]:
 
 
 def main() -> None:
-    route_path = os.environ.get("YDK_COMPONENTS_ROUTE", "")
-    if not route_path or not Path(route_path).exists():
+    # An unset YDK_COMPONENTS_ROUTE means no route components exist in the
+    # project at all (zero-component baseline) -- treated as an empty route
+    # list so GeneratedEndpoints.cs is still emitted (empty). A var that IS
+    # set but points at a missing file is a genuine misconfiguration and
+    # still fails loudly.
+    route_path = os.environ.get("YDK_COMPONENTS_ROUTE")
+    if route_path is None:
+        routes: list[dict] = []
+    elif not route_path or not Path(route_path).exists():
         print("Error: YDK_COMPONENTS_ROUTE not set or file not found", file=sys.stderr)
         sys.exit(1)
-    routes = _load_yaml_list(route_path)
+    else:
+        routes = _load_yaml_list(route_path)
 
     contract_path = os.environ.get("YDK_COMPONENTS_CONTRACT", "")
     contracts = _load_yaml_list(contract_path) if contract_path and Path(contract_path).exists() else []
@@ -330,6 +342,10 @@ def main() -> None:
         context = build_tag_context(tag, groups[tag], index)
         content = template.render(**context).rstrip() + "\n"
         output.append({"path": f"Api/Endpoints/{context['tag']}Endpoints.cs", "content": content})
+
+    aggregate_template = env.get_template("generated_endpoints.cs.j2")
+    aggregate_content = aggregate_template.render(tags=sorted(groups)).rstrip() + "\n"
+    output.append({"path": "Api/Endpoints/GeneratedEndpoints.cs", "content": aggregate_content})
 
     print(json.dumps(output))
 

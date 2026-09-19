@@ -49,7 +49,17 @@ def build_context(entities: list[dict], contracts: list[dict]) -> dict:
 
 
 def _load_components(env_var: str) -> list[dict]:
-    path = os.environ.get(env_var, "")
+    """Load a component-type YAML list from its env var.
+
+    The env var being entirely unset means the project has no components of
+    that type (e.g. a zero-component baseline) -- treated as an empty list so
+    AddApplicationServices is always emitted (Program.cs calls it
+    unconditionally). A var that IS set but points at a missing file is a
+    genuine misconfiguration and still fails loudly.
+    """
+    path = os.environ.get(env_var)
+    if path is None:
+        return []
     if not path or not Path(path).exists():
         print(f"Error: {env_var} not set or file not found", file=sys.stderr)
         sys.exit(1)
