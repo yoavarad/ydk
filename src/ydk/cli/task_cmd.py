@@ -1886,23 +1886,44 @@ def _validate_delivered_by(repo: LifecycleTaskRepository, ref: str) -> str:
 
 @task_app.command()
 def close(
-    task_id: str = typer.Argument(..., help="Task ID to close (reconcile status from PR merge state)"),
+    task_id: str = typer.Argument(
+        ..., help="Task ID to close; set to done only if its PR is merged (or a no-PR flag is given)"
+    ),
     delivered_by: str | None = typer.Option(
         None,
         "--delivered-by",
-        help="Task id or PR URL/number that delivered this work (closes a task with no PR of its own)",
+        help="Task id, PR URL, or PR number that delivered this work (closes a task with no PR of its own)",
     ),
     reason: str | None = typer.Option(
         None,
         "--reason",
-        help="Why the task is closed without its own PR (e.g. 'dup of T-012')",
+        help="Why the task is closed without its own PR (e.g. 'dup of T-012'); recorded in the audit comment",
     ),
 ) -> None:
     """Reconcile a task's status to done based on its PR's merge state.
 
-    For tasks with no PR of their own, pass --delivered-by <task-or-PR> and/or
-    --reason <text>: the PR lookup is skipped, an audit comment is added to the
-    task, and the task is marked done.
+    Run this AFTER the task's PR is merged. Status does NOT auto-update on
+    merge: `ydk task done` only sets in-review, so this command is what moves
+    a task to done and unblocks its dependents. It is also the recovery path
+    for a task stuck at open or in-review (e.g. a session died before
+    `ydk task done` finished).
+
+    It looks up the task's PR by branch via `gh`. If the PR is merged, the
+    task becomes done. If the PR is open or closed-unmerged, it reports the
+    state and changes nothing (exit 0). If no PR is found, it errors (exit 1).
+
+    For a task with no PR of its own (duplicate, or covered by another task
+    or PR), pass --delivered-by and/or --reason (either alone is enough). The
+    PR lookup is skipped, an audit comment is recorded on the task, and the
+    task is marked done. An unknown --delivered-by task id errors before any
+    change.
+
+    To reconcile many tasks at once, use `ydk task sync`.
+
+    
+    Examples:
+      ydk task close T-a1b2c3d4
+      ydk task close T-a1b2c3d4 --delivered-by T-e5f6a7b8 --reason "dup"
     """
     task_id = _resolve_task_id(task_id)
     delivered_by = (delivered_by or "").strip() or None
