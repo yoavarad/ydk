@@ -968,6 +968,103 @@ def test_done_removes_only_own_entry_when_other_tasks_still_active(
     assert remaining["tasks"]["T-002"]["base_branch"] == "develop"
 
 
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_cleans_up_active_task_file_when_create_pr_raises(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """done() removes its own active-task.json entry even when _create_pr()
+    raises, so a failed PR creation doesn't leave a stale entry that poisons
+    a later done() call (for this task or, per per-task scoping, any other).
+    """
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(parents=True, exist_ok=True)
+    active_file = ydk_dir / "active-task.json"
+    active_file.write_text('{"tasks": {"T-001": {"base_branch": "main"}}}', encoding="utf-8")
+
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+
+    with (
+        patch.object(lc, "_create_pr", side_effect=RuntimeError("gh pr create failed")),
+        pytest.raises(RuntimeError, match="gh pr create failed"),
+    ):
+        lc.done("T-001")
+
+    assert not active_file.exists(), "active-task.json entry should be cleaned up even when PR creation fails"
+
+
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_cleans_up_only_own_entry_when_create_pr_raises(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """When _create_pr() raises, done() removes only its own task's entry,
+    leaving other in-flight tasks' active-task.json entries intact.
+    """
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(parents=True, exist_ok=True)
+    active_file = ydk_dir / "active-task.json"
+    active_file.write_text(
+        '{"tasks": {"T-001": {"base_branch": "main"}, "T-002": {"base_branch": "develop"}}}',
+        encoding="utf-8",
+    )
+
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+
+    with (
+        patch.object(lc, "_create_pr", side_effect=RuntimeError("gh pr create failed")),
+        pytest.raises(RuntimeError, match="gh pr create failed"),
+    ):
+        lc.done("T-001")
+
+    assert active_file.exists(), "active-task.json should survive while T-002 is still in flight"
+    remaining = json.loads(active_file.read_text(encoding="utf-8"))
+    assert "T-001" not in remaining["tasks"]
+    assert remaining["tasks"]["T-002"]["base_branch"] == "develop"
+
+
 def test_done_scopes_verification_to_worktree_not_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
