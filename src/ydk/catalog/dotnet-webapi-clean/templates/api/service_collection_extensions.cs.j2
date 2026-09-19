@@ -3,9 +3,13 @@ namespace Api;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+{% if repositories %}
 using Application.Interfaces;
-using Application.Services;
 using Infrastructure.Persistence.Repositories;
+{% endif %}
+{% if services %}
+using Application.Services;
+{% endif %}
 using {{ dbcontext_namespace }};
 
 public static class ServiceCollectionExtensions

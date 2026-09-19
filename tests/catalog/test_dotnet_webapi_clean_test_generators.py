@@ -190,6 +190,15 @@ class TestEndpointTestStubs:
         env = {"YDK_COMPONENTS_ROUTE": str(_write_component_yaml(tmp_path, "route", []))}
         assert _run_generator("endpoint_test_stubs.py", env) == []
 
+    def test_asserts_route_resolves_now_that_program_cs_wires_endpoints(self, route_env: dict[str, str]) -> None:
+        """Program.cs now calls MapGeneratedEndpoints() unconditionally (#127), so
+        generated routes actually resolve -- the test stub asserts non-404 rather
+        than only that a response came back."""
+        files = _run_generator("endpoint_test_stubs.py", route_env)
+        content = files[0]["content"]
+        assert "Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);" in content
+        assert "TODO" not in content
+
 
 class TestEntityTestStubs:
     def test_emits_test_for_entity(self, entity_env: dict[str, str]) -> None:

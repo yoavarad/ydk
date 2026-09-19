@@ -214,6 +214,23 @@ class TestProgramAndConfigGenerator:
         assert "WebApplication.CreateBuilder" in program_cs
         assert "app.Run()" in program_cs
 
+    def test_program_cs_wires_di_and_generated_endpoints(self) -> None:
+        """Program.cs must unconditionally call the DI and endpoint-registration
+        extensions generators/dependency_injection.py and generators/api_endpoints.py
+        always emit, so a generated API actually serves generated routes and
+        resolves generated services (#127)."""
+        files = _run_generator("program_and_config.py")
+        program_cs = next(f["content"] for f in files if f["path"] == "Api/Program.cs")
+        assert "using Api;" in program_cs
+        assert "using Api.Endpoints;" in program_cs
+        assert "builder.Services.AddApplicationServices(builder.Configuration);" in program_cs
+        assert "app.MapGeneratedEndpoints();" in program_cs
+
+    def test_program_cs_has_no_stale_downstream_generator_todo(self) -> None:
+        files = _run_generator("program_and_config.py")
+        program_cs = next(f["content"] for f in files if f["path"] == "Api/Program.cs")
+        assert "TODO" not in program_cs
+
     def test_appsettings_are_valid_json(self) -> None:
         files = _run_generator("program_and_config.py")
         for path in ("Api/appsettings.json", "Api/appsettings.Development.json"):

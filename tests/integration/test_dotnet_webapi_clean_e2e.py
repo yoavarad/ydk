@@ -17,6 +17,8 @@ SAMPLE_CONTRACT/SAMPLE_ROUTES.
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import subprocess
 import sys
@@ -159,6 +161,75 @@ def generated_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
     assert result.files_generated > 10, f"Only {result.files_generated} files generated"
 
     return project
+
+
+BASELINE_GENERATOR_SCRIPTS = (
+    "solution_scaffold.py",
+    "program_and_config.py",
+    "dependency_injection.py",
+    "efcore_dbcontext.py",
+    "api_endpoints.py",
+)
+
+
+@pytest.fixture(scope="module")
+def zero_component_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Materialize the baseline scaffold with NO components at all (as after
+    `ydk init`, before any entity/contract/route is defined), running each
+    generator directly with its component env vars entirely unset -- mirrors
+    exactly how IgnitionEngine invokes generators when a component type has
+    zero components anywhere in the project (the corresponding YDK_COMPONENTS_*
+    env var is simply never set; see ignition.py's _run_generator).
+
+    Hard constraint from #127: this must still produce a real `dotnet build`
+    pass, now that Program.cs unconditionally calls AddApplicationServices()
+    and MapGeneratedEndpoints()."""
+    project = tmp_path_factory.mktemp("dotnet_webapi_clean_zero_component")
+
+    env = {**os.environ, "YDK_PROJECT_ROOT": str(project), "YDK_OUTPUT_DIR": str(project), "YDK_INIT_ANSWERS": "{}"}
+    for key in ("YDK_COMPONENTS_ENTITY", "YDK_COMPONENTS_CONTRACT", "YDK_COMPONENTS_ROUTE"):
+        env.pop(key, None)
+
+    for script in BASELINE_GENERATOR_SCRIPTS:
+        result = subprocess.run(
+            [sys.executable, str(PACK_DIR / "generators" / script)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, f"{script} failed: {result.stderr}"
+        for f in json.loads(result.stdout.strip()):
+            full = project / f["path"]
+            full.parent.mkdir(parents=True, exist_ok=True)
+            full.write_text(f["content"], encoding="utf-8")
+
+    return project
+
+
+class TestZeroComponentBaseline:
+    """Hard constraint from #127: a zero-component project (baseline scaffold
+    only, as after `ydk init` with no components) must still build."""
+
+    def test_program_cs_wires_di_and_endpoints_unconditionally(self, zero_component_project: Path) -> None:
+        program_cs = (zero_component_project / "Api" / "Program.cs").read_text(encoding="utf-8")
+        assert "builder.Services.AddApplicationServices(builder.Configuration);" in program_cs
+        assert "app.MapGeneratedEndpoints();" in program_cs
+
+    @pytest.mark.integration
+    @pytest.mark.skipif(not _dotnet_available(), reason=".NET SDK not available")
+    def test_dotnet_build_succeeds(self, zero_component_project: Path) -> None:
+        result = subprocess.run(
+            ["dotnet", "build", str(zero_component_project / "WebApiClean.sln"), "--nologo"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            f"dotnet build failed (exit {result.returncode}):\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
 
 
 class TestGeneratedLayout:

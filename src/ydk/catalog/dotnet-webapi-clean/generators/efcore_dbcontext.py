@@ -98,14 +98,22 @@ def build_configuration_context(entity: dict) -> dict:
 
 
 def main() -> None:
-    entity_path = os.environ.get("YDK_COMPONENTS_ENTITY", "")
-    if not entity_path or not Path(entity_path).exists():
+    # An unset YDK_COMPONENTS_ENTITY means the project has no entity components
+    # at all (zero-component baseline) -- treated as an empty entity list so
+    # AppDbContext.cs is still emitted (with no DbSets). dependency_injection.py
+    # always wires AddDbContext<AppDbContext>() unconditionally, so that type
+    # must always exist for a generated project to build. A var that IS set but
+    # points at a missing file is a genuine misconfiguration and still fails loudly.
+    entity_path = os.environ.get("YDK_COMPONENTS_ENTITY")
+    if entity_path is None:
+        entities: list = []
+    elif not entity_path or not Path(entity_path).exists():
         print("Error: YDK_COMPONENTS_ENTITY not set or file not found", file=sys.stderr)
         sys.exit(1)
-
-    entities = yaml.safe_load(Path(entity_path).read_text())
-    if not isinstance(entities, list):
-        entities = []
+    else:
+        entities = yaml.safe_load(Path(entity_path).read_text())
+        if not isinstance(entities, list):
+            entities = []
 
     templates_dir = Path(__file__).parent.parent / "templates" / "infrastructure"
     env = Environment(
