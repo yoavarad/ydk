@@ -10,6 +10,7 @@ from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
     glab_state,
+    list_glab_issues,
     map_status,
     run_glab,
 )
@@ -106,15 +107,7 @@ class GitLabStoryRepository:
         if milestone:
             cmd.extend(["--milestone", milestone])
 
-        result = run_glab(cmd)
-        if result.returncode != 0:
-            return []
-
-        try:
-            issues = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return []
-
+        issues = list_glab_issues(run_glab, cmd)
         return [self._issue_json_to_detail(i) for i in issues]
 
     # ------------------------------------------------------------------

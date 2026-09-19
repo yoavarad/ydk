@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import subprocess
 
+from ydk.repositories.github._helpers import GH_LIST_LIMIT
+from ydk.repositories.gitlab._helpers import list_glab_issues
+
 
 class GitHubRemoteService:
     """GitHub operations via gh CLI."""
@@ -27,7 +30,17 @@ class GitHubRemoteService:
         self, milestone: str | None = None, labels: list[str] | None = None, state: str = "open"
     ) -> list[dict]:
         """List issues with optional filters."""
-        cmd: list[str] = ["gh", "issue", "list", "--json", "number,title,state,labels,body", "--state", state]
+        cmd: list[str] = [
+            "gh",
+            "issue",
+            "list",
+            "--json",
+            "number,title,state,labels,body",
+            "--state",
+            state,
+            "--limit",
+            str(GH_LIST_LIMIT),
+        ]
         if milestone:
             cmd.extend(["--milestone", milestone])
         if labels:
@@ -88,13 +101,7 @@ class GitLabRemoteService:
         if labels:
             cmd.extend(["--label", ",".join(labels)])
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            return []
-        try:
-            return json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return []
+        return list_glab_issues(lambda c: subprocess.run(c, capture_output=True, text=True), cmd)
 
     def add_label(self, issue_number: int, label: str) -> None:
         """Add a label to an issue."""

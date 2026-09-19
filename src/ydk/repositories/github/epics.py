@@ -6,7 +6,7 @@ import builtins
 import json
 from typing import TYPE_CHECKING
 
-from ydk.repositories.github._helpers import GH_JSON_FIELDS, check_result, label_names, run_gh
+from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
 from ydk.repositories.github.parser import parse_epic_detail, render_epic_body
 
 if TYPE_CHECKING:
@@ -84,6 +84,8 @@ class GitHubEpicRepository:
             GH_JSON_FIELDS,
             "--state",
             status,
+            "--limit",
+            str(GH_LIST_LIMIT),
             "--label",
             self._epic_label,
         ]
