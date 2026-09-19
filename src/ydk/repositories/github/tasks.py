@@ -7,8 +7,8 @@ import json
 import re
 from typing import TYPE_CHECKING
 
-from ydk.models.pm import Dependency, DependencyStatus, TaskCreate, TaskDetail, TaskSummary
-from ydk.repositories.github._helpers import GH_JSON_FIELDS, check_result, label_names, run_gh
+from ydk.models.pm import Dependency, DependencyStatus, TaskCreate, TaskDetail, TaskStatus, TaskSummary
+from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
 from ydk.repositories.github.parser import parse_task_detail, render_task_body
 
 if TYPE_CHECKING:
@@ -119,6 +119,8 @@ class GitHubTaskRepository:
             GH_JSON_FIELDS,
             "--state",
             status,
+            "--limit",
+            str(GH_LIST_LIMIT),
             "--label",
             self._task_label,
         ]
@@ -184,10 +186,12 @@ class GitHubTaskRepository:
     def list_tasks(self, state: str = "open") -> _list[TaskSummary]:
         """List tasks — lifecycle-compatible. Returns TaskSummary list."""
         details = self.list(status=state)
-        # Also fetch closed tasks to check if deps are done
-        closed_details = self.list(status="closed") if state != "all" else []
-        closed_ids = {d.number for d in closed_details}
-        done_ids = closed_ids  # Closed = done for dependency resolution
+        # Closed = done for dependency resolution. state="all" already includes closed tasks.
+        if state == "all":
+            closed_details = [d for d in details if d.status == TaskStatus.DONE]
+        else:
+            closed_details = self.list(status="closed")
+        done_ids = {d.number for d in closed_details}
 
         summaries: _list[TaskSummary] = []
         for d in details:

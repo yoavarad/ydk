@@ -111,3 +111,24 @@ class TestAddComment:
         fake = MagicMock(returncode=1, stdout="", stderr="error")
         with patch("subprocess.run", return_value=fake), pytest.raises(RuntimeError):
             svc.add_comment(42, "comment")
+
+
+class TestListIssuesLimits:
+    def test_github_passes_explicit_limit(self) -> None:
+        svc = GitHubRemoteService()
+        fake = MagicMock(returncode=0, stdout="[]")
+        with patch("subprocess.run", return_value=fake) as mock_run:
+            svc.list_issues()
+        cmd = mock_run.call_args[0][0]
+        assert int(cmd[cmd.index("--limit") + 1]) >= 1000
+
+    def test_gitlab_follows_pages(self) -> None:
+        from ydk.services.remote import GitLabRemoteService
+
+        full = MagicMock(returncode=0, stdout=json.dumps([{"iid": n} for n in range(100)]))
+        short = MagicMock(returncode=0, stdout=json.dumps([{"iid": n} for n in range(100, 105)]))
+        with patch("subprocess.run", side_effect=[full, short]) as mock_run:
+            result = GitLabRemoteService().list_issues()
+        assert len(result) == 105
+        second_cmd = mock_run.call_args_list[1][0][0]
+        assert second_cmd[second_cmd.index("--page") + 1] == "2"

@@ -6,6 +6,9 @@ import subprocess
 
 GH_JSON_FIELDS = "number,title,state,labels,body,url"
 
+# gh defaults to 30 results for `issue list`; pass an explicit ceiling so lists are not silently truncated.
+GH_LIST_LIMIT = 1000
+
 
 def run_gh(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     """Run a gh CLI command and return the result."""
