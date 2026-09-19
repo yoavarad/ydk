@@ -762,7 +762,10 @@ def done(
         [], "--skip-plugin", help="Skip a plugin (only if it demonstrably fails)"
     ),
 ) -> None:
-    """Complete task: verify, create PR, post proof."""
+    """Complete task: verify, create PR, post proof.
+
+    After the PR is merged, run `ydk task close <id>` to move the task status to done.
+    """
     task_id = _resolve_task_id(task_id)
     try:
         lc = _build_lifecycle()
@@ -781,6 +784,7 @@ def done(
     if result.get("passed"):
         console.print("[green]✓ All verifications passed[/green]")
         console.print(f"[green]✓ PR created: {result.get('pr_url', 'N/A')}[/green]")
+        console.print(f"Next: after the PR is merged, run `ydk task close {task_id}` to mark it done.")
         if result.get("todo_warnings"):
             for w in result["todo_warnings"]:
                 console.print(f"[yellow]⚠ {w}[/yellow]")
