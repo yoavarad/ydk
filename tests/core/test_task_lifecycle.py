@@ -140,6 +140,7 @@ def test_done_runs_verifications(
     mock_verifier.run_all = AsyncMock(return_value=report)
     mock_verifier.save_proof.return_value = Path("/tmp/proof.json")
     mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
 
     result = lifecycle.done("T-001")
 
@@ -189,6 +190,7 @@ def test_done_creates_pr_when_verification_passes(
     mock_verifier.run_all = AsyncMock(return_value=report)
     mock_verifier.save_proof.return_value = Path("/tmp/proof.json")
     mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
 
     result = lifecycle.done("T-001")
 
@@ -241,6 +243,7 @@ def test_create_pr_returns_local_reference(
 ) -> None:
     """_create_pr returns a local reference when gh is not available."""
     mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
     url = lifecycle._create_pr("T-001")
     assert url.startswith("local://")
     assert "T-001" in url
@@ -561,8 +564,8 @@ def test_create_pr_uses_own_base_branch_per_task(
     )
     mock_worktree.get_worktree_path.return_value = None
 
-    lc.start("T-001", base_branch="feature/a")
-    lc.start("T-002", base_branch="feature/b")
+    lc.start("T-001", base_branch="branch-a")
+    lc.start("T-002", base_branch="branch-b")
 
     def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
         if args[:3] == ["gh", "pr", "create"]:
@@ -583,8 +586,8 @@ def test_create_pr_uses_own_base_branch_per_task(
         argv = call.args[0]
         return argv[argv.index("--base") + 1]
 
-    assert _base_arg(create_calls[0]) == "feature/b"
-    assert _base_arg(create_calls[1]) == "feature/a"
+    assert _base_arg(create_calls[0]) == "branch-b"
+    assert _base_arg(create_calls[1]) == "branch-a"
 
 
 @patch("shutil.which", return_value="/usr/bin/gh")
@@ -629,6 +632,99 @@ def test_create_pr_does_not_inherit_base_branch_from_unrelated_task(
     assert argv[argv.index("--base") + 1] == "main"
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("origin/main", "main"),
+        ("main", "main"),
+        ("upstream/develop", "develop"),
+    ],
+)
+def test_normalize_base_branch(raw: str, expected: str) -> None:
+    """_normalize_base_branch strips a remote prefix, leaving a bare branch
+    name unchanged."""
+    assert TaskLifecycle._normalize_base_branch(raw) == expected
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_strips_remote_prefix_from_base_branch(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """_create_pr passes a bare branch name to `gh pr create --base`, even
+    when active-task.json stores a remote-prefixed ref like "origin/main".
+
+    Regression test: "origin/main" is a valid git ref to branch a worktree
+    from, but not a valid GitHub branch name -- passing it unmodified to
+    `gh pr create --base` fails with a misleading GraphQL error.
+    """
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+    mock_worktree.get_worktree_path.return_value = None
+
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(parents=True, exist_ok=True)
+    active_file = ydk_dir / "active-task.json"
+    active_file.write_text('{"tasks": {"T-001": {"base_branch": "origin/main"}}}', encoding="utf-8")
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(returncode=0, stdout="https://github.com/org/repo/pull/1\n")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/T-001\n")
+        return MagicMock(returncode=0)  # git push
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    lc._create_pr("T-001", pr_body_override="body")
+
+    create_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"])
+    argv = create_call.args[0]
+    assert argv[argv.index("--base") + 1] == "main"
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_raises_when_git_push_fails(
+    mock_subprocess: MagicMock, mock_which: MagicMock, lifecycle: TaskLifecycle, mock_worktree: MagicMock
+) -> None:
+    """_create_pr raises instead of silently proceeding when `git push` fails.
+
+    A genuine push failure must not be swallowed -- proceeding as if the
+    branch were up to date remotely would let `gh pr create` run against a
+    remote branch that doesn't reflect local work.
+    """
+    mock_worktree.get_worktree_path.return_value = None
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["git", "push", "-u"]:
+            return MagicMock(returncode=1, stdout="", stderr="fatal: unable to access remote")
+        return MagicMock(returncode=0)
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    with pytest.raises(RuntimeError) as exc_info:
+        lifecycle._create_pr("T-001", pr_body_override="some body")
+
+    message = str(exc_info.value)
+    assert "T-001" in message
+    assert "unable to access remote" in message
+
+    gh_calls = [c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"]]
+    assert gh_calls == []
+
+
 def test_done_skip_plugin_rejects_passing_plugin(lifecycle: TaskLifecycle, mock_verifier: MagicMock) -> None:
     """done() raises ValueError when skip_plugins names a passing plugin."""
     report = VerificationReport(
@@ -665,6 +761,7 @@ def test_done_skip_plugin_allows_genuinely_failing_plugin(
     )
     mock_verifier.run_all = AsyncMock(return_value=report)
     mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
 
     result = lifecycle.done("T-001", skip_plugins=["flaky-e2e"])
 
@@ -713,6 +810,7 @@ def test_done_runs_pr_body_validation_after_body_is_built(
     )
     mock_verifier.run_all = AsyncMock(return_value=report)
     mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
 
     fake_plugin = MagicMock()
     mock_verifier.discover_plugins.return_value = [fake_plugin]
@@ -794,7 +892,8 @@ def test_done_skip_plugins_bypasses_pr_body_validation_gate(
         return_value=[CheckResult(name="pr-body-validation", passed=False, output="FAIL", duration_seconds=0.1)]
     )
 
-    with patch("ydk.core.task_lifecycle.subprocess"), patch("shutil.which", return_value=None):
+    with patch("ydk.core.task_lifecycle.subprocess") as mock_subprocess, patch("shutil.which", return_value=None):
+        mock_subprocess.run.return_value.returncode = 0
         result = lifecycle.done("T-001", skip_plugins=["pr-body-validation"])
 
     assert result["passed"] is True
@@ -913,6 +1012,7 @@ def test_done_removes_active_task_file(
     )
     mock_verifier.run_all = AsyncMock(return_value=report)
     mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
 
     result = lc.done("T-001")
 
@@ -958,6 +1058,7 @@ def test_done_removes_only_own_entry_when_other_tasks_still_active(
     )
     mock_verifier.run_all = AsyncMock(return_value=report)
     mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
 
     result = lc.done("T-001")
 
