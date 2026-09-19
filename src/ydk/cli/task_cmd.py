@@ -65,7 +65,15 @@ def _warn_missing_test_strategy(test_strategy: str, ctx: typer.Context) -> None:
         typer.echo("WARNING: Task has no test strategy.", err=True)
 
 
-task_app = typer.Typer(name="task", help="Task management and validation")
+task_app = typer.Typer(
+    name="task",
+    help=(
+        "Task management and validation\n\n"
+        "Lifecycle: start -> done -> (merge) -> close. `start` opens a worktree, `done` opens the PR, "
+        "and `close` reconciles one task to done once its PR is merged. "
+        "Use `sync` to reconcile all open/in-review tasks in bulk."
+    ),
+)
 
 
 def _resolve_task_id(raw_id: str) -> str:
@@ -762,7 +770,10 @@ def done(
         [], "--skip-plugin", help="Skip a plugin (only if it demonstrably fails)"
     ),
 ) -> None:
-    """Complete task: verify, create PR, post proof."""
+    """Complete task: verify, create PR, post proof.
+
+    After the PR is merged, run `ydk task close <id>` to move the task status to done.
+    """
     task_id = _resolve_task_id(task_id)
     try:
         lc = _build_lifecycle()
@@ -781,6 +792,7 @@ def done(
     if result.get("passed"):
         console.print("[green]✓ All verifications passed[/green]")
         console.print(f"[green]✓ PR created: {result.get('pr_url', 'N/A')}[/green]")
+        console.print(f"Next: after the PR is merged, run `ydk task close {task_id}` to mark it done.")
         if result.get("todo_warnings"):
             for w in result["todo_warnings"]:
                 console.print(f"[yellow]⚠ {w}[/yellow]")
@@ -1970,7 +1982,12 @@ def close(
 
 @task_app.command("sync")
 def sync(ctx: typer.Context) -> None:
-    """Bulk-reconcile open/in-review tasks' status against their PRs' merge state."""
+    """Bulk-reconcile open/in-review tasks' status against their PRs' merge state.
+
+    This is the bulk version of `ydk task close`. Prefer `ydk task close <id>` to
+    reconcile a single task, or to close a task that has no PR of its own. Prefer
+    `ydk task sync` to sweep every open/in-review task at once.
+    """
     import shutil
 
     from ydk.core.task_pr_lookup import find_task_pr, list_prs

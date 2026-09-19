@@ -322,6 +322,7 @@ ydk task block <id> --reason X         # Mark task as blocked
 ydk task done <id>                     # Verify + create PR + post proof (prints pass/fail per plugin, shows PR URL or first 3 lines of failure)
 ydk task done <id> --skip-plugin <name>  # Skip a genuinely failing plugin (verified internally)
 ydk task close <id>                    # After PR merge: check merge state via gh, transition status to done (status does NOT auto-update on merge — run this to reconcile, or to recover a task stuck at open/in-review)
+ydk task close <id> --delivered-by <task-id|PR-url|PR#> [--reason "text"]  # Close a task with no PR of its own (duplicate/covered elsewhere): skips PR lookup, records audit comment, sets done; either flag alone works
 ydk task add-subtask <id>              # Create discovered subtask linked to parent
 ydk task tdd <id> --stage red|green|refactor  # Set TDD phase on task
 ydk task quick "description"           # Fast path for small changes
