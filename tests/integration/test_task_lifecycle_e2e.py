@@ -168,8 +168,7 @@ class TestFullTaskLifecycle:
         active_task_file = project / ".ydk" / "active-task.json"
         assert active_task_file.exists(), "active-task.json not created"
         task_ctx = json.loads(active_task_file.read_text())
-        assert task_ctx["base_branch"] == base_branch
-        assert task_ctx["task_id"] == issue_number
+        assert task_ctx["tasks"][issue_number]["base_branch"] == base_branch
 
         # Verify we're on the correct branch
         branch_result = subprocess.run(

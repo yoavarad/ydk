@@ -112,14 +112,16 @@ class TaskLifecycle:
             worktree_path = self._root
             summary = f"Branch {branch} created from {base} (worktree isolation disabled)"
 
-        # Store active task context (branch + base) for PR creation
-        active_task_context = {
-            "task_id": task_id,
-            "base_branch": base_branch or "main",
-        }
+        # Store active task context (base branch) for PR creation, scoped by
+        # task_id. Multiple tasks can be in flight at once (parallel
+        # orchestrators, separate worktrees against the same checkout), so
+        # this is a per-task map rather than a single global slot -- writing
+        # our own entry must not clobber any other task's.
         active_task_file = self._root / ".ydk" / "active-task.json"
         active_task_file.parent.mkdir(parents=True, exist_ok=True)
-        active_task_file.write_text(json.dumps(active_task_context), encoding="utf-8")
+        active_tasks = self._read_active_tasks(active_task_file)
+        active_tasks[task_id] = {"base_branch": base_branch or "main"}
+        active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
 
         # Update status
         self._repo.update_status(task_id, "in-progress")
@@ -137,6 +139,29 @@ class TaskLifecycle:
         logger.info("Task %s started in %.1fs — %s", task_id, elapsed, summary)
 
         return {"task": task, "worktree": str(worktree_path), "session_id": session_id}
+
+    @staticmethod
+    def _read_active_tasks(active_task_file: Path) -> dict:
+        """Read the per-task map out of active-task.json.
+
+        Transparently migrates the legacy single-slot format
+        (``{"task_id": ..., "base_branch": ...}``) from before active-task.json
+        was scoped per task_id, so an old-format file left behind by a task
+        that started under the old code doesn't get silently dropped the
+        next time a different task calls start() and needs to merge in its
+        own entry.
+        """
+        if not active_task_file.exists():
+            return {}
+        try:
+            data = json.loads(active_task_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        if "tasks" in data:
+            return dict(data["tasks"])
+        if "task_id" in data:
+            return {data["task_id"]: {"base_branch": data.get("base_branch", "main")}}
+        return {}
 
     def plan(self, task_id: str, plan_text: str) -> None:
         """Post implementation plan."""
@@ -305,10 +330,17 @@ class TaskLifecycle:
         self._repo.remove_label(task_id, "in-progress")
         self._repo.add_label(task_id, "in-review")
 
-        # Remove active-task.json so SubagentStop hook allows session to end
+        # Remove this task's entry from active-task.json (not any other
+        # in-flight task's). Only delete the file once no tasks remain, so
+        # the SubagentStop hook keeps blocking session end for the others.
         active_task_file = self._root / ".ydk" / "active-task.json"
         if active_task_file.exists():
-            active_task_file.unlink()
+            active_tasks = self._read_active_tasks(active_task_file)
+            active_tasks.pop(task_id, None)
+            if active_tasks:
+                active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
+            else:
+                active_task_file.unlink()
 
         self._events.emit(TaskDoneEvent(task_id=task_id, pr_url=pr_url, proof_path=str(proof_path)))
 
@@ -631,15 +663,14 @@ class TaskLifecycle:
             )
             actual_branch = branch_result.stdout.strip()
 
-            # Read base branch from active task context
+            # Read base branch from this task's own entry in active-task.json.
+            # Never fall back to "whatever's currently active" -- a task with
+            # no entry of its own (e.g. a quickdev task, which never calls
+            # start()) must default to "main", not borrow another task's
+            # base branch.
             active_task_file = self._root / ".ydk" / "active-task.json"
-            base_branch = "main"
-            if active_task_file.exists():
-                try:
-                    task_ctx = json.loads(active_task_file.read_text(encoding="utf-8"))
-                    base_branch = task_ctx.get("base_branch", "main")
-                except (json.JSONDecodeError, OSError):
-                    pass
+            active_tasks = self._read_active_tasks(active_task_file)
+            base_branch = active_tasks.get(task_id, {}).get("base_branch", "main")
 
             # Pass the body via --body-file rather than inline: proof-rich
             # bodies can be tens of KB, which overflows the Windows
