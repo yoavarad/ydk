@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from ydk.cli.task_cmd import _find_task_pr, task_app
+from ydk.models.pm import TaskCreate
+from ydk.repositories.local.tasks import LocalTaskRepository
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 runner = CliRunner()
 
@@ -262,3 +269,133 @@ class TestCloseCommand:
         assert result.exit_code == 1
         assert "gh issue close failed" in result.output
         assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+@pytest.fixture
+def local_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalTaskRepository:
+    """Real LocalTaskRepository on tmp_path, wired into the CLI; gh PR lookup returns None."""
+    repo = LocalTaskRepository(tmp_path / ".ydk")
+    monkeypatch.setattr("ydk.cli.task_cmd._get_repo", lambda: repo)
+    monkeypatch.setattr("ydk.cli.task_cmd._find_task_pr", lambda _task_id: None)
+    return repo
+
+
+def _comment_text(repo: LocalTaskRepository, task_id: str) -> str:
+    file_path = repo._tasks_dir / f"{task_id}.md"
+    return file_path.read_text(encoding="utf-8")
+
+
+def _manifest_status(repo: LocalTaskRepository, task_id: str) -> str:
+    return str(repo._manifest.load()["tasks"][task_id]["status"])
+
+
+class TestCloseWithoutPr:
+    def _make_task(self, repo: LocalTaskRepository, title: str = "Task") -> str:
+        return repo.create_task(TaskCreate(title=title, story_id="S-001")).id
+
+    def test_delivered_by_existing_task_id_closes_and_records_ref(self, local_repo: LocalTaskRepository) -> None:
+        target = self._make_task(local_repo, "Target")
+        delivered = self._make_task(local_repo, "Deliverer")
+        result = runner.invoke(task_app, ["close", target, "--delivered-by", delivered])
+        assert result.exit_code == 0, result.output
+        assert local_repo.get_task(target).status == "done"
+        assert _manifest_status(local_repo, target) == "done"
+        assert delivered in _comment_text(local_repo, target)
+
+    def test_delivered_by_pr_url_closes_and_records_url(self, local_repo: LocalTaskRepository) -> None:
+        target = self._make_task(local_repo)
+        url = "https://github.com/acme/repo/pull/42"
+        result = runner.invoke(task_app, ["close", target, "--delivered-by", url])
+        assert result.exit_code == 0, result.output
+        assert local_repo.get_task(target).status == "done"
+        assert url in _comment_text(local_repo, target)
+
+    def test_delivered_by_pr_number_closes_and_records_number(self, local_repo: LocalTaskRepository) -> None:
+        target = self._make_task(local_repo)
+        result = runner.invoke(task_app, ["close", target, "--delivered-by", "#42"])
+        assert result.exit_code == 0, result.output
+        assert local_repo.get_task(target).status == "done"
+        assert "#42" in _comment_text(local_repo, target)
+
+    def test_reason_closes_and_records_reason(self, local_repo: LocalTaskRepository) -> None:
+        target = self._make_task(local_repo)
+        result = runner.invoke(task_app, ["close", target, "--reason", "dup of X"])
+        assert result.exit_code == 0, result.output
+        assert local_repo.get_task(target).status == "done"
+        assert _manifest_status(local_repo, target) == "done"
+        assert "dup of X" in _comment_text(local_repo, target)
+
+    def test_both_flags_record_both(self, local_repo: LocalTaskRepository) -> None:
+        target = self._make_task(local_repo, "Target")
+        delivered = self._make_task(local_repo, "Deliverer")
+        result = runner.invoke(task_app, ["close", target, "--delivered-by", delivered, "--reason", "covered by it"])
+        assert result.exit_code == 0, result.output
+        assert local_repo.get_task(target).status == "done"
+        text = _comment_text(local_repo, target)
+        assert delivered in text
+        assert "covered by it" in text
+
+    def test_flags_skip_pr_lookup(self, local_repo: LocalTaskRepository, monkeypatch: pytest.MonkeyPatch) -> None:
+        target = self._make_task(local_repo)
+
+        def _boom(_task_id: str) -> None:
+            raise AssertionError("PR lookup must be skipped when flags are given")
+
+        monkeypatch.setattr("ydk.cli.task_cmd._find_task_pr", _boom)
+        result = runner.invoke(task_app, ["close", target, "--reason", "not needed"])
+        assert result.exit_code == 0, result.output
+
+    def test_no_pr_and_no_flags_exits_1_with_hint(self, local_repo: LocalTaskRepository) -> None:
+        target = self._make_task(local_repo)
+        result = runner.invoke(task_app, ["close", target])
+        assert result.exit_code == 1
+        assert "--delivered-by" in result.output
+        assert "--reason" in result.output
+        assert local_repo.get_task(target).status == "open"
+
+    def test_unknown_delivered_by_task_id_exits_1_without_side_effects(self, local_repo: LocalTaskRepository) -> None:
+        target = self._make_task(local_repo)
+        before = _comment_text(local_repo, target)
+        result = runner.invoke(task_app, ["close", target, "--delivered-by", "T-999"])
+        assert result.exit_code == 1
+        assert local_repo.get_task(target).status == "open"
+        assert _manifest_status(local_repo, target) == "open"
+        assert _comment_text(local_repo, target) == before
+
+    def test_failed_comment_aborts_close(
+        self, local_repo: LocalTaskRepository, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = self._make_task(local_repo)
+
+        def _fail(_task_id: str, _comment: str) -> None:
+            raise RuntimeError("comment failed")
+
+        monkeypatch.setattr(local_repo, "add_comment", _fail)
+        result = runner.invoke(task_app, ["close", target, "--reason", "dup"])
+        assert result.exit_code == 1
+        assert "comment failed" in result.output
+        assert local_repo.get_task(target).status == "open"
+
+
+class TestClosePrPathsUnchangedWithRealRepo:
+    def test_merged_pr_sets_done_and_writes_no_comment(
+        self, local_repo: LocalTaskRepository, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = local_repo.create_task(TaskCreate(title="T", story_id="S-001")).id
+        monkeypatch.setattr("ydk.cli.task_cmd._find_task_pr", lambda _id: {"number": 42, "state": "MERGED"})
+        before = _comment_text(local_repo, target)
+        result = runner.invoke(task_app, ["close", target])
+        assert result.exit_code == 0, result.output
+        assert local_repo.get_task(target).status == "done"
+        assert "PR #42 merged" in result.output
+        assert "###" not in _comment_text(local_repo, target).replace(before, "")
+
+    def test_open_pr_leaves_status_unchanged(
+        self, local_repo: LocalTaskRepository, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = local_repo.create_task(TaskCreate(title="T", story_id="S-001")).id
+        monkeypatch.setattr("ydk.cli.task_cmd._find_task_pr", lambda _id: {"number": 7, "state": "OPEN"})
+        result = runner.invoke(task_app, ["close", target])
+        assert result.exit_code == 0
+        assert "not merged" in result.output
+        assert local_repo.get_task(target).status == "open"
