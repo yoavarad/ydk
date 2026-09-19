@@ -399,3 +399,40 @@ class TestClosePrPathsUnchangedWithRealRepo:
         assert result.exit_code == 0
         assert "not merged" in result.output
         assert local_repo.get_task(target).status == "open"
+
+
+class TestCloseHelp:
+    @staticmethod
+    def _help() -> str:
+        result = runner.invoke(task_app, ["close", "--help"], env={"COLUMNS": "200", "NO_COLOR": "1"})
+        assert result.exit_code == 0
+        return " ".join(result.output.split())
+
+    def test_help_explains_when_to_run_and_status_not_auto_updated(self) -> None:
+        out = self._help()
+        assert "AFTER the task's PR is merged" in out
+        assert "does NOT auto-update" in out
+
+    def test_help_mentions_recovery_of_stuck_task(self) -> None:
+        out = self._help()
+        assert "stuck" in out
+        assert "recover" in out.lower()
+
+    def test_help_explains_merge_check_and_noop_when_unmerged(self) -> None:
+        out = self._help()
+        assert "gh" in out
+        assert "merge" in out
+        assert "nothing" in out.lower()
+
+    def test_help_documents_no_pr_flags(self) -> None:
+        out = self._help()
+        assert "--delivered-by" in out
+        assert "--reason" in out
+        assert "audit comment" in out
+
+    def test_help_points_to_sync_for_bulk(self) -> None:
+        assert "ydk task sync" in self._help()
+
+    def test_help_includes_usage_example(self) -> None:
+        out = self._help()
+        assert "ydk task close T-a1b2c3d4" in out
