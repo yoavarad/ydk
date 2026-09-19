@@ -1,0 +1,28 @@
+$schema: "ydk:schema:route"
+id: "ydk:route:widgets/create"
+description: "Create a new widget"
+method: POST
+path: /widgets
+auth: required
+tag: widgets
+maps_to_use_case: WidgetService.create_widget
+request:
+  body:
+    name:
+      type: string
+      required: true
+    description:
+      type: text
+      required: false
+    price:
+      type: decimal
+      required: true
+    is_active:
+      type: boolean
+      required: true
+  path_params: {}
+  query_params: {}
+responses:
+  success:
+    status: 201
+    schema: WidgetResponse

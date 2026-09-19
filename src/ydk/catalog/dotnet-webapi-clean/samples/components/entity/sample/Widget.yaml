@@ -1,0 +1,33 @@
+$schema: "ydk:schema:entity"
+id: "ydk:entity:sample/Widget"
+name: Widget
+table_name: widgets
+description: "Sample widget entity"
+fields:
+  id:
+    type: uuid
+    primary_key: true
+    description: "Unique identifier"
+  name:
+    type: string
+    required: true
+    max_length: 200
+    description: "Widget name"
+  description:
+    type: text
+    required: false
+    nullable: true
+    description: "Optional description"
+  price:
+    type: decimal
+    required: true
+    precision: [10, 2]
+    description: "Widget price"
+  is_active:
+    type: boolean
+    required: true
+    description: "Active flag"
+  created_at:
+    type: datetime
+    required: true
+    description: "Creation time"

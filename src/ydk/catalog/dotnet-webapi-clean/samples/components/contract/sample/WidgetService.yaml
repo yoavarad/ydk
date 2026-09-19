@@ -1,0 +1,38 @@
+$schema: "ydk:schema:contract"
+id: "ydk:contract:sample/WidgetService"
+name: WidgetService
+description: "CRUD operations for widgets"
+methods:
+  create_widget:
+    description: "Create a new widget"
+    params:
+      name:
+        type: string
+        description: "Widget name"
+      description:
+        type: text
+        description: "Optional description"
+      price:
+        type: decimal
+        description: "Widget price"
+      is_active:
+        type: boolean
+        description: "Active flag"
+    returns:
+      type: Widget
+      description: "Created widget"
+  get_widget:
+    description: "Get widget by ID"
+    params:
+      widget_id:
+        type: uuid
+        description: "Widget primary key"
+    returns:
+      type: "Optional[Widget]"
+      description: "Found widget, or null if not found"
+  list_widgets:
+    description: "List all widgets"
+    params: {}
+    returns:
+      type: "list[Widget]"
+      description: "List of widgets"
