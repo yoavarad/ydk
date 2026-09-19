@@ -278,18 +278,19 @@ def _install_claude_hooks() -> None:
         "    exit 0\n"
         "fi\n"
         "\n"
-        "TASK_ID=$(python3 -c \"import json; print(json.load(open('$ACTIVE_TASK'))['task_id'])\" 2>/dev/null)\n"
+        "TASK_IDS=$(python3 -c \"import json; d=json.load(open('$ACTIVE_TASK')); "
+        "print(','.join(d.get('tasks', {})))\" 2>/dev/null)\n"
         "\n"
-        'if [ -z "$TASK_ID" ]; then\n'
+        'if [ -z "$TASK_IDS" ]; then\n'
         "    exit 0\n"
         "fi\n"
         "\n"
-        'echo "BLOCKED: Task $TASK_ID is still in progress."\n'
+        'echo "BLOCKED: Task(s) $TASK_IDS still in progress."\n'
         'echo ""\n'
         'echo "You must complete the task before finishing:"\n'
         'echo "  1. Ensure all tests pass"\n'
         'echo "  2. Ensure lint is clean"\n'
-        'echo "  3. Run: ydk task done $TASK_ID"\n'
+        'echo "  3. Run: ydk task done <task-id>"\n'
         'echo ""\n'
         'echo "The session cannot end until the task is properly completed with a PR."\n'
         "exit 2\n"

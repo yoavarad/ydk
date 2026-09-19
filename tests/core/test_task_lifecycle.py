@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -446,6 +447,34 @@ def test_start_writes_active_task_file_with_utf8_encoding(
     assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
+def test_start_migrates_legacy_active_task_file(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
+) -> None:
+    """start() migrates a pre-existing legacy flat {"task_id", "base_branch"}
+    active-task.json (from before per-task scoping) into the new per-task
+    map instead of silently dropping the other task's entry.
+    """
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(parents=True, exist_ok=True)
+    active_file = ydk_dir / "active-task.json"
+    active_file.write_text('{"task_id": "T-000", "base_branch": "legacy-branch"}', encoding="utf-8")
+
+    lc.start("T-001", base_branch="feature/new")
+
+    data = json.loads(active_file.read_text(encoding="utf-8"))
+    assert data["tasks"]["T-000"]["base_branch"] == "legacy-branch"
+    assert data["tasks"]["T-001"]["base_branch"] == "feature/new"
+
+
 def test_write_verified_flag_uses_utf8_encoding(
     mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
 ) -> None:
@@ -487,7 +516,7 @@ def test_create_pr_reads_active_task_file_with_utf8_encoding(
     ydk_dir = tmp_path / ".ydk"
     ydk_dir.mkdir(parents=True, exist_ok=True)
     active_file = ydk_dir / "active-task.json"
-    active_file.write_text('{"task_id": "T-001", "base_branch": "main"}', encoding="utf-8")
+    active_file.write_text('{"tasks": {"T-001": {"base_branch": "main"}}}', encoding="utf-8")
 
     def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
         if args[:3] == ["gh", "pr", "create"]:
@@ -503,6 +532,101 @@ def test_create_pr_reads_active_task_file_with_utf8_encoding(
 
     active_file_call = next(c for c in mock_read_text.call_args_list if c.args[0] == active_file)
     assert active_file_call.kwargs.get("encoding") == "utf-8"
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_uses_own_base_branch_per_task(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """Two tasks started with different base branches each get their own
+    base_branch back out of active-task.json -- never the other task's.
+
+    Regression test for the bug where active-task.json held a single
+    {"task_id", "base_branch"} slot for the whole repo: whichever task
+    called start() last clobbered the file for every other task in flight.
+    """
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+    mock_worktree.get_worktree_path.return_value = None
+
+    lc.start("T-001", base_branch="feature/a")
+    lc.start("T-002", base_branch="feature/b")
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(returncode=0, stdout="https://github.com/org/repo/pull/1\n")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/branch\n")
+        return MagicMock(returncode=0)  # git push
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    lc._create_pr("T-002", pr_body_override="body")
+    lc._create_pr("T-001", pr_body_override="body")
+
+    create_calls = [c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"]]
+    assert len(create_calls) == 2
+
+    def _base_arg(call: MagicMock) -> str:
+        argv = call.args[0]
+        return argv[argv.index("--base") + 1]
+
+    assert _base_arg(create_calls[0]) == "feature/b"
+    assert _base_arg(create_calls[1]) == "feature/a"
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_does_not_inherit_base_branch_from_unrelated_task(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """A task with no active-task.json entry of its own (e.g. a quickdev
+    task, which never calls start()) defaults to "main" instead of
+    borrowing whatever unrelated task's start() ran most recently.
+    """
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+    mock_worktree.get_worktree_path.return_value = None
+
+    lc.start("T-001", base_branch="develop")
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(returncode=0, stdout="https://github.com/org/repo/pull/1\n")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/branch\n")
+        return MagicMock(returncode=0)  # git push
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    lc._create_pr("QD-abc", pr_body_override="body")
+
+    create_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"])
+    argv = create_call.args[0]
+    assert argv[argv.index("--base") + 1] == "main"
 
 
 def test_done_skip_plugin_rejects_passing_plugin(lifecycle: TaskLifecycle, mock_verifier: MagicMock) -> None:
@@ -779,7 +903,7 @@ def test_done_removes_active_task_file(
     ydk_dir = tmp_path / ".ydk"
     ydk_dir.mkdir(parents=True, exist_ok=True)
     active_file = ydk_dir / "active-task.json"
-    active_file.write_text('{"task_id": "T-001", "base_branch": "main"}')
+    active_file.write_text('{"tasks": {"T-001": {"base_branch": "main"}}}')
 
     report = VerificationReport(
         timestamp="2025-01-01T00:00:00Z",
@@ -794,6 +918,54 @@ def test_done_removes_active_task_file(
 
     assert result["passed"] is True
     assert not active_file.exists(), "active-task.json should be removed after successful done"
+
+
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_removes_only_own_entry_when_other_tasks_still_active(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """done() removes only its own task's entry, leaving other in-flight
+    tasks' active-task.json entries (and their base branches) intact.
+    """
+    events = EventBus()
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=events,
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(parents=True, exist_ok=True)
+    active_file = ydk_dir / "active-task.json"
+    active_file.write_text(
+        '{"tasks": {"T-001": {"base_branch": "main"}, "T-002": {"base_branch": "develop"}}}',
+        encoding="utf-8",
+    )
+
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+
+    result = lc.done("T-001")
+
+    assert result["passed"] is True
+    assert active_file.exists(), "active-task.json should survive while T-002 is still in flight"
+    remaining = json.loads(active_file.read_text(encoding="utf-8"))
+    assert "T-001" not in remaining["tasks"]
+    assert remaining["tasks"]["T-002"]["base_branch"] == "develop"
 
 
 def test_done_scopes_verification_to_worktree_not_cwd(
