@@ -320,8 +320,25 @@ class TaskLifecycle:
                 self._repo.add_comment(task_id, f"**pr-body-validation FAILED:**\n{pr_body_check.output}")
                 return {"passed": False, "error": pr_body_check.output, "pr_body_check": pr_body_check}
 
-        # Create PR with deterministic body (task already fetched above for UI check)
-        pr_url = self._create_pr(task_id, task=task, report=report, pr_body_override=pr_body)
+        # Create PR with deterministic body (task already fetched above for UI check).
+        # The active-task.json cleanup below is wrapped in try/finally around
+        # the PR-creation call so this task's own entry is guaranteed to be
+        # removed even if _create_pr() raises -- otherwise the stale entry
+        # survives indefinitely and can break a later done() call.
+        active_task_file = self._root / ".ydk" / "active-task.json"
+        try:
+            pr_url = self._create_pr(task_id, task=task, report=report, pr_body_override=pr_body)
+        finally:
+            # Remove this task's entry from active-task.json (not any other
+            # in-flight task's). Only delete the file once no tasks remain, so
+            # the SubagentStop hook keeps blocking session end for the others.
+            if active_task_file.exists():
+                active_tasks = self._read_active_tasks(active_task_file)
+                active_tasks.pop(task_id, None)
+                if active_tasks:
+                    active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
+                else:
+                    active_task_file.unlink()
 
         # Post proof to issue
         proof_summary = "\n".join(f"OK {c.name} ({c.duration_seconds}s)" for c in report.checks)
@@ -329,18 +346,6 @@ class TaskLifecycle:
         self._repo.update_status(task_id, "in-review")
         self._repo.remove_label(task_id, "in-progress")
         self._repo.add_label(task_id, "in-review")
-
-        # Remove this task's entry from active-task.json (not any other
-        # in-flight task's). Only delete the file once no tasks remain, so
-        # the SubagentStop hook keeps blocking session end for the others.
-        active_task_file = self._root / ".ydk" / "active-task.json"
-        if active_task_file.exists():
-            active_tasks = self._read_active_tasks(active_task_file)
-            active_tasks.pop(task_id, None)
-            if active_tasks:
-                active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
-            else:
-                active_task_file.unlink()
 
         self._events.emit(TaskDoneEvent(task_id=task_id, pr_url=pr_url, proof_path=str(proof_path)))
 
