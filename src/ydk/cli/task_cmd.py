@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -1859,15 +1860,78 @@ def _find_task_pr(task_id: str) -> dict[str, object] | None:
     return find_task_pr(task_id)
 
 
+_PR_URL_RE = re.compile(r"^https?://\S+$")
+_PR_NUMBER_RE = re.compile(r"^#?\d+$")
+
+
+def _validate_delivered_by(repo: LifecycleTaskRepository, ref: str) -> str:
+    """Validate a --delivered-by ref (PR URL, task id, or PR number); return it normalized.
+
+    PR URLs are format-validated only. Otherwise the ref must be an existing task
+    (looked up via the repository); failing that, a bare/#-prefixed number is accepted
+    as a PR number. Raises ValueError if the ref is none of these.
+    """
+    ref = ref.strip()
+    if _PR_URL_RE.match(ref):
+        return ref
+    resolved = _resolve_task_id(ref)
+    try:
+        repo.get_task(resolved)
+    except (ValueError, FileNotFoundError, KeyError, RuntimeError):
+        if _PR_NUMBER_RE.match(ref):
+            return ref
+        raise ValueError(f"--delivered-by {ref!r} is not an existing task id, PR URL, or PR number") from None
+    return resolved
+
+
 @task_app.command()
 def close(
     task_id: str = typer.Argument(..., help="Task ID to close (reconcile status from PR merge state)"),
+    delivered_by: str | None = typer.Option(
+        None,
+        "--delivered-by",
+        help="Task id or PR URL/number that delivered this work (closes a task with no PR of its own)",
+    ),
+    reason: str | None = typer.Option(
+        None,
+        "--reason",
+        help="Why the task is closed without its own PR (e.g. 'dup of T-012')",
+    ),
 ) -> None:
-    """Reconcile a task's status to done based on its PR's merge state."""
+    """Reconcile a task's status to done based on its PR's merge state.
+
+    For tasks with no PR of their own, pass --delivered-by <task-or-PR> and/or
+    --reason <text>: the PR lookup is skipped, an audit comment is added to the
+    task, and the task is marked done.
+    """
     task_id = _resolve_task_id(task_id)
+    delivered_by = (delivered_by or "").strip() or None
+    reason = (reason or "").strip() or None
+
+    if delivered_by is not None or reason is not None:
+        repo = _get_repo()
+        try:
+            audit_parts = []
+            if delivered_by is not None:
+                audit_parts.append(f"Delivered by: {_validate_delivered_by(repo, delivered_by)}")
+            if reason is not None:
+                audit_parts.append(f"Reason: {reason}")
+            # Comment first: a failed comment must abort the close so no done task lacks an audit trail.
+            repo.add_comment(task_id, "Closed without its own PR. " + " | ".join(audit_parts))
+            repo.update_status(task_id, "done")
+        except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from None
+        typer.echo(f"Task {task_id} closed without PR -> status done ({'; '.join(audit_parts)})")
+        return
+
     pr = _find_task_pr(task_id)
     if pr is None:
-        typer.echo(f"Error: No PR found for task {task_id}", err=True)
+        typer.echo(
+            f"Error: No PR found for task {task_id}. "
+            "Use --delivered-by <task-or-PR> or --reason <text> to close a task without its own PR.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     if pr.get("state") != "MERGED":

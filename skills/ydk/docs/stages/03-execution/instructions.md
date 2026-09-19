@@ -320,6 +320,7 @@ ydk task close T-a1b2c3d4
 # Task T-a1b2c3d4 closed: PR #47 merged -> status done
 ```
 - If no PR is found for the task: errors, exits 1, no state changed
+- For a task with no PR of its own (duplicate, covered by another task/PR): `ydk task close <id> --delivered-by <task-id-or-PR-url> [--reason "text"]` (either flag alone also works) skips the PR lookup, records an audit comment in the task's Activity Log, then sets `done`. An unknown `--delivered-by` task id errors (exit 1) before any change
 - If the PR exists but isn't merged yet: reports "not merged", exits 0, no state changed
 - You MAY run this any time to check/reconcile a task's status against its PR's real merge state
 
