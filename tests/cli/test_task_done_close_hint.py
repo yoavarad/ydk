@@ -37,6 +37,19 @@ def test_done_success_prints_close_hint_after_pr_url(mock_build: MagicMock) -> N
 
 
 @patch("ydk.cli.task_cmd._build_lifecycle")
+def test_done_passes_quick_task_id_when_building_lifecycle(mock_build: MagicMock) -> None:
+    mock_build.return_value = _lifecycle_returning(
+        {"passed": True, "pr_url": "https://github.com/o/r/pull/10"},
+    )
+
+    result = runner.invoke(task_app, ["done", "QD-abc123"])
+
+    assert result.exit_code == 0
+    mock_build.assert_called_once_with("QD-abc123")
+    mock_build.return_value.done.assert_called_once_with("QD-abc123", summary=None, skip_plugins=None)
+
+
+@patch("ydk.cli.task_cmd._build_lifecycle")
 def test_done_failure_omits_close_hint_and_keeps_exit_code(mock_build: MagicMock) -> None:
     mock_build.return_value = _lifecycle_returning({"passed": False, "error": "boom"})
     result = runner.invoke(task_app, ["done", "T-042"])

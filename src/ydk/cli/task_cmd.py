@@ -144,7 +144,7 @@ def _parse_depends_on_arg(raw: list[str]) -> list[str | Dependency]:
     return result
 
 
-def _build_lifecycle() -> TaskLifecycle:
+def _build_lifecycle(task_id: str | None = None) -> TaskLifecycle:
     """Construct a TaskLifecycle with default dependencies from config."""
     from ydk.core.config import load_config
     from ydk.core.events import EventBus
@@ -155,7 +155,12 @@ def _build_lifecycle() -> TaskLifecycle:
 
     cfg = load_config()
     root = Path(".")
-    repo = get_task_repository()
+    if task_id is not None and task_id.upper().startswith("QD-"):
+        from ydk.repositories.local.tasks import LocalTaskRepository
+
+        repo = LocalTaskRepository(root / ".ydk")
+    else:
+        repo = get_task_repository()
     events = EventBus()
     worktree_mgr = WorktreeManager(root)
     enabled = cfg.verification.enabled or None
@@ -776,7 +781,7 @@ def done(
     """
     task_id = _resolve_task_id(task_id)
     try:
-        lc = _build_lifecycle()
+        lc = _build_lifecycle(task_id)
     except Exception as e:
         console.print(f"[red]Failed to initialize task lifecycle: {e}[/red]")
         raise typer.Exit(1) from None
