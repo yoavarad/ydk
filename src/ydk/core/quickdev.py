@@ -7,6 +7,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from ydk.models.quickdev import QuickDevContext
+from ydk.repositories.local.frontmatter import render_frontmatter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -78,7 +79,15 @@ class QuickDevSetup:
 
         task_file = tasks_dir / f"{task_id}.md"
         task_file.write_text(
-            f"---\nid: {task_id}\ntitle: {description}\nstatus: in-progress\ntype: quickdev\n---\n\n{description}\n",
+            render_frontmatter(
+                {
+                    "id": task_id,
+                    "title": description,
+                    "status": "in-progress",
+                    "type": "quickdev",
+                },
+                description,
+            ),
             encoding="utf-8",
         )
 

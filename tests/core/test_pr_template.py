@@ -53,6 +53,12 @@ class TestBuild:
         body = builder.build("T-001", proof_dir)
         assert "Closes #T-001" in body
 
+    def test_quick_task_does_not_emit_invalid_closes_reference(self, proof_dir: Path) -> None:
+        builder = PRBodyBuilder()
+        body = builder.build("QD-abc123", proof_dir)
+        assert "Closes #QD-abc123" not in body
+        assert "Quick task: QD-abc123" in body
+
     def test_handles_all_files_missing_gracefully(self, proof_dir: Path) -> None:
         builder = PRBodyBuilder()
         body = builder.build("T-001", proof_dir)

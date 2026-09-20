@@ -7,6 +7,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from ydk.core.quickdev import QuickDevSetup, _generate_task_id, _slugify
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +67,19 @@ class TestQuickDevSetup:
         content = task_file.read_text()
         assert "add user avatar" in content
         assert "status: in-progress" in content
+
+    def test_task_file_title_with_colon_is_valid_frontmatter(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "init"],
+            cwd=str(tmp_path),
+            capture_output=True,
+        )
+
+        result = QuickDevSetup().setup("fix(cli): support quick tasks", tmp_path)
+        task = LocalTaskRepository(tmp_path / ".ydk").get_task(result.task_id)
+
+        assert task.title == "fix(cli): support quick tasks"
 
     def test_finds_relevant_components(self, tmp_path: Path) -> None:
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)

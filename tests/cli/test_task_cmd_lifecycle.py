@@ -7,9 +7,26 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from ydk.cli import app
+from ydk.cli.task_cmd import _build_lifecycle
 from ydk.models.pm import TaskDetail, TaskSummary
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 runner = CliRunner()
+
+
+def test_build_lifecycle_uses_local_repository_for_quick_task(tmp_path, monkeypatch) -> None:
+    """Quick tasks stay local even when the project remote is GitHub."""
+    monkeypatch.chdir(tmp_path)
+    tasks_dir = tmp_path / ".ydk" / "tasks"
+    tasks_dir.mkdir(parents=True)
+    (tasks_dir / "QD-abc123.md").write_text(
+        "---\nid: QD-abc123\ntitle: Quick fix\nstatus: in-progress\ntype: quickdev\n---\n\nQuick fix\n",
+        encoding="utf-8",
+    )
+
+    lifecycle = _build_lifecycle("QD-abc123")
+
+    assert isinstance(lifecycle._repo, LocalTaskRepository)
 
 
 def _make_lifecycle_mock(passed: bool = True) -> MagicMock:

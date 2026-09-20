@@ -81,7 +81,10 @@ class PRBodyBuilder:
             parts.append("")
 
         # --- Closing reference ---
-        parts.append(f"Closes #{task_id}")
+        if task_id.upper().startswith("QD-"):
+            parts.append(f"Quick task: {task_id}")
+        else:
+            parts.append(f"Closes #{task_id}")
         parts.append("")
 
         # --- Footer ---
