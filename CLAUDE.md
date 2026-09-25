@@ -23,7 +23,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
 # Type check
-uv run ty check src/ydk/ --python-version 3.13 --exclude "src/ydk/catalog/*/generators/"
+uv run ty check src/ydk/ --python-version 3.13
 ```
 
 ## Onboarding
