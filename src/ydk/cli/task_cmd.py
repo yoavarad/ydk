@@ -292,12 +292,16 @@ def _normalize_refs(value: object) -> list[str]:
     return [str(value)]
 
 
-def _validate_batch_yaml(data: dict[str, object], project_root: Path | None = None) -> list[str]:
+def _validate_batch_yaml(
+    data: dict[str, object],
+    project_root: Path | None = None,
+    existing_ids: set[str] | None = None,
+) -> list[str]:
     """Validate a batch YAML structure. Returns a list of error strings (empty = valid).
 
     Checks:
     - Required fields present on each entity
-    - All depends_on reference IDs that exist in the same YAML
+    - All depends_on reference IDs that exist in the same YAML or in ``existing_ids``
     - All dependency types are valid
     - No self-dependencies
     - spec_refs point to existing files (when project_root is provided)
@@ -357,7 +361,7 @@ def _validate_batch_yaml(data: dict[str, object], project_root: Path | None = No
             dep_type = parts[1] if len(parts) > 1 else "blocks"
             if dep_ref == tid:
                 errors.append(f"Task '{tid}' has self-dependency")
-            if dep_ref not in defined_ids:
+            if dep_ref not in defined_ids and dep_ref not in (existing_ids or set()):
                 errors.append(f"Task '{tid}' depends on undefined ID '{dep_ref}'")
             if dep_type not in _VALID_DEP_TYPES:
                 errors.append(f"Task '{tid}' has invalid dependency type '{dep_type}'")
@@ -454,7 +458,11 @@ def create_batch(
 
     # --- Validation ---
     project_root = Path(".")
-    validation_errors = _validate_batch_yaml(data, project_root=project_root)
+    try:
+        existing_ids = {t.id for t in _get_repo().list_tasks(state="all")}
+    except Exception:
+        existing_ids = set()
+    validation_errors = _validate_batch_yaml(data, project_root=project_root, existing_ids=existing_ids)
     if validation_errors:
         for err in validation_errors:
             console.print(f"  [red]ERROR[/red] {err}")

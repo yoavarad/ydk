@@ -278,6 +278,30 @@ class TestDryRunValidation:
         assert "Epic 1" in result.output
         assert "Task 1" in result.output
 
+    def test_validate_batch_yaml_accepts_existing_ids(self) -> None:
+        """existing_ids satisfy depends_on, with and without a type suffix."""
+        data = {"tasks": [{"id": "t1", "title": "T1", "depends_on": ["T-001", "T-002:validates"]}]}
+        assert _validate_batch_yaml(data, existing_ids={"T-001", "T-002"}) == []
+
+    def test_validate_batch_yaml_unknown_id_still_errors_with_existing_ids(self) -> None:
+        """IDs in neither the YAML nor existing_ids stay 'undefined ID'."""
+        data = {"tasks": [{"id": "t1", "title": "T1", "depends_on": ["T-999"]}]}
+        errors = _validate_batch_yaml(data, existing_ids={"T-001"})
+        assert any("undefined ID 'T-999'" in e for e in errors)
+
+    def test_dry_run_accepts_existing_task_ids(self, tmp_path: Path) -> None:
+        """--dry-run accepts depends_on IDs that exist in the repo."""
+        batch_file = tmp_path / "batch.yaml"
+        batch_file.write_text(
+            yaml.dump({"tasks": [{"id": "t1", "title": "T1", "depends_on": ["T-001", "T-002:validates"]}]}),
+            encoding="utf-8",
+        )
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = [TaskSummary(id="T-001", title="a"), TaskSummary(id="T-002", title="b")]
+        with patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo):
+            result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
+        assert result.exit_code == 0, result.output
+
     def test_validate_batch_yaml_self_dependency(self) -> None:
         """_validate_batch_yaml catches self-dependencies."""
         errors = _validate_batch_yaml({"tasks": [{"id": "t1", "title": "T1", "depends_on": ["t1:blocks"]}]})
