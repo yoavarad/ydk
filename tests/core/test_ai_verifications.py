@@ -222,7 +222,6 @@ class TestSpecAlignmentWithMockedAgent:
             client_args={"api_key": "test-key"},
             model_id="claude-sonnet-4-6",
             max_tokens=8192,
-            params={"temperature": 0.0},
         )
 
     def test_failing_evaluation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
