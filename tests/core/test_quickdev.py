@@ -6,6 +6,8 @@ import re
 import subprocess
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ydk.core.quickdev import QuickDevSetup, _generate_task_id, _slugify
 from ydk.repositories.local.tasks import LocalTaskRepository
 
@@ -80,6 +82,24 @@ class TestQuickDevSetup:
         task = LocalTaskRepository(tmp_path / ".ydk").get_task(result.task_id)
 
         assert task.title == "fix(cli): support quick tasks"
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Fix: handle #123 case",
+            "add thing # not a comment",
+            "say \"hi\" and 'bye'",
+            "- leading dash",
+            "[leading bracket] item",
+            "line one\nline two",
+        ],
+    )
+    def test_task_file_title_round_trips_exactly(self, tmp_path: Path, title: str) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
+        result = QuickDevSetup().setup(title, tmp_path)
+        task = LocalTaskRepository(tmp_path / ".ydk").get_task(result.task_id)
+
+        assert task.title == title
 
     def test_finds_relevant_components(self, tmp_path: Path) -> None:
         subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
