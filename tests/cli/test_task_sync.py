@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from ydk.cli import app
@@ -12,6 +14,11 @@ from ydk.cli.task_cmd import task_app
 from ydk.models.pm import TaskSummary
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
 
 
 def _summary(task_id: str, status: str) -> TaskSummary:
@@ -151,3 +158,85 @@ class TestTaskSyncCommand:
         assert "skipped" in data
         assert len(data["reconciled"]) == 1
         assert data["reconciled"][0]["id"] == "T-030"
+
+
+def _write_quick_task(task_id: str, status: str) -> Path:
+    tasks_dir = Path(".ydk") / "tasks"
+    tasks_dir.mkdir(parents=True, exist_ok=True)
+    path = tasks_dir / f"{task_id}.md"
+    path.write_text(
+        f"---\nid: {task_id}\ntitle: t\nstatus: {status}\ntype: quickdev\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+class TestTaskSyncQuickTasks:
+    def test_merged_pr_marks_in_progress_quick_task_done(self) -> None:
+        path = _write_quick_task("QD-abc123", "in-progress")
+        pr = {
+            "number": 11,
+            "state": "MERGED",
+            "headRefName": "fix/qd-abc123-thing",
+            "createdAt": "2026-01-01T00:00:00Z",
+        }
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = []
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.core.task_pr_lookup.list_prs", return_value=[pr]),
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0
+        assert "QD-abc123" in result.output
+        assert "status: done" in path.read_text(encoding="utf-8")
+        mock_repo.update_status.assert_not_called()
+
+    def test_unmerged_quick_task_left_unchanged(self) -> None:
+        path = _write_quick_task("QD-def456", "in-progress")
+        pr = {
+            "number": 12,
+            "state": "OPEN",
+            "headRefName": "fix/qd-def456-thing",
+            "createdAt": "2026-01-01T00:00:00Z",
+        }
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = []
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.core.task_pr_lookup.list_prs", return_value=[pr]),
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0
+        assert "status: in-progress" in path.read_text(encoding="utf-8")
+        assert "not merged" in result.output.lower()
+
+    def test_done_quick_task_ignored(self) -> None:
+        _write_quick_task("QD-000111", "done")
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = []
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.core.task_pr_lookup.list_prs", return_value=[]) as mock_list_prs,
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0
+        assert "No in-review or open tasks to reconcile." in result.output
+        mock_list_prs.assert_not_called()
+
+    def test_malformed_quick_task_frontmatter_is_skipped(self) -> None:
+        bad = Path(".ydk") / "tasks" / "QD-bad000.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text("---\nid: [unclosed\n---\n\nbody\n", encoding="utf-8")
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = []
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.core.task_pr_lookup.list_prs", return_value=[]),
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0

@@ -1985,6 +1985,32 @@ def close(
         raise typer.Exit(code=1) from None
 
 
+def _open_quick_task_files() -> list[tuple[str, Path]]:
+    """Return (id, path) for QD-* quick task files not yet done."""
+    import yaml
+
+    from ydk.repositories.local.frontmatter import parse_frontmatter
+
+    tasks_dir = Path(".ydk") / "tasks"
+    found: list[tuple[str, Path]] = []
+    for path in sorted(tasks_dir.glob("QD-*.md")):
+        try:
+            fm, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if fm.get("status") in ("open", "in-progress", "in-review"):
+            found.append((path.stem, path))
+    return found
+
+
+def _set_quick_task_done(path: Path) -> None:
+    from ydk.repositories.local.frontmatter import parse_frontmatter, render_frontmatter
+
+    fm, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+    fm["status"] = "done"
+    path.write_text(render_frontmatter(fm, body), encoding="utf-8")
+
+
 @task_app.command("sync")
 def sync(ctx: typer.Context) -> None:
     """Bulk-reconcile open/in-review tasks' status against their PRs' merge state.
@@ -2004,8 +2030,9 @@ def sync(ctx: typer.Context) -> None:
     repo = _get_repo()
     summaries = repo.list_tasks(state="all")
     candidates = [s for s in summaries if s.status in ("open", "in-review")]
+    quick_tasks = _open_quick_task_files()
 
-    if not candidates:
+    if not candidates and not quick_tasks:
         if not format_or_echo(ctx, {"reconciled": [], "skipped": []}):
             typer.echo("No in-review or open tasks to reconcile.")
         return
@@ -2027,6 +2054,21 @@ def sync(ctx: typer.Context) -> None:
             reconciled.append({"id": s.id, "pr_number": pr.get("number")})
         except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
             skipped.append({"id": s.id, "reason": str(exc)})
+
+    # Quick tasks (QD-*) live only as files, not in the manifest/repo backend.
+    for qid, qpath in quick_tasks:
+        pr = find_task_pr(qid, prs=prs)
+        if pr is None:
+            skipped.append({"id": qid, "reason": "no PR found"})
+            continue
+        if pr.get("state") != "MERGED":
+            skipped.append({"id": qid, "reason": f"PR #{pr.get('number')} not merged (state: {pr.get('state')})"})
+            continue
+        try:
+            _set_quick_task_done(qpath)
+            reconciled.append({"id": qid, "pr_number": pr.get("number")})
+        except (OSError, ValueError) as exc:
+            skipped.append({"id": qid, "reason": str(exc)})
 
     if format_or_echo(ctx, {"reconciled": reconciled, "skipped": skipped}):
         return
