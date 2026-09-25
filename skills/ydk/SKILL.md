@@ -315,7 +315,8 @@ Guards are a standalone Python script at `.claude/hooks/guard.py`, installed by 
 
 ```bash
 ydk task start <id>                    # Claim task, create worktree (branch names sanitized: colons/slashes/dots stripped), explore
-ydk task start <id> --base <branch>    # Branch from specified base (default: HEAD, not always main)
+ydk task start <id> --base <branch>    # Branch from specified base (default: HEAD, not always main); "main" and "origin/main" both accepted
+# active-task.json: {"tasks": {"<id>": {"base_branch": "<ref>"}}} (legacy {"task_id","base_branch"} still read); remote prefix stripped only for real remotes when opening the PR
 ydk task start <id> --force            # Restart a stale task (re-create worktree)
 ydk task comment <id> "msg"            # Post comment to task issue (replaces plan and progress)
 ydk task block <id> --reason X         # Mark task as blocked
