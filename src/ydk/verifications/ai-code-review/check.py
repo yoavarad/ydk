@@ -182,7 +182,6 @@ def run_check(context: dict) -> dict:
         client_args={"api_key": api_key},
         model_id=model_id,
         max_tokens=8192,
-        params={"temperature": 0.0},
     )
 
     system_prompt = SYSTEM_PROMPT
