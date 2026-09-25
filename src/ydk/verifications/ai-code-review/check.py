@@ -280,13 +280,13 @@ def main() -> None:
     try:
         result = run_check(context)
     except Exception as exc:
-        # Gracefully handle any crash — never output malformed JSON
+        # A crash must never report PASS — emit a well-formed failing result
         result = {
             "name": "ai-code-review",
-            "passed": True,
-            "output": f"SKIPPED: plugin error — {exc}",
+            "passed": False,
+            "output": f"ERROR: plugin error - {exc}",
             "duration_seconds": 0,
-            "detail": {"skipped": True, "error": str(exc)},
+            "detail": {"error": str(exc), "crashed": True},
         }
     finally:
         # Restore stdout before writing the result

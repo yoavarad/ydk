@@ -264,7 +264,17 @@ def main() -> None:
     except ImportError:
         _skip("strands-agents not installed")
 
-    result = run_check(context)
+    try:
+        result = run_check(context)
+    except Exception as exc:
+        # A crash must never report PASS — emit a well-formed failing result
+        result = {
+            "name": "spec-alignment",
+            "passed": False,
+            "output": f"ERROR: plugin error - {exc}",
+            "duration_seconds": 0,
+            "detail": {"error": str(exc), "crashed": True},
+        }
     json.dump(result, sys.stdout)
     sys.exit(0 if result["passed"] else 1)
 
