@@ -164,19 +164,36 @@ class TaskLifecycle:
         return {}
 
     @staticmethod
-    def _normalize_base_branch(base_branch: str) -> str:
-        """Strip a remote prefix from a base branch ref.
+    def _list_remotes(cwd: str | Path | None) -> tuple[str, ...]:
+        """Names of configured git remotes, falling back to ``("origin",)``."""
+        try:
+            result = subprocess.run(
+                ["git", "remote"], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            return ("origin",)
+        out = result.stdout if isinstance(result.stdout, str) else ""
+        remotes = tuple(line.strip() for line in out.splitlines() if line.strip())
+        return remotes or ("origin",)
 
-        active-task.json stores the git ref used to create the
-        worktree/branch from (e.g. ``"origin/main"``), which is correct for
-        that purpose but is a local remote-tracking ref, not a GitHub branch
-        name. ``gh pr create --base`` needs the bare branch name
-        (``"main"``), so strip a leading ``"<remote>/"`` segment before using
-        the value as a PR base. A value with no remote prefix (e.g.
-        ``"main"``) passes through unchanged.
+    @staticmethod
+    def _normalize_base_branch(base_branch: str, remotes: tuple[str, ...] = ("origin",)) -> str:
+        """Reduce a base ref to the bare branch name ``gh pr create --base`` needs.
+
+        active-task.json stores the git ref the worktree was created from
+        (e.g. ``"origin/main"``). Strip a leading ``refs/remotes/<remote>/`` or
+        ``<remote>/`` only when ``<remote>`` is a real git remote, so
+        slash-named local branches (``feat/foo``, ``release/1.x``) pass through
+        unchanged. ``origin/feat/foo`` becomes ``feat/foo``.
         """
-        if "/" in base_branch:
-            return base_branch.split("/", 1)[1]
+        if base_branch.startswith("refs/heads/"):
+            return base_branch[len("refs/heads/") :]
+        if base_branch.startswith("refs/remotes/"):
+            rest = base_branch[len("refs/remotes/") :]
+            return rest.split("/", 1)[1] if "/" in rest else rest
+        remote, sep, rest = base_branch.partition("/")
+        if sep and rest and remote in remotes:
+            return rest
         return base_branch
 
     def plan(self, task_id: str, plan_text: str) -> None:
@@ -699,7 +716,7 @@ class TaskLifecycle:
             active_task_file = self._root / ".ydk" / "active-task.json"
             active_tasks = self._read_active_tasks(active_task_file)
             raw_base_branch = active_tasks.get(task_id, {}).get("base_branch", "main")
-            base_branch = self._normalize_base_branch(raw_base_branch)
+            base_branch = self._normalize_base_branch(raw_base_branch, self._list_remotes(cwd))
 
             # Pass the body via --body-file rather than inline: proof-rich
             # bodies can be tens of KB, which overflows the Windows
@@ -743,7 +760,11 @@ class TaskLifecycle:
             stderr = result.stderr.strip() if result.stderr else ""
             logger.warning("gh pr create failed: %s", stderr[:200])
             detail = stderr or "no error output captured"
-            raise RuntimeError(f"gh pr create failed for task {task_id}: {detail}")
+            raise RuntimeError(
+                f"gh pr create failed for task {task_id} (base_branch={base_branch!r}, from {raw_base_branch!r}): "
+                f"{detail}. If the base is wrong, fix it in .ydk/active-task.json "
+                f"(tasks.{task_id}.base_branch) or restart with 'ydk task start {task_id} --base <branch>'."
+            )
 
         # Fallback: return a local reference (only reached when gh is unavailable)
         return f"local://{task_id}/pr-pending"

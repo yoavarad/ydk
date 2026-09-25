@@ -638,7 +638,11 @@ def start(
     task_id: str = typer.Argument(..., help="Task ID to start"),
     session_id: str | None = typer.Option(None, "--session-id", help="Claude Code session ID"),
     base: str | None = typer.Option(
-        None, "--base", "-b", help="Base branch to create worktree from (default: current branch)"
+        None,
+        "--base",
+        "-b",
+        help="Base branch to create worktree from (default: current branch). "
+        "Both 'main' and 'origin/main' are accepted; a remote prefix is stripped for the PR base.",
     ),
     force: bool = typer.Option(False, "--force", help="Force restart even if task shows in-progress"),
 ) -> None:

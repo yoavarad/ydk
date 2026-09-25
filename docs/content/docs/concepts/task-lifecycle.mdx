@@ -138,6 +138,18 @@ ydk task start T-a1b2c3d4 --base feature/api-v2
 
 This is essential when tasks depend on work that has not yet been merged to main. The task branches from the specified branch, giving it access to the prerequisite code.
 
+`--base` accepts either a bare branch (`main`) or a remote-tracking ref (`origin/main`). The ref is used as-is to create the worktree; for the PR (`gh pr create --base`) a leading `<remote>/` or `refs/remotes/<remote>/` is stripped only when `<remote>` is a real git remote, so `origin/main` becomes `main`, `origin/feat/foo` becomes `feat/foo`, and a local `feat/foo` is left unchanged.
+
+### `active-task.json`
+
+`ydk task start` records the base ref in `.ydk/active-task.json`, keyed per task:
+
+```json
+{"tasks": {"T-a1b2c3d4": {"base_branch": "origin/main"}}}
+```
+
+The older single-slot format `{"task_id": "T-a1b2c3d4", "base_branch": "main"}` is still read and migrated transparently. A task with no entry defaults to `main`. If `gh pr create` rejects the base, the error names the `base_branch` used and how to fix it (edit the entry or restart with `--base`).
+
 ### `--force` Flag
 
 If a task was previously started but its worktree is stale or corrupted, use `--force` to clean up and restart:

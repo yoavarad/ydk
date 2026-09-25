@@ -317,6 +317,8 @@ def test_create_pr_raises_when_gh_pr_create_fails(
     message = str(exc_info.value)
     assert "T-001" in message
     assert "Body is too long" in message
+    assert "base_branch='main'" in message
+    assert "--base" in message
 
 
 @patch("shutil.which", return_value="/usr/bin/gh")
@@ -637,13 +639,24 @@ def test_create_pr_does_not_inherit_base_branch_from_unrelated_task(
     [
         ("origin/main", "main"),
         ("main", "main"),
-        ("upstream/develop", "develop"),
+        ("origin/feat/foo", "feat/foo"),
+        ("feat/foo", "feat/foo"),
+        ("release/1.x", "release/1.x"),
+        ("refs/remotes/origin/main", "main"),
+        ("refs/remotes/origin/feat/foo", "feat/foo"),
+        ("refs/heads/main", "main"),
     ],
 )
 def test_normalize_base_branch(raw: str, expected: str) -> None:
     """_normalize_base_branch strips a remote prefix, leaving a bare branch
     name unchanged."""
     assert TaskLifecycle._normalize_base_branch(raw) == expected
+
+
+def test_normalize_base_branch_strips_only_real_remotes() -> None:
+    """A custom remote is stripped when listed; unknown prefixes are kept."""
+    assert TaskLifecycle._normalize_base_branch("upstream/develop", ("origin", "upstream")) == "develop"
+    assert TaskLifecycle._normalize_base_branch("upstream/develop") == "upstream/develop"
 
 
 @patch("shutil.which", return_value="/usr/bin/gh")
