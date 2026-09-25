@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .types import SQLALCHEMY_IMPORTS, STDLIB_IMPORTS
+from _context.types import SQLALCHEMY_IMPORTS, STDLIB_IMPORTS
 
 
 def python_imports_for_fields(fields: list[dict] | dict) -> list[str]:
@@ -41,7 +41,7 @@ def sqlalchemy_imports_for_fields(fields: list[dict] | dict) -> list[str]:
     Accepts both YDK map-format (dict) and list-format fields.
     Returns sorted import statements.
     """
-    from .types import CANONICAL_TO_SQLALCHEMY
+    from _context.types import CANONICAL_TO_SQLALCHEMY
 
     # Normalize to list format
     if isinstance(fields, dict):
