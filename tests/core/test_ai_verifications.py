@@ -6,11 +6,10 @@ import json
 import sys
 import types
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -491,3 +490,42 @@ class TestAiCodeReviewWithMockedAgent:
         assert result["passed"] is True
         assert result["detail"]["warning_count"] == 1
         assert result["detail"]["critical_count"] == 0
+
+
+class TestPluginCrashReportsFailure:
+    """A crash inside run_check must never report PASS."""
+
+    @pytest.mark.parametrize(
+        ("path", "name"),
+        [
+            (AI_CODE_REVIEW_PATH, "ai-code-review"),
+            (SPEC_ALIGNMENT_PATH, "spec-alignment"),
+        ],
+    )
+    def test_crash_in_run_check_fails(
+        self, path: Path, name: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import io
+
+        mod = _load_check_module(path, name.replace("-", "_") + "_crash")
+
+        def boom(_ctx: dict[str, Any]) -> dict[str, Any]:
+            raise RuntimeError("agent exploded")
+
+        monkeypatch.setattr(mod, "run_check", boom)
+        monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+
+        with (
+            patch.dict(sys.modules, {"strands": types.ModuleType("strands")}),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mod.main()
+
+        assert exc_info.value.code == 1
+        result = json.loads(capsys.readouterr().out)
+        assert result["passed"] is False
+        assert not result["output"].startswith("SKIPPED")
+        assert result["output"].startswith("ERROR: plugin error")
+        assert result["detail"]["crashed"] is True
+        assert "agent exploded" in result["detail"]["error"]
+        assert "skipped" not in result["detail"]
