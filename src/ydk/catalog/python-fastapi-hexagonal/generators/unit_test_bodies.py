@@ -153,10 +153,11 @@ def build_service_file(
 
     # Gather all methods from use-case
     methods_raw = uc.get("methods", {})
+    method_names: list[str]
     if isinstance(methods_raw, dict):
-        method_names = list(methods_raw.keys())
+        method_names = [str(k) for k in methods_raw]
     else:
-        method_names = [m.get("name", "execute") for m in methods_raw]
+        method_names = [str(m.get("name", "execute")) for m in methods_raw]
     if not method_names:
         method_names = ["execute"]
 
