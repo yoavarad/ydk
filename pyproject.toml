@@ -110,3 +110,6 @@ version_files = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ydk"]
+
+[tool.ty.src]
+exclude = ["src/ydk/catalog/*/generators/"]
