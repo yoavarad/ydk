@@ -101,7 +101,7 @@ def list_filter_params(entity: dict) -> list[dict]:
     Handles both YDK map-format and legacy list-format fields.
     Each item: {name, type, default}
     """
-    from .types import CANONICAL_TO_PYTHON
+    from _context.types import CANONICAL_TO_PYTHON
 
     params = []
     fields = entity.get("fields", {})

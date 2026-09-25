@@ -159,7 +159,7 @@ def pk_type(entity: dict) -> str:
 
     Handles both YDK map-format and legacy list-format fields.
     """
-    from .types import CANONICAL_TO_CSHARP
+    from _context.types import CANONICAL_TO_CSHARP
 
     fields = entity.get("fields", {})
     if isinstance(fields, dict):
