@@ -62,6 +62,54 @@ def test_resolve_task_id_reads_mapping_with_utf8_encoding(tmp_path: Path, monkey
     assert mock_read_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("T-001", "42"), ("S-001", "17"), ("E-001", "9"), ("#12", "12"), ("12", "12"), ("T-5e9dbd18", "T-5e9dbd18")],
+)
+def test_resolve_task_id_resolves_all_mapped_placeholders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw: str, expected: str
+) -> None:
+    """_resolve_task_id resolves task/story/epic placeholders and normalizes '#N'."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "batch-mapping.json").write_text(
+        '{"T-001": "#42", "S-001": "#17", "E-001": "9"}', encoding="utf-8"
+    )
+
+    assert _resolve_task_id(raw) == expected
+
+
+def test_task_create_resolves_mapped_depends_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--depends-on batch placeholders resolve via the mapping before use."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "batch-mapping.json").write_text('{"T-001": "#42", "T-002": "#43"}', encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "task",
+            "create",
+            "--title",
+            "x",
+            "--story",
+            "#1",
+            "--acceptance",
+            "a",
+            "--test-strategy",
+            "t",
+            "--depends-on",
+            "T-001,T-002:validates",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "'42'" in result.output
+    assert "task_id='43'" in result.output
+    assert "T-001" not in result.output
+
+
 def test_task_validate_dag_valid(tmp_path: Path) -> None:
     """ydk task validate-dag exits 0 for a valid DAG."""
     mock_repo = MagicMock()
