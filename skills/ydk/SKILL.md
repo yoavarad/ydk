@@ -530,7 +530,7 @@ The ignition stage between brainstorming (Stage 01) and task management (Stage 0
 ## Related Skills
 
 - `skills/gh-issue-to-tasks/SKILL.md` — use when a GitHub issue filed by someone else must be triaged into verbose YDK tasks, linked back, and retired when the tasks finish.
-- `orchestrate-ready-tasks` (user skill, `~/.claude/skills/orchestrate-ready-tasks/SKILL.md`, invoke `/orchestrate-ready-tasks`) — use to run every `ydk task ready` task in parallel, one orchestrator subagent per task, each ending in a PR; also resumes unfinished tasks and fixes sibling-PR conflicts after a merge.
+- `skills/orchestrate-ready-tasks/SKILL.md` (invoke `/orchestrate-ready-tasks`) — use to run every `ydk task ready` task in parallel, one orchestrator subagent per task, each ending in a PR; also resumes unfinished tasks and fixes sibling-PR conflicts after a merge.
 
 ## Cross-Cutting Concerns
 

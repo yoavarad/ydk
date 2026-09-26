@@ -27,6 +27,8 @@ mkdir -p ~/.claude/skills ~/.codex/skills ~/.agents/skills
 cp -R skills/ydk ~/.claude/skills/
 # Optional: triage external GitHub issues into YDK tasks
 cp -R skills/gh-issue-to-tasks ~/.claude/skills/
+# Optional: run all ready tasks in parallel, one orchestrator per task
+cp -R skills/orchestrate-ready-tasks ~/.claude/skills/
 ```
 
 Use the skills directory for the agent you actually run. The installed folder must contain `SKILL.md`.
@@ -119,6 +121,7 @@ Decisions, failed assumptions, reusable patterns, and hard-won lessons should be
 skills/ydk/
   SKILL.md                 # Entry point the agent loads
 skills/gh-issue-to-tasks/  # Optional skill: external GitHub issues -> YDK tasks
+skills/orchestrate-ready-tasks/  # Optional skill: parallel orchestrators for ready tasks
   docs/stages/             # Stage-specific process instructions
   docs/cross-cutting/      # Shared process guidance
 
