@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
-from ydk.repositories.github.tasks import GitHubTaskRepository
+from ydk.repositories.github.tasks import GitHubTaskRepository, _extract_issue_number
 
 
 def _fake_run(returncode: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
@@ -245,3 +245,20 @@ class TestAddComment:
         fake = _fake_run(returncode=1, stderr="error")
         with patch("ydk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
             repo.add_comment(42, "text")
+
+
+# ---------------------------------------------------------------------------
+# _extract_issue_number (strict parser)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractIssueNumber:
+    @pytest.mark.parametrize(("raw", "expected"), [("12", 12), ("#12", 12), (" #7 ", 7)])
+    def test_accepts_digits_or_hash_digits(self, raw: str, expected: int) -> None:
+        assert _extract_issue_number(raw) == expected
+
+    @pytest.mark.parametrize("raw", ["T-5e9dbd18", "QD-abc123", "T-12345678", "T-001", "", "#", "abc", "1.5"])
+    def test_rejects_non_issue_ids_with_clear_error(self, raw: str) -> None:
+        with pytest.raises(ValueError, match=r"is not a GitHub issue number; remote=github expects N or #N") as exc:
+            _extract_issue_number(raw)
+        assert repr(raw) in str(exc.value)

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 import typer
 
 from ydk.cli._helpers import format_or_echo
+from ydk.core.task_ref import resolve_task_ref
 from ydk.core.task_validator import validate_dag
 from ydk.models.task import Task
 from ydk.output.console import console
@@ -77,25 +78,11 @@ task_app = typer.Typer(
 
 
 def _resolve_task_id(raw_id: str) -> str:
-    """Resolve T-001 placeholder to GitHub issue number via batch mapping.
+    """Resolve batch placeholders (task/story/epic) and normalize '#N' to 'N'.
 
-    If a batch-mapping.json exists and contains the ID, returns the resolved value.
-    If no mapping file exists or the ID is not in the mapping, returns the raw ID
-    as-is (it may be a valid local-backend task ID like T-001).
+    Unmapped IDs are returned as-is; backend parsers validate the final format.
     """
-    import json as _json
-
-    if raw_id.startswith("T-") or raw_id.startswith("t-"):
-        mapping_file = Path(".ydk") / "batch-mapping.json"
-        if mapping_file.exists():
-            try:
-                mapping = _json.loads(mapping_file.read_text(encoding="utf-8"))
-                resolved = mapping.get(raw_id.upper())
-                if resolved:
-                    return resolved
-            except (ValueError, OSError):
-                pass
-    return raw_id
+    return resolve_task_ref(raw_id)
 
 
 _VALID_DEP_TYPES = frozenset(
@@ -240,7 +227,10 @@ def create(
     _warn_missing_acceptance(list(acceptance), ctx)
     _warn_missing_test_strategy(test_strategy, ctx)
 
-    parsed_deps = _parse_depends_on_arg(depends_on)
+    parsed_deps = [
+        _Dep(task_id=_resolve_task_id(d.task_id), type=d.type) if isinstance(d, _Dep) else _resolve_task_id(d)
+        for d in _parse_depends_on_arg(depends_on)
+    ]
 
     if dry_run:
         console.print("[yellow]Dry run -- no task will be created[/yellow]")

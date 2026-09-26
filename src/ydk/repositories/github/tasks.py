@@ -433,12 +433,19 @@ class GitHubTaskRepository:
         return compacted_ids
 
 
-def _extract_issue_number(task_id: str) -> int:
-    """Extract numeric issue number from task_id.
+_ISSUE_REF = re.compile(r"#?([0-9]+)")
 
-    Handles both 'T-001' (local format) and '42' (GitHub issue number).
+
+def _extract_issue_number(task_id: str) -> int:
+    """Extract the GitHub issue number from ``N`` or ``#N``.
+
+    Raises:
+        ValueError: If ``task_id`` is not ``N`` or ``#N`` (e.g. ``T-001``,
+            ``T-5e9dbd18``, ``QD-abc123``). Batch placeholders must be resolved
+            via ``ydk.core.task_ref.resolve_task_ref`` before calling this.
     """
-    task_id = task_id.lstrip("#")
-    if task_id.startswith("T-") or task_id.startswith("t-"):
-        return int(task_id.split("-")[1])
-    return int(task_id)
+    match = _ISSUE_REF.fullmatch(str(task_id).strip())
+    if match is None:
+        msg = f"{task_id!r} is not a GitHub issue number; remote=github expects N or #N"
+        raise ValueError(msg)
+    return int(match.group(1))
