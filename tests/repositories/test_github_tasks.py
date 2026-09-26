@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ydk.models.gate import Gate, GateStatus, GateType
 from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
 from ydk.repositories.github.tasks import GitHubTaskRepository
 
@@ -245,3 +246,103 @@ class TestAddComment:
         fake = _fake_run(returncode=1, stderr="error")
         with patch("ydk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
             repo.add_comment(42, "text")
+
+
+# ---------------------------------------------------------------------------
+# Round-trip persistence of gates / tdd_stage / session_id
+# ---------------------------------------------------------------------------
+
+
+class _FakeGhIssue:
+    """In-memory stand-in for the gh CLI boundary holding one issue body."""
+
+    def __init__(self, body: str) -> None:
+        self.body = body
+
+    def __call__(self, cmd: list[str], *args: object, **kwargs: object) -> MagicMock:
+        if cmd[:3] == ["gh", "issue", "view"]:
+            if "-q" in cmd:
+                return _fake_run(stdout=self.body + "\n")
+            payload = {"number": 42, "title": "T", "state": "OPEN", "labels": [], "body": self.body, "url": ""}
+            return _fake_run(stdout=json.dumps(payload))
+        if cmd[:3] == ["gh", "issue", "edit"] and "--body" in cmd:
+            self.body = cmd[cmd.index("--body") + 1]
+        return _fake_run()
+
+
+_BASE_BODY = "**Story**: #1\n**Dependencies**: #5\n\n### Description\nDo it\n\n### Acceptance Criteria\n- [ ] Works"
+
+
+class TestFieldPersistenceRoundTrip:
+    def test_update_gates_then_get_task_returns_same_gates(self) -> None:
+        fake = _FakeGhIssue(_BASE_BODY)
+        repo = GitHubTaskRepository()
+        gates = [
+            Gate(id="G-1", type=GateType.HUMAN, description="Approval", status=GateStatus.RESOLVED),
+            Gate(id="G-2", type=GateType.PR_MERGED, description="Upstream", config={"pr": "7"}),
+        ]
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            repo.update_gates("42", gates)
+            detail = repo.get_task("42")
+        assert detail.gates == gates
+        assert detail.description == "Do it"
+        assert [ac.text for ac in detail.acceptance_criteria if isinstance(ac, AcceptanceCriterion)] == ["Works"]
+
+    def test_adding_gate_appends_rather_than_overwrites(self) -> None:
+        fake = _FakeGhIssue(_BASE_BODY)
+        repo = GitHubTaskRepository()
+        first = Gate(id="G-1", type=GateType.HUMAN, description="Approval")
+        second = Gate(id="G-2", type=GateType.TIMER, description="Wait")
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            repo.update_gates("42", [first])
+            existing = repo.get_task("42").gates
+            repo.update_gates("42", [*existing, second])
+            detail = repo.get_task("42")
+        assert [g.id for g in detail.gates] == ["G-1", "G-2"]
+
+    def test_tdd_stage_round_trip(self) -> None:
+        fake = _FakeGhIssue(_BASE_BODY)
+        repo = GitHubTaskRepository()
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            repo.update_frontmatter("42", {"tdd_stage": "red"})
+            assert repo.get_task("42").tdd_stage == "red"
+            repo.update_frontmatter("42", {"tdd_stage": "green"})
+            detail = repo.get_task("42")
+        assert detail.tdd_stage == "green"
+        assert fake.body.count("**TDD stage**") == 1
+        assert detail.story_id == "#1"
+        assert detail.description == "Do it"
+
+    def test_session_id_round_trip(self) -> None:
+        fake = _FakeGhIssue(_BASE_BODY)
+        repo = GitHubTaskRepository()
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            repo.update_frontmatter("42", {"session_id": "sess-1"})
+            detail = repo.get_task("42")
+        assert detail.session_id == "sess-1"
+
+    def test_field_added_to_body_without_header_fields(self) -> None:
+        fake = _FakeGhIssue("### Description\nOnly a description")
+        repo = GitHubTaskRepository()
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            repo.update_frontmatter("42", {"tdd_stage": "refactor"})
+            detail = repo.get_task("42")
+        assert detail.tdd_stage == "refactor"
+        assert detail.description == "Only a description"
+
+    def test_dependencies_still_replaced(self) -> None:
+        fake = _FakeGhIssue(_BASE_BODY)
+        repo = GitHubTaskRepository()
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            repo.update_frontmatter("42", {"dependencies": ["#8", "#9"]})
+            detail = repo.get_task("42")
+        assert detail.dependencies == ["#8", "#9"]
+
+    def test_unknown_key_raises_without_calling_gh(self) -> None:
+        repo = GitHubTaskRepository()
+        with (
+            patch("ydk.repositories.github.tasks.run_gh") as mock_run,
+            pytest.raises(ValueError, match="bogus"),
+        ):
+            repo.update_frontmatter("42", {"bogus": "x"})
+        mock_run.assert_not_called()

@@ -9,13 +9,20 @@ from typing import TYPE_CHECKING
 
 from ydk.models.pm import Dependency, DependencyStatus, TaskCreate, TaskDetail, TaskStatus, TaskSummary
 from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
-from ydk.repositories.github.parser import parse_task_detail, render_task_body
+from ydk.repositories.github.parser import parse_task_detail, render_gate_line, render_task_body, set_body_field
 
 if TYPE_CHECKING:
     from ydk.models.compaction import CompactedTask
     from ydk.models.gate import Gate
 
 _list = builtins.list
+
+# update_frontmatter key -> ``**Label**:`` body field that parse_task_detail reads back.
+_BODY_FIELD_LABELS: dict[str, str] = {
+    "dependencies": "Dependencies",
+    "tdd_stage": "TDD stage",
+    "session_id": "Session",
+}
 
 
 def _dep_to_str(dep: object) -> str:
@@ -241,8 +248,15 @@ class GitHubTaskRepository:
         run_gh(cmd)  # ignore errors if label doesn't exist
 
     def update_frontmatter(self, task_id: str, fields: dict[str, object]) -> None:
-        """Update fields in a GitHub issue body by re-rendering the relevant lines."""
-        import re
+        """Update ``**Field**:`` lines in a GitHub issue body (add if missing, replace if present).
+
+        Raises ValueError for keys this backend cannot persist, rather than
+        silently dropping them.
+        """
+        unknown = sorted(set(fields) - set(_BODY_FIELD_LABELS))
+        if unknown:
+            supported = ", ".join(sorted(_BODY_FIELD_LABELS))
+            raise ValueError(f"Unsupported frontmatter key(s) for GitHub backend: {unknown} (supported: {supported})")
 
         issue_number = _extract_issue_number(task_id)
 
@@ -254,11 +268,11 @@ class GitHubTaskRepository:
 
         for key, value in fields.items():
             if key == "dependencies":
-                # Replace the **Dependencies**: line
                 dep_list = value if isinstance(value, list) else [value]
-                dep_strs = [_dep_to_str(d) for d in dep_list]
-                new_line = f"**Dependencies**: {', '.join(dep_strs)}"
-                body = re.sub(r"\*\*Dependencies\*\*:.*", new_line, body)
+                text = ", ".join(_dep_to_str(d) for d in dep_list)
+            else:
+                text = "" if value is None else str(value)
+            body = set_body_field(body, _BODY_FIELD_LABELS[key], text)
 
         # Update the issue
         update_cmd = ["gh", "issue", "edit", str(issue_number), "--body", body]
@@ -359,9 +373,7 @@ class GitHubTaskRepository:
         body = result.stdout.strip()
 
         # Render gates block
-        gate_lines: _list[str] = []
-        for g in gates:
-            gate_lines.append(f"- **{g.id}** ({g.type}): {g.description} [{g.status}]")
+        gate_lines = [render_gate_line(g) for g in gates]
         gates_block = "\n".join(gate_lines) if gate_lines else "_No gates_"
         new_section = f"### Gates\n{gates_block}"
 

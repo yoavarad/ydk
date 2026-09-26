@@ -1,5 +1,6 @@
 """Tests for the GitHub Issue body parser — round-trip and edge cases."""
 
+from ydk.models.gate import Gate, GateStatus, GateType
 from ydk.models.pm import AcceptanceCriterion, EpicCreate, StoryCreate, TaskCreate, TaskStatus
 from ydk.repositories.github.parser import (
     _github_ref,
@@ -7,8 +8,10 @@ from ydk.repositories.github.parser import (
     parse_story_detail,
     parse_task_detail,
     render_epic_body,
+    render_gate_line,
     render_story_body,
     render_task_body,
+    set_body_field,
 )
 
 # ---------------------------------------------------------------------------
@@ -237,3 +240,91 @@ class TestGithubRef:
         story = StoryCreate(title="Test", epic_id="E-002")
         body = render_story_body(story)
         assert "**Epic**: #2" in body
+
+
+# ---------------------------------------------------------------------------
+# Gates / TDD stage / session parsing
+# ---------------------------------------------------------------------------
+
+
+class TestTaskLifecycleFieldParsing:
+    """parse_task_detail reads back gates, tdd_stage and session_id from the body."""
+
+    def test_parses_gates_section(self) -> None:
+        gates = [
+            Gate(id="G-1", type=GateType.HUMAN, description="Approval: from lead", status=GateStatus.RESOLVED),
+            Gate(id="G-2", type=GateType.PR_MERGED, description="Wait [upstream]", config={"pr": "12"}),
+        ]
+        body = "**Story**: #1\n\n### Description\nDo it\n\n### Gates\n" + "\n".join(render_gate_line(g) for g in gates)
+        detail = parse_task_detail(1, "T", body, "OPEN", [])
+        assert detail.gates == gates
+        assert detail.description == "Do it"
+
+    def test_parses_legacy_gate_line_without_metadata(self) -> None:
+        body = "### Gates\n- **G-9** (timer): Wait a day [pending]"
+        detail = parse_task_detail(1, "T", body, "OPEN", [])
+        assert len(detail.gates) == 1
+        assert detail.gates[0].id == "G-9"
+        assert detail.gates[0].type == GateType.TIMER
+        assert detail.gates[0].description == "Wait a day"
+        assert detail.gates[0].status == GateStatus.PENDING
+
+    def test_no_gates_placeholder_yields_empty(self) -> None:
+        detail = parse_task_detail(1, "T", "### Gates\n_No gates_", "OPEN", [])
+        assert detail.gates == []
+
+    def test_parses_tdd_stage_and_session(self) -> None:
+        body = "**Story**: #1\n**TDD stage**: green\n**Session**: sess-abc\n\n### Description\nx"
+        detail = parse_task_detail(1, "T", body, "OPEN", [])
+        assert detail.tdd_stage == "green"
+        assert detail.session_id == "sess-abc"
+
+    def test_missing_fields_default_none(self) -> None:
+        detail = parse_task_detail(1, "T", "### Description\nx", "OPEN", [])
+        assert detail.tdd_stage is None
+        assert detail.session_id is None
+        assert detail.gates == []
+
+    def test_render_task_body_includes_gates_round_trip(self) -> None:
+        gates = [Gate(id="G-1", type=GateType.CUSTOM, description="Other", resolved_at="2026-01-01T00:00:00Z")]
+        task = TaskCreate(title="T", description="d", acceptance_criteria=["a"], gates=gates)
+        detail = parse_task_detail(1, "T", render_task_body(task), "OPEN", [])
+        assert detail.gates == gates
+        assert detail.description == "d"
+
+    def test_gate_metadata_cannot_close_html_comment(self) -> None:
+        gate = Gate(id="G-1", type=GateType.CUSTOM, description="x", config={"k": "a --> b"})
+        assert "-->" not in render_gate_line(gate).removesuffix(" -->")
+        detail = parse_task_detail(1, "T", "### Gates\n" + render_gate_line(gate), "OPEN", [])
+        assert detail.gates == [gate]
+
+
+class TestSetBodyField:
+    def test_replaces_existing_field(self) -> None:
+        body = "**Story**: #1\n**TDD stage**: red\n\n### Description\nx"
+        assert set_body_field(body, "TDD stage", "green") == "**Story**: #1\n**TDD stage**: green\n\n### Description\nx"
+
+    def test_adds_after_last_header_field(self) -> None:
+        body = "**Story**: #1\n\n### Description\n**Session**: not-a-field"
+        out = set_body_field(body, "Session", "s1")
+        assert out == "**Story**: #1\n**Session**: s1\n\n### Description\n**Session**: not-a-field"
+
+    def test_adds_to_empty_body(self) -> None:
+        assert set_body_field("", "Session", "s1") == "**Session**: s1"
+
+    def test_empty_value_removes_field(self) -> None:
+        body = "**Story**: #1\n**Dependencies**: #2\n\n### Description\nx"
+        assert set_body_field(body, "Dependencies", "") == "**Story**: #1\n\n### Description\nx"
+
+    def test_invalid_gate_lines_are_skipped_with_warning(self, caplog) -> None:
+        body = (
+            "### Gates\n"
+            "- **G-1** (bogus-type): x [pending]\n"
+            "- **G-2** (human): x [weird]\n"
+            "- **G-3** (human): x [pending] <!-- ydk-gate {not json} -->\n"
+            "- **G-4** (human): ok [pending]"
+        )
+        with caplog.at_level("WARNING"):
+            detail = parse_task_detail(1, "T", body, "OPEN", [])
+        assert [g.id for g in detail.gates] == ["G-4"]
+        assert caplog.text.count("Skipping unparseable gate line") == 3
