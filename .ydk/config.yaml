@@ -26,3 +26,12 @@ execution:
   max_parallel_agents: 5
   task_timeout_minutes: 30
   worktree_isolation: true
+verification:
+  # Only plugins relevant to this Python CLI repo. Guards (guard:*) are not filtered.
+  enabled:
+    - python-quality       # pre-commit: ruff format + ruff lint + ty (mirrors CI lint job)
+    - python-tdd-guard     # pre-commit: every source file has a test file
+    - tests-pytest         # pre-push: pytest (mirrors CI test job)
+    - ai-code-review       # pre-push: AI diff review
+    - spec-alignment       # pre-push: AI spec alignment
+    - pr-body-validation   # ydk task done: PR body proof gate
