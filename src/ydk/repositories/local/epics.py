@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from ydk.models.pm import EpicCreate, EpicDetail, TaskStatus
+from ydk.models.pm import EpicCreate, EpicDetail, EpicSummary, TaskStatus
 from ydk.repositories.local.frontmatter import (
     append_comment,
     render_frontmatter,
@@ -68,6 +68,17 @@ class LocalEpicRepository:
             status=TaskStatus.OPEN,
             url="",
         )
+
+    def list_epics(self, status: str = "open") -> list[EpicSummary]:
+        """Read manifest (fast). Filter by *status*; ``"all"`` returns every epic."""
+        data = self._manifest.load()
+        results: list[EpicSummary] = []
+        for eid, info in data.get("epics", {}).items():
+            epic_status = info.get("status", "open")
+            if status != "all" and epic_status != status:
+                continue
+            results.append(EpicSummary(id=eid, title=info["title"], status=epic_status))
+        return results
 
     def update_status(self, epic_id: str, status: str) -> None:
         """Update status in both the frontmatter file and the manifest."""
