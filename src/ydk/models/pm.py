@@ -158,6 +158,8 @@ class StoryDetail(BaseModel):
     id: str = ""
     title: str
     epic_id: str | None = None
+    spec_refs: list[str] = Field(default_factory=list)
+    component_refs: list[str] = Field(default_factory=list)
     description: str = ""
     acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
     labels: list[str] = Field(default_factory=list)
@@ -198,6 +200,8 @@ class EpicDetail(BaseModel):
     id: str = ""
     title: str
     description: str = ""
+    release: str = ""
+    spec_refs: list[str] = Field(default_factory=list)
     labels: list[str] = Field(default_factory=list)
     status: TaskStatus = TaskStatus.OPEN
     url: str = ""

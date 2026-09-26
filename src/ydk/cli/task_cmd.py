@@ -1069,22 +1069,26 @@ def list_tasks(
 
     # Post-filter by epic or story if requested
     if epic or story:
+        epic_story_ids: set[str] = set()
+        if epic:
+            try:
+                from ydk.repositories.factory import get_story_repository
+
+                for s in get_story_repository().list_stories(epic_id=epic):
+                    if s.id:
+                        epic_story_ids.add(s.id)
+                    # GitHub stories are identified by issue number; tasks reference them as "#N".
+                    number = getattr(s, "number", 0)
+                    if number:
+                        epic_story_ids.update({f"#{number}", str(number)})
+            except Exception:
+                epic_story_ids = set()
         filtered = []
         for t in tasks:
             try:
                 detail = repo.get_task(t.id)
-                if epic and detail.story_id:
-                    # Check if the story belongs to the requested epic
-                    try:
-                        from ydk.repositories.factory import get_story_repository
-
-                        story_repo = get_story_repository()
-                        stories = story_repo.list_stories(epic_id=epic)
-                        epic_story_ids = {s.id for s in stories}
-                        if detail.story_id not in epic_story_ids:
-                            continue
-                    except Exception:
-                        continue
+                if epic and detail.story_id not in epic_story_ids:
+                    continue
                 if story and detail.story_id != story:
                     continue
                 filtered.append(t)
@@ -1469,25 +1473,9 @@ def coverage(
         story_repo = get_story_repository()
         stories = story_repo.list_stories()
         for s in stories:
-            # For GitHub backend, parse spec_refs from issue body via parser
-            sid = s.id if hasattr(s, "id") else str(getattr(s, "number", ""))
-            # Try to get full story detail with spec_refs
-            try:
-                from ydk.repositories.github.parser import _parse_body
-
-                # If the story has body content, parse spec_refs from it
-                if hasattr(s, "description") and s.description:
-                    fields, _sections = _parse_body(
-                        f"**Spec refs**: {','.join(getattr(s, 'spec_refs', []))}" if hasattr(s, "spec_refs") else ""
-                    )
-                    refs = fields.get("spec refs", "")
-                    if refs:
-                        for ref in refs.split(","):
-                            ref = ref.strip()
-                            if ref:
-                                story_refs.setdefault(ref, set()).add(sid)
-            except (ImportError, AttributeError):
-                pass
+            sid = s.id or str(getattr(s, "number", ""))
+            for ref in getattr(s, "spec_refs", []):
+                story_refs.setdefault(ref, set()).add(sid)
     except (ImportError, Exception):
         pass
 
