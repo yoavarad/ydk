@@ -527,6 +527,10 @@ The process of generating a runnable project skeleton from an installed ignition
 ### Stage 1.5
 The ignition stage between brainstorming (Stage 01) and task management (Stage 02). After specs are validated, `ydk ignite` generates a runnable skeleton. Tasks in Stage 02 then focus exclusively on business logic — boilerplate is already generated.
 
+## Related Skills
+
+- `skills/gh-issue-to-tasks/SKILL.md` — use when a GitHub issue filed by someone else must be triaged into verbose YDK tasks, linked back, and retired when the tasks finish.
+
 ## Cross-Cutting Concerns
 
 Apply across all stages. Read when relevant:
