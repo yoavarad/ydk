@@ -116,6 +116,7 @@ class TaskDetail(BaseModel):
     status: str = "open"
     assignee: str | None = None
     session_id: str | None = None
+    tdd_stage: str | None = None
     complexity: int | None = None
     complexity_reasoning: str | None = None
     url: str = ""
