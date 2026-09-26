@@ -29,6 +29,9 @@ cp -R skills/ydk ~/.claude/skills/
 cp -R skills/gh-issue-to-tasks ~/.claude/skills/
 # Optional: run all ready tasks in parallel, one orchestrator per task
 cp -R skills/orchestrate-ready-tasks ~/.claude/skills/
+# Claude Code only loads agent definitions from ~/.claude/agents/ (or a
+# project's .claude/agents/), never from skill directories, so copy these too:
+cp skills/orchestrate-ready-tasks/agents/*.md ~/.claude/agents/
 ```
 
 Use the skills directory for the agent you actually run. The installed folder must contain `SKILL.md`.
