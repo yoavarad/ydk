@@ -11,7 +11,9 @@ import pytest
 from typer.testing import CliRunner
 
 from ydk.cli.task_cmd import _find_task_pr, task_app
-from ydk.models.pm import TaskCreate
+from ydk.models.pm import EpicCreate, StoryCreate, TaskCreate
+from ydk.repositories.local.epics import LocalEpicRepository
+from ydk.repositories.local.stories import LocalStoryRepository
 from ydk.repositories.local.tasks import LocalTaskRepository
 
 if TYPE_CHECKING:
@@ -279,6 +281,8 @@ def local_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> LocalTaskRepo
     """Real LocalTaskRepository on tmp_path, wired into the CLI; gh PR lookup returns None."""
     repo = LocalTaskRepository(tmp_path / ".ydk")
     monkeypatch.setattr("ydk.cli.task_cmd._get_repo", lambda: repo)
+    monkeypatch.setattr("ydk.cli.task_cmd._get_story_repo", lambda: LocalStoryRepository(tmp_path / ".ydk"))
+    monkeypatch.setattr("ydk.cli.task_cmd._get_epic_repo", lambda: LocalEpicRepository(tmp_path / ".ydk"))
     monkeypatch.setattr("ydk.cli.task_cmd._find_task_pr", lambda _task_id: None)
     return repo
 
@@ -402,6 +406,52 @@ class TestClosePrPathsUnchangedWithRealRepo:
         assert result.exit_code == 0
         assert "not merged" in result.output
         assert local_repo.get_task(target).status == "open"
+
+
+class TestCloseRollsUpStoryAndEpic:
+    """Closing the last task of an epic closes its story and epic and prints the next step."""
+
+    @staticmethod
+    def _seed(tmp_path: Path, repo: LocalTaskRepository) -> tuple[str, str, str, str]:
+        epic = LocalEpicRepository(tmp_path / ".ydk").create_epic(EpicCreate(title="Big epic")).id
+        story = LocalStoryRepository(tmp_path / ".ydk").create_story(StoryCreate(title="S", epic_id=epic)).id
+        first = repo.create_task(TaskCreate(title="a", story_id=story)).id
+        last = repo.create_task(TaskCreate(title="b", story_id=story)).id
+        return epic, story, first, last
+
+    @staticmethod
+    def _epic_status(tmp_path: Path, epic: str) -> str:
+        return next(e.status for e in LocalEpicRepository(tmp_path / ".ydk").list_epics(status="all") if e.id == epic)
+
+    def test_merged_pr_close_of_last_task_closes_epic(
+        self, tmp_path: Path, local_repo: LocalTaskRepository, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        epic, _story, first, last = self._seed(tmp_path, local_repo)
+        monkeypatch.setattr("ydk.cli.task_cmd._find_task_pr", lambda _id: {"number": 1, "state": "MERGED"})
+        result = runner.invoke(task_app, ["close", first])
+        assert result.exit_code == 0, result.output
+        assert "Epic" not in result.output
+        assert self._epic_status(tmp_path, epic) == "open"
+
+        result = runner.invoke(task_app, ["close", last])
+        assert result.exit_code == 0, result.output
+        assert f'Epic {epic} "Big epic" complete (2/2 tasks)' in result.output
+        assert f"Next: ydk memory retrospective --epic {epic}" in result.output
+        assert self._epic_status(tmp_path, epic) == "done"
+
+    def test_delivered_by_close_of_last_task_closes_epic(self, tmp_path: Path, local_repo: LocalTaskRepository) -> None:
+        epic, _story, first, last = self._seed(tmp_path, local_repo)
+        runner.invoke(task_app, ["close", first, "--reason", "dup"])
+        result = runner.invoke(task_app, ["close", last, "--delivered-by", first])
+        assert result.exit_code == 0, result.output
+        assert f'Epic {epic} "Big epic" complete' in result.output
+        assert self._epic_status(tmp_path, epic) == "done"
+
+    def test_reason_close_of_task_without_story_prints_no_rollup(self, local_repo: LocalTaskRepository) -> None:
+        orphan = local_repo.create_task(TaskCreate(title="orphan")).id
+        result = runner.invoke(task_app, ["close", orphan, "--reason", "n/a"])
+        assert result.exit_code == 0, result.output
+        assert "complete" not in result.output
 
 
 class TestCloseHelp:

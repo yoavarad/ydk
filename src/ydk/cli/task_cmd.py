@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ydk.models.complexity import ComplexityScore
     from ydk.models.gate import Gate
     from ydk.models.pm import Dependency
-    from ydk.repositories.protocols import LifecycleTaskRepository
+    from ydk.repositories.protocols import EpicRepository, LifecycleTaskRepository, StoryRepository
 
 
 def _validate_component_refs_cli(refs: list[str], project_root: Path) -> None:
@@ -181,6 +181,34 @@ def _get_repo() -> LifecycleTaskRepository:
     from ydk.repositories.factory import get_task_repository
 
     return get_task_repository()
+
+
+def _get_story_repo() -> StoryRepository:
+    """Lazily import and return the story repository."""
+    from ydk.repositories.factory import get_story_repository
+
+    return get_story_repository()
+
+
+def _get_epic_repo() -> EpicRepository:
+    """Lazily import and return the epic repository."""
+    from ydk.repositories.factory import get_epic_repository
+
+    return get_epic_repository()
+
+
+def _rollup(task_id: str, repo: LifecycleTaskRepository) -> list[str]:
+    """Close the task's story/epic if it was their last open task; return report lines.
+
+    Best-effort: a rollup failure warns but never fails the task close itself.
+    """
+    from ydk.core.rollup import rollup_task_done
+
+    try:
+        return rollup_task_done(task_id, repo, _get_story_repo(), _get_epic_repo())
+    except Exception as exc:  # task is already done; any rollup failure must only warn
+        typer.echo(f"Warning: story/epic rollup skipped for {task_id}: {exc}", err=True)
+        return []
 
 
 @task_app.command()
@@ -1947,6 +1975,10 @@ def close(
     task is marked done. An unknown --delivered-by task id errors before any
     change.
 
+    When the closed task was the last open one in its story, the story is
+    closed too; when it was the last in its epic, the epic is closed and
+    "Epic ... complete" is printed with the retrospective next step.
+
     To reconcile many tasks at once, use `ydk task sync`.
 
     
@@ -1973,6 +2005,8 @@ def close(
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from None
         typer.echo(f"Task {task_id} closed without PR -> status done ({'; '.join(audit_parts)})")
+        for line in _rollup(task_id, repo):
+            typer.echo(line)
         return
 
     pr = _find_task_pr(task_id)
@@ -1995,6 +2029,8 @@ def close(
     except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
+    for line in _rollup(task_id, repo):
+        typer.echo(line)
 
 
 def _open_quick_task_files() -> list[tuple[str, Path]]:
@@ -2029,7 +2065,8 @@ def sync(ctx: typer.Context) -> None:
 
     This is the bulk version of `ydk task close`. Prefer `ydk task close <id>` to
     reconcile a single task, or to close a task that has no PR of its own. Prefer
-    `ydk task sync` to sweep every open/in-review task at once.
+    `ydk task sync` to sweep every open/in-review task at once. Like close, it
+    closes stories/epics whose last task it marks done.
     """
     import shutil
 
@@ -2051,6 +2088,7 @@ def sync(ctx: typer.Context) -> None:
 
     reconciled: list[dict[str, object]] = []
     skipped: list[dict[str, object]] = []
+    rollup: list[str] = []
 
     prs = list_prs()
     for s in candidates:
@@ -2066,6 +2104,8 @@ def sync(ctx: typer.Context) -> None:
             reconciled.append({"id": s.id, "pr_number": pr.get("number")})
         except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
             skipped.append({"id": s.id, "reason": str(exc)})
+            continue
+        rollup.extend(_rollup(s.id, repo))
 
     # Quick tasks (QD-*) live only as files, not in the manifest/repo backend.
     for qid, qpath in quick_tasks:
@@ -2082,13 +2122,15 @@ def sync(ctx: typer.Context) -> None:
         except (OSError, ValueError) as exc:
             skipped.append({"id": qid, "reason": str(exc)})
 
-    if format_or_echo(ctx, {"reconciled": reconciled, "skipped": skipped}):
+    if format_or_echo(ctx, {"reconciled": reconciled, "skipped": skipped, "rollup": rollup}):
         return
 
     if reconciled:
         typer.echo("Reconciled:")
         for item in reconciled:
             typer.echo(f"  {item['id']}: PR #{item['pr_number']} merged -> status done")
+    for line in rollup:
+        typer.echo(line)
     if skipped:
         typer.echo("Skipped:")
         for item in skipped:
