@@ -237,3 +237,52 @@ class TestGithubRef:
         story = StoryCreate(title="Test", epic_id="E-002")
         body = render_story_body(story)
         assert "**Epic**: #2" in body
+
+
+# ---------------------------------------------------------------------------
+# Epic/story refs round-trip (release, spec refs, component refs)
+# ---------------------------------------------------------------------------
+
+
+class TestEpicStoryRefsRoundTrip:
+    def test_epic_release_and_spec_refs_survive(self) -> None:
+        epic = EpicCreate(
+            title="Orders",
+            description="Everything about orders.",
+            release="v1.2",
+            spec_refs=["orders.md#entities", "orders.md#errors"],
+        )
+        body = render_epic_body(epic)
+        assert "**Release**: v1.2" in body
+        assert "**Spec refs**: orders.md#entities, orders.md#errors" in body
+        detail = parse_epic_detail(number=1, title=epic.title, body=body, state="OPEN", labels=["epic"])
+        assert detail.release == "v1.2"
+        assert detail.spec_refs == ["orders.md#entities", "orders.md#errors"]
+        assert "Everything about orders" in detail.description
+
+    def test_epic_without_refs_parses_empty(self) -> None:
+        detail = parse_epic_detail(number=1, title="E", body="### Description\nx", state="OPEN", labels=[])
+        assert detail.release == ""
+        assert detail.spec_refs == []
+
+    def test_story_spec_and_component_refs_survive(self) -> None:
+        story = StoryCreate(
+            title="Place order",
+            epic_id="5",
+            spec_refs=["orders.md#entities"],
+            component_refs=["order-service", "gateway"],
+            description="As a trader...",
+        )
+        body = render_story_body(story)
+        assert "**Spec refs**: orders.md#entities" in body
+        assert "**Component refs**: order-service, gateway" in body
+        detail = parse_story_detail(number=10, title=story.title, body=body, state="OPEN", labels=["story"])
+        assert detail.epic_id == "#5"
+        assert detail.spec_refs == ["orders.md#entities"]
+        assert detail.component_refs == ["order-service", "gateway"]
+        assert "As a trader" in detail.description
+
+    def test_story_without_refs_parses_empty(self) -> None:
+        detail = parse_story_detail(number=2, title="S", body="", state="OPEN", labels=[])
+        assert detail.spec_refs == []
+        assert detail.component_refs == []
