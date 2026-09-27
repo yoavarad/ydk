@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -174,3 +176,49 @@ class TestBranchNaming:
         task_file = tmp_path / ".ydk" / "tasks" / f"{result.task_id}.md"
         content = task_file.read_text()
         assert f"id: {result.task_id}" in content
+
+
+class TestQuickDevGithubRemote:
+    """remote=github: quick creates a github issue via the task repository."""
+
+    def _init_repo(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True)
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "init"],
+            cwd=str(tmp_path),
+            capture_output=True,
+        )
+
+    def test_creates_issue_no_qd_file_and_active_task(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._init_repo(tmp_path)
+        (tmp_path / ".ydk").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        monkeypatch.chdir(tmp_path)
+
+        fake_result = MagicMock(returncode=0, stdout="https://github.com/org/repo/issues/42\n", stderr="")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake_result) as mock_run:
+            result = QuickDevSetup().setup("fix avatar upload", tmp_path)
+
+        mock_run.assert_called_once()
+        assert result.task_id == "42"
+        assert "42" in result.branch
+        assert not result.task_id.startswith("QD-")
+
+        tasks_dir = tmp_path / ".ydk" / "tasks"
+        assert not tasks_dir.exists() or list(tasks_dir.glob("QD-*.md")) == []
+
+        active = json.loads((tmp_path / ".ydk" / "active-task.json").read_text())
+        assert active["tasks"]["42"]["base_branch"] == "main"
+
+    def test_branch_type_and_slug_preserved(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._init_repo(tmp_path)
+        (tmp_path / ".ydk").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        monkeypatch.chdir(tmp_path)
+
+        fake_result = MagicMock(returncode=0, stdout="https://github.com/org/repo/issues/7\n", stderr="")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake_result):
+            result = QuickDevSetup().setup("docs: update the readme", tmp_path)
+
+        assert result.branch.startswith("docs/")
+        assert result.branch == "docs/7-docs-update-the-readme"
