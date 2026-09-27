@@ -187,15 +187,19 @@ def _get_epic_repo() -> EpicRepository:
 def _rollup(task_id: str, repo: LifecycleTaskRepository) -> list[str]:
     """Close the task's story/epic if it was their last open task; return report lines.
 
+    Also checks whether the project can advance from stage 03 to 04 (learning),
+    since this runs after both `task close` and `task sync` mark a task done.
     Best-effort: a rollup failure warns but never fails the task close itself.
     """
-    from ydk.core.rollup import rollup_task_done
+    from ydk.core.rollup import advance_stage_if_complete, rollup_task_done
 
     try:
-        return rollup_task_done(task_id, repo, _get_story_repo(), _get_epic_repo())
+        messages = rollup_task_done(task_id, repo, _get_story_repo(), _get_epic_repo())
     except Exception as exc:  # task is already done; any rollup failure must only warn
         typer.echo(f"Warning: story/epic rollup skipped for {task_id}: {exc}", err=True)
-        return []
+        messages = []
+    advance_stage_if_complete(Path("."), repo)
+    return messages
 
 
 @task_app.command()
@@ -840,19 +844,9 @@ def done(
         raise typer.Exit(code=1)
 
     # Check if all tasks are done -> advance to stage 04 (learning)
-    try:
-        from ydk.core.state import ProjectState as _PS
+    from ydk.core.rollup import advance_stage_if_complete
 
-        _done_state = _PS(Path("."))
-        _done_current = _done_state.read()
-        if _done_current.get("stage") == "03":
-            repo = _get_repo()
-            open_tasks = repo.list_tasks(state="open")
-            in_progress = repo.list_tasks(state="in-progress")
-            if not open_tasks and not in_progress:
-                _done_state.update(stage="04")
-    except Exception:
-        pass  # State advancement is advisory, don't break task done
+    advance_stage_if_complete(Path("."), _get_repo())
 
     # Auto-extract memories if configured
     try:
