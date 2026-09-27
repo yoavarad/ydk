@@ -246,8 +246,11 @@ def test_memory_retrospective_epic(
     mock_epic_repo_factory.return_value = epic_repo
 
     client = MagicMock()
-    client.messages.create.return_value = SimpleNamespace(
-        content=[SimpleNamespace(type="text", text='{"patterns": ["p"]}')], stop_reason="end_turn"
+    client.messages.parse.side_effect = lambda **kw: SimpleNamespace(
+        stop_reason="end_turn",
+        parsed_output=kw["output_format"].model_validate(
+            {"patterns": ["p"], "templates": ["t"], "rules": ["r"], "summary": "s"}
+        ),
     )
     with patch("anthropic.Anthropic", return_value=client):
         result = runner.invoke(app, ["memory", "retrospective", "--epic", epic_id])
