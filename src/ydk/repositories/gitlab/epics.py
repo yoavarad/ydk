@@ -15,6 +15,7 @@ from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
     glab_state,
+    issue_ref,
     list_glab_issues,
     map_status,
     run_glab,
@@ -99,6 +100,14 @@ class GitLabEpicRepository:
 
         issues = list_glab_issues(run_glab, cmd)
         return [self._issue_json_to_detail(i) for i in issues]
+
+    def mark_retro_done(self, epic_id: str, retro_path: str) -> None:
+        """Add the ``retro-done`` label and a note linking the retro file."""
+        num = issue_ref(epic_id)
+        result = run_glab(["glab", "issue", "update", num, "--label", "retro-done"])
+        check_result(result, "mark_retro_done")
+        result = run_glab(["glab", "issue", "note", num, "--message", f"Retrospective recorded: {retro_path}"])
+        check_result(result, "mark_retro_done note")
 
     # ------------------------------------------------------------------
     # Private

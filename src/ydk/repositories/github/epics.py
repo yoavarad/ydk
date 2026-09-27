@@ -7,7 +7,7 @@ import json
 from typing import TYPE_CHECKING
 
 from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
-from ydk.repositories.github.parser import parse_epic_detail, render_epic_body
+from ydk.repositories.github.parser import _github_ref, parse_epic_detail, render_epic_body
 
 if TYPE_CHECKING:
     from ydk.models.pm import EpicCreate, EpicDetail
@@ -118,3 +118,13 @@ class GitHubEpicRepository:
     def list_epics(self, status: str = "open") -> _list[EpicDetail]:
         """List all epics — lifecycle-compatible."""
         return self.list(status=status)
+
+    def mark_retro_done(self, epic_id: str, retro_path: str) -> None:
+        """Add the ``retro-done`` label and a comment linking the retro file."""
+        num = _github_ref(str(epic_id)).lstrip("#")
+        result = run_gh(["gh", "label", "create", "retro-done", "--force"])
+        check_result(result, "mark_retro_done label create")
+        result = run_gh(["gh", "issue", "edit", num, "--add-label", "retro-done"])
+        check_result(result, "mark_retro_done")
+        result = run_gh(["gh", "issue", "comment", num, "--body", f"Retrospective recorded: {retro_path}"])
+        check_result(result, "mark_retro_done comment")

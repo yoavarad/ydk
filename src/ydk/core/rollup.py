@@ -147,3 +147,15 @@ def rollup_task_done(
     messages.append(f'Epic {epic.id} "{epic.title}" complete ({n}/{n} tasks)')
     messages.append(f"Next: ydk memory retrospective --epic {epic.id}")
     return messages
+
+
+def epic_tasks_for_retro(epic_id: str, task_repo: LifecycleTaskRepository, story_repo: object) -> list[_Node]:
+    """Closed/done tasks belonging to *epic_id* via its stories, across any backend.
+
+    Used by ``ydk memory retrospective --epic`` to gather the same task universe
+    that ``rollup_task_done`` would have just closed the epic against.
+    """
+    stories = _load_stories(story_repo)
+    epic_story_ids = {s.id for s in stories if s.parent == _norm(epic_id)}
+    tasks = _load_tasks(task_repo)
+    return [t for t in tasks if t.parent in epic_story_ids and t.status in ("done", "closed", "merged")]

@@ -31,3 +31,15 @@ class TestListEpics:
 
     def test_empty_when_no_epics(self, tmp_path: Path) -> None:
         assert LocalEpicRepository(tmp_path).list_epics(status="all") == []
+
+
+class TestMarkRetroDone:
+    def test_sets_retro_frontmatter_field_and_logs_comment(self, tmp_path: Path) -> None:
+        repo = LocalEpicRepository(tmp_path)
+        epic_id = repo.create_epic(EpicCreate(title="Ship it")).id
+
+        repo.mark_retro_done(epic_id, ".ydk/retros/E-001.md")
+
+        content = (tmp_path / "epics" / f"{epic_id}.md").read_text(encoding="utf-8")
+        assert "retro: .ydk/retros/E-001.md" in content
+        assert "Retrospective recorded: .ydk/retros/E-001.md" in content

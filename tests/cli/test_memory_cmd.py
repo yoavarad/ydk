@@ -12,6 +12,8 @@ from ydk.cli import app
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 runner = CliRunner()
 
 
@@ -176,3 +178,77 @@ def test_memory_retrospective(mock_repo_factory: MagicMock) -> None:
     result = runner.invoke(app, ["memory", "retrospective"])
     assert result.exit_code == 0
     assert "Sprint Retrospective" in result.output
+
+
+def test_memory_retrospective_rejects_both_sprint_and_epic() -> None:
+    """--sprint and --epic together is a usage error."""
+    result = runner.invoke(app, ["memory", "retrospective", "--sprint", "1", "--epic", "E-001"])
+    assert result.exit_code == 1
+
+
+@patch("ydk.repositories.factory.get_epic_repository")
+@patch("ydk.repositories.factory.get_story_repository")
+@patch("ydk.repositories.factory.get_task_repository")
+def test_memory_retrospective_epic(
+    mock_task_repo_factory: MagicMock,
+    mock_story_repo_factory: MagicMock,
+    mock_epic_repo_factory: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ydk memory retrospective --epic gathers the epic's tasks, writes a markdown
+    retro file, and marks the epic retro-done.
+
+    Uses real local repositories (not mocks of internal classes) sharing one
+    ``.ydk`` root, wired in via the factory functions -- only the factory
+    seam is patched.
+    """
+    from ydk.models.pm import EpicCreate, StoryCreate, TaskCreate
+    from ydk.repositories.local.epics import LocalEpicRepository
+    from ydk.repositories.local.stories import LocalStoryRepository
+    from ydk.repositories.local.tasks import LocalTaskRepository
+
+    monkeypatch.chdir(tmp_path)
+    root = tmp_path / ".ydk"
+    task_repo = LocalTaskRepository(root)
+    story_repo = LocalStoryRepository(root)
+    epic_repo = LocalEpicRepository(root)
+
+    epic_id = epic_repo.create_epic(EpicCreate(title="Ship it")).id
+    story_id = story_repo.create_story(StoryCreate(title="Story one", epic_id=epic_id)).id
+    task_id = task_repo.create_task(TaskCreate(title="Completed task", story_id=story_id)).id
+    task_repo.update_status(task_id, "done")
+
+    mock_task_repo_factory.return_value = task_repo
+    mock_story_repo_factory.return_value = story_repo
+    mock_epic_repo_factory.return_value = epic_repo
+
+    result = runner.invoke(app, ["memory", "retrospective", "--epic", epic_id])
+
+    assert result.exit_code == 0
+    assert "Epic Retrospective" in result.output
+    retro_file = tmp_path / ".ydk" / "retros" / f"{epic_id}.md"
+    assert retro_file.is_file()
+    assert task_id in retro_file.read_text(encoding="utf-8")
+    epic_content = (root / "epics" / f"{epic_id}.md").read_text(encoding="utf-8")
+    assert f"retro: .ydk/retros/{epic_id}.md" in epic_content
+
+
+@patch("ydk.repositories.factory.get_story_repository")
+@patch("ydk.repositories.factory.get_task_repository")
+def test_memory_retrospective_epic_no_tasks(
+    mock_task_repo_factory: MagicMock,
+    mock_story_repo_factory: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """ydk memory retrospective --epic with no done tasks prints the empty message."""
+    from ydk.repositories.local.stories import LocalStoryRepository
+    from ydk.repositories.local.tasks import LocalTaskRepository
+
+    root = tmp_path / ".ydk"
+    mock_task_repo_factory.return_value = LocalTaskRepository(root)
+    mock_story_repo_factory.return_value = LocalStoryRepository(root)
+
+    result = runner.invoke(app, ["memory", "retrospective", "--epic", "E-404"])
+    assert result.exit_code == 0
+    assert "No completed tasks found for retrospective." in result.output

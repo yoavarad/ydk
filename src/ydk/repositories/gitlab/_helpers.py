@@ -29,6 +29,14 @@ def check_result(result: subprocess.CompletedProcess[str], action: str) -> None:
         raise RuntimeError(msg)
 
 
+def issue_ref(raw_id: str) -> str:
+    """Extract the bare numeric issue IID from ``"42"``, ``"#42"`` or ``"E-042"``."""
+    raw_id = str(raw_id).lstrip("#")
+    if len(raw_id) >= 3 and raw_id[1] == "-":
+        raw_id = raw_id[2:]
+    return str(int(raw_id))
+
+
 def glab_state(status: str) -> str:
     """Map generic status string to glab's ``--state`` value."""
     return "opened" if status == "open" else status

@@ -223,29 +223,39 @@ def decision_history(
 @memory_app.command()
 def retrospective(
     sprint: str | None = typer.Option(None, help="Sprint/milestone to review"),
+    epic: str | None = typer.Option(None, "--epic", help="Epic ID to review instead of a sprint"),
 ) -> None:
-    """Sprint retrospective — aggregate learnings across tasks using LLM analysis."""
+    """Sprint or epic retrospective — aggregate learnings across tasks using LLM analysis."""
+    if sprint and epic:
+        console.print("[red]Pass only one of --sprint or --epic.[/red]")
+        raise typer.Exit(code=1)
+
     from ydk.repositories.factory import get_task_repository
 
     repo = get_task_repository()
-    tasks = repo.list_tasks(state="closed")
 
-    if sprint:
-        tasks = [t for t in tasks if getattr(t, "milestone", None) == sprint]
+    if epic:
+        shipped = _gather_epic_tasks(epic, repo)
+    else:
+        tasks = repo.list_tasks(state="closed")
+        if sprint:
+            tasks = [t for t in tasks if getattr(t, "milestone", None) == sprint]
+        shipped = [t for t in tasks if getattr(t, "status", "") in ("done", "closed", "merged")]
 
-    if not tasks:
+    if not shipped:
         console.print("No completed tasks found for retrospective.")
         return
 
-    shipped = [t for t in tasks if getattr(t, "status", "") in ("done", "closed", "merged")]
-    console.print(f"[bold]Sprint Retrospective[/bold]{f' -- {sprint}' if sprint else ''}")
+    label = epic or sprint
+    kind = "Epic" if epic else "Sprint"
+    console.print(f"[bold]{kind} Retrospective[/bold]{f' -- {label}' if label else ''}")
     console.print(f"\n  Tasks completed: {len(shipped)}")
     console.print("\n  [bold]Shipped:[/bold]")
     for t in shipped:
         console.print(f"    - {t.id}: {t.title}")
 
     # Try LLM retrospective analysis
-    proposals = _run_llm_retrospective(shipped, sprint)
+    proposals = _run_llm_retrospective(shipped, label)
     if proposals:
         console.print("\n  [bold]AI Analysis:[/bold]")
         for proposal in proposals.get("patterns", []):
@@ -254,7 +264,22 @@ def retrospective(
             console.print(f"    Template suggestion: {template}")
         for rule in proposals.get("rules", []):
             console.print(f"    Rule suggestion: {rule}")
+    else:
+        console.print("\n  [bold]Patterns & Learnings:[/bold]")
+        console.print("    Run `ydk memory search <topic>` to find specific learnings.")
+        console.print("    Review extracted memories in .ydk/memory/ for aggregate insights.")
 
+    if epic:
+        retros_dir = Path(".ydk/retros")
+        retros_dir.mkdir(parents=True, exist_ok=True)
+        output_path = retros_dir / f"{epic}.md"
+        output_path.write_text(_render_epic_retro_markdown(epic, shipped, proposals), encoding="utf-8")
+
+        from ydk.repositories.factory import get_epic_repository
+
+        get_epic_repository().mark_retro_done(epic, output_path.as_posix())
+        console.print(f"\n  [dim]Saved to {output_path}[/dim]")
+    elif proposals:
         # Save to proofs directory
         proofs_dir = Path(".ydk/proofs")
         proofs_dir.mkdir(parents=True, exist_ok=True)
@@ -262,10 +287,40 @@ def retrospective(
         output_path = proofs_dir / f"retrospective-{sprint_label}.json"
         output_path.write_text(json.dumps(proposals, indent=2))
         console.print(f"\n  [dim]Saved to {output_path}[/dim]")
+
+
+def _gather_epic_tasks(epic_id: str, task_repo: object) -> list:  # type: ignore[type-arg]
+    """Closed/done tasks under *epic_id*'s stories, gathered via its stories."""
+    from ydk.core.rollup import epic_tasks_for_retro
+    from ydk.repositories.factory import get_story_repository
+
+    story_repo = get_story_repository()
+    return epic_tasks_for_retro(epic_id, task_repo, story_repo)  # ty: ignore[invalid-argument-type]
+
+
+def _render_epic_retro_markdown(
+    epic_id: str,
+    tasks: list,  # type: ignore[type-arg]
+    proposals: dict | None,
+) -> str:
+    """Render a readable markdown retrospective for an epic."""
+    lines = [f"# Retrospective: {epic_id}", "", "## Shipped"]
+    lines.extend(f"- {t.id}: {t.title}" for t in tasks)
+
+    lines += ["", "## AI Analysis"]
+    if proposals:
+        lines.append("### Patterns")
+        lines.extend(f"- {p}" for p in proposals.get("patterns", []) or ["none"])
+        lines += ["", "### Template suggestions"]
+        lines.extend(f"- {t}" for t in proposals.get("templates", []) or ["none"])
+        lines += ["", "### Rule suggestions"]
+        lines.extend(f"- {r}" for r in proposals.get("rules", []) or ["none"])
+        if proposals.get("summary"):
+            lines += ["", "### Summary", proposals["summary"]]
     else:
-        console.print("\n  [bold]Patterns & Learnings:[/bold]")
-        console.print("    Run `ydk memory search <topic>` to find specific learnings.")
-        console.print("    Review extracted memories in .ydk/memory/ for aggregate insights.")
+        lines.append("No AI analysis available.")
+
+    return "\n".join(lines) + "\n"
 
 
 def _run_llm_retrospective(
