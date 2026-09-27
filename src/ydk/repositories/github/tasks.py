@@ -423,9 +423,12 @@ class GitHubTaskRepository:
     # -- compaction -----------------------------------------------------------
 
     def compact_task(self, task_id: str) -> CompactedTask:
-        """Compact a completed task by editing its issue body to a summary.
+        """Compact a completed task by posting a summary comment and archiving it.
 
-        Uses the same ``TaskCompactor`` logic as the local backend.
+        Uses the same ``TaskCompactor`` logic as the local backend. The
+        original issue body is never modified -- the compacted summary is
+        posted as a comment and the issue is tagged with an "archived"
+        label instead, so the source-of-truth body is preserved.
         """
         from ydk.core.compaction import TaskCompactor
 
@@ -434,7 +437,6 @@ class GitHubTaskRepository:
         compactor = TaskCompactor()
         compacted = compactor.compact_task(task)
 
-        # Rewrite issue body with compacted content
         lines: _list[str] = [
             "### Summary",
             compacted.summary,
@@ -449,10 +451,9 @@ class GitHubTaskRepository:
             lines.extend(f"- `{fp}`" for fp in compacted.files_modified)
             lines.append("")
 
-        new_body = "\n".join(lines)
-        update_cmd = ["gh", "issue", "edit", str(issue_number), "--body", new_body]
-        update_result = run_gh(update_cmd)
-        check_result(update_result, "issue edit body (compact)")
+        comment_body = "\n".join(lines)
+        self.add_comment(issue_number, comment_body)
+        self.add_label(task_id, "archived")
 
         return compacted
 
