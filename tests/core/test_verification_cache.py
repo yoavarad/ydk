@@ -252,6 +252,30 @@ class TestVerifierCacheIntegration:
         v.cache.invalidate()
         assert not cache_dir.exists()
 
+    def test_error_result_is_not_cached(self, tmp_path: Path) -> None:
+        """A result with detail.no_cache=True (e.g. a credential error) must not be stored."""
+        _write_py_file(tmp_path, "src.py", "x = 1")
+        error_check = """import json, sys
+context = json.loads(sys.stdin.read())
+result = {
+    "name": "flaky",
+    "passed": False,
+    "output": "ERROR: missing credentials",
+    "duration_seconds": 0.1,
+    "detail": {"credential_error": True, "no_cache": True},
+}
+json.dump(result, sys.stdout)
+sys.exit(1)
+"""
+        v = _make_verifier(tmp_path, plugins={"flaky": {"check_code": error_check}})
+        plugins = v.discover_plugins()
+        ctx: dict[str, Any] = {"project_root": str(tmp_path)}
+
+        asyncio.run(v.run_plugin(plugins[0], ctx))
+
+        cache_dir = tmp_path / ".ydk" / "cache" / "verification" / "flaky"
+        assert not cache_dir.exists() or not list(cache_dir.iterdir())
+
     def test_cache_survives_across_verifier_instances(self, tmp_path: Path) -> None:
         """Cache is file-based, so a new Verifier reads old entries."""
         _write_py_file(tmp_path, "src.py", "x = 1")

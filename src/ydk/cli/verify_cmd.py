@@ -39,7 +39,17 @@ def run(
     max_retries = retry if retry is not None else (3 if repair else None)
 
     v = _make_verifier(use_cache=not no_cache)
-    context: dict[str, object] = {"project_root": str(v._root.resolve())}
+    config = load_config()
+    context: dict[str, object] = {
+        "project_root": str(v._root.resolve()),
+        "config": {
+            "anthropic": {"api_key_env": config.anthropic.api_key_env},
+            "spec_check": {
+                "model": config.spec_check.model,
+                "thresholds": {"architecture": config.spec_check.thresholds.architecture},
+            },
+        },
+    }
 
     effective_trigger = trigger or "manual"
     if effective_trigger == "pre-push":
