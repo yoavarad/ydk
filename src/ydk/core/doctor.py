@@ -58,6 +58,7 @@ class Doctor:
             self._check_gh_labels,
             self._check_jinja2,
             self._check_task_pr_drift,
+            self._check_epic_retros,
         ]
         return [check() for check in checks]
 
@@ -399,4 +400,38 @@ class Doctor:
             CheckSeverity.warning,
             f"{len(drifted)} task(s) with merged PRs not marked done",
             detail="\n".join(drifted),
+        )
+
+    def _check_epic_retros(self) -> CheckResult:
+        """Warn about finished epics with no retrospective recorded."""
+        try:
+            from ydk.core.config import load_config
+            from ydk.core.retro_gate import find_epics_missing_retro
+            from ydk.repositories.factory import get_epic_repository
+
+            if not load_config().learning.require_epic_retro:
+                return CheckResult(
+                    "Epic retrospectives",
+                    CheckSeverity.ok,
+                    "Skipped — learning.require_epic_retro disabled",
+                )
+            missing = find_epics_missing_retro(get_epic_repository())
+        except Exception:
+            return CheckResult(
+                "Epic retrospectives",
+                CheckSeverity.warning,
+                "Could not check — epic repository unavailable",
+            )
+
+        if not missing:
+            return CheckResult("Epic retrospectives", CheckSeverity.ok, "No missing epic retrospectives")
+
+        detail = "\n".join(
+            f'{m.epic_id} "{m.title}" -- run: ydk memory retrospective --epic {m.epic_id}' for m in missing
+        )
+        return CheckResult(
+            "Epic retrospectives",
+            CheckSeverity.warning,
+            f"{len(missing)} finished epic(s) missing a retrospective",
+            detail=detail,
         )

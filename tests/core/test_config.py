@@ -34,6 +34,17 @@ class TestLoadConfig:
         with pytest.raises(ValidationError, match="extra_forbidden"):
             load_config(config_path)
 
+    def test_learning_require_epic_retro_defaults_true(self, tmp_path) -> None:
+        cfg = load_config(tmp_path / "nonexistent" / "config.yaml")
+        assert cfg.learning.require_epic_retro is True
+
+    def test_learning_require_epic_retro_can_be_opted_out(self, tmp_path) -> None:
+        config_path = tmp_path / "config.yaml"
+        data = {**DEFAULT_CONFIG, "learning": {"require_epic_retro": False}}
+        config_path.write_text(yaml.dump(data))
+        cfg = load_config(config_path)
+        assert cfg.learning.require_epic_retro is False
+
 
 class TestInitConfig:
     def test_creates_file_with_defaults(self, tmp_path) -> None:

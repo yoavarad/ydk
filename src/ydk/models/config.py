@@ -128,6 +128,14 @@ class MemoryConfig(BaseModel):
     chroma_path: str = ".ydk/memory/chroma"
 
 
+class LearningConfig(BaseModel):
+    """Compound-learning process settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    require_epic_retro: bool = True
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -158,5 +166,6 @@ class YdkConfig(BaseModel):
     ai: AIConfig = AIConfig()
     anthropic: AnthropicConfig = AnthropicConfig()
     memory: MemoryConfig = MemoryConfig()
+    learning: LearningConfig = LearningConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()

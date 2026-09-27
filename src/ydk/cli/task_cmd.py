@@ -717,6 +717,9 @@ def start(
         "Both 'main' and 'origin/main' are accepted; a remote prefix is stripped for the PR base.",
     ),
     force: bool = typer.Option(False, "--force", help="Force restart even if task shows in-progress"),
+    skip_retro_check: bool = typer.Option(
+        False, "--skip-retro-check", help="Bypass the finished-epic-needs-a-retro gate"
+    ),
 ) -> None:
     """Start a task: create worktree, claim, explore."""
     task_id = _resolve_task_id(task_id)
@@ -725,6 +728,23 @@ def start(
     if not (Path(".ydk") / "todos.yaml").exists():
         console.print("[red]No TODO registry found. Run Stage 01.5 (ydk ignite) first.[/red]")
         raise typer.Exit(1)
+
+    if not skip_retro_check:
+        from ydk.core.config import load_config
+        from ydk.core.retro_gate import find_epics_missing_retro
+
+        if load_config().learning.require_epic_retro:
+            try:
+                missing = find_epics_missing_retro(_get_epic_repo())
+            except Exception as exc:  # epic repo unavailable must only warn, never block start
+                typer.echo(f"Warning: retro gate check skipped: {exc}", err=True)
+                missing = []
+            if missing:
+                console.print("[red]Finished epic(s) missing a retrospective:[/red]")
+                for m in missing:
+                    console.print(f'  {m.epic_id} "{m.title}" -- run: ydk memory retrospective --epic {m.epic_id}')
+                console.print("[dim]Bypass with --skip-retro-check or config learning.require_epic_retro: false[/dim]")
+                raise typer.Exit(1)
 
     lc = _build_lifecycle()
     try:
