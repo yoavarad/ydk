@@ -1068,7 +1068,9 @@ def list_tasks(
     sprint: str | None = typer.Option(None, help="Filter by sprint/milestone"),
     epic: str | None = typer.Option(None, "--epic", help="Filter by epic ID"),
     story: str | None = typer.Option(None, "--story", help="Filter by story ID"),
-    status: str | None = typer.Option(None, "--status", help="Filter by status: open|done|in-progress|all"),
+    status: str | None = typer.Option(
+        None, "--status", help="Filter by status: open|done|in-progress|in-review|blocked|all"
+    ),
 ) -> None:
     """List tasks with optional filters, grouped by status."""
     from ydk.repositories.factory import get_task_repository

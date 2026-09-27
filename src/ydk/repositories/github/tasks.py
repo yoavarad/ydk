@@ -117,7 +117,30 @@ class GitHubTaskRepository:
         labels: _list[str] | None = None,
         status: str = "open",
     ) -> _list[TaskDetail]:
-        """List task issues with optional filters."""
+        """List task issues with optional filters.
+
+        ``status`` accepts gh's native states (``open``/``closed``/``all``) as
+        well as the higher-level lifecycle statuses used across YDK
+        (``done``/``in-progress``/``in-review``/``blocked``), which gh does
+        not understand directly:
+
+        - ``done`` -> ``--state closed``
+        - ``in-progress`` / ``in-review`` -> ``--state open`` + a label filter
+        - ``blocked`` -> ``--state open``, then filtered post-fetch by the
+          parsed ``TaskStatus`` (labels vary: ``blocked-by-code``,
+          ``blocked-by-decision``, etc.)
+        """
+        extra_label: str | None = None
+        if status == "done":
+            gh_state = "closed"
+        elif status in ("in-progress", "in-review"):
+            gh_state = "open"
+            extra_label = status
+        elif status == "blocked":
+            gh_state = "open"
+        else:
+            gh_state = status
+
         cmd: list[str] = [
             "gh",
             "issue",
@@ -125,7 +148,7 @@ class GitHubTaskRepository:
             "--json",
             GH_JSON_FIELDS,
             "--state",
-            status,
+            gh_state,
             "--limit",
             str(GH_LIST_LIMIT),
             "--label",
@@ -135,13 +158,14 @@ class GitHubTaskRepository:
             cmd.extend(["--milestone", milestone])
         for lbl in labels or []:
             cmd.extend(["--label", lbl])
+        if extra_label:
+            cmd.extend(["--label", extra_label])
 
         result = run_gh(cmd)
-        if result.returncode != 0:
-            return []
+        check_result(result, "issue list")
 
         items: list[dict] = json.loads(result.stdout)
-        return [
+        details = [
             parse_task_detail(
                 number=item["number"],
                 title=item["title"],
@@ -152,6 +176,10 @@ class GitHubTaskRepository:
             )
             for item in items
         ]
+
+        if status == "blocked":
+            details = [d for d in details if d.status in (TaskStatus.BLOCKED_BY_CODE, TaskStatus.BLOCKED_BY_DECISION)]
+        return details
 
     # -- update_status --------------------------------------------------------
 
