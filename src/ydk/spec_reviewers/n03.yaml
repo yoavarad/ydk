@@ -2,7 +2,7 @@ id: N03
 name: Scope Boundaries
 group: completeness
 threshold: 8
-model_tier: smart
+model_tier: review
 
 tools: []
 

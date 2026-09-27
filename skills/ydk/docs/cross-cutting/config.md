@@ -14,7 +14,7 @@ ydk config show
 ydk config set spec_check.timeout 90
 
 # Get a value
-ydk config get spec_check.model
+ydk config get spec_check.timeout
 
 # Validate config
 ydk config validate
@@ -57,11 +57,11 @@ components:
 
 # ─── Spec Quality Check (Stage 01) ────────────────────
 ai:
-  provider: string                # default: "bedrock" — currently only "bedrock"
-  model_tiers:
-    smart: string                 # default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
-    fast: string                  # default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
-    reasoning: string             # default: "us.anthropic.claude-opus-4-6-v1"
+  provider: string                # default: "anthropic" — first-party Anthropic API
+  model_tiers:                    # single source of truth for Claude model IDs
+    fast: string                  # default: "claude-haiku-4-5"
+    review: string                # default: "claude-sonnet-5"
+    deep: string                  # default: "claude-opus-5"
 
 # ─── Spec Reviewers ──────────────────────────────
 # .ydk/spec-reviewers/ — YAML configs for each reviewer (N01-N10),
@@ -106,7 +106,6 @@ scaffolding:
 memory:
   embedding_model: string         # default: "cohere.embed-english-v3"
   auto_bootstrap: bool            # default: true
-  auto_extract: bool              # default: true
   auto_capture: bool              # default: true
   chroma_path: string             # default: ".ydk/memory/chroma"
   research_expiry_days: int       # default: 90
@@ -201,10 +200,12 @@ All hooks enabled by default after `ydk init`. Pre-push spec/task checks disable
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `provider` | string | `"bedrock"` | AI provider. Currently only "bedrock" is supported. |
-| `model_tiers.smart` | string | `"us.anthropic.claude-sonnet-4-20250514-v1:0"` | Model for `smart` tier reviewers. |
-| `model_tiers.fast` | string | `"us.anthropic.claude-sonnet-4-20250514-v1:0"` | Model for `fast` tier reviewers. |
-| `model_tiers.reasoning` | string | `"us.anthropic.claude-opus-4-6-v1"` | Model for `reasoning` tier (complex analysis). |
+| `provider` | string | `"anthropic"` | AI provider (first-party Anthropic API). |
+| `model_tiers.fast` | string | `"claude-haiku-4-5"` | Lightweight calls (memory extraction, complexity scoring). |
+| `model_tiers.review` | string | `"claude-sonnet-5"` | Spec reviewers and the ai-code-review / spec-alignment plugins. |
+| `model_tiers.deep` | string | `"claude-opus-5"` | Complex reasoning. |
+
+Every LLM call site resolves its model from a tier; overriding one tier keeps the defaults for the others.
 
 ### spec_check
 
@@ -235,7 +236,6 @@ All hooks enabled by default after `ydk init`. Pre-push spec/task checks disable
 |---|---|---|---|
 | `embedding_model` | string | `"cohere.embed-english-v3"` | Bedrock embedding model for vector search. |
 | `auto_bootstrap` | bool | `true` | Automatically bootstrap context on `ydk task start`. |
-| `auto_extract` | bool | `true` | Automatically extract learnings on `ydk task done`. |
 | `auto_capture` | bool | `true` | Capture session for later extraction. |
 | `chroma_path` | string | `".ydk/memory/chroma"` | ChromaDB storage path. |
 | `research_expiry_days` | int | `90` | Days before research files are flagged as stale. |
@@ -348,11 +348,11 @@ components:
     layer_b: true
 
 ai:
-  provider: bedrock
+  provider: anthropic
   model_tiers:
-    smart: us.anthropic.claude-sonnet-4-20250514-v1:0
-    fast: us.anthropic.claude-sonnet-4-20250514-v1:0
-    reasoning: us.anthropic.claude-opus-4-6-v1
+    fast: claude-haiku-4-5
+    review: claude-sonnet-5
+    deep: claude-opus-5
 
 spec_check:
   thresholds:

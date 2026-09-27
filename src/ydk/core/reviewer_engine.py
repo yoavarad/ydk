@@ -146,7 +146,7 @@ class ReviewerEngine:
             reviewers: List of reviewer dicts, each with keys:
                 id, name, system_prompt, model_tier, threshold, group.
             model_tiers: Map of tier name to Anthropic model ID
-                (e.g. ``{"smart": "claude-sonnet-4-6"}``).
+                (e.g. ``{"review": "<model id>"}``); see ``ydk.models.config.DEFAULT_MODEL_TIERS``.
             max_workers: Maximum parallel threads for fan-out phase.
 
         Returns:
@@ -165,13 +165,13 @@ class ReviewerEngine:
         # Group reviewers by model tier
         by_tier: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for rev in reviewers:
-            by_tier[rev.get("model_tier", "smart")].append(rev)
+            by_tier[rev.get("model_tier", "review")].append(rev)
 
         results: list[dict[str, Any]] = []
 
         # Process each tier: prime cache with first reviewer, fan out rest
         for tier, tier_reviewers in by_tier.items():
-            model_id = model_tiers.get(tier, model_tiers.get("smart", ""))
+            model_id = model_tiers.get(tier, model_tiers.get("review", ""))
 
             # Step 1: Prime cache for this tier (synchronous)
             first = tier_reviewers[0]

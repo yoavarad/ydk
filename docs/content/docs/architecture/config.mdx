@@ -39,7 +39,6 @@ Controls the AI-powered specification quality evaluator.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model` | str | `"us.anthropic.claude-sonnet-4-6"` | Amazon Bedrock model ID for spec evaluation |
 | `timeout` | int | `60` | Per-criterion evaluation timeout in seconds |
 | `global_timeout` | int | `120` | Total evaluation timeout across all criteria |
 | `concurrency` | int | `10` | Maximum concurrent criterion evaluations |
@@ -54,6 +53,19 @@ Controls the AI-powered specification quality evaluator.
 | `architecture` | 8 | Minimum passing score for architecture criteria (components, interfaces, data model, deps) |
 | `robustness` | 7 | Minimum passing score for robustness criteria (errors, security, testing, YAGNI) |
 | `quality` | 7 | Minimum passing score for quality criteria (information density, implementation leakage) |
+
+## AIConfig
+
+Model tiers are the single source of truth for Claude model IDs. Every LLM call site resolves its model from a tier; there are no hardcoded model IDs elsewhere in `src/`. Overriding one tier keeps the built-in defaults for the others.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `provider` | str | `"anthropic"` | LLM provider (first-party Anthropic API) |
+| `model_tiers.fast` | str | `"claude-haiku-4-5"` | Lightweight calls (memory extraction, complexity scoring) |
+| `model_tiers.review` | str | `"claude-sonnet-5"` | Spec reviewers and the ai-code-review / spec-alignment plugins |
+| `model_tiers.deep` | str | `"claude-opus-5"` | Complex reasoning |
+
+`spec_check.model` and `memory.auto_extract` were removed; older configs that still set them load fine (the keys are ignored).
 
 ## TaskManagementConfig
 
@@ -76,7 +88,6 @@ Controls the AI-powered specification quality evaluator.
 |-------|------|---------|-------------|
 | `embedding_model` | str | `"amazon.titan-embed-text-v2:0"` | Bedrock embedding model for ChromaDB |
 | `auto_bootstrap` | bool | `True` | Automatically load relevant memories when starting a task |
-| `auto_extract` | bool | `True` | Automatically extract knowledge after task completion |
 | `chroma_path` | str | `".ydk/memory/chroma"` | Directory for ChromaDB persistent storage |
 
 ## HooksConfig

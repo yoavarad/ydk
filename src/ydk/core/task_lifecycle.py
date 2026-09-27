@@ -265,8 +265,8 @@ class TaskLifecycle:
             "task_id": task_id,
             "config": {
                 "anthropic": {"api_key_env": config.anthropic.api_key_env},
+                "ai": {"model_tiers": config.ai.model_tiers},
                 "spec_check": {
-                    "model": config.spec_check.model,
                     "thresholds": {"architecture": config.spec_check.thresholds.architecture},
                 },
             },

@@ -166,7 +166,7 @@ ydk spec verify --all
 ydk spec results
 ```
 
-The spec checker sends your spec content to an LLM (Claude Sonnet by default, configurable in `spec_check.model`) which evaluates 18 criteria across 5 groups. Each criterion gets a 1-10 score compared against configurable thresholds. The five groups are completeness (problem statement, success criteria, scope, user stories), clarity (terminology, ambiguity, diagrams, audience), architecture (components, interfaces, data model, dependencies), robustness (error handling, security, testing, YAGNI), and quality (information density, implementation leakage).
+The spec checker sends your spec content to an LLM (the `review` model tier, Claude Sonnet by default, configurable in `ai.model_tiers.review`) which evaluates 18 criteria across 5 groups. Each criterion gets a 1-10 score compared against configurable thresholds. The five groups are completeness (problem statement, success criteria, scope, user stories), clarity (terminology, ambiguity, diagrams, audience), architecture (components, interfaces, data model, dependencies), robustness (error handling, security, testing, YAGNI), and quality (information density, implementation leakage).
 
 <Callout type="warn">
 Every `[ydk:...]` reference in your spec must resolve to an actual component manifest. The deterministic linker catches dangling references immediately -- do not skip this validation step.

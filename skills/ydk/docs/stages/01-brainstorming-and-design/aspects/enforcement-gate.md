@@ -57,13 +57,13 @@ Only 4 high-value inline Python tools remain (down from more in earlier versions
 
 ### Model Tiers
 
-Each reviewer declares a `model_tier` (not a model ID). The tier maps to a Bedrock model via `ai.model_tiers` in config:
+Each reviewer declares a `model_tier` (not a model ID). The tier maps to a first-party Anthropic model ID via `ai.model_tiers` in config:
 
 | Tier | Default Model | Used By |
 |---|---|---|
-| `smart` | Sonnet 4 | Most reviewers |
-| `fast` | Sonnet 4 | Lightweight reviewers |
-| `reasoning` | Opus | Complex reasoning tasks |
+| `fast` | `claude-haiku-4-5` | Lightweight LLM calls |
+| `review` | `claude-sonnet-5` | Spec reviewers, AI verification plugins |
+| `deep` | `claude-opus-5` | Complex reasoning tasks |
 
 ### Orphaned Components
 
@@ -119,11 +119,11 @@ In `.ydk/config.yaml`:
 
 ```yaml
 ai:
-  provider: bedrock
+  provider: anthropic
   model_tiers:
-    smart: us.anthropic.claude-sonnet-4-20250514-v1:0
-    fast: us.anthropic.claude-sonnet-4-20250514-v1:0
-    reasoning: us.anthropic.claude-opus-4-6-v1
+    fast: claude-haiku-4-5
+    review: claude-sonnet-5
+    deep: claude-opus-5
 
 spec_check:
   timeout: 60                                    # seconds per reviewer

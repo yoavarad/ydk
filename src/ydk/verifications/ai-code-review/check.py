@@ -143,6 +143,7 @@ def run_check(context: dict) -> dict:
         build_client,
         create_message,
     )
+    from ydk.models.config import AIConfig
 
     start = time.time()
     project_root = Path(context["project_root"])
@@ -151,8 +152,7 @@ def run_check(context: dict) -> dict:
     config = context.get("config", {})
     anthropic_config = config.get("anthropic", {})
     api_key_env = anthropic_config.get("api_key_env", DEFAULT_API_KEY_ENV)
-    spec_check_config = config.get("spec_check", {})
-    model_id = spec_check_config.get("model", "claude-sonnet-4-6")
+    model_id = AIConfig(model_tiers=config.get("ai", {}).get("model_tiers", {})).model_for("review")
 
     if not changed_files:
         return {

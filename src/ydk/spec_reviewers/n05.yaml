@@ -2,7 +2,7 @@ id: N05
 name: Ambiguity
 group: clarity
 threshold: 8
-model_tier: smart
+model_tier: review
 
 tools: []
 

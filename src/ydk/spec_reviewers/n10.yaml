@@ -2,7 +2,7 @@ id: N10
 name: YAGNI
 group: quality
 threshold: 7
-model_tier: smart
+model_tier: review
 
 tools: []
 

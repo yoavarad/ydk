@@ -54,8 +54,8 @@ def _make_context(
         "spec_refs": spec_refs or [],
         "config": {
             "anthropic": {"api_key_env": "ANTHROPIC_API_KEY"},
+            "ai": {"model_tiers": {"review": "claude-review-override"}},
             "spec_check": {
-                "model": "claude-sonnet-4-6",
                 "thresholds": {"architecture": 8},
             },
         },
@@ -165,7 +165,7 @@ class TestSpecAlignmentWithMockedClient:
         assert result["detail"]["overall_score"] == 9
         assert "9/10" in result["output"]
         call_kwargs = mock_client.messages.create.call_args.kwargs
-        assert call_kwargs["model"] == "claude-sonnet-4-6"
+        assert call_kwargs["model"] == "claude-review-override"
         assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_evaluation"}
 
     def test_failing_evaluation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -276,6 +276,28 @@ class TestAiCodeReviewWithMockedClient:
         assert result["passed"] is True
         assert result["detail"]["critical_count"] == 0
         assert "No issues found" in result["output"]
+        assert mock_client.messages.create.call_args.kwargs["model"] == "claude-review-override"
+
+    def test_defaults_to_review_tier_when_context_has_no_ai_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ydk.models.config import DEFAULT_MODEL_TIERS
+
+        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
+        _write_file(tmp_path, "src/main.py", "x = 1")
+
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"])
+        del ctx["config"]["ai"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+        review = {"findings": [], "summary": "No issues found.", "passed": True}
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(review)
+
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            mod.run_check(ctx)
+
+        assert mock_client.messages.create.call_args.kwargs["model"] == DEFAULT_MODEL_TIERS["review"]
 
     def test_critical_finding_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")

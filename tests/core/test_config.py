@@ -71,8 +71,8 @@ class TestInitConfig:
 
 class TestGetConfigValue:
     def test_dot_notation(self) -> None:
-        config = {"spec_check": {"model": "my-model", "thresholds": {"completeness": 9}}}
-        assert get_config_value(config, "spec_check.model") == "my-model"
+        config = {"spec_check": {"timeout": 90, "thresholds": {"completeness": 9}}}
+        assert get_config_value(config, "spec_check.timeout") == 90
         assert get_config_value(config, "spec_check.thresholds.completeness") == 9
 
     def test_returns_none_for_missing_key(self) -> None:

@@ -148,6 +148,15 @@ class TestGetLlmProvider:
         assert provider._model_id == "claude-sonnet-5"
         mock_anthropic_cls.assert_called_once()
 
+    def test_uses_default_fast_tier_when_not_overridden(self) -> None:
+        cfg = _cfg(model_tiers={"review": "claude-custom"})
+
+        with patch("anthropic.Anthropic"):
+            provider = get_llm_provider(cfg)
+
+        assert isinstance(provider, AnthropicLLMProvider)
+        assert provider._model_id == "claude-haiku-4-5"
+
     def test_returns_none_for_unknown_provider(self) -> None:
         cfg = _cfg(provider="does-not-exist", model_tiers={})
 

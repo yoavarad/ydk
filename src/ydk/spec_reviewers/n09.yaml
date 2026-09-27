@@ -2,7 +2,7 @@ id: N09
 name: Component References
 group: quality
 threshold: 7
-model_tier: smart
+model_tier: review
 
 tools:
   - name: scan_unlinked_mentions

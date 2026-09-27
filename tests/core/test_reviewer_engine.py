@@ -54,7 +54,7 @@ def _mock_converse_response(
     )
 
 
-def _make_reviewers(count: int = 3, tier: str = "smart") -> list[dict]:
+def _make_reviewers(count: int = 3, tier: str = "review") -> list[dict]:
     return [
         {
             "id": f"N{str(i + 1).zfill(2)}",
@@ -69,7 +69,7 @@ def _make_reviewers(count: int = 3, tier: str = "smart") -> list[dict]:
 
 
 MODEL_TIERS = {
-    "smart": "claude-sonnet-4-6",
+    "review": "claude-sonnet-4-6",
     "fast": "claude-haiku-4-5",
 }
 
@@ -124,7 +124,7 @@ class TestCallReviewer:
 
         engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
-        result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
+        result = engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
 
         assert result["reviewer_id"] == "N01"
         assert result["score"] == 9
@@ -139,7 +139,7 @@ class TestCallReviewer:
 
         engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
-        engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
+        engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
 
         call_kwargs = mock_client.messages.parse.call_args[1]
         assert call_kwargs["output_format"] is ReviewVerdict
@@ -155,7 +155,7 @@ class TestCallReviewer:
         engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
         with pytest.raises(ClaudeAPIError, match="no structured output"):
-            engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
+            engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
 
     def test_authentication_error_raises_not_score_zero(self):
         mock_client = MagicMock()
@@ -164,7 +164,7 @@ class TestCallReviewer:
         engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
         with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
-            engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
+            engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +240,7 @@ class TestRunAll:
                 "id": "N01",
                 "name": "Smart",
                 "system_prompt": "Eval",
-                "model_tier": "smart",
+                "model_tier": "review",
                 "threshold": 8,
                 "group": "q",
             },
@@ -257,7 +257,7 @@ class TestRunAll:
 
         # First call (prime) uses smart model
         first_call_kwargs = mock_client.messages.parse.call_args_list[0][1]
-        assert first_call_kwargs["model"] == MODEL_TIERS["smart"]
+        assert first_call_kwargs["model"] == MODEL_TIERS["review"]
 
     def test_per_tier_cache_priming(self):
         """Each model tier should prime its own cache independently."""
@@ -279,7 +279,7 @@ class TestRunAll:
                 "id": "N01",
                 "name": "Smart One",
                 "system_prompt": "Smart eval 1",
-                "model_tier": "smart",
+                "model_tier": "review",
                 "threshold": 8,
                 "group": "q",
             },
@@ -287,7 +287,7 @@ class TestRunAll:
                 "id": "N02",
                 "name": "Smart Two",
                 "system_prompt": "Smart eval 2",
-                "model_tier": "smart",
+                "model_tier": "review",
                 "threshold": 8,
                 "group": "q",
             },
@@ -313,14 +313,14 @@ class TestRunAll:
         assert mock_client.messages.parse.call_count == 4
 
         # Verify smart-tier calls use Sonnet model
-        smart_calls = [(m, t) for m, t in call_order if m == MODEL_TIERS["smart"]]
+        smart_calls = [(m, t) for m, t in call_order if m == MODEL_TIERS["review"]]
         fast_calls = [(m, t) for m, t in call_order if m == MODEL_TIERS["fast"]]
         assert len(smart_calls) == 2
         assert len(fast_calls) == 2
 
         # First call per tier should be the primer (synchronous)
         # Smart tier primer is first overall
-        assert call_order[0][0] == MODEL_TIERS["smart"]
+        assert call_order[0][0] == MODEL_TIERS["review"]
         assert call_order[0][1] == "Smart eval 1"
 
     def test_mixed_tiers_each_get_correct_model(self):
@@ -343,7 +343,7 @@ class TestRunAll:
                 "id": "N01",
                 "name": "S",
                 "system_prompt": "smart_prompt",
-                "model_tier": "smart",
+                "model_tier": "review",
                 "threshold": 8,
                 "group": "q",
             },
@@ -358,7 +358,7 @@ class TestRunAll:
         ]
         engine.run_all("# Spec", reviewers, MODEL_TIERS)
 
-        assert models_used["smart_prompt"] == MODEL_TIERS["smart"]
+        assert models_used["smart_prompt"] == MODEL_TIERS["review"]
         assert models_used["fast_prompt"] == MODEL_TIERS["fast"]
 
     def test_passed_threshold(self):
@@ -368,7 +368,14 @@ class TestRunAll:
 
         engine = ReviewerEngine(client=mock_client)
         reviewers = [
-            {"id": "N01", "name": "Test", "system_prompt": "Eval", "model_tier": "smart", "threshold": 8, "group": "q"},
+            {
+                "id": "N01",
+                "name": "Test",
+                "system_prompt": "Eval",
+                "model_tier": "review",
+                "threshold": 8,
+                "group": "q",
+            },
         ]
         results = engine.run_all("# Spec", reviewers, MODEL_TIERS)
 
@@ -381,7 +388,14 @@ class TestRunAll:
 
         engine = ReviewerEngine(client=mock_client)
         reviewers = [
-            {"id": "N01", "name": "Test", "system_prompt": "Eval", "model_tier": "smart", "threshold": 8, "group": "q"},
+            {
+                "id": "N01",
+                "name": "Test",
+                "system_prompt": "Eval",
+                "model_tier": "review",
+                "threshold": 8,
+                "group": "q",
+            },
         ]
         results = engine.run_all("# Spec", reviewers, MODEL_TIERS)
 

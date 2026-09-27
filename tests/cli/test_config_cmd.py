@@ -34,12 +34,12 @@ def test_config_show_exits_0(tmp_path: Path, monkeypatch: object) -> None:
 
 
 def test_config_get_returns_value(tmp_path: Path, monkeypatch: object) -> None:
-    """ydk config get spec_check.model prints the model name."""
+    """ydk config get spec_check.timeout prints the value."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _write_config(tmp_path)
-    result = runner.invoke(app, ["config", "get", "spec_check.model"])
+    result = runner.invoke(app, ["config", "get", "spec_check.timeout"])
     assert result.exit_code == 0
-    assert "claude-sonnet" in result.output
+    assert "60" in result.output
 
 
 def test_config_get_missing_key(tmp_path: Path, monkeypatch: object) -> None:

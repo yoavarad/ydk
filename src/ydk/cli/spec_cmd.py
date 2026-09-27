@@ -21,7 +21,6 @@ from ydk.core.config import load_config
 from ydk.core.reviewer import (
     ReviewResult,
     load_all_reviewers,
-    run_all_sync,
 )
 from ydk.models.component import LinkerResult, ScannerResult
 from ydk.models.evaluation import (
@@ -83,10 +82,8 @@ def _run_reviewer_agents(
 ) -> tuple[list[ReviewResult], dict[str, list[dict[str, object]]]]:
     """Run parallel reviewer agents against spec content.
 
-    Prefers the cached fan-out engine (direct Anthropic Messages API with
-    prompt caching).  Falls back to the simpler per-reviewer path if
-    anthropic is not available (defensive only — anthropic is a hard
-    dependency, so this branch should not normally be reachable).
+    Runs the cached fan-out engine (direct Anthropic Messages API with
+    prompt caching).
     """
     from ydk.models.config import YdkConfig
 
@@ -127,28 +124,7 @@ def _run_reviewer_agents(
                 f"  [{r.id}] {r.group}/{r.name} (threshold={r.threshold}, tier={r.model_tier}) tools={tool_names}"
             )
 
-    # --- Cached fan-out engine (preferred) ---
-    if _anthropic_available():
-        return _run_cached_fanout(spec_content, config, reviewers, verbose=verbose)
-
-    # --- Simpler per-reviewer fallback (anthropic unavailable) ---
-    if verbose:
-        typer.echo("  [fallback] anthropic not available, using per-reviewer path")
-
-    model_config: dict[str, Any] = {
-        "api_key_env": config.anthropic.api_key_env,
-        "model_id": config.spec_check.model,
-    }
-
-    results = run_all_sync(
-        spec_content,
-        reviewers_dir,
-        model_config=model_config,
-        threshold_overrides=threshold_overrides,
-        max_workers=config.spec_check.concurrency,
-        rubric_filter=rubric_filter,
-    )
-    return results, {}
+    return _run_cached_fanout(spec_content, config, reviewers, verbose=verbose)
 
 
 def _run_cached_fanout(
@@ -233,11 +209,14 @@ def _run_cached_fanout(
     # Create engine and run
     engine = ReviewerEngine(api_key_env=config.anthropic.api_key_env)
 
-    model_tiers = config.ai.model_tiers
+    from ydk.models.config import DEFAULT_MODEL_TIERS
+
+    # Partial ai.model_tiers overrides keep the built-in defaults for other tiers.
+    model_tiers = {**DEFAULT_MODEL_TIERS, **config.ai.model_tiers}
 
     if verbose:
         typer.echo(f"  [engine] model tiers: {model_tiers}")
-        typer.echo(f"  [engine] {len(reviewer_dicts)} reviewers, priming cache with first smart-tier call")
+        typer.echo(f"  [engine] {len(reviewer_dicts)} reviewers, priming cache with first review-tier call")
 
     raw_results = engine.run_all(
         spec_content=spec_content,

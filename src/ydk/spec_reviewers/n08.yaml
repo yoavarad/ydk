@@ -2,7 +2,7 @@ id: N08
 name: No Technical Specs in Prose
 group: quality
 threshold: 7
-model_tier: smart
+model_tier: review
 
 tools:
   - name: scan_url_paths

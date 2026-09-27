@@ -5,21 +5,7 @@ Core logic depends on these protocols, not on concrete implementations.
 
 from __future__ import annotations
 
-from typing import Protocol, TypeVar
-
-_T = TypeVar("_T")
-
-
-class LLMProvider(Protocol):
-    """Abstract LLM interaction. AnthropicLLMProvider is the concrete implementation."""
-
-    async def complete(self, system_prompt: str, user_prompt: str) -> str:
-        """Single completion."""
-        ...
-
-    async def complete_structured(self, system_prompt: str, user_prompt: str, schema: type[_T]) -> _T:
-        """Completion with structured output (JSON parsed into schema)."""
-        ...
+from typing import Protocol
 
 
 class GitService(Protocol):

@@ -77,7 +77,7 @@ def _build_anthropic_provider(cfg: YdkConfig, max_tokens: int) -> StructuredLLMP
     from ydk.core.claude_client import build_client
 
     client = build_client(cfg.anthropic.api_key_env)
-    model_id = cfg.ai.model_tiers.get("fast", "claude-sonnet-4-6")
+    model_id = cfg.ai.model_for("fast")
     return AnthropicLLMProvider(client=client, model_id=model_id, max_tokens=max_tokens)
 
 
