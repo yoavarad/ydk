@@ -6,13 +6,23 @@ All tests mock the anthropic client — no real Anthropic API calls.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import anthropic
+import httpx
+import pytest
+
+from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
 from ydk.core.reviewer_engine import REVIEW_TOOL_SPEC, ReviewerEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _auth_error() -> anthropic.AuthenticationError:
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return anthropic.AuthenticationError("bad key", response=httpx.Response(401, request=request), body=None)
 
 
 def _mock_converse_response(
@@ -114,15 +124,13 @@ class TestReviewToolSpec:
 
 
 class TestCallReviewer:
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_extracts_tooluse_result(self, mock_anthropic):
+    def test_extracts_tooluse_result(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
         mock_client.messages.create.return_value = _mock_converse_response(
             score=9, reasoning="Excellent", suggestions=["Do X"], findings=[{"line": 1, "text": "foo", "issue": "bar"}]
         )
 
-        engine = ReviewerEngine(api_key="test")
+        engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
         result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
@@ -133,13 +141,11 @@ class TestCallReviewer:
         assert len(result["findings"]) == 1
         assert result["findings"][0]["line"] == 1
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_passes_tool_config(self, mock_anthropic):
+    def test_passes_tool_config(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
         mock_client.messages.create.return_value = _mock_converse_response()
 
-        engine = ReviewerEngine(api_key="test")
+        engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
         engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
@@ -147,10 +153,8 @@ class TestCallReviewer:
         assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_review"}
         assert call_kwargs["max_tokens"] == 8192
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_missing_tooluse_block_returns_zero(self, mock_anthropic):
+    def test_missing_tooluse_block_returns_zero(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
         # Response with text instead of tool_use (shouldn't happen, but handle gracefully)
         mock_client.messages.create.return_value = SimpleNamespace(
             content=[SimpleNamespace(type="text", text="oops")],
@@ -159,25 +163,21 @@ class TestCallReviewer:
             ),
         )
 
-        engine = ReviewerEngine(api_key="test")
+        engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
         result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
         assert result["score"] == 0
         assert "No tool_use block" in result["reasoning"]
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_anthropic_exception_handled(self, mock_anthropic):
+    def test_authentication_error_raises_not_score_zero(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
-        mock_client.messages.create.side_effect = Exception("Throttled")
+        mock_client.messages.create.side_effect = _auth_error()
 
-        engine = ReviewerEngine(api_key="test")
+        engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
-        result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
-
-        assert result["score"] == 0
-        assert "ANTHROPIC ERROR" in result["reasoning"]
+        with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
+            engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
 
 # ---------------------------------------------------------------------------
@@ -186,10 +186,8 @@ class TestCallReviewer:
 
 
 class TestRunAll:
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_basic_flow(self, mock_anthropic):
+    def test_basic_flow(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
 
         # First call: cache write; subsequent: cache read
         mock_client.messages.create.side_effect = [
@@ -198,7 +196,7 @@ class TestRunAll:
             _mock_converse_response(score=8, reasoning="Good", cache_read=5000),
         ]
 
-        engine = ReviewerEngine(api_key="test")
+        engine = ReviewerEngine(client=mock_client)
         results = engine.run_all(
             spec_content="# Test Spec",
             reviewers=_make_reviewers(3),
@@ -212,42 +210,44 @@ class TestRunAll:
         ids = [r["reviewer_id"] for r in results]
         assert ids == sorted(ids)
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_empty_reviewers(self, mock_anthropic):
+    def test_empty_reviewers(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
 
-        engine = ReviewerEngine()
+        engine = ReviewerEngine(client=mock_client)
         results = engine.run_all("# Spec", [], MODEL_TIERS)
         assert results == []
         mock_client.messages.create.assert_not_called()
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_anthropic_error_handled(self, mock_anthropic):
+    def test_authentication_error_propagates(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
+        mock_client.messages.create.side_effect = _auth_error()
 
-        mock_client.messages.create.side_effect = Exception("Throttled")
+        engine = ReviewerEngine(client=mock_client)
+        with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
+            engine.run_all(
+                spec_content="# Test",
+                reviewers=_make_reviewers(1),
+                model_tiers=MODEL_TIERS,
+            )
 
-        engine = ReviewerEngine()
-        results = engine.run_all(
-            spec_content="# Test",
-            reviewers=_make_reviewers(1),
-            model_tiers=MODEL_TIERS,
-        )
-
-        assert len(results) == 1
-        assert results[0]["score"] == 0
-        assert "ANTHROPIC ERROR" in results[0]["reasoning"]
-
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_model_tier_resolution(self, mock_anthropic):
+    def test_authentication_error_in_fanout_propagates(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
+        mock_client.messages.create.side_effect = [_mock_converse_response(), _auth_error()]
+
+        engine = ReviewerEngine(client=mock_client)
+        with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
+            engine.run_all(
+                spec_content="# Test",
+                reviewers=_make_reviewers(2),
+                model_tiers=MODEL_TIERS,
+            )
+
+    def test_model_tier_resolution(self):
+        mock_client = MagicMock()
 
         mock_client.messages.create.return_value = _mock_converse_response()
 
-        engine = ReviewerEngine()
+        engine = ReviewerEngine(client=mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -272,11 +272,9 @@ class TestRunAll:
         first_call_kwargs = mock_client.messages.create.call_args_list[0][1]
         assert first_call_kwargs["model"] == MODEL_TIERS["smart"]
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_per_tier_cache_priming(self, mock_anthropic):
+    def test_per_tier_cache_priming(self):
         """Each model tier should prime its own cache independently."""
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
 
         call_order: list[tuple[str, str]] = []
 
@@ -288,7 +286,7 @@ class TestRunAll:
 
         mock_client.messages.create.side_effect = track_calls
 
-        engine = ReviewerEngine()
+        engine = ReviewerEngine(client=mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -338,11 +336,9 @@ class TestRunAll:
         assert call_order[0][0] == MODEL_TIERS["smart"]
         assert call_order[0][1] == "Smart eval 1"
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_mixed_tiers_each_get_correct_model(self, mock_anthropic):
+    def test_mixed_tiers_each_get_correct_model(self):
         """Reviewers with different tiers should each use their tier's model."""
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
 
         models_used: dict[str, str] = {}
 
@@ -354,7 +350,7 @@ class TestRunAll:
 
         mock_client.messages.create.side_effect = track_calls
 
-        engine = ReviewerEngine()
+        engine = ReviewerEngine(client=mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -378,14 +374,12 @@ class TestRunAll:
         assert models_used["smart_prompt"] == MODEL_TIERS["smart"]
         assert models_used["fast_prompt"] == MODEL_TIERS["fast"]
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_passed_threshold(self, mock_anthropic):
+    def test_passed_threshold(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
 
         mock_client.messages.create.return_value = _mock_converse_response(score=7)
 
-        engine = ReviewerEngine()
+        engine = ReviewerEngine(client=mock_client)
         reviewers = [
             {"id": "N01", "name": "Test", "system_prompt": "Eval", "model_tier": "smart", "threshold": 8, "group": "q"},
         ]
@@ -393,17 +387,27 @@ class TestRunAll:
 
         assert results[0]["passed"] is False  # 7 < 8
 
-    @patch("ydk.core.reviewer_engine.anthropic")
-    def test_passed_at_threshold(self, mock_anthropic):
+    def test_passed_at_threshold(self):
         mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
 
         mock_client.messages.create.return_value = _mock_converse_response(score=8)
 
-        engine = ReviewerEngine()
+        engine = ReviewerEngine(client=mock_client)
         reviewers = [
             {"id": "N01", "name": "Test", "system_prompt": "Eval", "model_tier": "smart", "threshold": 8, "group": "q"},
         ]
         results = engine.run_all("# Spec", reviewers, MODEL_TIERS)
 
         assert results[0]["passed"] is True  # 8 >= 8
+
+
+class TestConstruction:
+    def test_missing_credentials_raise_at_construction(self, monkeypatch):
+        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+        with pytest.raises(MissingCredentialsError):
+            ReviewerEngine(api_key_env="YDK_TEST_MISSING_KEY")
+
+    def test_builds_client_from_custom_env(self, monkeypatch):
+        monkeypatch.setenv("YDK_TEST_KEY", "sk-test")
+        engine = ReviewerEngine(api_key_env="YDK_TEST_KEY")
+        assert engine._client.api_key == "sk-test"

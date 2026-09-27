@@ -5,6 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import anthropic
+import httpx
+import pytest
+
+from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
 from ydk.core.llm_provider import AnthropicLLMProvider, LLMProvider, get_llm_provider
 from ydk.models.config import AIConfig, AnthropicConfig, YdkConfig
 
@@ -59,6 +64,31 @@ class TestAnthropicLLMProvider:
 
         assert result == ""
 
+    def test_invoke_uses_configured_max_tokens(self) -> None:
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(content=[], stop_reason="end_turn")
+
+        AnthropicLLMProvider(client=client, model_id="m", max_tokens=16000).invoke("p")
+
+        assert client.messages.create.call_args[1]["max_tokens"] == 16000
+
+    def test_invoke_raises_on_truncated_response(self) -> None:
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(content=[], stop_reason="max_tokens")
+
+        with pytest.raises(ClaudeAPIError, match="max_tokens"):
+            AnthropicLLMProvider(client=client, model_id="m").invoke("p")
+
+    def test_invoke_translates_authentication_error(self) -> None:
+        request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        client = MagicMock()
+        client.messages.create.side_effect = anthropic.AuthenticationError(
+            "bad key", response=httpx.Response(401, request=request), body=None
+        )
+
+        with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
+            AnthropicLLMProvider(client=client, model_id="m").invoke("p")
+
     def test_conforms_to_llm_provider_protocol(self) -> None:
         client = MagicMock()
         provider = AnthropicLLMProvider(client=client, model_id="claude-sonnet-5")
@@ -95,3 +125,21 @@ class TestGetLlmProvider:
 
         with patch("anthropic.Anthropic", side_effect=RuntimeError("boom")):
             assert get_llm_provider(cfg) is None
+
+    def test_max_tokens_forwarded(self) -> None:
+        with patch("anthropic.Anthropic", return_value=MagicMock()):
+            provider = get_llm_provider(_cfg(), max_tokens=16000)
+
+        assert isinstance(provider, AnthropicLLMProvider)
+        assert provider._max_tokens == 16000
+
+    def test_missing_credentials_propagate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = YdkConfig(
+            project={"name": "test"},
+            ai=AIConfig(provider="anthropic", model_tiers={"fast": "m"}),
+            anthropic=AnthropicConfig(api_key_env="YDK_TEST_MISSING_KEY"),
+        )
+        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+
+        with pytest.raises(MissingCredentialsError):
+            get_llm_provider(cfg)

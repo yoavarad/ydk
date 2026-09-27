@@ -144,7 +144,13 @@ def extract(
             console.print(f"[yellow]No session JSONL found for {task_id}.[/yellow] Use --jsonl to specify a path.")
             raise typer.Exit(code=1)
 
-    memories = extractor.extract_from_jsonl(jsonl_path=jsonl_path, task_context=task_id)  # ty: ignore[unresolved-attribute]  # MemoryExtractor is optional dep
+    from ydk.core.claude_client import ClaudeAPIError
+
+    try:
+        memories = extractor.extract_from_jsonl(jsonl_path=jsonl_path, task_context=task_id)  # ty: ignore[unresolved-attribute]  # MemoryExtractor is optional dep
+    except ClaudeAPIError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
     if memories:
         # Store extracted memories in ChromaDB
         for m in memories:
@@ -245,7 +251,13 @@ def retrospective(
         console.print(f"    - {t.id}: {t.title}")
 
     # Try LLM retrospective analysis
-    proposals = _run_llm_retrospective(shipped, sprint)
+    from ydk.core.claude_client import ClaudeAPIError
+
+    try:
+        proposals = _run_llm_retrospective(shipped, sprint)
+    except ClaudeAPIError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
     if proposals:
         console.print("\n  [bold]AI Analysis:[/bold]")
         for proposal in proposals.get("patterns", []):
@@ -272,11 +284,16 @@ def _run_llm_retrospective(
     tasks: list,  # type: ignore[type-arg]
     sprint: str | None,
 ) -> dict | None:
-    """Run LLM analysis on sprint data. Returns structured proposals or None."""
+    """Run LLM analysis on sprint data.
+
+    Returns structured proposals, or None when no provider is configured or the
+    reply is not valid JSON. Raises ``ClaudeAPIError`` on API failures.
+    """
     from ydk.core.config import load_config
     from ydk.core.llm_provider import get_llm_provider
 
-    provider = get_llm_provider(load_config())
+    # Output is JSON; leave room so it is not truncated.
+    provider = get_llm_provider(load_config(), max_tokens=16000)
     if provider is None:
         return None
 
@@ -297,10 +314,7 @@ def _run_llm_retrospective(
         "What should be templated? What rules should be added?"
     )
 
-    try:
-        response_text = provider.invoke(prompt)
-    except Exception:
-        return None
+    response_text = provider.invoke(prompt)
 
     try:
         parsed = json.loads(response_text)

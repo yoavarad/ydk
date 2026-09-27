@@ -149,3 +149,48 @@ class TestAnalyzeComplexityProviderWiring:
         assert result.exit_code == 0
         mock_get_provider.assert_called_once()
         assert mock_scorer_cls.call_args.kwargs["llm_provider"] is fake_provider
+
+
+class TestAnalyzeComplexityClaudeErrors:
+    """Claude API failures surface clearly (mock only the anthropic SDK boundary)."""
+
+    def test_authentication_error_is_clear(self, tmp_path, monkeypatch) -> None:
+        import anthropic
+        import httpx
+
+        monkeypatch.chdir(tmp_path)
+        request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        client = MagicMock()
+        client.messages.create.side_effect = anthropic.AuthenticationError(
+            "bad key", response=httpx.Response(401, request=request), body=None
+        )
+        repo = _FakeRepo([_make_task_detail("T-001")])
+
+        with (
+            patch("ydk.cli.task_cmd._get_repo", return_value=repo),
+            patch("anthropic.Anthropic", return_value=client),
+        ):
+            result = runner.invoke(app, ["task", "analyze-complexity", "--task-id", "T-001"])
+
+        assert result.exit_code == 1
+        assert "invalid or missing API key" in result.output
+        assert isinstance(result.exception, SystemExit)
+
+    def test_missing_credentials_reported_before_request(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            "project:\n  name: t\nanthropic:\n  api_key_env: YDK_TEST_MISSING_KEY\n", encoding="utf-8"
+        )
+        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+        repo = _FakeRepo([_make_task_detail("T-001")])
+
+        with (
+            patch("ydk.cli.task_cmd._get_repo", return_value=repo),
+            patch("anthropic.Anthropic") as mock_cls,
+        ):
+            result = runner.invoke(app, ["task", "analyze-complexity", "--task-id", "T-001"])
+
+        assert result.exit_code == 1
+        assert "YDK_TEST_MISSING_KEY" in result.output
+        mock_cls.assert_not_called()

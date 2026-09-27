@@ -367,11 +367,11 @@ class TestRunWithLlm:
 
     def test_calls_messages_create_with_forced_tool_choice(self) -> None:
         config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6"})
 
-        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
+        with patch("anthropic.Anthropic") as mock_anthropic_cls:
             mock_client = MagicMock()
-            mock_anthropic.Anthropic.return_value = mock_client
+            mock_anthropic_cls.return_value = mock_client
             mock_client.messages.create.return_value = self._mock_tool_use_response()
 
             result = agent._run_with_llm("some spec content")
@@ -384,11 +384,11 @@ class TestRunWithLlm:
 
     def test_parses_tool_use_block_into_review_result(self) -> None:
         config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6"})
 
-        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
+        with patch("anthropic.Anthropic") as mock_anthropic_cls:
             mock_client = MagicMock()
-            mock_anthropic.Anthropic.return_value = mock_client
+            mock_anthropic_cls.return_value = mock_client
             mock_client.messages.create.return_value = self._mock_tool_use_response(score=6, reasoning="Needs work.")
 
             result = agent._run_with_llm("some spec content")
@@ -399,11 +399,11 @@ class TestRunWithLlm:
 
     def test_missing_tool_use_block_returns_fallback_result(self) -> None:
         config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6"})
 
-        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
+        with patch("anthropic.Anthropic") as mock_anthropic_cls:
             mock_client = MagicMock()
-            mock_anthropic.Anthropic.return_value = mock_client
+            mock_anthropic_cls.return_value = mock_client
             mock_client.messages.create.return_value = SimpleNamespace(
                 content=[SimpleNamespace(type="text", text="I refuse to call the tool.")]
             )
@@ -427,6 +427,28 @@ class TestReviewerAgentGracefulDegradation:
 
         assert result.score == 10
         assert "Deterministic scan" in result.reasoning
+
+    def test_review_does_not_hide_claude_api_errors(self) -> None:
+        from ydk.core.claude_client import ClaudeAPIError
+
+        config = _make_config(tools=[_dummy_tool])
+        agent = ReviewerAgent(config=config, model_config={})
+
+        with (
+            patch.object(agent, "_run_with_llm", side_effect=ClaudeAPIError("invalid or missing API key")),
+            pytest.raises(ClaudeAPIError),
+        ):
+            agent.review("spec content")
+
+    def test_run_with_llm_uses_configured_api_key_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ydk.core.claude_client import MissingCredentialsError
+
+        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+        config = _make_config(tools=[_empty_tool])
+        agent = ReviewerAgent(config=config, model_config={"api_key_env": "YDK_TEST_MISSING_KEY"})
+
+        with pytest.raises(MissingCredentialsError):
+            agent._run_with_llm("spec content")
 
     def test_review_falls_back_on_credential_error(self) -> None:
         config = _make_config(tools=[_dummy_tool])

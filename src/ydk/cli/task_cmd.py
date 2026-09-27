@@ -1661,6 +1661,7 @@ def analyze_complexity(
     """Score task complexity (1-10) using LLM analysis."""
     from rich.table import Table
 
+    from ydk.core.claude_client import ClaudeAPIError
     from ydk.core.complexity_scorer import ComplexityScorer
     from ydk.core.config import load_config
     from ydk.core.llm_provider import get_llm_provider
@@ -1668,17 +1669,21 @@ def analyze_complexity(
     repo = _get_repo()
 
     cfg = load_config()
-    llm_provider = get_llm_provider(cfg)
-    scorer = ComplexityScorer(llm_provider=llm_provider)
-
     scores: list[ComplexityScore] = []
-    if task_id:
-        task = repo.get_task(task_id)
-        scores.append(scorer.score_task(task))
-    else:
-        summaries = repo.list_tasks(state="open")
-        tasks = [repo.get_task(s.id) for s in summaries]
-        scores = scorer.score_tasks(tasks)
+    try:
+        llm_provider = get_llm_provider(cfg)
+        scorer = ComplexityScorer(llm_provider=llm_provider)
+
+        if task_id:
+            task = repo.get_task(task_id)
+            scores.append(scorer.score_task(task))
+        else:
+            summaries = repo.list_tasks(state="open")
+            tasks = [repo.get_task(s.id) for s in summaries]
+            scores = scorer.score_tasks(tasks)
+    except ClaudeAPIError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
     if format_or_echo(ctx, [s.model_dump() for s in scores]):
         return

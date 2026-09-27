@@ -248,3 +248,12 @@ class TestNoProviderConfigured:
             pytest.raises(ImportError, match="LLM provider"),
         ):
             extractor._build_provider()
+
+
+class TestBuildProviderMaxTokens:
+    def test_builds_provider_with_large_max_tokens(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        with patch("anthropic.Anthropic", return_value=MagicMock()):
+            provider = MemoryExtractor._build_provider()
+
+        assert provider._max_tokens == 16000  # type: ignore[attr-defined]
