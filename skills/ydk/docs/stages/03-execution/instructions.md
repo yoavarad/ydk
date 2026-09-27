@@ -324,6 +324,11 @@ ydk task close T-a1b2c3d4
 - If the PR exists but isn't merged yet: reports "not merged", exits 0, no state changed
 - You MAY run this any time to check/reconcile a task's status against its PR's real merge state
 
+**Epic check:**
+- After `ydk task close` (or `ydk task sync`), check its output for a line matching `Epic ... complete`
+- You MUST run `ydk memory retrospective --epic <epic-id>` before starting the next task when that line appears
+- This aggregates learnings across the epic's tasks and records the retrospective (see Stage 04, step 4)
+
 ### 10. PR Review Feedback Loop
 
 When a human leaves review comments on a PR, the watch system (`ydk watch`) detects them and resumes the agent session. The agent then addresses each comment.

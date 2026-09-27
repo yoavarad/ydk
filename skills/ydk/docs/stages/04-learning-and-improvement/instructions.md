@@ -83,19 +83,39 @@ ydk memory record-decision "order-validation-strategy" \
 # This is decision #2 for this topic (previous: validate in service layer)
 ```
 
-### 4. Sprint Retrospective
+### 4. Retrospective (per-epic default, per-sprint optional)
 
-After a sprint completes, aggregate learnings across all tasks.
+Aggregate learnings across tasks. Per-epic is the default trigger — Stage 03 runs it automatically when an epic completes; per-sprint is an optional, manually-triggered rollup across a milestone.
 
 **Constraints:**
-- You SHOULD run a retrospective after every sprint
+- You MUST run `ydk memory retrospective --epic <epic-id>` when Stage 03 reports "Epic ... complete" (see Stage 03, step 9's epic check) — this is the default retrospective trigger
+- You MAY run `ydk memory retrospective --sprint <label>` for an optional, additional rollup across a milestone
+- `--sprint` and `--epic` are mutually exclusive — passing both errors
 - The retrospective identifies what shipped, what patterns emerged, and what should change
-- Retrospective output feeds into the next sprint's planning
+- Retrospective output feeds into the next sprint's or epic's planning
 - The retrospective now includes procedural memory analysis (which approaches worked best)
 
 **Read `aspects/retrospective.md` for the full retrospective process.**
 
+**Per-epic retrospective:**
+- Gathers the epic's closed/done tasks across its stories
+- Saves the rendered retrospective to `.ydk/retros/<epic-id>.md`
+- Marks the epic `retro-done` (adds a `retro-done` label/comment on GitHub/GitLab backends, or sets the `retro` frontmatter field locally) so the completion is auditable
+- A future `ydk task start` gate blocks starting new work under a completed epic that has no recorded retro (tracked separately; not yet enforced as of this doc)
+
 **Example:**
+
+```bash
+ydk memory retrospective --epic E-42
+# Epic Retrospective -- E-42
+#   Tasks completed: 6
+#   Shipped:
+#     - T-a1b2c3d4: ...
+#   AI Analysis: ...
+#   Saved to .ydk/retros/E-42.md
+```
+
+**Per-sprint retrospective (optional):**
 
 ```bash
 ydk memory retrospective --sprint "Sprint 3"
