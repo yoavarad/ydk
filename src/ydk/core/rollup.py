@@ -158,9 +158,10 @@ def advance_stage_if_complete(project_root: Path, task_repo: LifecycleTaskReposi
 
     Call after any command that can finish the last open task: ``task done``,
     ``task close``, ``task sync``. No-op unless the project is currently in
-    stage 03 and no task is open or in-progress. Advisory only: a failure
-    (e.g. an unreadable state file) is logged and swallowed so it never
-    breaks the calling command.
+    stage 03 and no task is open, in-progress, or in-review (i.e. `task done`
+    ran but its PR hasn't merged and been landed by `close`/`sync` yet).
+    Advisory only: a failure (e.g. an unreadable state file) is logged, not
+    swallowed, so it never breaks the calling command.
     """
     try:
         from ydk.core.state import ProjectState
@@ -168,7 +169,12 @@ def advance_stage_if_complete(project_root: Path, task_repo: LifecycleTaskReposi
         state = ProjectState(project_root)
         if state.read().get("stage") != "03":
             return
-        if task_repo.list_tasks(state="open") or task_repo.list_tasks(state="in-progress"):
+        still_open = (
+            task_repo.list_tasks(state="open")
+            or task_repo.list_tasks(state="in-progress")
+            or task_repo.list_tasks(state="in-review")
+        )
+        if still_open:
             return
         state.update(stage="04")
     except Exception:
