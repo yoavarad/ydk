@@ -161,7 +161,7 @@ class TestAnalyzeComplexityClaudeErrors:
         monkeypatch.chdir(tmp_path)
         request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
         client = MagicMock()
-        client.messages.create.side_effect = anthropic.AuthenticationError(
+        client.messages.parse.side_effect = anthropic.AuthenticationError(
             "bad key", response=httpx.Response(401, request=request), body=None
         )
         repo = _FakeRepo([_make_task_detail("T-001")])

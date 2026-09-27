@@ -1,19 +1,20 @@
 """LLM-based memory extraction from development session transcripts.
 
-Sends a transcript to the configured LLM provider and parses structured
-memory entries from the response.
+Sends a transcript to the configured LLM provider and receives structured
+memory entries via structured outputs.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ydk.core.llm_provider import LLMProvider
+    from ydk.core.llm_provider import StructuredLLMProvider
 
 EXTRACTION_PROMPT = """\
 You are a memory extraction agent observing a completed development session transcript.
@@ -47,7 +48,7 @@ memory must be **self-contained** -- understandable without the original transcr
 - Git operations (commit, push, branch)
 - Repetitive operations already documented in another memory
 
-If nothing is worth extracting, return an empty JSON array `[]`.
+If nothing is worth extracting, return an empty `memories` list.
 
 ## Concept tags (pick all that apply to each memory)
 
@@ -73,19 +74,8 @@ relevant. Use paths as they appear in the transcript (relative or absolute).
 
 ## Output format
 
-Return a JSON array of objects. Each object has these fields:
-
-```json
-[
-  {
-    "memory_type": "discovery | decision | gotcha | pattern | convention | abandoned",
-    "content": "Self-contained description. No pronouns. Include file names, function names, concrete values.",
-    "related_files": ["path/to/file.py"],
-    "concepts": ["how-it-works", "gotcha"],
-    "importance": "high | medium | low"
-  }
-]
-```
+Return a `memories` list. Each memory has: `memory_type` (one of the types above),
+`content`, `related_files`, `concepts` (tags above), and `importance`.
 
 Rules for writing `content`:
 1. Each statement must stand alone -- no "it", "this", "the above"
@@ -93,12 +83,10 @@ Rules for writing `content`:
 3. State the fact, not the process of discovering it ("X uses Y" not "we found that X uses Y")
 4. Maximum 3 sentences per memory
 5. Prefer concrete over abstract
-
-Return ONLY the JSON array, no commentary before or after.
 """
 
 
-# Extraction returns a JSON list; leave room so output is not truncated.
+# Extraction returns a list of memories; leave room so output is not truncated.
 _EXTRACTION_MAX_TOKENS = 16000
 
 
@@ -113,10 +101,24 @@ class ExtractedMemory:
     importance: str = "medium"
 
 
+class _MemoryItem(BaseModel):
+    memory_type: Literal["discovery", "decision", "gotcha", "pattern", "convention", "abandoned"]
+    content: str
+    related_files: list[str]
+    concepts: list[str]
+    importance: Literal["high", "medium", "low"]
+
+
+class ExtractionResult(BaseModel):
+    """Structured output the LLM returns for one transcript."""
+
+    memories: list[_MemoryItem]
+
+
 class MemoryExtractor:
     """Extract structured memories from conversation transcripts using an LLM."""
 
-    def __init__(self, llm_provider: LLMProvider | None = None) -> None:
+    def __init__(self, llm_provider: StructuredLLMProvider | None = None) -> None:
         self._llm_provider = llm_provider
 
     def extract_from_transcript(
@@ -145,9 +147,19 @@ class MemoryExtractor:
 
         user_message = self._build_user_message(conversation, task_context)
         prompt = f"{EXTRACTION_PROMPT}\n\n{user_message}"
-        result = provider.invoke(prompt)
+        result = provider.invoke_structured(prompt, ExtractionResult)
 
-        return self._parse_response(result)
+        return [
+            ExtractedMemory(
+                memory_type=item.memory_type,
+                content=item.content.strip(),
+                related_files=[f for f in item.related_files if f],
+                concepts=[c for c in item.concepts if c],
+                importance=item.importance,
+            )
+            for item in result.memories
+            if item.content.strip()
+        ]
 
     def extract_from_jsonl(
         self,
@@ -165,7 +177,7 @@ class MemoryExtractor:
         return self.extract_from_transcript(conversation, task_context)
 
     @staticmethod
-    def _build_provider() -> LLMProvider:
+    def _build_provider() -> StructuredLLMProvider:
         """Construct the configured LLM provider for memory extraction."""
         from ydk.core.config import load_config
         from ydk.core.llm_provider import get_llm_provider
@@ -187,77 +199,3 @@ class MemoryExtractor:
         parts.append("Here is the development session transcript:\n")
         parts.append(conversation)
         return "\n".join(parts)
-
-    @staticmethod
-    def _parse_response(response_text: str) -> list[ExtractedMemory]:
-        """Parse the LLM JSON response into ExtractedMemory dataclasses."""
-        # The LLM should return a JSON array, but may wrap it in markdown fences.
-        text = response_text.strip()
-
-        # Strip markdown code fences if present.
-        if text.startswith("```"):
-            # Remove opening fence (```json or ```)
-            first_newline = text.index("\n")
-            text = text[first_newline + 1 :]
-            # Remove closing fence
-            if text.endswith("```"):
-                text = text[: -len("```")].rstrip()
-
-        try:
-            raw = json.loads(text)
-        except json.JSONDecodeError:
-            # Try to find a JSON array in the response.
-            start = text.find("[")
-            end = text.rfind("]")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    raw = json.loads(text[start : end + 1])
-                except json.JSONDecodeError:
-                    return []
-            else:
-                return []
-
-        if not isinstance(raw, list):
-            return []
-
-        memories: list[ExtractedMemory] = []
-        valid_types = {"discovery", "decision", "gotcha", "pattern", "convention", "abandoned"}
-        valid_importance = {"high", "medium", "low"}
-
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-
-            memory_type = str(item.get("memory_type", "")).strip()
-            content = str(item.get("content", "")).strip()
-
-            if not content:
-                continue
-            if memory_type not in valid_types:
-                memory_type = "discovery"  # default fallback
-
-            importance = str(item.get("importance", "medium")).strip()
-            if importance not in valid_importance:
-                importance = "medium"
-
-            related_files = item.get("related_files", [])
-            if not isinstance(related_files, list):
-                related_files = []
-            related_files = [str(f) for f in related_files if f]
-
-            concepts = item.get("concepts", [])
-            if not isinstance(concepts, list):
-                concepts = []
-            concepts = [str(c) for c in concepts if c]
-
-            memories.append(
-                ExtractedMemory(
-                    memory_type=memory_type,
-                    content=content,
-                    related_files=related_files,
-                    concepts=concepts,
-                    importance=importance,
-                )
-            )
-
-        return memories

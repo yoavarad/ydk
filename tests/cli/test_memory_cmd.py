@@ -170,9 +170,14 @@ def test_memory_retrospective(mock_repo_factory: MagicMock, tmp_path: Path, monk
     from types import SimpleNamespace
 
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    import json
+
     client = MagicMock()
-    client.messages.create.return_value = SimpleNamespace(
-        content=[SimpleNamespace(type="text", text='{"patterns": ["p"]}')], stop_reason="end_turn"
+    client.messages.parse.side_effect = lambda **kw: SimpleNamespace(
+        stop_reason="end_turn",
+        parsed_output=kw["output_format"].model_validate(
+            {"patterns": ["p"], "templates": ["t"], "rules": ["r"], "summary": "s"}
+        ),
     )
     mock_repo = MagicMock()
     task = MagicMock()
@@ -186,6 +191,13 @@ def test_memory_retrospective(mock_repo_factory: MagicMock, tmp_path: Path, monk
         result = runner.invoke(app, ["memory", "retrospective"])
     assert result.exit_code == 0
     assert "Sprint Retrospective" in result.output
+    assert "Pattern: p" in result.output
+
+    call = client.messages.parse.call_args[1]
+    assert "temperature" not in call
+    assert "tool_choice" not in call
+    saved = json.loads((tmp_path / ".ydk" / "proofs" / "retrospective-current.json").read_text())
+    assert saved == {"patterns": ["p"], "templates": ["t"], "rules": ["r"], "summary": "s"}
 
 
 def test_memory_retrospective_rejects_both_sprint_and_epic() -> None:
@@ -280,9 +292,9 @@ def _auth_failing_client() -> MagicMock:
 
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     client = MagicMock()
-    client.messages.create.side_effect = anthropic.AuthenticationError(
-        "bad key", response=httpx.Response(401, request=request), body=None
-    )
+    error = anthropic.AuthenticationError("bad key", response=httpx.Response(401, request=request), body=None)
+    client.messages.create.side_effect = error
+    client.messages.parse.side_effect = error
     return client
 
 

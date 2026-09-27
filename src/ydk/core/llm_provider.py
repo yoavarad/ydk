@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast, runtime_checkable
+
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from ydk.models.config import YdkConfig
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 @runtime_checkable
@@ -14,6 +18,15 @@ class LLMProvider(Protocol):
 
     def invoke(self, prompt: str) -> str:
         """Send a prompt to an LLM and return the text response."""
+        ...
+
+
+@runtime_checkable
+class StructuredLLMProvider(LLMProvider, Protocol):
+    """An LLMProvider that can also return schema-validated structured output."""
+
+    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
+        """Send a prompt and return the response parsed into ``output_format``."""
         ...
 
 
@@ -43,8 +56,24 @@ class AnthropicLLMProvider:
                 return cast("Any", block).text
         return ""
 
+    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
+        """Send a prompt to Claude and return its structured output as ``output_format``.
 
-def _build_anthropic_provider(cfg: YdkConfig, max_tokens: int) -> LLMProvider:
+        Raises ``ClaudeAPIError`` on API failures, truncated output, or a
+        response without structured output.
+        """
+        from ydk.core.claude_client import parse_message
+
+        return parse_message(
+            self._client,
+            output_format,
+            model=self._model_id,
+            max_tokens=self._max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+
+def _build_anthropic_provider(cfg: YdkConfig, max_tokens: int) -> StructuredLLMProvider:
     from ydk.core.claude_client import build_client
 
     client = build_client(cfg.anthropic.api_key_env)
@@ -57,7 +86,7 @@ _PROVIDER_BUILDERS = {
 }
 
 
-def get_llm_provider(cfg: YdkConfig, *, max_tokens: int = 1024) -> LLMProvider | None:
+def get_llm_provider(cfg: YdkConfig, *, max_tokens: int = 1024) -> StructuredLLMProvider | None:
     """Construct an LLMProvider from a YdkConfig, dispatching on ``cfg.ai.provider``.
 
     Returns ``None`` for an unknown provider or an unexpected construction

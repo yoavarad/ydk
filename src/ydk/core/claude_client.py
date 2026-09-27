@@ -1,7 +1,8 @@
 """Shared Claude (Anthropic) client factory and typed API error handling.
 
 Every Claude call site builds its client through :func:`build_client` and
-sends requests through :func:`create_message`, so credential resolution and
+sends requests through :func:`create_message` (free text) or
+:func:`parse_message` (structured output), so credential resolution and
 error reporting behave the same everywhere.
 """
 
@@ -11,6 +12,7 @@ import os
 from typing import Any, cast
 
 import anthropic
+from pydantic import BaseModel
 
 DEFAULT_API_KEY_ENV = "ANTHROPIC_API_KEY"
 
@@ -89,3 +91,32 @@ def create_message(client: anthropic.Anthropic, **kwargs: object) -> anthropic.t
             f"Claude API: response truncated (stop_reason=max_tokens, max_tokens={kwargs.get('max_tokens')})."
         )
     return cast("anthropic.types.Message", response)
+
+
+def parse_response[ModelT: BaseModel](
+    client: anthropic.Anthropic, output_format: type[ModelT], **kwargs: object
+) -> anthropic.types.ParsedMessage[ModelT]:
+    """Call ``client.messages.parse`` and return the response once its structured output is present.
+
+    Raises :class:`ClaudeAPIError` for any API failure, a truncated response,
+    or a response without structured output (e.g. a refusal).
+    """
+    try:
+        response = cast("Any", client).messages.parse(**kwargs, output_format=output_format)
+    except anthropic.APIError as exc:
+        raise _translate(exc, kwargs.get("model")) from exc
+    stop_reason = getattr(response, "stop_reason", None)
+    if stop_reason == "max_tokens":
+        raise ClaudeAPIError(
+            f"Claude API: response truncated (stop_reason=max_tokens, max_tokens={kwargs.get('max_tokens')})."
+        )
+    if response.parsed_output is None:
+        raise ClaudeAPIError(f"Claude API: response has no structured output (stop_reason={stop_reason}).")
+    return cast("anthropic.types.ParsedMessage[ModelT]", response)
+
+
+def parse_message[ModelT: BaseModel](
+    client: anthropic.Anthropic, output_format: type[ModelT], **kwargs: object
+) -> ModelT:
+    """Like :func:`parse_response`, but return only the validated ``output_format`` instance."""
+    return cast("ModelT", parse_response(client, output_format, **kwargs).parsed_output)

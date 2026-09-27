@@ -8,7 +8,6 @@ YAML output format.
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -420,28 +419,28 @@ class TestRetrospectiveLLM:
 
     def test_retrospective_produces_proposals_with_mock_llm(self) -> None:
         """_run_llm_retrospective returns structured proposals with mocked LLM."""
+        from types import SimpleNamespace
+
         from ydk.cli.memory_cmd import _run_llm_retrospective
 
-        ai_response = json.dumps(
-            {
-                "patterns": ["Tasks took longer than estimated"],
-                "templates": ["Add estimation field to task template"],
-                "rules": ["Always write tests before implementation"],
-                "summary": "Good sprint overall.",
-            }
+        ai_response = {
+            "patterns": ["Tasks took longer than estimated"],
+            "templates": ["Add estimation field to task template"],
+            "rules": ["Always write tests before implementation"],
+            "summary": "Good sprint overall.",
+        }
+
+        # Mock only the anthropic SDK boundary.
+        client = MagicMock()
+        client.messages.parse.side_effect = lambda **kw: SimpleNamespace(
+            stop_reason="end_turn", parsed_output=kw["output_format"].model_validate(ai_response)
         )
 
-        mock_provider = MagicMock()
-        mock_provider.invoke.return_value = ai_response
-
-        with patch("ydk.core.llm_provider.get_llm_provider", return_value=mock_provider):
+        with patch("anthropic.Anthropic", return_value=client):
             tasks = [MagicMock(id="T-001", title="Task 1")]
             result = _run_llm_retrospective(tasks, "sprint-1")
 
-        assert result is not None
-        assert "patterns" in result
-        assert "templates" in result
-        assert "rules" in result
+        assert result == ai_response
 
 
 # ---------------------------------------------------------------------------
@@ -681,14 +680,17 @@ class TestRetrospectiveClaudeErrors:
 
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         client = MagicMock()
-        client.messages.create.return_value = SimpleNamespace(
-            content=[SimpleNamespace(type="text", text="{}")], stop_reason="end_turn"
+        client.messages.parse.side_effect = lambda **kw: SimpleNamespace(
+            stop_reason="end_turn",
+            parsed_output=kw["output_format"].model_validate(
+                {"patterns": [], "templates": [], "rules": [], "summary": ""}
+            ),
         )
 
         with patch("anthropic.Anthropic", return_value=client):
             _run_llm_retrospective([MagicMock(id="T-001", title="Task 1")], None)
 
-        assert client.messages.create.call_args.kwargs["max_tokens"] == 16000
+        assert client.messages.parse.call_args.kwargs["max_tokens"] == 16000
 
     def test_run_llm_retrospective_truncated_output_is_error(self, tmp_path: Path, monkeypatch: object) -> None:
         from types import SimpleNamespace
@@ -700,9 +702,7 @@ class TestRetrospectiveClaudeErrors:
 
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         client = MagicMock()
-        client.messages.create.return_value = SimpleNamespace(
-            content=[SimpleNamespace(type="text", text='{"patterns": [')], stop_reason="max_tokens"
-        )
+        client.messages.parse.return_value = SimpleNamespace(parsed_output=None, stop_reason="max_tokens")
 
         with patch("anthropic.Anthropic", return_value=client), pytest.raises(ClaudeAPIError, match="max_tokens"):
             _run_llm_retrospective([MagicMock(id="T-001", title="Task 1")], None)

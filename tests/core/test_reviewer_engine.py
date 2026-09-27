@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
-from ydk.core.reviewer_engine import REVIEW_TOOL_SPEC, ReviewerEngine
+from ydk.core.reviewer_engine import ReviewerEngine, ReviewFinding, ReviewVerdict
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,19 +36,15 @@ def _mock_converse_response(
     cache_read: int = 0,
     cache_write: int = 0,
 ) -> SimpleNamespace:
-    """Build a mock Anthropic Messages API response with a tool_use block."""
+    """Build a fake ``messages.parse`` response carrying a parsed ReviewVerdict."""
     return SimpleNamespace(
-        content=[
-            SimpleNamespace(
-                type="tool_use",
-                input={
-                    "score": score,
-                    "reasoning": reasoning,
-                    "suggestions": suggestions or [],
-                    "findings": findings or [],
-                },
-            )
-        ],
+        stop_reason="end_turn",
+        parsed_output=ReviewVerdict(
+            score=score,
+            reasoning=reasoning,
+            suggestions=suggestions or [],
+            findings=[ReviewFinding(**f) for f in findings or []],
+        ),
         usage=SimpleNamespace(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -101,32 +97,28 @@ class TestBuildSystemBlocks:
 
 
 # ---------------------------------------------------------------------------
-# REVIEW_TOOL_SPEC
+# ReviewVerdict — structured output schema
 # ---------------------------------------------------------------------------
 
 
-class TestReviewToolSpec:
-    def test_tool_spec_structure(self):
-        assert REVIEW_TOOL_SPEC["name"] == "submit_review"
-        schema = REVIEW_TOOL_SPEC["input_schema"]
+class TestReviewVerdictSchema:
+    def test_required_fields(self):
+        schema = ReviewVerdict.model_json_schema()
         assert set(schema["required"]) == {"score", "reasoning", "suggestions", "findings"}
 
-    def test_findings_schema_has_line_text_issue(self):
-        findings_items = REVIEW_TOOL_SPEC["input_schema"]["properties"]["findings"]["items"]
-        assert "line" in findings_items["properties"]
-        assert "text" in findings_items["properties"]
-        assert "issue" in findings_items["properties"]
+    def test_finding_has_line_text_issue(self):
+        assert set(ReviewFinding.model_fields) == {"line", "text", "issue"}
 
 
 # ---------------------------------------------------------------------------
-# _call_reviewer — tool_use extraction
+# _call_reviewer — structured output
 # ---------------------------------------------------------------------------
 
 
 class TestCallReviewer:
-    def test_extracts_tooluse_result(self):
+    def test_extracts_structured_result(self):
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_converse_response(
+        mock_client.messages.parse.return_value = _mock_converse_response(
             score=9, reasoning="Excellent", suggestions=["Do X"], findings=[{"line": 1, "text": "foo", "issue": "bar"}]
         )
 
@@ -141,38 +133,33 @@ class TestCallReviewer:
         assert len(result["findings"]) == 1
         assert result["findings"][0]["line"] == 1
 
-    def test_passes_tool_config(self):
+    def test_request_uses_structured_output_without_sampling_or_tools(self):
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_converse_response()
+        mock_client.messages.parse.return_value = _mock_converse_response()
 
         engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
         engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
-        call_kwargs = mock_client.messages.create.call_args[1]
-        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_review"}
+        call_kwargs = mock_client.messages.parse.call_args[1]
+        assert call_kwargs["output_format"] is ReviewVerdict
         assert call_kwargs["max_tokens"] == 8192
+        assert call_kwargs["system"][1]["cache_control"] == {"type": "ephemeral"}
+        for absent in ("temperature", "tool_choice", "tools"):
+            assert absent not in call_kwargs
 
-    def test_missing_tooluse_block_returns_zero(self):
+    def test_missing_structured_output_raises(self):
         mock_client = MagicMock()
-        # Response with text instead of tool_use (shouldn't happen, but handle gracefully)
-        mock_client.messages.create.return_value = SimpleNamespace(
-            content=[SimpleNamespace(type="text", text="oops")],
-            usage=SimpleNamespace(
-                input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
-            ),
-        )
+        mock_client.messages.parse.return_value = SimpleNamespace(stop_reason="refusal", parsed_output=None)
 
         engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
-        result = engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
-
-        assert result["score"] == 0
-        assert "No tool_use block" in result["reasoning"]
+        with pytest.raises(ClaudeAPIError, match="no structured output"):
+            engine._call_reviewer(system_blocks, MODEL_TIERS["smart"], "N01", "Evaluate")
 
     def test_authentication_error_raises_not_score_zero(self):
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = _auth_error()
+        mock_client.messages.parse.side_effect = _auth_error()
 
         engine = ReviewerEngine(client=mock_client)
         system_blocks = engine._build_system_blocks("# Spec")
@@ -190,7 +177,7 @@ class TestRunAll:
         mock_client = MagicMock()
 
         # First call: cache write; subsequent: cache read
-        mock_client.messages.create.side_effect = [
+        mock_client.messages.parse.side_effect = [
             _mock_converse_response(score=9, reasoning="Excellent", cache_write=5000),
             _mock_converse_response(score=7, reasoning="Decent", suggestions=["Improve X"], cache_read=5000),
             _mock_converse_response(score=8, reasoning="Good", cache_read=5000),
@@ -205,7 +192,7 @@ class TestRunAll:
         )
 
         assert len(results) == 3
-        assert mock_client.messages.create.call_count == 3
+        assert mock_client.messages.parse.call_count == 3
         # Results sorted by reviewer_id
         ids = [r["reviewer_id"] for r in results]
         assert ids == sorted(ids)
@@ -216,11 +203,11 @@ class TestRunAll:
         engine = ReviewerEngine(client=mock_client)
         results = engine.run_all("# Spec", [], MODEL_TIERS)
         assert results == []
-        mock_client.messages.create.assert_not_called()
+        mock_client.messages.parse.assert_not_called()
 
     def test_authentication_error_propagates(self):
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = _auth_error()
+        mock_client.messages.parse.side_effect = _auth_error()
 
         engine = ReviewerEngine(client=mock_client)
         with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
@@ -232,7 +219,7 @@ class TestRunAll:
 
     def test_authentication_error_in_fanout_propagates(self):
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = [_mock_converse_response(), _auth_error()]
+        mock_client.messages.parse.side_effect = [_mock_converse_response(), _auth_error()]
 
         engine = ReviewerEngine(client=mock_client)
         with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
@@ -245,7 +232,7 @@ class TestRunAll:
     def test_model_tier_resolution(self):
         mock_client = MagicMock()
 
-        mock_client.messages.create.return_value = _mock_converse_response()
+        mock_client.messages.parse.return_value = _mock_converse_response()
 
         engine = ReviewerEngine(client=mock_client)
         reviewers = [
@@ -269,7 +256,7 @@ class TestRunAll:
         engine.run_all("# Spec", reviewers, MODEL_TIERS)
 
         # First call (prime) uses smart model
-        first_call_kwargs = mock_client.messages.create.call_args_list[0][1]
+        first_call_kwargs = mock_client.messages.parse.call_args_list[0][1]
         assert first_call_kwargs["model"] == MODEL_TIERS["smart"]
 
     def test_per_tier_cache_priming(self):
@@ -284,7 +271,7 @@ class TestRunAll:
             call_order.append((model_id, user_text))
             return _mock_converse_response()
 
-        mock_client.messages.create.side_effect = track_calls
+        mock_client.messages.parse.side_effect = track_calls
 
         engine = ReviewerEngine(client=mock_client)
         reviewers = [
@@ -323,7 +310,7 @@ class TestRunAll:
         ]
         engine.run_all("# Spec", reviewers, MODEL_TIERS)
 
-        assert mock_client.messages.create.call_count == 4
+        assert mock_client.messages.parse.call_count == 4
 
         # Verify smart-tier calls use Sonnet model
         smart_calls = [(m, t) for m, t in call_order if m == MODEL_TIERS["smart"]]
@@ -348,7 +335,7 @@ class TestRunAll:
             models_used[user_text] = model_id
             return _mock_converse_response()
 
-        mock_client.messages.create.side_effect = track_calls
+        mock_client.messages.parse.side_effect = track_calls
 
         engine = ReviewerEngine(client=mock_client)
         reviewers = [
@@ -377,7 +364,7 @@ class TestRunAll:
     def test_passed_threshold(self):
         mock_client = MagicMock()
 
-        mock_client.messages.create.return_value = _mock_converse_response(score=7)
+        mock_client.messages.parse.return_value = _mock_converse_response(score=7)
 
         engine = ReviewerEngine(client=mock_client)
         reviewers = [
@@ -390,7 +377,7 @@ class TestRunAll:
     def test_passed_at_threshold(self):
         mock_client = MagicMock()
 
-        mock_client.messages.create.return_value = _mock_converse_response(score=8)
+        mock_client.messages.parse.return_value = _mock_converse_response(score=8)
 
         engine = ReviewerEngine(client=mock_client)
         reviewers = [

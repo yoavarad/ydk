@@ -8,9 +8,10 @@ from unittest.mock import MagicMock, patch
 import anthropic
 import httpx
 import pytest
+from pydantic import BaseModel
 
 from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
-from ydk.core.llm_provider import AnthropicLLMProvider, LLMProvider, get_llm_provider
+from ydk.core.llm_provider import AnthropicLLMProvider, LLMProvider, StructuredLLMProvider, get_llm_provider
 from ydk.models.config import AIConfig, AnthropicConfig, YdkConfig
 
 
@@ -93,6 +94,38 @@ class TestAnthropicLLMProvider:
         client = MagicMock()
         provider = AnthropicLLMProvider(client=client, model_id="claude-sonnet-5")
         assert isinstance(provider, LLMProvider)
+
+
+class _Answer(BaseModel):
+    value: str
+
+
+class TestAnthropicLLMProviderStructured:
+    def test_invoke_structured_uses_parse_without_sampling_or_tool_choice(self) -> None:
+        answer = _Answer(value="42")
+        client = MagicMock()
+        client.messages.parse.return_value = SimpleNamespace(stop_reason="end_turn", parsed_output=answer)
+
+        provider = AnthropicLLMProvider(client=client, model_id="claude-sonnet-5", max_tokens=2048)
+        result = provider.invoke_structured("question", _Answer)
+
+        assert result is answer
+        client.messages.parse.assert_called_once_with(
+            model="claude-sonnet-5",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": "question"}],
+            output_format=_Answer,
+        )
+
+    def test_invoke_structured_raises_on_truncated_response(self) -> None:
+        client = MagicMock()
+        client.messages.parse.return_value = SimpleNamespace(stop_reason="max_tokens", parsed_output=None)
+
+        with pytest.raises(ClaudeAPIError, match="max_tokens"):
+            AnthropicLLMProvider(client=client, model_id="m").invoke_structured("p", _Answer)
+
+    def test_satisfies_structured_protocol(self) -> None:
+        assert isinstance(AnthropicLLMProvider(client=MagicMock(), model_id="m"), StructuredLLMProvider)
 
 
 # ---------------------------------------------------------------------------

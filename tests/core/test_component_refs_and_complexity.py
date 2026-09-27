@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock
 
 from ydk.core.complexity_scorer import ComplexityScorer
@@ -91,7 +90,7 @@ class TestAnalyzeComplexityProvider:
 
     def test_provider_invoked_with_prompt(self) -> None:
         mock_provider = MagicMock()
-        mock_provider.invoke.return_value = json.dumps(
+        mock_provider.invoke_structured.side_effect = lambda _prompt, fmt: fmt.model_validate(
             {"score": 7, "reasoning": "Cross-cutting concern", "should_expand": False, "suggested_splits": []}
         )
         scorer = ComplexityScorer(llm_provider=mock_provider)
@@ -99,4 +98,4 @@ class TestAnalyzeComplexityProvider:
         result = scorer.score_task(task)
         assert result.score == 7
         assert result.reasoning == "Cross-cutting concern"
-        mock_provider.invoke.assert_called_once()
+        mock_provider.invoke_structured.assert_called_once()

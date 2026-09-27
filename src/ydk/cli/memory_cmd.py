@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
+from pydantic import BaseModel
 
 from ydk.cli._helpers import format_or_echo
 from ydk.output.console import console
@@ -335,19 +336,26 @@ def _render_epic_retro_markdown(
     return "\n".join(lines) + "\n"
 
 
+class _RetrospectiveProposals(BaseModel):
+    patterns: list[str]
+    templates: list[str]
+    rules: list[str]
+    summary: str
+
+
 def _run_llm_retrospective(
     tasks: list,  # type: ignore[type-arg]
     sprint: str | None,
 ) -> dict | None:
     """Run LLM analysis on sprint data.
 
-    Returns structured proposals, or None when no provider is configured or the
-    reply is not valid JSON. Raises ``ClaudeAPIError`` on API failures.
+    Returns structured proposals, or None when no provider is configured.
+    Raises ``ClaudeAPIError`` on API failures.
     """
     from ydk.core.config import load_config
     from ydk.core.llm_provider import get_llm_provider
 
-    # Output is JSON; leave room so it is not truncated.
+    # Leave room so the structured output is not truncated.
     provider = get_llm_provider(load_config(), max_tokens=16000)
     if provider is None:
         return None
@@ -355,9 +363,7 @@ def _run_llm_retrospective(
     system_prompt = (
         "You are a sprint retrospective analyst. "
         "Given completed task data, identify patterns, suggest templates, "
-        "and recommend rules for future sprints.\n\n"
-        "Respond with ONLY valid JSON:\n"
-        '{"patterns": ["..."], "templates": ["..."], "rules": ["..."], "summary": "..."}'
+        "and recommend rules for future sprints, and summarize the sprint."
     )
 
     task_data = "\n".join(f"- {t.id}: {t.title}" for t in tasks)
@@ -369,21 +375,7 @@ def _run_llm_retrospective(
         "What should be templated? What rules should be added?"
     )
 
-    response_text = provider.invoke(prompt)
-
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError:
-        start_idx = response_text.find("{")
-        end_idx = response_text.rfind("}") + 1
-        if start_idx < 0 or end_idx <= start_idx:
-            return None
-        try:
-            parsed = json.loads(response_text[start_idx:end_idx])
-        except json.JSONDecodeError:
-            return None
-
-    return parsed if isinstance(parsed, dict) else None
+    return provider.invoke_structured(prompt, _RetrospectiveProposals).model_dump()
 
 
 @memory_app.command()
