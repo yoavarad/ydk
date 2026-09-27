@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ydk.models.pm import BLOCKING_DEPENDENCY_TYPES, DependencyType
+from ydk.models.pm import BLOCKING_DEPENDENCY_TYPES, Dependency, DependencyType
 
 
 class TaskDependency(BaseModel):
@@ -12,6 +12,14 @@ class TaskDependency(BaseModel):
 
     task_id: str
     type: DependencyType = DependencyType.BLOCKS
+
+
+def is_blocking_dependency(dep: str | Dependency | TaskDependency) -> bool:
+    """Return True if *dep* creates an execution edge (gates readiness).
+
+    Plain string dependencies are treated as ``blocks`` (legacy format).
+    """
+    return isinstance(dep, str) or dep.type in BLOCKING_DEPENDENCY_TYPES
 
 
 class Task(BaseModel):
@@ -29,13 +37,11 @@ class Task(BaseModel):
         Normalizes IDs by stripping leading ``#`` so GitHub issue refs
         like ``#829`` match task IDs stored as ``829``.
         """
-        result: list[str] = []
-        for dep in self.depends_on:
-            if isinstance(dep, str):
-                result.append(dep.lstrip("#"))
-            elif dep.type in BLOCKING_DEPENDENCY_TYPES:
-                result.append(dep.task_id.lstrip("#"))
-        return result
+        return [
+            (dep if isinstance(dep, str) else dep.task_id).lstrip("#")
+            for dep in self.depends_on
+            if is_blocking_dependency(dep)
+        ]
 
 
 class DagValidationResult(BaseModel):

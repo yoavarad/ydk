@@ -47,6 +47,7 @@ from ydk.models.gate import Gate, GateStatus, GateType
 from ydk.models.pm import (
     AcceptanceCriterion,
     Dependency,
+    DependencyType,
     EpicCreate,
     EpicDetail,
     StoryCreate,
@@ -87,6 +88,13 @@ def _github_ref(raw_id: str) -> str:
     return raw_id
 
 
+def render_dependency(task_id: str, dep_type: str = DependencyType.BLOCKS) -> str:
+    """Render one dependency as ``ID`` (blocks) or ``ID (type)`` for other types."""
+    if dep_type == DependencyType.BLOCKS:
+        return task_id
+    return f"{task_id} ({DependencyType(dep_type).value})"
+
+
 def render_task_body(task: TaskCreate) -> str:
     """Render a TaskCreate into the structured markdown body for a GitHub Issue."""
     lines: list[str] = []
@@ -97,8 +105,8 @@ def render_task_body(task: TaskCreate) -> str:
     if task.component_refs:
         lines.append(f"**Component refs**: {', '.join(task.component_refs)}")
     if task.dependencies:
-        dep_ids = [d.task_id if isinstance(d, Dependency) else d for d in task.dependencies]
-        lines.append(f"**Dependencies**: {', '.join(dep_ids)}")
+        rendered = [render_dependency(d.task_id, d.type) if isinstance(d, Dependency) else d for d in task.dependencies]
+        lines.append(f"**Dependencies**: {', '.join(rendered)}")
     if task.test_strategy:
         lines.append(f"**Test strategy**: {task.test_strategy}")
     if lines:
@@ -221,6 +229,7 @@ def render_story_body(story: StoryCreate) -> str:
 
 _FIELD_RE = re.compile(r"^\*\*(.+?)\*\*:\s*(.+)$")
 _FIELD_LINE_RE = re.compile(r"^\*\*(.+?)\*\*:(.*)$")
+_DEP_TYPE_RE = re.compile(r"^(?P<id>.+?)\s*\((?P<type>[a-z-]+)\)$")
 _AC_RE = re.compile(r"^- \[([ x])] (.+)$")
 _GATE_RE = re.compile(
     r"^- \*\*(?P<id>.+?)\*\* \((?P<type>[^)]+)\): (?P<desc>.*) \[(?P<status>\w+)\]"
@@ -266,6 +275,18 @@ def _parse_body(body: str) -> tuple[dict[str, str], dict[str, str]]:
 def _parse_csv(value: str) -> list[str]:
     """Split a comma-separated field value, stripping whitespace."""
     return [v.strip() for v in value.split(",") if v.strip()]
+
+
+def parse_dependency(raw: str) -> Dependency:
+    """Parse ``ID`` or ``ID (type)`` into a Dependency.
+
+    Plain entries (legacy ``#N``) are ``blocks``. An unrecognised ``(type)``
+    suffix is kept verbatim in ``task_id`` so it surfaces as unresolvable.
+    """
+    m = _DEP_TYPE_RE.match(raw)
+    if m and m.group("type") in DependencyType:
+        return Dependency(task_id=m.group("id"), type=DependencyType(m.group("type")))
+    return Dependency(task_id=raw)
 
 
 def _parse_acceptance_criteria(text: str) -> list[AcceptanceCriterion]:
@@ -335,7 +356,7 @@ def parse_task_detail(
     status = _gh_state_to_status(state, labels)
 
     ac: list[str | AcceptanceCriterion] = list(_parse_acceptance_criteria(sections.get("acceptance criteria", "")))
-    parsed_deps: list[str | Dependency] = list(_parse_csv(fields.get("dependencies", "")))
+    parsed_deps: list[str | Dependency] = [parse_dependency(d) for d in _parse_csv(fields.get("dependencies", ""))]
     return TaskDetail(
         number=number,
         title=title,

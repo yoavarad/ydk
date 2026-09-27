@@ -4,18 +4,28 @@ from __future__ import annotations
 
 import builtins
 import json
+import logging
 import re
 from typing import TYPE_CHECKING
 
 from ydk.models.pm import Dependency, DependencyStatus, TaskCreate, TaskDetail, TaskStatus, TaskSummary
+from ydk.models.task import is_blocking_dependency
 from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
-from ydk.repositories.github.parser import parse_task_detail, render_gate_line, render_task_body, set_body_field
+from ydk.repositories.github.parser import (
+    parse_task_detail,
+    render_dependency,
+    render_gate_line,
+    render_task_body,
+    set_body_field,
+)
 
 if TYPE_CHECKING:
     from ydk.models.compaction import CompactedTask
     from ydk.models.gate import Gate
 
 _list = builtins.list
+
+logger = logging.getLogger(__name__)
 
 # update_frontmatter key -> ``**Label**:`` body field that parse_task_detail reads back.
 _BODY_FIELD_LABELS: dict[str, str] = {
@@ -26,20 +36,32 @@ _BODY_FIELD_LABELS: dict[str, str] = {
 
 
 def _dep_to_str(dep: object) -> str:
-    """Extract task_id string from a dependency dict or plain value."""
-    # Use json round-trip to safely extract task_id from dict-like objects
-    # without triggering ty's dict[Unknown, Unknown] narrowing issues
-    s = str(dep)
+    """Render a Dependency, ``{"task_id", "type"}`` dict, or plain value as ``ID`` / ``ID (type)``."""
     if isinstance(dep, dict):
-        import json as _json
+        dep = Dependency.model_validate(dep)
+    if isinstance(dep, Dependency):
+        return render_dependency(dep.task_id, dep.type)
+    return str(dep)
 
+
+def _blocking_dep_numbers(task: TaskDetail) -> tuple[_list[int], bool]:
+    """Return issue numbers of *task*'s blocking deps and whether any was unresolvable.
+
+    Non-blocking types (``related``, ``validates``, ...) are ignored. Unresolvable
+    IDs are logged as a warning naming the task and dependency.
+    """
+    numbers: _list[int] = []
+    unresolved = False
+    for dep in task.dependencies:
+        if not is_blocking_dependency(dep):
+            continue
+        dep_id = dep.task_id if isinstance(dep, Dependency) else str(dep)
         try:
-            parsed = _json.loads(_json.dumps(dep))
-            if isinstance(parsed, dict) and "task_id" in parsed:
-                s = str(parsed["task_id"])
-        except (TypeError, ValueError):
-            pass
-    return s
+            numbers.append(_extract_issue_number(dep_id))
+        except ValueError:
+            logger.warning("Task #%s has unresolvable dependency %r; treating it as unmet", task.number, dep_id)
+            unresolved = True
+    return numbers, unresolved
 
 
 class GitHubTaskRepository:
@@ -230,20 +252,8 @@ class GitHubTaskRepository:
 
         summaries: _list[TaskSummary] = []
         for d in details:
-            deps_met = True
-            if d.dependencies:
-                for dep in d.dependencies:
-                    dep_id = dep.task_id if isinstance(dep, Dependency) else str(dep)
-                    dep_id = dep_id.lstrip("#")
-                    try:
-                        dep_num = int(dep_id)
-                        if dep_num not in done_ids:
-                            deps_met = False
-                            break
-                    except ValueError:
-                        # Unresolvable dep = not met
-                        deps_met = False
-                        break
+            dep_nums, unresolved = _blocking_dep_numbers(d)
+            deps_met = not unresolved and all(n in done_ids for n in dep_nums)
             summaries.append(
                 TaskSummary(
                     id=str(d.number),
@@ -345,35 +355,18 @@ class GitHubTaskRepository:
         closed_tasks = self.list(status="closed")
         closed_numbers = {d.number for d in closed_tasks}
 
-        # Build reverse-dependency map: issue_number -> count of dependents
+        blocking = {d.number: _blocking_dep_numbers(d) for d in open_tasks}
+
+        # Build reverse-dependency map: issue_number -> count of blocking dependents
         dependents_count: dict[int, int] = {}
-        for d in open_tasks:
-            if d.dependencies:
-                for dep in d.dependencies:
-                    dep_id = dep.task_id if isinstance(dep, Dependency) else str(dep)
-                    dep_id = dep_id.lstrip("#")
-                    try:
-                        dep_num = int(dep_id)
-                        dependents_count[dep_num] = dependents_count.get(dep_num, 0) + 1
-                    except ValueError:
-                        pass
+        for dep_nums, _unresolved in blocking.values():
+            for dep_num in dep_nums:
+                dependents_count[dep_num] = dependents_count.get(dep_num, 0) + 1
 
         results: _list[TaskSummary] = []
         for d in open_tasks:
-            deps_met = True
-            if d.dependencies:
-                for dep in d.dependencies:
-                    dep_id = dep.task_id if isinstance(dep, Dependency) else str(dep)
-                    dep_id = dep_id.lstrip("#")
-                    try:
-                        dep_num = int(dep_id)
-                        if dep_num not in closed_numbers:
-                            deps_met = False
-                            break
-                    except ValueError:
-                        deps_met = False
-                        break
-            if not deps_met:
+            dep_nums, unresolved = blocking[d.number]
+            if unresolved or any(n not in closed_numbers for n in dep_nums):
                 continue
             results.append(
                 TaskSummary(
