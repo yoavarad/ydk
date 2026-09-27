@@ -5,8 +5,8 @@ calls that share a cached system prefix across all reviewers.  The first
 reviewer call primes the cache; subsequent calls fan out in parallel and
 hit the cached prefix, cutting per-reviewer latency from ~10s to ~2-4s.
 
-Uses Anthropic tool-use with forced ``tool_choice`` to guarantee structured
-JSON output — no fragile text-parsing needed.
+Uses structured outputs (``messages.parse`` with the :class:`ReviewVerdict`
+pydantic model) so every response is schema-valid — no text parsing needed.
 """
 
 from __future__ import annotations
@@ -16,43 +16,31 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, cast
 
+from pydantic import BaseModel, Field
+
 if TYPE_CHECKING:
     import anthropic
 
-from ydk.core.claude_client import DEFAULT_API_KEY_ENV, ClaudeAPIError, build_client, create_message
+from ydk.core.claude_client import DEFAULT_API_KEY_ENV, ClaudeAPIError, build_client, parse_response
 
 logger = logging.getLogger("ydk.reviewer_engine")
 
-# Tool schema that forces the model to return structured JSON.
-REVIEW_TOOL_SPEC: dict[str, Any] = {
-    "name": "submit_review",
-    "description": "Submit the structured review evaluation result",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "score": {"type": "number", "description": "Score from 0-10"},
-            "reasoning": {"type": "string", "description": "Explanation for the score"},
-            "suggestions": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Specific actionable suggestions for improvement",
-            },
-            "findings": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "line": {"type": "number", "description": "Line number"},
-                        "text": {"type": "string", "description": "The problematic text"},
-                        "issue": {"type": "string", "description": "What's wrong"},
-                    },
-                },
-                "description": "Specific findings with line numbers",
-            },
-        },
-        "required": ["score", "reasoning", "suggestions", "findings"],
-    },
-}
+
+class ReviewFinding(BaseModel):
+    """One specific problem found in the spec."""
+
+    line: int = Field(description="Line number")
+    text: str = Field(description="The problematic text")
+    issue: str = Field(description="What's wrong")
+
+
+class ReviewVerdict(BaseModel):
+    """Structured review evaluation returned by each reviewer call."""
+
+    score: int = Field(description="Score from 0-10")
+    reasoning: str = Field(description="Explanation for the score")
+    suggestions: list[str] = Field(description="Specific actionable suggestions for improvement")
+    findings: list[ReviewFinding] = Field(description="Specific findings with line numbers")
 
 
 class ReviewerEngine:
@@ -72,7 +60,7 @@ class ReviewerEngine:
                 "type": "text",
                 "text": (
                     "You are a specification quality evaluator. "
-                    "For each criterion, evaluate the document and call the submit_review tool with: "
+                    "For each criterion, evaluate the document and respond with: "
                     "score (0-10), reasoning (string), suggestions (list of strings), "
                     "findings (list of objects with line, text, issue keys)."
                 ),
@@ -99,26 +87,20 @@ class ReviewerEngine:
         start = time.monotonic()
         logger.info("Reviewer %s: calling Anthropic (%s)", reviewer_id, model_id)
 
-        response = create_message(
+        response = parse_response(
             self._client,
+            ReviewVerdict,
             model=model_id,
             max_tokens=8192,
-            temperature=0.0,
-            system=cast("Any", system_blocks),
-            messages=[
-                {
-                    "role": "user",
-                    "content": reviewer_prompt,
-                },
-            ],
-            tools=cast("Any", [REVIEW_TOOL_SPEC]),
-            tool_choice={"type": "tool", "name": "submit_review"},
+            system=system_blocks,
+            messages=[{"role": "user", "content": reviewer_prompt}],
         )
+        verdict = cast("ReviewVerdict", response.parsed_output)
+        usage = response.usage
 
         elapsed = time.monotonic() - start
 
         # Log cache metrics
-        usage = response.usage
         cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
         cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
         input_tokens = getattr(usage, "input_tokens", 0) or 0
@@ -133,27 +115,12 @@ class ReviewerEngine:
             cache_write,
         )
 
-        # Extract structured data from tool_use block
-        tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
-        if tool_use_block is not None:
-            data = cast("dict[str, Any]", cast("Any", tool_use_block).input)
-            return {
-                "reviewer_id": reviewer_id,
-                "score": int(data.get("score", 0)),
-                "reasoning": str(data.get("reasoning", "")),
-                "suggestions": [str(s) for s in data.get("suggestions", [])],
-                "findings": data.get("findings", []),
-                "elapsed_seconds": elapsed,
-            }
-
-        # No tool_use block found — should not happen with forced tool_choice
-        logger.warning("Reviewer %s: no tool_use block in response", reviewer_id)
         return {
             "reviewer_id": reviewer_id,
-            "score": 0,
-            "reasoning": "No tool_use block in Anthropic response (unexpected)",
-            "suggestions": [],
-            "findings": [],
+            "score": verdict.score,
+            "reasoning": verdict.reasoning,
+            "suggestions": verdict.suggestions,
+            "findings": [f.model_dump() for f in verdict.findings],
             "elapsed_seconds": elapsed,
         }
 

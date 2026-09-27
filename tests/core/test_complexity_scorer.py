@@ -2,31 +2,42 @@
 
 from __future__ import annotations
 
-import json
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from ydk.core.complexity_scorer import ComplexityScorer, _build_prompt
-from ydk.core.llm_provider import LLMProvider
+from ydk.core.complexity_scorer import ComplexityAssessment, ComplexityScorer, _build_prompt
+from ydk.core.llm_provider import AnthropicLLMProvider, StructuredLLMProvider
 from ydk.models.complexity import ComplexityScore
 from ydk.models.pm import TaskDetail
 
 # ---------------------------------------------------------------------------
-# Mock LLM provider (system boundary — OK to mock)
+# Fake anthropic SDK client (system boundary) behind the real provider
 # ---------------------------------------------------------------------------
 
 
-class MockLLMProvider:
-    """Returns a canned JSON response."""
+class FakeAnthropicClient:
+    """Fake SDK client: ``messages.parse`` validates canned data into ``output_format``."""
 
-    def __init__(self, response: str) -> None:
-        self._response = response
-        self.last_prompt: str | None = None
+    def __init__(self, data: dict[str, object]) -> None:
+        self._data = data
+        self.calls: list[dict[str, Any]] = []
+        self.messages = self
 
-    def invoke(self, prompt: str) -> str:
-        self.last_prompt = prompt
-        return self._response
+    def parse(self, **kwargs: Any) -> SimpleNamespace:
+        self.calls.append(kwargs)
+        return SimpleNamespace(stop_reason="end_turn", parsed_output=kwargs["output_format"].model_validate(self._data))
+
+    @property
+    def last_prompt(self) -> str:
+        return self.calls[-1]["messages"][0]["content"]
+
+
+def _provider(data: dict[str, object]) -> tuple[AnthropicLLMProvider, FakeAnthropicClient]:
+    client = FakeAnthropicClient(data)
+    return AnthropicLLMProvider(client=client, model_id="claude-sonnet-5"), client
 
 
 def _make_task(**overrides: object) -> TaskDetail:
@@ -48,15 +59,13 @@ def _make_response(
     reasoning: str = "Moderate complexity",
     should_expand: bool = False,
     suggested_splits: list[str] | None = None,
-) -> str:
-    return json.dumps(
-        {
-            "score": score,
-            "reasoning": reasoning,
-            "should_expand": should_expand,
-            "suggested_splits": suggested_splits or [],
-        }
-    )
+) -> dict[str, object]:
+    return {
+        "score": score,
+        "reasoning": reasoning,
+        "should_expand": should_expand,
+        "suggested_splits": suggested_splits or [],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +145,7 @@ class TestNoProvider:
 
 class TestScoring:
     def test_parses_valid_response(self) -> None:
-        provider = MockLLMProvider(_make_response(score=8, reasoning="Cross-cutting", should_expand=True))
+        provider, _ = _provider(_make_response(score=8, reasoning="Cross-cutting", should_expand=True))
         scorer = ComplexityScorer(llm_provider=provider)
         result = scorer.score_task(_make_task())
 
@@ -145,43 +154,35 @@ class TestScoring:
         assert result.reasoning == "Cross-cutting"
         assert result.should_expand is True
 
-    def test_handles_code_fenced_json(self) -> None:
-        inner = _make_response(score=3, reasoning="Simple")
-        response = f"```json\n{inner}\n```"
-        provider = MockLLMProvider(response)
-        scorer = ComplexityScorer(llm_provider=provider)
-        result = scorer.score_task(_make_task())
-        assert result.score == 3
+    def test_request_uses_structured_output_without_sampling_or_tool_choice(self) -> None:
+        provider, client = _provider(_make_response())
+        ComplexityScorer(llm_provider=provider).score_task(_make_task())
 
-    def test_handles_malformed_json(self) -> None:
-        provider = MockLLMProvider("not valid json")
-        scorer = ComplexityScorer(llm_provider=provider)
-        result = scorer.score_task(_make_task())
-        assert result.score == 5
-        assert "could not be parsed" in result.reasoning
+        call = client.calls[-1]
+        assert call["output_format"] is ComplexityAssessment
+        assert "temperature" not in call
+        assert "tool_choice" not in call
 
     def test_clamps_score_to_range(self) -> None:
-        provider = MockLLMProvider(_make_response(score=15))
+        provider, _ = _provider(_make_response(score=15))
         scorer = ComplexityScorer(llm_provider=provider)
         result = scorer.score_task(_make_task())
         assert result.score == 10
 
     def test_prompt_includes_task_fields(self) -> None:
-        provider = MockLLMProvider(_make_response())
+        provider, client = _provider(_make_response())
         scorer = ComplexityScorer(llm_provider=provider)
         scorer.score_task(_make_task())
-        assert provider.last_prompt is not None
-        assert "Add user login" in provider.last_prompt
-        assert "JWT" in provider.last_prompt
-        assert "T-000" in provider.last_prompt
-        assert "docs/specs/auth.md" in provider.last_prompt
+        assert "Add user login" in client.last_prompt
+        assert "JWT" in client.last_prompt
+        assert "T-000" in client.last_prompt
+        assert "docs/specs/auth.md" in client.last_prompt
 
     def test_prompt_includes_context(self) -> None:
-        provider = MockLLMProvider(_make_response())
+        provider, client = _provider(_make_response())
         scorer = ComplexityScorer(llm_provider=provider)
         scorer.score_task(_make_task(), context="Sprint 3 focus area")
-        assert provider.last_prompt is not None
-        assert "Sprint 3 focus area" in provider.last_prompt
+        assert "Sprint 3 focus area" in client.last_prompt
 
     def test_suggested_splits(self) -> None:
         response = _make_response(
@@ -189,7 +190,7 @@ class TestScoring:
             should_expand=True,
             suggested_splits=["Extract auth module", "Add JWT tests"],
         )
-        provider = MockLLMProvider(response)
+        provider, _ = _provider(response)
         scorer = ComplexityScorer(llm_provider=provider)
         result = scorer.score_task(_make_task())
         assert result.suggested_splits == ["Extract auth module", "Add JWT tests"]
@@ -202,7 +203,7 @@ class TestScoring:
 
 class TestBatchScoring:
     def test_scores_all_tasks(self) -> None:
-        provider = MockLLMProvider(_make_response(score=4))
+        provider, _ = _provider(_make_response(score=4))
         scorer = ComplexityScorer(llm_provider=provider)
         tasks = [_make_task(id="T-001"), _make_task(id="T-002"), _make_task(id="T-003")]
         results = scorer.score_tasks(tasks)
@@ -210,21 +211,21 @@ class TestBatchScoring:
         assert [r.task_id for r in results] == ["T-001", "T-002", "T-003"]
 
     def test_empty_list(self) -> None:
-        provider = MockLLMProvider(_make_response())
+        provider, _ = _provider(_make_response())
         scorer = ComplexityScorer(llm_provider=provider)
         results = scorer.score_tasks([])
         assert results == []
 
 
 # ---------------------------------------------------------------------------
-# LLMProvider Protocol
+# StructuredLLMProvider Protocol
 # ---------------------------------------------------------------------------
 
 
 class TestLLMProviderProtocol:
-    def test_mock_satisfies_protocol(self) -> None:
-        provider = MockLLMProvider("response")
-        assert isinstance(provider, LLMProvider)
+    def test_provider_satisfies_protocol(self) -> None:
+        provider, _ = _provider(_make_response())
+        assert isinstance(provider, StructuredLLMProvider)
 
 
 # ---------------------------------------------------------------------------

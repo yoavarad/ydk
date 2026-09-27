@@ -19,6 +19,7 @@ from ydk.core.reviewer import (
     load_reviewer,
     run_all_sync,
 )
+from ydk.core.reviewer_engine import ReviewVerdict
 
 
 def _dummy_tool(text: str) -> str:
@@ -303,93 +304,48 @@ class TestReviewerAgentToolsOnly:
         assert len(result.findings) == 0
 
 
-class TestReviewerAgentParsing:
-    """Test JSON response parsing."""
-
-    def test_parse_valid_json(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        response = json.dumps(
-            {
-                "score": 9,
-                "reasoning": "Well written spec.",
-                "suggestions": ["Minor improvement possible."],
-                "findings": [{"line": 5, "text": "minor issue", "issue": "could be clearer"}],
-            }
-        )
-
-        result = agent._parse_response(response)
-        assert result.score == 9
-        assert result.passed is True
-        assert result.reasoning == "Well written spec."
-        assert len(result.suggestions) == 1
-        assert len(result.findings) == 1
-
-    def test_parse_json_with_markdown_fences(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        response = '```json\n{"score": 6, "reasoning": "Needs work.", "suggestions": [], "findings": []}\n```'
-        result = agent._parse_response(response)
-        assert result.score == 6
-
-    def test_parse_json_embedded_in_text(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        response = 'Here is my review:\n{"score": 8, "reasoning": "Good.", "suggestions": [], "findings": []}\nDone.'
-        result = agent._parse_response(response)
-        assert result.score == 8
-
-    def test_parse_unparseable_returns_fallback(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        result = agent._parse_response("This is not JSON at all.")
-        assert result.score == 0
-        assert result.passed is False
-        assert "Failed to parse" in result.reasoning
-
-
 class TestRunWithLlm:
-    """Test _run_with_llm calls Anthropic Messages API with a forced tool_choice."""
+    """Test _run_with_llm calls the Messages API with structured output."""
 
-    def _mock_tool_use_response(self, **overrides: object) -> SimpleNamespace:
-        data = {
+    def _mock_parsed_response(self, **overrides: object) -> SimpleNamespace:
+        data: dict[str, object] = {
             "score": 9,
             "reasoning": "Well written spec.",
             "suggestions": ["Minor improvement possible."],
             "findings": [{"line": 5, "text": "minor issue", "issue": "could be clearer"}],
         }
         data.update(overrides)
-        return SimpleNamespace(content=[SimpleNamespace(type="tool_use", input=data)])
+        return SimpleNamespace(stop_reason="end_turn", parsed_output=ReviewVerdict.model_validate(data))
 
-    def test_calls_messages_create_with_forced_tool_choice(self) -> None:
+    def test_uses_structured_output_without_sampling_or_tool_choice(self) -> None:
         config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6"})
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-5"})
 
         with patch("anthropic.Anthropic") as mock_anthropic_cls:
             mock_client = MagicMock()
             mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create.return_value = self._mock_tool_use_response()
+            mock_client.messages.parse.return_value = self._mock_parsed_response()
 
             result = agent._run_with_llm("some spec content")
 
-        call_kwargs = mock_client.messages.create.call_args[1]
-        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_review"}
+        call_kwargs = mock_client.messages.parse.call_args[1]
+        assert call_kwargs["output_format"] is ReviewVerdict
+        assert call_kwargs["model"] == "claude-sonnet-5"
+        for absent in ("temperature", "tool_choice", "tools"):
+            assert absent not in call_kwargs
         assert result.score == 9
         assert result.reasoning == "Well written spec."
-        assert len(result.findings) == 1
+        assert result.suggestions == ["Minor improvement possible."]
+        assert result.findings == [{"line": 5, "text": "minor issue", "issue": "could be clearer"}]
 
-    def test_parses_tool_use_block_into_review_result(self) -> None:
+    def test_threshold_applied_to_parsed_score(self) -> None:
         config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6"})
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-5"})
 
         with patch("anthropic.Anthropic") as mock_anthropic_cls:
             mock_client = MagicMock()
             mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create.return_value = self._mock_tool_use_response(score=6, reasoning="Needs work.")
+            mock_client.messages.parse.return_value = self._mock_parsed_response(score=6, reasoning="Needs work.")
 
             result = agent._run_with_llm("some spec content")
 
@@ -397,22 +353,19 @@ class TestRunWithLlm:
         assert result.score == 6
         assert result.passed is False  # 6 < threshold 8
 
-    def test_missing_tool_use_block_returns_fallback_result(self) -> None:
+    def test_missing_structured_output_raises(self) -> None:
+        from ydk.core.claude_client import ClaudeAPIError
+
         config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6"})
+        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-5"})
 
         with patch("anthropic.Anthropic") as mock_anthropic_cls:
             mock_client = MagicMock()
             mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create.return_value = SimpleNamespace(
-                content=[SimpleNamespace(type="text", text="I refuse to call the tool.")]
-            )
+            mock_client.messages.parse.return_value = SimpleNamespace(stop_reason="refusal", parsed_output=None)
 
-            result = agent._run_with_llm("some spec content")
-
-        assert result.score == 0
-        assert result.passed is False
-        assert "Failed to parse reviewer response" in result.reasoning
+            with pytest.raises(ClaudeAPIError, match="no structured output"):
+                agent._run_with_llm("some spec content")
 
 
 class TestReviewerAgentGracefulDegradation:

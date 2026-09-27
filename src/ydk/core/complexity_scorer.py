@@ -2,18 +2,28 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel
 
 from ydk.models.complexity import ComplexityScore
 
 if TYPE_CHECKING:
-    from ydk.core.llm_provider import LLMProvider
+    from ydk.core.llm_provider import StructuredLLMProvider
     from ydk.models.pm import TaskDetail
 
 
 _UNSCORED = 5
 _UNSCORED_REASONING = "No LLM provider configured — returning default score."
+
+
+class ComplexityAssessment(BaseModel):
+    """Structured output the LLM returns for one task."""
+
+    score: int
+    reasoning: str
+    should_expand: bool
+    suggested_splits: list[str]
 
 
 def _build_prompt(task: TaskDetail, context: str | None = None) -> str:
@@ -48,38 +58,24 @@ def _build_prompt(task: TaskDetail, context: str | None = None) -> str:
     lines.extend(
         [
             "",
-            "Return JSON only:",
-            "{",
-            '  "score": <1-10>,',
-            '  "reasoning": "<1-2 sentence explanation>",',
-            '  "should_expand": <true if score >= 8>,',
-            '  "suggested_splits": ["<subtask 1>", "<subtask 2>"] or []',
-            "}",
+            "Respond with:",
+            "  score: 1-10",
+            "  reasoning: 1-2 sentence explanation",
+            "  should_expand: true if score >= 8",
+            "  suggested_splits: list of subtask titles, or an empty list",
         ]
     )
     return "\n".join(lines)
 
 
-def _parse_response(task_id: str, response: str) -> ComplexityScore:
-    """Parse LLM JSON response into a ComplexityScore."""
-    text = response.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines)
-
-    data = json.loads(text)
-    score = int(data["score"])
-    score = max(1, min(10, score))
-
+def _to_score(task_id: str, assessment: ComplexityAssessment) -> ComplexityScore:
+    """Convert the LLM assessment into a ComplexityScore, clamping the score to 1-10."""
     return ComplexityScore(
         task_id=task_id,
-        score=score,
-        reasoning=data.get("reasoning", ""),
-        should_expand=data.get("should_expand", score >= 8),
-        suggested_splits=data.get("suggested_splits", []),
+        score=max(1, min(10, assessment.score)),
+        reasoning=assessment.reasoning,
+        should_expand=assessment.should_expand,
+        suggested_splits=assessment.suggested_splits,
     )
 
 
@@ -90,7 +86,7 @@ class ComplexityScorer:
     score with reasoning and expansion recommendations.
     """
 
-    def __init__(self, llm_provider: LLMProvider | None = None) -> None:
+    def __init__(self, llm_provider: StructuredLLMProvider | None = None) -> None:
         self._llm = llm_provider
 
     def score_task(
@@ -114,18 +110,7 @@ class ComplexityScorer:
             )
 
         prompt = _build_prompt(task, context)
-        response = self._llm.invoke(prompt)
-
-        try:
-            return _parse_response(task_id, response)
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            return ComplexityScore(
-                task_id=task_id,
-                score=_UNSCORED,
-                reasoning=f"LLM response could not be parsed: {response[:120]}",
-                should_expand=False,
-                suggested_splits=[],
-            )
+        return _to_score(task_id, self._llm.invoke_structured(prompt, ComplexityAssessment))
 
     def score_tasks(
         self,

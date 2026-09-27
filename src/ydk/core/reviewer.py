@@ -17,11 +17,11 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from ydk.core.claude_client import DEFAULT_API_KEY_ENV, ClaudeAPIError, build_client, create_message
+from ydk.core.claude_client import DEFAULT_API_KEY_ENV, ClaudeAPIError, build_client, parse_message
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -238,7 +238,7 @@ class ReviewerAgent:
 
     def _run_with_llm(self, spec_content: str) -> ReviewResult:
         """Run deterministic tools first, then ask Claude to judge the findings."""
-        from ydk.core.reviewer_engine import REVIEW_TOOL_SPEC
+        from ydk.core.reviewer_engine import ReviewVerdict
 
         logger.debug("Reviewer %s: running deterministic tools", self._config.id)
         tools_result = self._run_tools_only(spec_content)
@@ -256,19 +256,17 @@ class ReviewerAgent:
             "Deterministic tool findings:\n"
             f"{tools_result.findings}\n\n"
             "Use your judgment to assess these findings (some may be false positives) "
-            "and call the submit_review tool with your final assessment."
+            "and give your final assessment."
         )
 
         call_start = time.monotonic()
-        response = create_message(
+        verdict = parse_message(
             client,
+            ReviewVerdict,
             model=model_id,
             max_tokens=8192,
-            temperature=0.0,
             system=self._config.system_prompt,
             messages=[{"role": "user", "content": user_message}],
-            tools=cast("Any", [REVIEW_TOOL_SPEC]),
-            tool_choice={"type": "tool", "name": "submit_review"},
         )
         logger.debug(
             "Reviewer %s: Anthropic API call completed in %.1fs",
@@ -276,10 +274,15 @@ class ReviewerAgent:
             time.monotonic() - call_start,
         )
 
-        tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
-        if tool_use_block is None:
-            return self._fallback_result(str(response.content))
-        return self._parse_response(json.dumps(cast("Any", tool_use_block).input))
+        return ReviewResult(
+            reviewer_id=self._config.id,
+            name=self._config.name,
+            score=verdict.score,
+            passed=verdict.score >= self._config.threshold,
+            reasoning=verdict.reasoning,
+            suggestions=verdict.suggestions,
+            findings=[f.model_dump() for f in verdict.findings],
+        )
 
     def _run_tools_only(self, spec_content: str) -> ReviewResult:
         """Run only deterministic tools (no LLM)."""
@@ -327,62 +330,6 @@ class ReviewerAgent:
             reasoning=f"Deterministic scan found {finding_count} issue(s). LLM judgment unavailable.",
             suggestions=[f"Line {f.get('line', '?')}: {f.get('text', '')}" for f in all_findings[:10]],
             findings=all_findings,
-        )
-
-    def _parse_response(self, response_text: str) -> ReviewResult:
-        """Parse structured JSON response from the LLM agent."""
-        text = response_text.strip()
-        # Strip markdown code fences
-        if text.startswith("```"):
-            first_nl = text.index("\n")
-            text = text[first_nl + 1 :]
-            if text.endswith("```"):
-                text = text[:-3].rstrip()
-
-        # Try to find JSON in the response
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            start_idx = text.find("{")
-            end_idx = text.rfind("}")
-            if start_idx >= 0 and end_idx > start_idx:
-                try:
-                    data = json.loads(text[start_idx : end_idx + 1])
-                except json.JSONDecodeError:
-                    return self._fallback_result(response_text)
-            else:
-                return self._fallback_result(response_text)
-
-        if not isinstance(data, dict):
-            return self._fallback_result(response_text)
-
-        score = int(data.get("score", 0))
-        reasoning = str(data.get("reasoning", ""))
-        suggestions_raw = data.get("suggestions", [])
-        suggestions = [str(s) for s in suggestions_raw] if isinstance(suggestions_raw, list) else []
-        findings_raw = data.get("findings", [])
-        findings: list[dict[str, Any]] = [dict(f) for f in findings_raw] if isinstance(findings_raw, list) else []
-
-        return ReviewResult(
-            reviewer_id=self._config.id,
-            name=self._config.name,
-            score=score,
-            passed=score >= self._config.threshold,
-            reasoning=reasoning,
-            suggestions=suggestions,
-            findings=findings,
-        )
-
-    def _fallback_result(self, raw_response: str) -> ReviewResult:
-        """Create a fallback result when response parsing fails."""
-        return ReviewResult(
-            reviewer_id=self._config.id,
-            name=self._config.name,
-            score=0,
-            passed=False,
-            reasoning=f"Failed to parse reviewer response. Raw: {raw_response[:200]}",
-            suggestions=["Review agent returned unparseable response."],
-            findings=[],
         )
 
 

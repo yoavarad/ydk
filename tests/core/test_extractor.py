@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
-from ydk.core.extractor import ExtractedMemory, MemoryExtractor
+from ydk.core.extractor import ExtractedMemory, ExtractionResult, MemoryExtractor
+from ydk.core.llm_provider import AnthropicLLMProvider
 
 
 class TestExtractedMemory:
@@ -32,96 +36,45 @@ class TestExtractedMemory:
         assert "trade-off" in mem.concepts
 
 
-class TestParseResponse:
-    """Test the static _parse_response method independently."""
+class FakeAnthropicClient:
+    """Fake SDK client (system boundary): ``messages.parse`` validates canned data into ``output_format``."""
 
-    def test_parses_valid_json_array(self) -> None:
-        data = [
-            {
-                "memory_type": "discovery",
-                "content": "AuthHandler uses HS256 algorithm",
-                "related_files": ["src/api/auth.py"],
-                "concepts": ["how-it-works"],
-                "importance": "medium",
-            }
-        ]
-        result = MemoryExtractor._parse_response(json.dumps(data))
-        assert len(result) == 1
-        assert result[0].memory_type == "discovery"
-        assert result[0].content == "AuthHandler uses HS256 algorithm"
-        assert result[0].related_files == ["src/api/auth.py"]
+    def __init__(self, data: dict[str, object]) -> None:
+        self._data = data
+        self.calls: list[dict[str, Any]] = []
+        self.messages = self
 
-    def test_parses_json_wrapped_in_markdown_fences(self) -> None:
-        data = [
-            {
-                "memory_type": "gotcha",
-                "content": "Order matters",
-                "related_files": [],
-                "concepts": [],
-                "importance": "high",
-            }
-        ]
-        text = f"```json\n{json.dumps(data)}\n```"
-        result = MemoryExtractor._parse_response(text)
-        assert len(result) == 1
-        assert result[0].memory_type == "gotcha"
-        assert result[0].importance == "high"
+    def parse(self, **kwargs: Any) -> SimpleNamespace:
+        self.calls.append(kwargs)
+        return SimpleNamespace(stop_reason="end_turn", parsed_output=kwargs["output_format"].model_validate(self._data))
 
-    def test_returns_empty_for_garbage(self) -> None:
-        assert MemoryExtractor._parse_response("not json at all") == []
 
-    def test_returns_empty_for_empty_array(self) -> None:
-        assert MemoryExtractor._parse_response("[]") == []
+def _extractor(memories: list[dict[str, object]]) -> tuple[MemoryExtractor, FakeAnthropicClient]:
+    client = FakeAnthropicClient({"memories": memories})
+    provider = AnthropicLLMProvider(client=client, model_id="claude-sonnet-5")
+    return MemoryExtractor(llm_provider=provider), client
 
-    def test_skips_items_without_content(self) -> None:
-        data = [{"memory_type": "discovery", "content": ""}, {"memory_type": "discovery", "content": "Real content"}]
-        result = MemoryExtractor._parse_response(json.dumps(data))
-        assert len(result) == 1
-        assert result[0].content == "Real content"
 
-    def test_defaults_unknown_type_to_discovery(self) -> None:
-        data = [
-            {
-                "memory_type": "bogus_type",
-                "content": "Some finding",
-                "related_files": [],
-                "concepts": [],
-                "importance": "medium",
-            }
-        ]
-        result = MemoryExtractor._parse_response(json.dumps(data))
-        assert len(result) == 1
-        assert result[0].memory_type == "discovery"
+def _memory(**overrides: object) -> dict[str, object]:
+    data: dict[str, object] = {
+        "memory_type": "discovery",
+        "content": "AuthHandler uses HS256 algorithm",
+        "related_files": ["src/api/auth.py"],
+        "concepts": ["how-it-works"],
+        "importance": "medium",
+    }
+    data.update(overrides)
+    return data
 
-    def test_defaults_unknown_importance_to_medium(self) -> None:
-        data = [
-            {
-                "memory_type": "decision",
-                "content": "A decision",
-                "related_files": [],
-                "concepts": [],
-                "importance": "critical",
-            }
-        ]
-        result = MemoryExtractor._parse_response(json.dumps(data))
-        assert result[0].importance == "medium"
 
-    def test_handles_json_embedded_in_text(self) -> None:
-        inner = json.dumps(
-            [
-                {
-                    "memory_type": "pattern",
-                    "content": "Use factory pattern",
-                    "related_files": [],
-                    "concepts": ["pattern"],
-                    "importance": "medium",
-                }
-            ]
-        )
-        text = f"Here are the memories:\n{inner}\nDone."
-        result = MemoryExtractor._parse_response(text)
-        assert len(result) == 1
-        assert result[0].memory_type == "pattern"
+class TestExtractionSchema:
+    def test_rejects_unknown_memory_type(self) -> None:
+        with pytest.raises(ValidationError):
+            ExtractionResult.model_validate({"memories": [_memory(memory_type="bogus_type")]})
+
+    def test_rejects_unknown_importance(self) -> None:
+        with pytest.raises(ValidationError):
+            ExtractionResult.model_validate({"memories": [_memory(importance="critical")]})
 
 
 class TestExtractFromTranscript:
@@ -136,51 +89,59 @@ class TestExtractFromTranscript:
         result = extractor.extract_from_transcript("   \n  \n  ")
         assert result == []
 
-    def test_calls_provider_and_parses_response(self) -> None:
-        mock_provider = MagicMock()
-        llm_response = json.dumps(
+    def test_calls_provider_and_converts_structured_output(self) -> None:
+        extractor, client = _extractor(
             [
-                {
-                    "memory_type": "discovery",
-                    "content": "JWT tokens expire after 1 hour by default in src/api/auth.py",
-                    "related_files": ["src/api/auth.py"],
-                    "concepts": ["how-it-works"],
-                    "importance": "medium",
-                },
-                {
-                    "memory_type": "gotcha",
-                    "content": "Auth middleware must run before rate limiting in src/api/middleware.py",
-                    "related_files": ["src/api/middleware.py"],
-                    "concepts": ["gotcha", "how-it-works"],
-                    "importance": "high",
-                },
+                _memory(content="JWT tokens expire after 1 hour by default in src/api/auth.py"),
+                _memory(
+                    memory_type="gotcha",
+                    content="Auth middleware must run before rate limiting in src/api/middleware.py",
+                    related_files=["src/api/middleware.py"],
+                    concepts=["gotcha", "how-it-works"],
+                    importance="high",
+                ),
             ]
         )
-        mock_provider.invoke.return_value = llm_response
-
-        extractor = MemoryExtractor(llm_provider=mock_provider)
         result = extractor.extract_from_transcript("[User]\nAdd JWT auth\n\n[Assistant]\nDone.")
 
         assert len(result) == 2
-        assert result[0].memory_type == "discovery"
-        assert "JWT" in result[0].content
+        assert result[0] == ExtractedMemory(
+            memory_type="discovery",
+            content="JWT tokens expire after 1 hour by default in src/api/auth.py",
+            related_files=["src/api/auth.py"],
+            concepts=["how-it-works"],
+            importance="medium",
+        )
         assert result[1].memory_type == "gotcha"
         assert result[1].importance == "high"
 
-        # Verify the provider was invoked with a prompt containing the conversation
-        call_args = mock_provider.invoke.call_args[0][0]
-        assert "JWT auth" in call_args
+        call = client.calls[-1]
+        assert call["output_format"] is ExtractionResult
+        assert "temperature" not in call
+        assert "tool_choice" not in call
+        assert "JWT auth" in call["messages"][0]["content"]
+
+    def test_empty_memories(self) -> None:
+        extractor, _ = _extractor([])
+        assert extractor.extract_from_transcript("some convo") == []
+
+    def test_skips_items_without_content(self) -> None:
+        extractor, _ = _extractor([_memory(content="  "), _memory(content="Real content")])
+        result = extractor.extract_from_transcript("some convo")
+        assert [m.content for m in result] == ["Real content"]
+
+    def test_accepts_abandoned_type(self) -> None:
+        extractor, _ = _extractor([_memory(memory_type="abandoned", content="Tried Redis, rejected")])
+        result = extractor.extract_from_transcript("some convo")
+        assert result[0].memory_type == "abandoned"
 
     def test_includes_task_context_in_message(self) -> None:
-        mock_provider = MagicMock()
-        mock_provider.invoke.return_value = "[]"
-
-        extractor = MemoryExtractor(llm_provider=mock_provider)
+        extractor, client = _extractor([])
         extractor.extract_from_transcript("some convo", task_context="T-042: Add auth")
 
-        call_args = mock_provider.invoke.call_args[0][0]
-        assert "T-042" in call_args
-        assert "some convo" in call_args
+        prompt = client.calls[-1]["messages"][0]["content"]
+        assert "T-042" in prompt
+        assert "some convo" in prompt
 
 
 class TestExtractFromJsonl:
@@ -193,20 +154,9 @@ class TestExtractFromJsonl:
         ]
         jsonl.write_text("\n".join(lines))
 
-        mock_provider = MagicMock()
-        mock_provider.invoke.return_value = json.dumps(
-            [
-                {
-                    "memory_type": "discovery",
-                    "content": "Bug was in handler.py",
-                    "related_files": ["handler.py"],
-                    "concepts": ["problem-solution"],
-                    "importance": "medium",
-                }
-            ]
+        extractor, _ = _extractor(
+            [_memory(content="Bug was in handler.py", related_files=["handler.py"], concepts=["problem-solution"])]
         )
-
-        extractor = MemoryExtractor(llm_provider=mock_provider)
         result = extractor.extract_from_jsonl(jsonl)
 
         assert len(result) == 1
@@ -215,22 +165,6 @@ class TestExtractFromJsonl:
 
 class TestAbandonedExtraction:
     """Test that 'abandoned' is a valid extraction type."""
-
-    def test_abandoned_in_valid_types(self) -> None:
-        """The parser should accept 'abandoned' as a valid memory type."""
-        data = [
-            {
-                "memory_type": "abandoned",
-                "content": "Tried Redis for caching, rejected due to operational overhead",
-                "related_files": ["src/cache.py"],
-                "concepts": ["trade-off"],
-                "importance": "high",
-            }
-        ]
-        result = MemoryExtractor._parse_response(json.dumps(data))
-        assert len(result) == 1
-        assert result[0].memory_type == "abandoned"
-        assert result[0].importance == "high"
 
     def test_extraction_prompt_includes_abandoned(self) -> None:
         """EXTRACTION_PROMPT must instruct the LLM to look for abandoned approaches."""
