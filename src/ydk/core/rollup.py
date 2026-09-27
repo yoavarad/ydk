@@ -13,13 +13,17 @@ is done. Works against any backend:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     import builtins
+    from pathlib import Path
 
     from ydk.repositories.protocols import LifecycleTaskRepository
+
+logger = logging.getLogger("ydk.rollup")
 
 _DONE = {"done", "closed"}
 
@@ -159,3 +163,31 @@ def epic_tasks_for_retro(epic_id: str, task_repo: LifecycleTaskRepository, story
     epic_story_ids = {s.id for s in stories if s.parent == _norm(epic_id)}
     tasks = _load_tasks(task_repo)
     return [t for t in tasks if t.parent in epic_story_ids and t.status in ("done", "closed", "merged")]
+
+
+def advance_stage_if_complete(project_root: Path, task_repo: LifecycleTaskRepository) -> None:
+    """Advance project stage 03 (execution) -> 04 (learning) once no work remains.
+
+    Call after any command that can finish the last open task: ``task done``,
+    ``task close``, ``task sync``. No-op unless the project is currently in
+    stage 03 and no task is open, in-progress, or in-review (i.e. `task done`
+    ran but its PR hasn't merged and been landed by `close`/`sync` yet).
+    Advisory only: a failure (e.g. an unreadable state file) is logged, not
+    swallowed, so it never breaks the calling command.
+    """
+    try:
+        from ydk.core.state import ProjectState
+
+        state = ProjectState(project_root)
+        if state.read().get("stage") != "03":
+            return
+        still_open = (
+            task_repo.list_tasks(state="open")
+            or task_repo.list_tasks(state="in-progress")
+            or task_repo.list_tasks(state="in-review")
+        )
+        if still_open:
+            return
+        state.update(stage="04")
+    except Exception:
+        logger.warning("Stage 03->04 advance check failed", exc_info=True)

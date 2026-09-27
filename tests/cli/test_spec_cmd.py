@@ -793,3 +793,48 @@ class TestReportFileDump:
         # All 100 findings must appear
         for i in range(100):
             assert f"finding-{i}" in content, f"finding-{i} missing from text dump"
+
+
+# ---------------------------------------------------------------------------
+# Claude API failures surface clearly (mock only the anthropic SDK boundary)
+# ---------------------------------------------------------------------------
+
+
+class TestSpecVerifyClaudeErrors:
+    def _setup_spec(self, tmp_path: Path, monkeypatch: object) -> None:
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        spec_dir = tmp_path / "docs" / "specs"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "a.md").write_text("# Spec\n\nSome content.\n", encoding="utf-8")
+
+    def test_authentication_error_reports_invalid_key(self, tmp_path: Path, monkeypatch: object) -> None:
+        import anthropic
+        import httpx
+
+        self._setup_spec(tmp_path, monkeypatch)
+        request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        client = MagicMock()
+        client.messages.create.side_effect = anthropic.AuthenticationError(
+            "bad key", response=httpx.Response(401, request=request), body=None
+        )
+        with patch("anthropic.Anthropic", return_value=client):
+            result = runner.invoke(app, ["spec", "verify", "--all-files"])
+
+        assert result.exit_code == 1
+        assert "invalid or missing API key" in result.output
+        assert "Traceback" not in result.output
+
+    def test_missing_credentials_reported_before_request(self, tmp_path: Path, monkeypatch: object) -> None:
+        self._setup_spec(tmp_path, monkeypatch)
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            "project:\n  name: t\nanthropic:\n  api_key_env: YDK_TEST_MISSING_KEY\n", encoding="utf-8"
+        )
+        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)  # type: ignore[attr-defined]
+        with patch("anthropic.Anthropic") as mock_cls:
+            result = runner.invoke(app, ["spec", "verify", "--all-files"])
+
+        assert result.exit_code == 1
+        assert "invalid or missing API key" in result.output
+        assert "YDK_TEST_MISSING_KEY" in result.output
+        mock_cls.assert_not_called()

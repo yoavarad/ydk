@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ydk.core.rollup import epic_tasks_for_retro, rollup_task_done
+from ydk.core.rollup import advance_stage_if_complete, epic_tasks_for_retro, rollup_task_done
 from ydk.models.pm import EpicCreate, StoryCreate, TaskCreate
 from ydk.repositories.github.epics import GitHubEpicRepository
 from ydk.repositories.github.stories import GitHubStoryRepository
@@ -118,6 +118,61 @@ class TestEpicTasksForRetro:
     def test_unknown_epic_is_empty(self, local: _Local) -> None:
         local.done(local.t1)
         assert epic_tasks_for_retro("E-999", local.tasks, local.stories) == []
+
+
+class TestAdvanceStageIfComplete:
+    """advance_stage_if_complete: shared 03->04 check called after done/close/sync."""
+
+    def _write_state(self, project_root: Path, stage: str) -> None:
+        state_dir = project_root / ".ydk"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.json").write_text(json.dumps({"stage": stage}))
+
+    def _state(self, project_root: Path) -> dict:
+        return json.loads((project_root / ".ydk" / "state.json").read_text())
+
+    def test_advances_when_no_open_or_in_progress_tasks(self, local: _Local, tmp_path: Path) -> None:
+        local.done(local.t1)
+        local.done(local.t2)
+        local.done(local.t3)
+        self._write_state(tmp_path, "03")
+        advance_stage_if_complete(tmp_path, local.tasks)
+        assert self._state(tmp_path)["stage"] == "04"
+
+    def test_stays_on_03_when_a_task_is_still_open(self, local: _Local, tmp_path: Path) -> None:
+        local.done(local.t1)
+        local.done(local.t2)
+        self._write_state(tmp_path, "03")
+        advance_stage_if_complete(tmp_path, local.tasks)
+        assert self._state(tmp_path)["stage"] == "03"
+
+    def test_stays_on_03_when_a_task_is_in_review(self, local: _Local, tmp_path: Path) -> None:
+        """`task done` leaves the last task in-review (PR not yet merged) -- must still block advance."""
+        local.done(local.t1)
+        local.done(local.t2)
+        local.tasks.update_status(local.t3, "in-review")
+        self._write_state(tmp_path, "03")
+        advance_stage_if_complete(tmp_path, local.tasks)
+        assert self._state(tmp_path)["stage"] == "03"
+
+    def test_noop_when_not_in_stage_03(self, local: _Local, tmp_path: Path) -> None:
+        local.done(local.t1)
+        local.done(local.t2)
+        local.done(local.t3)
+        self._write_state(tmp_path, "02")
+        advance_stage_if_complete(tmp_path, local.tasks)
+        assert self._state(tmp_path)["stage"] == "02"
+
+    def test_logs_warning_and_does_not_raise_on_unreadable_state(
+        self, local: _Local, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        state_dir = tmp_path / ".ydk"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        state_file = state_dir / "state.json"
+        state_file.write_text("{not valid json")
+        with caplog.at_level("WARNING", logger="ydk.rollup"):
+            advance_stage_if_complete(tmp_path, local.tasks)  # must not raise
+        assert any("stage" in r.message.lower() for r in caplog.records)
 
 
 class _FakeGh:

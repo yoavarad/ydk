@@ -98,6 +98,10 @@ Return ONLY the JSON array, no commentary before or after.
 """
 
 
+# Extraction returns a JSON list; leave room so output is not truncated.
+_EXTRACTION_MAX_TOKENS = 16000
+
+
 @dataclass
 class ExtractedMemory:
     """A single memory extracted from a development session."""
@@ -166,7 +170,7 @@ class MemoryExtractor:
         from ydk.core.config import load_config
         from ydk.core.llm_provider import get_llm_provider
 
-        provider = get_llm_provider(load_config())
+        provider = get_llm_provider(load_config(), max_tokens=_EXTRACTION_MAX_TOKENS)
         if provider is None:
             raise ImportError(
                 "Memory extraction requires a configured LLM provider "

@@ -19,8 +19,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
-import anthropic
 import yaml
+
+from ydk.core.claude_client import DEFAULT_API_KEY_ENV, ClaudeAPIError, build_client, create_message
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -211,6 +212,8 @@ class ReviewerAgent:
                 debug_output=result.debug_output,
                 elapsed_seconds=elapsed,
             )
+        except ClaudeAPIError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.error(
@@ -241,9 +244,9 @@ class ReviewerAgent:
         tools_result = self._run_tools_only(spec_content)
 
         model_id = self._model_config.get("model_id", "claude-sonnet-4-6")
-        api_key = self._model_config.get("api_key")
+        api_key_env = self._model_config.get("api_key_env", DEFAULT_API_KEY_ENV)
 
-        client = anthropic.Anthropic(api_key=api_key, timeout=300.0, max_retries=2)
+        client = build_client(api_key_env, timeout=300.0, max_retries=2)
 
         user_message = (
             "Here is the specification document to review:\n\n"
@@ -257,7 +260,8 @@ class ReviewerAgent:
         )
 
         call_start = time.monotonic()
-        response = client.messages.create(
+        response = create_message(
+            client,
             model=model_id,
             max_tokens=8192,
             temperature=0.0,
@@ -465,6 +469,8 @@ def run_all_sync(
             try:
                 result = future.result()
                 results.append(result)
+            except ClaudeAPIError:
+                raise
             except Exception as exc:
                 logger.exception("Reviewer %s raised an exception", reviewer_id)
                 error_msg = f"{type(exc).__name__}: {str(exc)[:300]}"

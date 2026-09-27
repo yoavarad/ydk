@@ -326,3 +326,26 @@ def test_install_hooks_resolve_python_dynamically(tmp_path: Path, monkeypatch: o
     assert ".venv/Scripts/python.exe" in commit_msg
     assert "command -v python3" in commit_msg
     assert '"$PY" -m ydk.hooks.commit_msg' in commit_msg
+
+
+def test_init_confirms_api_key_when_set(tmp_path: Path, monkeypatch: object) -> None:
+    """ydk init detects ANTHROPIC_API_KEY without printing any part of its value."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-super-secret-value")  # type: ignore[attr-defined]
+    result = runner.invoke(app, ["init", "--name", "myproject"])
+    assert result.exit_code == 0
+    assert "ANTHROPIC_API_KEY" in result.output
+    assert "detected" in result.output.lower()
+    assert "sk-ant-super-secret-value" not in result.output
+    assert "SetEnvironmentVariable" not in result.output
+
+
+def test_init_shows_api_key_setup_when_unset(tmp_path: Path, monkeypatch: object) -> None:
+    """ydk init shows persistent USER-level env var setup instructions when the key is unset."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # type: ignore[attr-defined]
+    result = runner.invoke(app, ["init", "--name", "myproject"])
+    assert result.exit_code == 0
+    assert "ANTHROPIC_API_KEY" in result.output
+    assert "SetEnvironmentVariable" in result.output
+    assert "platform.claude.com" in result.output
