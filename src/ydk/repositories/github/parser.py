@@ -16,7 +16,9 @@ Task issue body format:
 
 Story issue body format:
 
-    **Epic**: E-001
+    **Epic**: #1
+    **Spec refs**: orders.md#entities
+    **Component refs**: order-service
 
     ### Description
     As a trader I want ...
@@ -25,6 +27,9 @@ Story issue body format:
     - [ ] Can place an order
 
 Epic issue body format:
+
+    **Release**: v1.0
+    **Spec refs**: orders.md
 
     ### Description
     The orders epic covers ...
@@ -172,6 +177,12 @@ def set_body_field(body: str, label: str, value: str) -> str:
 def render_epic_body(epic: EpicCreate) -> str:
     """Render an EpicCreate into markdown body."""
     lines: list[str] = []
+    if epic.release:
+        lines.append(f"**Release**: {epic.release}")
+    if epic.spec_refs:
+        lines.append(f"**Spec refs**: {', '.join(epic.spec_refs)}")
+    if lines:
+        lines.append("")
     if epic.description:
         lines.append("### Description")
         lines.append(epic.description)
@@ -183,6 +194,11 @@ def render_story_body(story: StoryCreate) -> str:
     lines: list[str] = []
     if story.epic_id:
         lines.append(f"**Epic**: {_github_ref(story.epic_id)}")
+    if story.spec_refs:
+        lines.append(f"**Spec refs**: {', '.join(story.spec_refs)}")
+    if story.component_refs:
+        lines.append(f"**Component refs**: {', '.join(story.component_refs)}")
+    if lines:
         lines.append("")
     if story.description:
         lines.append("### Description")
@@ -354,6 +370,8 @@ def parse_story_detail(
         number=number,
         title=title,
         epic_id=fields.get("epic") or None,
+        spec_refs=_parse_csv(fields.get("spec refs", "")),
+        component_refs=_parse_csv(fields.get("component refs", "")),
         description=sections.get("description", ""),
         acceptance_criteria=_parse_acceptance_criteria(sections.get("acceptance criteria", "")),
         labels=labels,
@@ -371,12 +389,14 @@ def parse_epic_detail(
     url: str = "",
 ) -> EpicDetail:
     """Parse a GitHub Issue into an EpicDetail."""
-    _fields, sections = _parse_body(body or "")
+    fields, sections = _parse_body(body or "")
     status = _gh_state_to_status(state, labels)
     return EpicDetail(
         number=number,
         title=title,
         description=sections.get("description", ""),
+        release=fields.get("release", ""),
+        spec_refs=_parse_csv(fields.get("spec refs", "")),
         labels=labels,
         status=status,
         url=url,

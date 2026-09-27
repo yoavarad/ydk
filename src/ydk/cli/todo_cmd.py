@@ -9,6 +9,7 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 
 from ydk.cli._helpers import format_or_echo
+from ydk.core.task_ref import resolve_task_ref
 from ydk.core.todo_manager import TodoError, TodoManager
 from ydk.output.console import console
 
@@ -127,22 +128,7 @@ def assign_batch(
     mapping: str = typer.Argument(..., help="Comma-separated TODO_ID:TASK_ID pairs, or path to YAML file"),
 ) -> None:
     """Bulk assign TODOs to tasks. Accepts 'YDK-TODO-001:T-001,YDK-TODO-002:T-001' or a YAML file."""
-    import json as _json
-
     mgr = _manager()
-
-    # Load batch mapping for T-xxx resolution
-    batch_mapping: dict[str, str] = {}
-    mapping_file = Path(".ydk") / "batch-mapping.json"
-    if mapping_file.exists():
-        batch_mapping = _json.loads(mapping_file.read_text())
-
-    def _resolve_task(raw_id: str) -> str:
-        """Resolve T-001 placeholder to real issue ID."""
-        upper = raw_id.upper()
-        if upper.startswith("T-") and upper in batch_mapping:
-            return batch_mapping[upper]
-        return raw_id
 
     # Determine if input is a file path or inline string
     assignments: list[tuple[str, str]] = []  # (todo_id, task_id)
@@ -160,7 +146,7 @@ def assign_batch(
             console.print("[red]YAML must contain an 'assignments' key mapping task IDs to TODO lists.[/red]")
             raise typer.Exit(1)
         for task_id_raw, todo_list in data["assignments"].items():
-            resolved_task = _resolve_task(str(task_id_raw))
+            resolved_task = resolve_task_ref(str(task_id_raw))
             assignments.extend((str(todo_id), resolved_task) for todo_id in todo_list)
     else:
         # Inline comma-separated mode: YDK-TODO-001:T-001,YDK-TODO-002:T-002
@@ -170,7 +156,7 @@ def assign_batch(
                 console.print(f"[red]Invalid pair (missing ':'): {pair}[/red]")
                 raise typer.Exit(1)
             todo_id, task_id_raw = pair.rsplit(":", 1)
-            assignments.append((todo_id.strip(), _resolve_task(task_id_raw.strip())))
+            assignments.append((todo_id.strip(), resolve_task_ref(task_id_raw.strip())))
 
     # Execute assignments
     success = 0
