@@ -1,12 +1,13 @@
 """Tests for GitHubTaskRepository — all subprocess calls mocked."""
 
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ydk.models.gate import Gate, GateStatus, GateType
-from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
+from ydk.models.pm import AcceptanceCriterion, Dependency, DependencyType, TaskCreate, TaskStatus
 from ydk.repositories.github.tasks import GitHubTaskRepository, _extract_issue_number
 
 
@@ -491,7 +492,25 @@ class TestFieldPersistenceRoundTrip:
         with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
             repo.update_frontmatter("42", {"dependencies": ["#8", "#9"]})
             detail = repo.get_task("42")
-        assert detail.dependencies == ["#8", "#9"]
+        assert detail.dependencies == [Dependency(task_id="#8"), Dependency(task_id="#9")]
+
+    def test_dependency_types_persist(self) -> None:
+        fake = _FakeGhIssue(_BASE_BODY)
+        repo = GitHubTaskRepository()
+        deps = [
+            Dependency(task_id="#8"),
+            {"task_id": "#9", "type": "related"},
+            Dependency(task_id="#10", type=DependencyType.VALIDATES),
+        ]
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            repo.update_frontmatter("42", {"dependencies": deps})
+            detail = repo.get_task("42")
+        assert "**Dependencies**: #8, #9 (related), #10 (validates)" in fake.body
+        assert detail.dependencies == [
+            Dependency(task_id="#8"),
+            Dependency(task_id="#9", type=DependencyType.RELATED),
+            Dependency(task_id="#10", type=DependencyType.VALIDATES),
+        ]
 
     def test_unknown_key_raises_without_calling_gh(self) -> None:
         repo = GitHubTaskRepository()
@@ -518,3 +537,92 @@ class TestExtractIssueNumber:
         with pytest.raises(ValueError, match=r"is not a GitHub issue number; remote=github expects N or #N") as exc:
             _extract_issue_number(raw)
         assert repr(raw) in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# list_ready / list_tasks — dependency-type-aware readiness
+# ---------------------------------------------------------------------------
+
+
+def _issue(number: int, deps: str = "", state: str = "OPEN") -> dict[str, object]:
+    body = f"**Dependencies**: {deps}\n\n### Description\nx" if deps else "### Description\nx"
+    return {
+        "number": number,
+        "title": f"T{number}",
+        "state": state,
+        "labels": [{"name": "task"}],
+        "body": body,
+        "url": "",
+    }
+
+
+class _FakeGhList:
+    """gh CLI boundary stand-in serving ``issue list`` for open/closed/all states."""
+
+    def __init__(self, open_issues: list[dict[str, object]], closed_issues: list[dict[str, object]]) -> None:
+        self.open_issues = open_issues
+        self.closed_issues = [{**i, "state": "CLOSED"} for i in closed_issues]
+
+    def __call__(self, cmd: list[str], *args: object, **kwargs: object) -> MagicMock:
+        state = cmd[cmd.index("--state") + 1]
+        issues = {"open": self.open_issues, "closed": self.closed_issues}.get(
+            state, self.open_issues + self.closed_issues
+        )
+        return _fake_run(stdout=json.dumps(issues))
+
+
+def _ready_ids(fake: _FakeGhList) -> list[str]:
+    with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+        return [t.id for t in GitHubTaskRepository().list_ready()]
+
+
+def _deps_met(fake: _FakeGhList, state: str = "open") -> dict[str, bool]:
+    with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+        return {t.id: t.dependencies_met for t in GitHubTaskRepository().list_tasks(state=state)}
+
+
+class TestListReadyDependencyTypes:
+    @pytest.mark.parametrize("dep_type", ["related", "validates"])
+    def test_non_blocking_open_dependency_does_not_block(self, dep_type: str) -> None:
+        fake = _FakeGhList([_issue(1), _issue(2, f"#1 ({dep_type})")], [])
+        assert "2" in _ready_ids(fake)
+
+    def test_open_blocks_dependency_blocks(self) -> None:
+        fake = _FakeGhList([_issue(1), _issue(2, "#1")], [])
+        assert _ready_ids(fake) == ["1"]
+
+    def test_closed_blocks_dependency_does_not_block(self) -> None:
+        fake = _FakeGhList([_issue(2, "#1 (waits-for)")], [_issue(1)])
+        assert _ready_ids(fake) == ["2"]
+
+    def test_non_blocking_dependency_not_counted_as_dependent(self) -> None:
+        fake = _FakeGhList([_issue(1), _issue(2), _issue(3, "#2 (related)")], [])
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            counts = {t.id: t.dependents_count for t in GitHubTaskRepository().list_ready()}
+        assert counts["2"] == 0
+
+    def test_unresolvable_dependency_warns_and_is_unmet(self, caplog: pytest.LogCaptureFixture) -> None:
+        fake = _FakeGhList([_issue(2, "T-5e9dbd18")], [])
+        with caplog.at_level(logging.WARNING, logger="ydk.repositories.github.tasks"):
+            assert _ready_ids(fake) == []
+        assert any("#2" in r.getMessage() and "T-5e9dbd18" in r.getMessage() for r in caplog.records)
+
+
+class TestListTasksDependencyTypes:
+    def test_non_blocking_open_dependency_is_met(self) -> None:
+        fake = _FakeGhList([_issue(1), _issue(2, "#1 (related)")], [])
+        assert _deps_met(fake)["2"] is True
+
+    def test_open_blocks_dependency_is_unmet(self) -> None:
+        fake = _FakeGhList([_issue(1), _issue(2, "#1")], [])
+        assert _deps_met(fake)["2"] is False
+
+    def test_closed_blocks_dependency_is_met(self) -> None:
+        fake = _FakeGhList([_issue(2, "#1")], [_issue(1)])
+        assert _deps_met(fake, state="all")["2"] is True
+
+    def test_unresolvable_dependency_warns_and_is_unmet(self, caplog: pytest.LogCaptureFixture) -> None:
+        fake = _FakeGhList([_issue(2, "QD-abc123")], [])
+        with caplog.at_level(logging.WARNING, logger="ydk.repositories.github.tasks"):
+            assert _deps_met(fake)["2"] is False
+        assert any("#2" in r.getMessage() and "QD-abc123" in r.getMessage() for r in caplog.records)

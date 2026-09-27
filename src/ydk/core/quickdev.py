@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 from typing import TYPE_CHECKING
 
+from ydk.core.config import load_config
+from ydk.models.pm import TaskCreate
 from ydk.models.quickdev import QuickDevContext
+from ydk.repositories.factory import get_task_repository
 from ydk.repositories.local.frontmatter import render_frontmatter
 
 if TYPE_CHECKING:
@@ -41,6 +45,27 @@ def _slugify(text: str, max_len: int = 40) -> str:
     return slug.strip("-")[:max_len]
 
 
+def _write_active_task(project_root: Path, task_id: str, base_branch: str = "main") -> None:
+    """Record *task_id* in active-task.json so PR creation can find it.
+
+    Merges into the existing per-task map rather than clobbering it, matching
+    the format used by ``TaskLifecycle.start``.
+    """
+    active_task_file = project_root / ".ydk" / "active-task.json"
+    active_task_file.parent.mkdir(parents=True, exist_ok=True)
+
+    active_tasks: dict[str, dict[str, str]] = {}
+    if active_task_file.exists():
+        try:
+            data = json.loads(active_task_file.read_text(encoding="utf-8"))
+            active_tasks = dict(data.get("tasks", {}))
+        except (json.JSONDecodeError, OSError):
+            active_tasks = {}
+
+    active_tasks[task_id] = {"base_branch": base_branch}
+    active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
+
+
 def _find_relevant_components(project_root: Path, description: str) -> list[str]:
     """Find components that might be relevant to the description."""
     components_dir = project_root / ".ydk" / "components"
@@ -69,27 +94,45 @@ class QuickDevSetup:
 
         Returns a QuickDevContext with everything a coding agent needs.
         """
-        task_id = _generate_task_id(description)
         branch_type = _branch_type(description)
+        config = load_config(project_root / ".ydk" / "config.yaml")
+        remote = config.project.remote or "local"
+
+        if remote == "local":
+            task_id = _generate_task_id(description)
+
+            # Write a minimal task file
+            tasks_dir = project_root / ".ydk" / "tasks"
+            tasks_dir.mkdir(parents=True, exist_ok=True)
+
+            task_file = tasks_dir / f"{task_id}.md"
+            task_file.write_text(
+                render_frontmatter(
+                    {
+                        "id": task_id,
+                        "title": description,
+                        "status": "in-progress",
+                        "type": "quickdev",
+                    },
+                    description,
+                ),
+                encoding="utf-8",
+            )
+        else:
+            # Non-local remote: create the task on the remote issue tracker
+            # so it's visible to `list`/`ready`, and use its issue number as
+            # the task ID. No local QD file is written.
+            #
+            # get_task_repository() reads config relative to the current
+            # working directory (like every other CLI command), so callers
+            # must invoke setup() with cwd == project_root for the remote it
+            # resolves here to match the one read above.
+            repo = get_task_repository()
+            detail = repo.create_task(TaskCreate(title=description, labels=["in-progress"]))
+            task_id = str(detail.number)
+            _write_active_task(project_root, task_id)
+
         branch = f"{branch_type}/{task_id.lower()}-{_slugify(description)}"
-
-        # Write a minimal task file
-        tasks_dir = project_root / ".ydk" / "tasks"
-        tasks_dir.mkdir(parents=True, exist_ok=True)
-
-        task_file = tasks_dir / f"{task_id}.md"
-        task_file.write_text(
-            render_frontmatter(
-                {
-                    "id": task_id,
-                    "title": description,
-                    "status": "in-progress",
-                    "type": "quickdev",
-                },
-                description,
-            ),
-            encoding="utf-8",
-        )
 
         # Create branch (best-effort — may fail if not in a git repo)
         subprocess.run(

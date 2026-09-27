@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import typer
 
@@ -1147,6 +1147,133 @@ def list_tasks(
             typer.echo(f"  {t.id}  {t.title}  ({deps_label})")
 
 
+def _task_ids_for_story(story: object) -> set[str]:
+    """Return the set of identifiers a task's story_id may use to reference *story*."""
+    ids: set[str] = set()
+    story_id = getattr(story, "id", "")
+    if story_id:
+        ids.add(story_id)
+    number = getattr(story, "number", 0)
+    if number:
+        ids.update({f"#{number}", str(number)})
+    return ids
+
+
+def _story_id_by_task(repo: LifecycleTaskRepository, tasks: list) -> dict[str, str]:  # type: ignore[type-arg]
+    """Map task id -> story_id for each task, skipping tasks whose detail can't be read."""
+    result: dict[str, str] = {}
+    for t in tasks:
+        try:
+            story_id = repo.get_task(t.id).story_id
+        except (FileNotFoundError, ValueError):
+            continue
+        if story_id:
+            result[t.id] = story_id
+    return result
+
+
+def _progress(tasks: list, story_id_by_task: dict[str, str], target_ids: set[str]) -> tuple[int, int]:  # type: ignore[type-arg]
+    """Return (done, total) task counts among *tasks* whose story_id is in *target_ids*."""
+    done = 0
+    total = 0
+    for t in tasks:
+        if story_id_by_task.get(t.id) not in target_ids:
+            continue
+        total += 1
+        if t.status in ("done", "closed"):
+            done += 1
+    return done, total
+
+
+@task_app.command("epics")
+def list_epics_cmd(
+    ctx: typer.Context,
+    status: str = typer.Option("all", "--status", help="Filter by status: open|closed|all"),
+) -> None:
+    """List epics with status and progress (done/total tasks)."""
+    from rich.table import Table
+
+    epic_repo = _get_epic_repo()
+    epics = epic_repo.list_epics(status=status)
+
+    if not epics:
+        if format_or_echo(ctx, []):
+            return
+        typer.echo("No epics found.")
+        return
+
+    story_repo = _get_story_repo()
+    task_repo = _get_repo()
+    tasks = task_repo.list_tasks(state="all")
+    story_id_by_task = _story_id_by_task(task_repo, tasks)
+
+    rows: list[tuple[Any, int, int]] = []
+    for e in epics:
+        target_ids: set[str] = set()
+        try:
+            for s in story_repo.list_stories(epic_id=e.id):
+                target_ids |= _task_ids_for_story(s)
+        except Exception:
+            pass
+        done, total = _progress(tasks, story_id_by_task, target_ids)
+        rows.append((e, done, total))
+
+    if format_or_echo(ctx, [{**e.model_dump(), "done": done, "total": total} for e, done, total in rows]):
+        return
+
+    table = Table(title="Epics")
+    table.add_column("ID", style="bold")
+    table.add_column("Title")
+    table.add_column("Status")
+    table.add_column("Progress", justify="center")
+
+    for e, done, total in rows:
+        table.add_row(e.id, e.title, e.status, f"{done}/{total}")
+
+    console.print(table)
+
+
+@task_app.command("stories")
+def list_stories_cmd(
+    ctx: typer.Context,
+    epic: str | None = typer.Option(None, "--epic", help="Filter by epic ID"),
+) -> None:
+    """List stories with status and progress (done/total tasks), optionally filtered by epic."""
+    from rich.table import Table
+
+    story_repo = _get_story_repo()
+    stories = story_repo.list_stories(epic_id=epic)
+
+    if not stories:
+        if format_or_echo(ctx, []):
+            return
+        typer.echo("No stories found.")
+        return
+
+    task_repo = _get_repo()
+    tasks = task_repo.list_tasks(state="all")
+    story_id_by_task = _story_id_by_task(task_repo, tasks)
+
+    rows: list[tuple[Any, int, int]] = []
+    for s in stories:
+        done, total = _progress(tasks, story_id_by_task, _task_ids_for_story(s))
+        rows.append((s, done, total))
+
+    if format_or_echo(ctx, [{**s.model_dump(), "done": done, "total": total} for s, done, total in rows]):
+        return
+
+    table = Table(title="Stories")
+    table.add_column("ID", style="bold")
+    table.add_column("Title")
+    table.add_column("Status")
+    table.add_column("Progress", justify="center")
+
+    for s, done, total in rows:
+        table.add_row(s.id, s.title, s.status, f"{done}/{total}")
+
+    console.print(table)
+
+
 def _extract_dep_ids(deps: list) -> list[str]:  # type: ignore[type-arg]
     """Extract task IDs from a list of dependencies (strings or Dependency objects)."""
     result: list[str] = []
@@ -1249,7 +1376,7 @@ def validate_dag_cmd(
             story_repo = get_story_repository()
             story_list = list(story_repo.list_stories())
             epic_repo = get_epic_repository()
-            epic_list = [_EpicSummary(id=e.id, title=e.title) for e in epic_repo.list_epics()]  # ty: ignore[unresolved-attribute]
+            epic_list = [_EpicSummary(id=e.id, title=e.title) for e in epic_repo.list_epics()]
         except Exception:
             pass
 
