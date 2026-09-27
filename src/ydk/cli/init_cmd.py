@@ -14,6 +14,7 @@ import typer
 from ydk.core.config import init_config
 from ydk.core.doctor import CheckSeverity, Doctor
 from ydk.output.console import console
+from ydk.repositories.github._helpers import REQUIRED_LABELS as _REQUIRED_LABELS
 
 
 def _python_command() -> str:
@@ -109,21 +110,11 @@ Closes #
 """
 
 
-_REQUIRED_LABELS: list[tuple[str, str]] = [
-    ("epic", "0052cc"),  # blue
-    ("story", "2ea44f"),  # green
-    ("task", "fbca04"),  # yellow
-    ("blocked-by-code", "d73a4a"),  # red
-    ("blocked-by-decision", "e99695"),  # orange
-    ("in-progress", "6f42c1"),  # purple
-]
-
-
 def _create_github_labels() -> None:
     """Create required GitHub labels, skipping any that already exist."""
-    for label_name, color in _REQUIRED_LABELS:
+    for label_name, color, description in _REQUIRED_LABELS:
         subprocess.run(
-            ["gh", "label", "create", label_name, "--color", color, "--force"],
+            ["gh", "label", "create", label_name, "--color", color, "--description", description, "--force"],
             capture_output=True,
         )
 

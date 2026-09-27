@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -52,6 +53,9 @@ class Doctor:
             self._check_linter,
             self._check_type_checker,
             self._check_remote_cli,
+            self._check_gh_auth,
+            self._check_gh_repo,
+            self._check_gh_labels,
             self._check_jinja2,
             self._check_task_pr_drift,
         ]
@@ -244,6 +248,105 @@ class Doctor:
             CheckSeverity.warning,
             "glab not found — local mode only",
         )
+
+    def _gh_skip_reason(self) -> str | None:
+        """Reason to skip a gh-dependent check, or None if gh checks should run.
+
+        Uses the same "github" fallback as `_check_remote_cli` when config
+        fails to load, so all gh-related checks agree on the no-config case.
+        """
+        config = self._load_config_safe()
+        remote = config.project.remote if config else "github"
+        if remote != "github":
+            return "remote is not github"
+        if shutil.which("gh") is None:
+            return "gh not found"
+        return None
+
+    def _check_gh_auth(self) -> CheckResult:
+        """Check gh CLI is authenticated (github remote only)."""
+        skip_reason = self._gh_skip_reason()
+        if skip_reason is not None:
+            return CheckResult("GitHub auth", CheckSeverity.ok, f"Skipped — {skip_reason}")
+        result = subprocess.run(
+            ["gh", "auth", "status"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=self._root,
+        )
+        if result.returncode == 0:
+            return CheckResult("GitHub auth", CheckSeverity.ok, "gh is authenticated")
+        return CheckResult(
+            "GitHub auth",
+            CheckSeverity.error,
+            "gh is not authenticated",
+            detail=(result.stderr or result.stdout).strip()[:200],
+        )
+
+    def _check_gh_repo(self) -> CheckResult:
+        """Check gh can resolve the repo and issues are enabled (github remote only)."""
+        skip_reason = self._gh_skip_reason()
+        if skip_reason is not None:
+            return CheckResult("GitHub repo", CheckSeverity.ok, f"Skipped — {skip_reason}")
+        result = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner,hasIssuesEnabled"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=self._root,
+        )
+        if result.returncode != 0:
+            return CheckResult(
+                "GitHub repo",
+                CheckSeverity.error,
+                "gh repo view failed — repo not accessible",
+                detail=result.stderr.strip()[:200],
+            )
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return CheckResult("GitHub repo", CheckSeverity.warning, "Could not parse gh repo view output")
+        name = data.get("nameWithOwner", "repo")
+        if not data.get("hasIssuesEnabled", True):
+            return CheckResult("GitHub repo", CheckSeverity.warning, f"Issues are disabled on {name}")
+        return CheckResult("GitHub repo", CheckSeverity.ok, f"{name} accessible, issues enabled")
+
+    def _check_gh_labels(self) -> CheckResult:
+        """Check required labels exist on the remote (github remote only)."""
+        skip_reason = self._gh_skip_reason()
+        if skip_reason is not None:
+            return CheckResult("GitHub labels", CheckSeverity.ok, f"Skipped — {skip_reason}")
+
+        from ydk.repositories.github._helpers import REQUIRED_LABELS
+
+        result = subprocess.run(
+            ["gh", "label", "list", "--json", "name"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=self._root,
+        )
+        if result.returncode != 0:
+            return CheckResult(
+                "GitHub labels",
+                CheckSeverity.warning,
+                "Could not list labels",
+                detail=result.stderr.strip()[:200],
+            )
+        try:
+            existing = {item["name"] for item in json.loads(result.stdout)}
+        except (json.JSONDecodeError, TypeError, KeyError):
+            return CheckResult("GitHub labels", CheckSeverity.warning, "Could not parse label list")
+        missing = [name for name, _color, _description in REQUIRED_LABELS if name not in existing]
+        if missing:
+            return CheckResult(
+                "GitHub labels",
+                CheckSeverity.warning,
+                f"{len(missing)} required label(s) missing",
+                detail=", ".join(missing),
+            )
+        return CheckResult("GitHub labels", CheckSeverity.ok, "All required labels present")
 
     def _check_jinja2(self) -> CheckResult:
         """Check Jinja2 is importable."""

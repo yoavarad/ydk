@@ -119,13 +119,14 @@ class TestLabelCreation:
     def test_required_labels_defined(self) -> None:
         from ydk.cli.init_cmd import _REQUIRED_LABELS
 
-        label_names = [name for name, _color in _REQUIRED_LABELS]
+        label_names = [name for name, _color, _description in _REQUIRED_LABELS]
         assert "epic" in label_names
         assert "story" in label_names
         assert "task" in label_names
         assert "blocked-by-code" in label_names
         assert "blocked-by-decision" in label_names
         assert "in-progress" in label_names
+        assert "in-review" in label_names
 
     @patch("ydk.cli.init_cmd.subprocess.run")
     def test_create_github_labels_calls_gh(self, mock_run: MagicMock) -> None:
