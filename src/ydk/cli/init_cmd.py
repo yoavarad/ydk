@@ -39,6 +39,39 @@ def _make_executable(path: Path) -> None:
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 
+def _print_api_key_status() -> None:
+    """Print whether ANTHROPIC_API_KEY is set, with setup instructions if not.
+
+    Only checks os.environ — never makes a network call, never prints any
+    part of the key's value. YDK's Claude API features (ai-code-review,
+    spec-alignment verification, ``ydk spec verify``, ``ydk memory
+    extract/retrospective``, ``ydk task analyze-complexity``) are skipped
+    or fail without this key.
+    """
+    console.print("\n[bold]Claude API key[/bold]")
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        console.print("  [green]✓[/green] ANTHROPIC_API_KEY detected in environment.")
+        return
+
+    console.print("  [yellow]⚠[/yellow] ANTHROPIC_API_KEY is not set.")
+    console.print(
+        "  AI features (ai-code-review, spec-alignment, [bold]ydk spec verify[/bold], "
+        "[bold]ydk memory extract/retrospective[/bold], [bold]ydk task analyze-complexity[/bold]) "
+        "will be skipped or fail without it."
+    )
+    console.print("  Get a key at https://platform.claude.com/ (API keys page), then set it as a")
+    console.print(
+        "  persistent USER-level env var — not just .env — so every shell, git worktree "
+        "(.ydk/worktrees/*), and agent process inherits it:"
+    )
+    console.print(
+        "    Windows (PowerShell): "
+        "[bold]\\[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '<your-key>', 'User')[/bold]"
+    )
+    console.print("    macOS/Linux: [bold]echo 'export ANTHROPIC_API_KEY=<your-key>' >> ~/.zshrc[/bold] (or ~/.bashrc)")
+    console.print("  Then open a new terminal and restart any running agent session (Claude Code).")
+
+
 # ---------------------------------------------------------------------------
 # GitHub templates
 # ---------------------------------------------------------------------------
@@ -520,6 +553,8 @@ def init_command(
     ok_count = sum(1 for r in results if r.severity == CheckSeverity.ok)
     total = len(results)
     console.print(f"\n{ok_count}/{total} checks passed.")
+
+    _print_api_key_status()
 
     # Advance to stage 01 if schemas and pack are already installed
     schemas_dir = Path(config.components.schemas_path)

@@ -90,6 +90,22 @@ The `ai` extra installs `boto3` and the Bedrock SDK, enabling YDK to call Claude
 If you are just getting started, install the base package first and add extras later as you need them. The core workflow -- specs, tasks, verification, and component manifests -- works without any AI or memory features.
 </Callout>
 
+### Setting the Claude API key
+
+AI features (`ai-code-review`, `spec-alignment` verification, `ydk spec verify`, `ydk memory extract`/`retrospective`, `ydk task analyze-complexity`) call Claude directly and need `ANTHROPIC_API_KEY` in your environment. Get a key from the [API keys page](https://platform.claude.com/), then set it as a persistent **user-level** environment variable -- not just in `.env` -- so every shell, git worktree (`.ydk/worktrees/*`), and agent/subagent process inherits it:
+
+```powershell
+# Windows (PowerShell)
+[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '<your-key>', 'User')
+```
+
+```bash
+# macOS/Linux
+echo 'export ANTHROPIC_API_KEY=<your-key>' >> ~/.zshrc  # or ~/.bashrc
+```
+
+Open a new terminal (and restart any running Claude Code session) afterward so child processes pick it up. `ydk init` reports whether the key is detected. Without it, AI features are skipped or fail.
+
 ## What You Just Installed
 
 YDK is not a framework or a library -- it is a CLI orchestrator. It does not generate code for you. Instead, it provides the scaffolding, verification, and knowledge management that makes AI-assisted development reliable and repeatable. Here is what you now have access to:
