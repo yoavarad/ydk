@@ -38,17 +38,17 @@ Proof also creates an audit trail. Six months later, when someone asks "was this
 
 ## The Three Verification Layers
 
-YDK organizes its 40 verification plugins into three layers that execute sequentially. If any check in a layer fails, subsequent layers are skipped. This design is intentional -- there is no point running expensive AI code review (Layer 3) if the code does not even pass formatting checks (Layer 1).
+YDK organizes its verification plugins into layers that execute sequentially. If any check in a layer fails, subsequent layers are skipped. This design is intentional -- there is no point running slower checks in Layer 2 if the code does not even pass formatting checks (Layer 1).
 
 **Layer 1: Format and Lint.** These are fast, deterministic checks that catch low-hanging issues in under 5 seconds. The `lint-ruff` plugin runs `ruff format --check` and `ruff check`. The `types-ty` plugin runs the type checker against the configured Python version. The `python-quality` plugin checks for common code quality issues. These checks have near-zero false positive rates -- if they fail, there is a real problem to fix.
 
 **Layer 2: Architecture and Structure.** These checks enforce project conventions and design rules. The `python-tdd-guard` plugin ensures that every staged source file has a corresponding test file -- enforcing TDD at the tooling level, not just as a guideline. The `python-file-length` plugin catches files that have grown too large. Framework-specific plugins check import boundaries (FastAPI adapter isolation, Next.js FSD layers), route organization (route delegation, route splitting), and anti-patterns (no mocks in integration tests, no useEffect for data fetching). These checks take 5-15 seconds.
 
-**Layer 3: AI-Powered.** These checks use LLMs for analysis that cannot be done deterministically. The `ai-code-review` plugin sends the git diff to an LLM for security analysis, code quality assessment, and design review. The `spec-alignment` plugin checks that the implementation matches the spec across six dimensions. These checks take 15-60 seconds and require the `ai` extras. They catch subtle issues -- spec drift, security vulnerabilities, design inconsistencies -- that mechanical checks miss.
+**Layer 3: AI-Powered.** YDK ships no built-in plugins in this layer -- projects can add their own (e.g. screenshot capture), but code review and spec-alignment judgment happen in-session, applied by the executing agent (e.g. via the `cavecrew-reviewer` subagent or the code-review skill) rather than by an automated LLM plugin. See the spec-alignment and code-review docs for the rubrics agents apply.
 
 ## Content-Hash Caching
 
-Running 40 verification plugins on every check would be slow and wasteful when most of your code has not changed. YDK solves this with content-hash caching. Before running a plugin, the verifier computes a SHA256 hash of all Python files in the project. If the hash matches a cached result from a previous run of the same plugin, the cached result is returned instantly.
+Running every verification plugin on every check would be slow and wasteful when most of your code has not changed. YDK solves this with content-hash caching. Before running a plugin, the verifier computes a SHA256 hash of all Python files in the project. If the hash matches a cached result from a previous run of the same plugin, the cached result is returned instantly.
 
 This means that if you fix a single lint error and re-run verification, only the plugins affected by that file are re-executed. Plugins that check other aspects of the codebase return their cached results in milliseconds.
 
@@ -96,7 +96,7 @@ The PR body assembled by `PRBodyBuilder` uses collapsible `<details>` blocks so 
 
 - **Deterministic Checks** -- lint, format, and type check results
 - **Verification Plugins** -- test output, TDD guard, and other structural checks
-- **AI Reviews** -- spec alignment scores and code review findings
+- **In-Session Review** -- spec alignment notes and code review findings from the agent's review pass
 - **Screenshots/Videos** -- captured UI proof (when applicable)
 
 This format exists because a flat wall of terminal output is unreadable, but hiding it behind a single summary loses the verifiability that makes proof-based development valuable. The collapsible format gives both: a scannable summary with full evidence one click away.

@@ -251,7 +251,7 @@ ydk spec verify --verbose              # Show per-reviewer timing, cache metrics
 ydk spec list-criteria                 # List reviewers and their thresholds
 ```
 
-**Spec Reviewers**: 10 YAML reviewer configs in `src/ydk/spec_reviewers/` (copied to `.ydk/spec-reviewers/` on `ydk init`). Each reviewer has: id, name, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric. Reviewers run as parallel Bedrock Converse API calls with forced structured output (`toolChoice`). Prompt caching shares spec content across reviewers (90% cost savings after first call).
+**Spec Reviewers**: 10 YAML reviewer configs in `src/ydk/spec_reviewers/` (copied to `.ydk/spec-reviewers/` on `ydk init`). Each reviewer has: id, name, threshold, inline Python tools (`tool_names`), and a detailed system prompt with examples and scoring rubric. `ydk spec verify` runs only the reviewers that declare tools (N07-N09); no LLM API calls are made. Reviewers without tools are skipped by the CLI and serve as rubrics for in-session review.
 
 ### Stage 02 — Task Management
 
@@ -411,16 +411,10 @@ A markdown storytelling file in `docs/specs/` that describes system design in pr
 Validates that all `[ydk:...]` references in narratives point to existing component manifests. Fast, deterministic.
 
 ### Layer B (LLM Scanner)
-Reads narrative prose and identifies concepts that should be linked to components but aren't. AI-based, runs during spec check.
+Reads narrative prose and identifies concepts that should be linked to components but aren't. Optional: only runs if a project injects its own `LLMProvider`. YDK ships none by default.
 
 ### Spec Reviewer
-A YAML config file in `src/ydk/spec_reviewers/` (or `.ydk/spec-reviewers/` per project) that defines one quality criterion. Has: id (N01-N10), name, group, threshold, model_tier (`smart`, `fast`, or `reasoning`), inline Python tools, and a system prompt with examples and scoring rubric. Runs via Bedrock Converse API with forced structured output.
-
-### Model Tier
-A logical name (`smart`, `fast`, `reasoning`) mapped to a Bedrock model ID in `ai.model_tiers` config. Both `smart` and `fast` default to Sonnet 4; `reasoning` defaults to Opus. Reviewers declare a tier, not a model ID.
-
-### Prompt Caching
-Bedrock prompt caching that shares spec content across all reviewer calls. The first reviewer pays full input cost; remaining reviewers hit the cache for ~90% cost savings on the spec portion.
+A YAML config file in `src/ydk/spec_reviewers/` (or `.ydk/spec-reviewers/` per project) that defines one quality criterion. Has: id (N01-N10), name, group, threshold, inline Python tools (`tool_names`), and a system prompt with examples and scoring rubric. `ydk spec verify` runs only the reviewers that declare tools (N07-N09) via those deterministic tools -- no LLM API calls are made. Reviewers without tools are skipped by the CLI and serve as rubrics for in-session review.
 
 ### Proof Capture
 Deterministic capture of verification command output to `.ydk/proofs/<task-id>/`. Uses full verification report (all plugins) — each plugin's output saved to `.ydk/proofs/<task>/plugins/<name>.txt`. PR body assembled from all plugin results. Screenshot proof required for UI tasks (routes/pages `component_refs`).

@@ -77,20 +77,16 @@ Three fields are required in the output: `name`, `passed`, and `output`. The `ou
 
 **CLI**: `cli-error-handling`, `cli-output-format`
 
-### Layer 3: AI-Powered
-`ai-code-review`, `spec-alignment`
+YDK ships no AI-powered verification plugins. Layer 3 is available for a project to add its own (e.g. screenshots), but none are built in.
 
 ## YAML-Based Spec Reviewers
 
 Separate from the code verification plugins, YDK also has a **spec reviewer** system that evaluates narrative spec quality. This is an entirely different architecture:
 
 - **10 YAML reviewer configs** in `src/ydk/spec_reviewers/` (copied to `.ydk/spec-reviewers/` on `ydk init`)
-- Each reviewer has: id (N01-N10), name, group, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric
-- Reviewers run as **parallel Bedrock Converse API calls** with forced structured output (`toolChoice`)
-- **Prompt caching**: spec content cached after first call, remaining reviewers hit cache (90% cost savings)
-- **Model tiers**: `smart` and `fast` (both default to Sonnet 4), `reasoning` (Opus) -- configured via `ai.model_tiers` in config
-- **Anti-hallucination rules**: LLM must quote exact text, cannot invent findings
-- **LLM score is authoritative** -- deterministic tools provide evidence but do not override LLM judgment
+- Each reviewer has: id (N01-N10), name, group, threshold, inline Python tools (`tool_names`), and a detailed system prompt with examples and scoring rubric
+- `ydk spec verify` runs only the reviewers that declare tools (N07-N09) -- no LLM API calls are made
+- Reviewers without tools (N01-N06, N10) are skipped by the CLI; their system prompts are rubrics for the in-session agent to apply when reviewing a spec
 - Only **4 high-value tools** remain: `scan_url_paths`, `scan_type_annotations` (N08), `scan_filler_phrases` (N07), `scan_unlinked_mentions` (N09)
 - **Orphaned components are errors** (not warnings)
 

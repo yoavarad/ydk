@@ -26,7 +26,7 @@ ydk/verifications/
 ├── no-float-financials/
 │   ├── manifest.yaml
 │   └── check.py
-├── spec-alignment/
+├── no-magic-numbers/
 │   ├── manifest.yaml
 │   └── check.py
 └── screenshot-dashboard/
@@ -56,7 +56,7 @@ supports_auto_fix: true     # Can fix violations when auto_fix is set
 |---|---|---|---|
 | 1 | < 5 seconds | Lint, type check, formatting | `pre-commit` |
 | 2 | < 2 minutes | Unit tests, integration tests, E2E tests, deterministic enforcements | `pre-push` |
-| 3 | < 1 minute | AI spec alignment, AI code review, screenshots | `pre-push` |
+| 3 | < 1 minute | Screenshots, project-added AI-based checks | `pre-push` |
 
 Layers run sequentially. Within a layer, plugins run in parallel (if `parallel: true`). If any plugin in a layer fails, subsequent layers don't run.
 
@@ -72,7 +72,7 @@ Exception: integration and E2E tests set `parallel: false` because they're resou
 
 ### Spec Verification (separate from verification plugins)
 
-The `ydk spec verify` command runs a **separate** system from verification plugins. It uses 10 YAML-based reviewers (N01-N10) that evaluate narrative spec quality via the Bedrock Converse API. See `stages/01-brainstorming-and-design/aspects/enforcement-gate.md` for details.
+The `ydk spec verify` command runs a **separate** system from verification plugins. It uses 10 YAML-based reviewer criteria (N01-N10); only the ones that declare deterministic tools (N07-N09) run automatically, the rest are rubrics for in-session review. See `stages/01-brainstorming-and-design/aspects/enforcement-gate.md` for details.
 
 The verification plugin system (`ydk verify run`) handles code-level checks (lint, types, tests, architecture). The spec reviewer system (`ydk spec verify`) handles spec-level quality. They are complementary but independent.
 
@@ -185,7 +185,6 @@ ydk verify run --trigger pre-push --pr https://github.com/org/repo/pull/47
 #   ✓ lint-ruff (0.3s)
 #   ✓ types-ty (0.5s)
 #   ✓ tests-pytest (11 passed, 2.1s)
-#   ✓ spec-alignment (6/6 dimensions, 12.4s)
 #   ALL PASSED
 ```
 
@@ -234,7 +233,7 @@ hooks:
 
 **Between layers:** Sequential. Layer 1 must fully pass before Layer 2 starts.
 
-**AI-based plugins (Layer 3):** All run in parallel. Use Bedrock prompt caching — the changed code is cached and shared across all AI evaluators.
+**AI-based plugins (Layer 3):** YDK ships none by default; a project may add its own. Any such plugins would run in parallel like other same-layer plugins.
 
 ## Creating a New Verification Plugin
 

@@ -185,7 +185,7 @@ Write code using strict Red-Green-Refactor cycles. When the task has assigned TO
 
 ### 5. Verify
 
-Run all verification checks. Read `aspects/verification.md` for the plugin system and `aspects/spec-alignment.md` for drift detection.
+Run all verification checks. Read `aspects/verification.md` for the plugin system and `aspects/spec-alignment.md` for the in-session drift-detection rubric.
 
 **Constraints:**
 - You MUST run `ydk verify run --trigger pre-push` before completing the task
@@ -200,7 +200,9 @@ Run all verification checks. Read `aspects/verification.md` for the plugin syste
 **What runs:**
 
 **`git:pre-commit` trigger (fast):** Lint + type checking
-**`git:pre-push` trigger (thorough):** All tests (unit + integration + E2E) + deterministic enforcements + AI spec alignment + AI code review
+**`git:pre-push` trigger (thorough):** All tests (unit + integration + E2E) + deterministic enforcements
+
+Spec alignment and code review happen in-session (agent judgment), not as part of `ydk verify run`.
 
 **Verification caching:** Results are cached by content hash. If files haven't changed, cached results are reused. Use `--no-cache` to force re-run. Use `ydk verify clear-cache` to purge the cache.
 
@@ -208,8 +210,7 @@ Run all verification checks. Read `aspects/verification.md` for the plugin syste
 
 ```
 ydk verify run --trigger pre-push
-# ✗ spec-alignment: interface_compliance 6/10
-#   "Error response uses {detail:str} instead of RFC 7807"
+# ✗ tests-pytest: 2 failed
 
 # Fix the issue
 # Re-run (or use auto-repair):
@@ -219,11 +220,11 @@ ydk verify run --trigger pre-push --retry 2 --repair
 
 ### 6. Review (External)
 
-AI review agents examine your code independently. Read `aspects/code-review.md` for the review process.
+A review pass examines your code independently, in-session. Read `aspects/code-review.md` for the review process.
 
 **Constraints:**
-- Review is part of `ydk verify run --trigger pre-push` (Layer 3) — it runs automatically
-- Reviews are external agents (not self-review) to avoid bias
+- Review happens in-session before completing the task (e.g. spawn `cavecrew-reviewer` or use the code-review skill) — it is not part of `ydk verify run`
+- Reviews use a fresh perspective (not self-review) to avoid bias
 - Critical findings MUST be fixed before proceeding
 - Warning findings SHOULD be addressed
 - Info findings MAY be ignored
@@ -290,10 +291,8 @@ ydk task done T-a1b2c3d4
 # ✓ types-ty (0.5s)
 # ✓ tests-pytest (11 passed, 2.1s)
 # ✓ python-no-future-annotations (0.1s)
-# ✓ spec-alignment (6/6 dimensions, 12.4s)
-# ✓ code-review (0 critical, 18.2s)
 #
-# ALL PASSED (33.6s)
+# ALL PASSED (3.0s)
 # PR #47 created: https://github.com/repo/pull/47
 # Proof saved: .ydk/proofs/T-a1b2c3d4/
 ```

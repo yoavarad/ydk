@@ -65,13 +65,13 @@ When the implementation is done and tests are passing locally, run the completio
 ydk task done T-abc12345
 ```
 
-This triggers the full verification pipeline -- all three layers, executed sequentially, with layer failures stopping subsequent layers:
+This triggers the full verification pipeline -- the deterministic layers, executed sequentially, with layer failures stopping subsequent layers:
 
 **Layer 1 (Format and Lint)** runs fast, deterministic checks. The `lint-ruff` plugin runs `ruff format --check` and `ruff check`. The `types-ty` plugin runs the type checker. The `python-quality` plugin checks for common quality issues. These checks typically complete in under 5 seconds.
 
 **Layer 2 (Architecture and Structure)** enforces project conventions. The `python-tdd-guard` plugin verifies that every source file has tests. The `python-file-length` plugin enforces file size limits. Framework-specific plugins check import isolation, route delegation, adapter boundaries, and other architectural rules. These checks take 5-15 seconds.
 
-**Layer 3 (AI-Powered)** runs LLM-based analysis. The `ai-code-review` plugin sends the diff to an LLM for security, quality, and design review. The `spec-alignment` plugin checks that the implementation matches the spec across six dimensions. These checks take 15-60 seconds and require the `ai` extras.
+**Layer 3 (AI-Powered)** ships with no built-in plugins -- YDK makes no external LLM API calls. Code review and spec alignment happen in-session instead: before completing the task, the agent applies the code-review and spec-alignment rubrics itself (see `aspects/code-review.md` and `aspects/spec-alignment.md`).
 
 If all checks pass, YDK saves the verification report as a proof artifact at `.ydk/proofs/T-abc12345/verification.json`, creates a PR with the full proof embedded in the body, and posts a proof summary to the task issue. The PR body includes the actual output from every verification check -- not just "passed" or "failed", but the exact console output that proves it.
 

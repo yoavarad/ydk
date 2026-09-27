@@ -5,7 +5,7 @@
 Every claim an agent makes must be backed by verifiable evidence. This is what makes hands-off-keyboard development possible: the human reviews proofs, not code.
 
 **Not proof-based:** "I implemented the order validation and it works."
-**Proof-based:** "11/11 unit tests pass. Spec alignment: 6/6 dimensions pass. Lint clean. Types clean. Review: 0 critical findings. Screenshots attached."
+**Proof-based:** "11/11 unit tests pass. Lint clean. Types clean. In-session review: 0 critical findings. Screenshots attached."
 
 ## What Counts as Proof
 
@@ -14,8 +14,8 @@ Every claim an agent makes must be backed by verifiable evidence. This is what m
 | "Tests pass" | Actual pytest output showing test count and pass status |
 | "Code is clean" | Actual ruff output showing no violations |
 | "Types check" | Actual ty/mypy output showing no errors |
-| "Matches spec" | Spec alignment report with 6 dimension scores |
-| "No security issues" | Security review agent report |
+| "Matches spec" | Component checks, reference integrity, and in-session spec-alignment judgment (see `aspects/spec-alignment.md`) |
+| "No security issues" | In-session code review (e.g. `cavecrew-reviewer`), not an automated plugin |
 | "UI looks right" | Screenshot images attached to the issue |
 | "Performance is acceptable" | Benchmark results or load test output |
 
@@ -29,8 +29,7 @@ Every verification produces a proof artifact stored in `.ydk/proofs/<task-id>/`:
 ├── test-output.txt       # Raw pytest output
 ├── lint-output.txt       # Raw ruff output
 ├── types-output.txt      # Raw ty output
-├── spec-alignment.json   # 6-dimension spec alignment report
-├── review.json           # AI review agent findings
+├── review.json           # In-session review findings, if captured
 └── screenshots/          # UI screenshots (if applicable)
     ├── dashboard.png
     └── order-form.png
@@ -54,8 +53,7 @@ Every verification produces a proof artifact stored in `.ydk/proofs/<task-id>/`:
 | Types (ty) | PASS | 0.5s |
 | Tests (pytest) | 11 passed | 0.8s |
 | Enforce | 3/3 checks passed | 0.2s |
-| Spec Alignment | 6/6 dimensions | 12.1s |
-| Review | 0 critical findings | 18.4s |
+| In-session Review | 0 critical findings | 18.4s |
 | Screenshots | 2 captured | 3.2s |
 
 All verifications passed. PR #47 created.
@@ -114,19 +112,7 @@ All source files have corresponding test files.
 
 </details>
 
-## AI Reviews
-
-<details>
-<summary>Spec Alignment — 6/6 dimensions</summary>
-
-entity_accuracy: 10/10
-interface_compliance: 9/10
-error_handling: 9/10
-boundary_respect: 10/10
-scope_compliance: 10/10
-cross_cutting: 9/10
-
-</details>
+## In-Session Review
 
 <details>
 <summary>Code Review — 0 critical findings</summary>
@@ -164,9 +150,8 @@ When `ydk verify run --pr <URL>` is used, verification results are automatically
 | Lint (ruff) | PASS | 0.3s | hit |
 | Types (ty) | PASS | 0.5s | hit |
 | Tests (pytest) | 11 passed | 2.1s | miss |
-| Spec Alignment | 6/6 dimensions | 12.4s | miss |
 
-ALL PASSED (15.3s, 2 cache hits)
+ALL PASSED (2.9s, 2 cache hits)
 ```
 
 ## Screenshots as Proof
@@ -271,9 +256,8 @@ VERIFICATION FAILED
 ✓ Lint: pass
 ✓ Types: pass
 ✓ Tests: 11 passed
-✗ Spec Alignment: FAILED (2/6 dimensions below threshold)
-  - interface_compliance: 6/10 — error response shape doesn't match spec
-  - cross_cutting: 5/10 — timestamps not in UTC ISO 8601
+✗ Enforce: FAILED (1/3 checks below threshold)
+  - reference integrity: unlinked component mention in orders.md
 
 Fix the issues and run `ydk task done` again.
 Tip: try `ydk verify run --retry 3 --repair` for auto-repair.
@@ -292,7 +276,6 @@ Without proof-based development, the human must:
 With proof-based development, the human reviews:
 - A proof table showing all checks passed
 - Screenshots showing the UI is correct
-- An AI review with no critical findings
-- A spec alignment report with all dimensions green
+- An in-session review with no critical findings
 
 The diff is still there for detailed review if wanted. But the proof tells you at a glance: this is trustworthy.

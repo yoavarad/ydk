@@ -2,22 +2,22 @@
 
 ## Why External Review
 
-Self-review is biased. The agent that wrote the code is the least qualified to review it — it already "thinks" the code is right. External review uses independent agents that see the code for the first time, with fresh eyes and no sunk-cost attachment.
+Self-review is biased. The agent that wrote the code is the least qualified to review it — it already "thinks" the code is right. External review uses a fresh perspective that sees the code for the first time, with no sunk-cost attachment.
 
 ## How It Works
 
-Before creating the PR, YDK spawns 1-3 review agents in parallel. Each agent has a different perspective and evaluates the diff against different criteria.
+Code review happens in-session, before creating the PR: the executing agent spawns a review pass (e.g. the `cavecrew-reviewer` subagent, or the code-review skill) against the diff. There is no pre-push plugin or LLM API call — the review is part of the agent's own workflow for the task.
 
 ## Review Perspectives
 
-### Spec Compliance Reviewer
+### Spec Compliance
 Focus: Does the code match the spec (narratives + component manifests)?
-- Overlaps with spec alignment check but reviews at a higher level
+- Overlaps with spec alignment but reviews at a higher level
 - Looks for semantic correctness, not just structural matching
 - Checks that component manifest definitions are faithfully implemented
 - "The spec says orders should be atomic — is the implementation actually atomic?"
 
-### Security Reviewer
+### Security
 Focus: Are there security issues?
 - Injection vulnerabilities (SQL, command, XSS)
 - Auth bypass possibilities
@@ -25,7 +25,7 @@ Focus: Are there security issues?
 - Hardcoded secrets or credentials
 - Missing input validation
 
-### Quality Reviewer
+### Quality
 Focus: Is the code well-written?
 - Naming clarity (do function/variable names describe what they do?)
 - Code structure (appropriate abstractions, no god functions?)
@@ -33,82 +33,26 @@ Focus: Is the code well-written?
 - Error handling (are errors handled, not swallowed?)
 - Consistency with existing codebase patterns
 
-## Review Configuration
-
-In `.ydk/config.yaml`:
-
-```yaml
-verification:
-  review_models:
-    - us.anthropic.claude-sonnet-4-6-v1:0     # Fast, good for most reviews
-    # Can add more for multiple perspectives:
-    # - us.anthropic.claude-opus-4-6-v1:0      # Deeper analysis
-  review_perspectives:
-    - spec_compliance
-    - security
-    - quality
-```
-
 ## Running It
 
+Run the review as part of finishing a task, before opening the PR:
+
 ```bash
-ydk verify review                # Run all configured review agents
-ydk verify review --verbose      # Show full review comments
+# Delegate to the reviewer subagent
+# (see caveman:cavecrew-reviewer, or the code-review skill)
 ```
 
-Runs automatically as part of `ydk verify all` and pre-push hook.
+There is no `ydk verify review` command — this is agent judgment applied in-session, not a deterministic CLI check.
 
 ## Review Output
 
-Each review agent returns:
-- **Pass/Fail** — are there blocking issues?
-- **Comments** — specific findings on specific code sections
-- **Severity** — critical (blocks PR), warning (should fix), info (suggestion)
-
-```json
-{
-  "reviews": [
-    {
-      "perspective": "spec_compliance",
-      "passed": true,
-      "comments": []
-    },
-    {
-      "perspective": "security",
-      "passed": false,
-      "comments": [
-        {
-          "severity": "critical",
-          "file": "app/routes/orders.py",
-          "line": 42,
-          "comment": "User input passed directly to SQL query without parameterization"
-        }
-      ]
-    },
-    {
-      "perspective": "quality",
-      "passed": true,
-      "comments": [
-        {
-          "severity": "info",
-          "file": "app/services/order_service.py",
-          "line": 15,
-          "comment": "Consider extracting the price calculation into a separate method for testability"
-        }
-      ]
-    }
-  ]
-}
-```
+The reviewer reports findings directly in the conversation, one per issue, tagged by severity:
+- **Critical** — blocking, must fix before `ydk task done`
+- **Warning** — should fix, but not blocking
+- **Info** — suggestion, optional
 
 ## Blocking vs Non-Blocking
 
-- **Critical** findings block `ydk task done` — the agent must fix them
-- **Warning** findings are posted to the issue but don't block
-- **Info** findings are suggestions — agent can choose to act on them
-
-## Parallelization
-
-All review agents run in parallel via asyncio. With Bedrock prompt caching, the diff content is cached and shared across all reviewers — the first reviewer pays full cost, subsequent reviewers get ~90% reduction.
-
-Typical timing: 3 parallel reviewers complete in ~20-30 seconds.
+- **Critical** findings should be fixed before the agent proceeds
+- **Warning** findings are worth addressing but don't block
+- **Info** findings are suggestions the agent can choose to act on

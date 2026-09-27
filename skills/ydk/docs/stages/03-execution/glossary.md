@@ -26,7 +26,7 @@ TDD cycle: write a failing test (Red), write minimum code to pass it (Green), cl
 
 ## Spec Alignment
 
-Verification that the implementation matches the spec. An LLM evaluator compares code against spec sections (narratives + component manifests) across 6 dimensions: entity accuracy, interface compliance, error handling, boundary respect, scope compliance, cross-cutting adherence.
+Verification that the implementation matches the spec. Applied in-session by the executing agent, comparing code against spec sections (narratives + component manifests) across 6 dimensions: entity accuracy, interface compliance, error handling, boundary respect, scope compliance, cross-cutting adherence. There is no automated LLM evaluator for this check.
 
 ## Deterministic Enforcement
 

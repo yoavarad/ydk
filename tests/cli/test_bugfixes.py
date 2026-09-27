@@ -99,12 +99,9 @@ def test_task_create_json_format(tmp_path: Path, monkeypatch: object) -> None:
 # ─── Fix 2: spec check actually runs (mocked) ────────────────────────────
 
 
-@patch("ydk.cli.spec_cmd._strands_available", return_value=False)
 @patch("ydk.cli.spec_cmd._run_reviewer_agents", return_value=([], {}))
-def test_spec_check_without_strands(
-    mock_reviewers: MagicMock, mock_strands: MagicMock, tmp_path: Path, monkeypatch: object
-) -> None:
-    """ydk spec verify without strands skips LLM checks and still produces a report."""
+def test_spec_check_without_reviewer_results(mock_reviewers: MagicMock, tmp_path: Path, monkeypatch: object) -> None:
+    """ydk spec verify with no reviewer results still produces a report."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     # Create a spec file
@@ -116,12 +113,9 @@ def test_spec_check_without_strands(
     assert "Verification Report" in result.output
 
 
-@patch("ydk.cli.spec_cmd._strands_available", return_value=True)
 @patch("ydk.cli.spec_cmd._run_reviewer_agents")
-def test_spec_check_with_strands_runs_eval(
-    mock_run: MagicMock, mock_strands: MagicMock, tmp_path: Path, monkeypatch: object
-) -> None:
-    """ydk spec verify calls reviewer agents when strands is available."""
+def test_spec_check_runs_reviewers(mock_run: MagicMock, tmp_path: Path, monkeypatch: object) -> None:
+    """ydk spec verify calls the deterministic reviewers."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     _setup_project(tmp_path)
     spec_dir = tmp_path / "docs" / "specs"
@@ -370,11 +364,8 @@ def test_task_unblock_nonexistent_friendly_error() -> None:
 # ─── Fix 9: spec check passes the loaded YdkConfig through to reviewer agents ──
 
 
-@patch("ydk.cli.spec_cmd._strands_available", return_value=True)
 @patch("ydk.cli.spec_cmd._run_reviewer_agents")
-def test_spec_check_passes_config_to_reviewer_agents(
-    mock_run: MagicMock, mock_strands: MagicMock, tmp_path: Path, monkeypatch: object
-) -> None:
+def test_spec_check_passes_config_to_reviewer_agents(mock_run: MagicMock, tmp_path: Path, monkeypatch: object) -> None:
     """ydk spec verify passes the loaded YdkConfig to reviewer agents."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
 

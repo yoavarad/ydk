@@ -1,24 +1,18 @@
 """Tests for all YDK production-readiness features (Items 1-11).
 
-Covers: PR body with console outputs, session ID tracking, git diff in spec-alignment,
-code review with both perspectives, screenshots in PR, retrospective with LLM,
+Covers: PR body with console outputs, session ID tracking, screenshots in PR,
 GitHub templates from ydk init, pre-push verified flag, coverage with factory,
 YAML output format.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
-
-if TYPE_CHECKING:
-    import types
 
 from ydk.core.events import EventBus
 from ydk.core.task_lifecycle import TaskLifecycle
@@ -244,103 +238,6 @@ class TestOrchestratorProjectRoot:
 
 
 # ---------------------------------------------------------------------------
-# Item 4: Spec alignment receives git diff
-# ---------------------------------------------------------------------------
-
-SPEC_ALIGNMENT_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "spec-alignment" / "check.py"
-)
-
-
-def _load_check_module(path: Path, name: str) -> types.ModuleType:
-    """Import a check.py as a module for direct testing."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-class TestSpecAlignmentGitDiff:
-    """Item 4: Spec alignment uses git diff instead of full files."""
-
-    def test_get_git_diff_function_exists(self) -> None:
-        """The spec-alignment module should have a _get_git_diff function."""
-        mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
-        assert hasattr(mod, "_get_git_diff")
-
-    def test_system_prompt_mentions_diff(self) -> None:
-        """The system prompt should reference git diff review."""
-        mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
-        assert "DIFF" in mod.SYSTEM_PROMPT
-        assert "changes" in mod.SYSTEM_PROMPT.lower()
-
-    @patch("subprocess.run")
-    def test_get_git_diff_calls_git(self, mock_run: MagicMock, tmp_path: Path) -> None:
-        """_get_git_diff should call git diff main."""
-        mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="diff --git a/src/main.py b/src/main.py\n+line added\n",
-        )
-        result = mod._get_git_diff(tmp_path, ["src/main.py"])
-        assert "diff --git" in result
-
-
-# ---------------------------------------------------------------------------
-# Item 5: AI code review includes spec compliance and standard review
-# ---------------------------------------------------------------------------
-
-AI_CODE_REVIEW_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "ydk" / "verifications" / "ai-code-review" / "check.py"
-)
-
-
-class TestAICodeReviewBothPerspectives:
-    """Item 5: AI code review covers spec compliance AND standard review."""
-
-    def test_system_prompt_covers_spec_compliance(self) -> None:
-        """System prompt should mention spec compliance perspective."""
-        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
-        prompt = mod.SYSTEM_PROMPT
-        assert "Spec Compliance" in prompt
-        assert "interface contracts" in prompt.lower() or "interface" in prompt.lower()
-
-    def test_system_prompt_covers_standard_review(self) -> None:
-        """System prompt should mention DRY, YAGNI, SOLID, Security."""
-        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
-        prompt = mod.SYSTEM_PROMPT
-        assert "DRY" in prompt
-        assert "YAGNI" in prompt
-        assert "SOLID" in prompt
-        assert "Security" in prompt or "security" in prompt.lower()
-
-    def test_system_prompt_has_severity_levels(self) -> None:
-        """System prompt should define critical, warning, info severities."""
-        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
-        prompt = mod.SYSTEM_PROMPT
-        assert "critical" in prompt
-        assert "warning" in prompt
-        assert "info" in prompt
-
-    def test_review_uses_git_diff(self) -> None:
-        """The ai-code-review module should have a _get_git_diff function."""
-        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
-        assert hasattr(mod, "_get_git_diff")
-
-    def test_categories_include_spec_and_standard(self) -> None:
-        """The review should support both spec and standard review categories."""
-        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
-        prompt = mod.SYSTEM_PROMPT
-        assert "spec_compliance" in prompt
-        assert "dry" in prompt
-        assert "security" in prompt
-
-
-# ---------------------------------------------------------------------------
 # Item 6: Screenshots included in PR body when they exist
 # ---------------------------------------------------------------------------
 
@@ -399,49 +296,6 @@ class TestScreenshotCapture:
 
         assert "## Screenshots" in body
         assert "![screen]" in body
-
-
-# ---------------------------------------------------------------------------
-# Item 7: Memory retrospective calls LLM
-# ---------------------------------------------------------------------------
-
-
-class TestRetrospectiveLLM:
-    """Item 7: Memory retrospective with real LLM implementation."""
-
-    def test_run_llm_retrospective_returns_none_without_provider(self) -> None:
-        """_run_llm_retrospective gracefully returns None when no LLM provider is configured."""
-        from ydk.cli.memory_cmd import _run_llm_retrospective
-
-        with patch("ydk.core.llm_provider.get_llm_provider", return_value=None):
-            tasks = [MagicMock(id="T-001", title="Task 1")]
-            result = _run_llm_retrospective(tasks, None)
-        assert result is None
-
-    def test_retrospective_produces_proposals_with_mock_llm(self) -> None:
-        """_run_llm_retrospective returns structured proposals with mocked LLM."""
-        from ydk.cli.memory_cmd import _run_llm_retrospective
-
-        ai_response = json.dumps(
-            {
-                "patterns": ["Tasks took longer than estimated"],
-                "templates": ["Add estimation field to task template"],
-                "rules": ["Always write tests before implementation"],
-                "summary": "Good sprint overall.",
-            }
-        )
-
-        mock_provider = MagicMock()
-        mock_provider.invoke.return_value = ai_response
-
-        with patch("ydk.core.llm_provider.get_llm_provider", return_value=mock_provider):
-            tasks = [MagicMock(id="T-001", title="Task 1")]
-            result = _run_llm_retrospective(tasks, "sprint-1")
-
-        assert result is not None
-        assert "patterns" in result
-        assert "templates" in result
-        assert "rules" in result
 
 
 # ---------------------------------------------------------------------------

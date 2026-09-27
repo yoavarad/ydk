@@ -14,7 +14,7 @@ ydk config show
 ydk config set spec_check.timeout 90
 
 # Get a value
-ydk config get spec_check.model
+ydk config get spec_check.timeout
 
 # Validate config
 ydk config validate
@@ -55,18 +55,13 @@ components:
     layer_a: bool                 # default: true — deterministic reference validation
     layer_b: bool                 # default: true — LLM unlinked concept scanner
 
-# ─── Spec Quality Check (Stage 01) ────────────────────
-ai:
-  provider: string                # default: "bedrock" — currently only "bedrock"
-  model_tiers:
-    smart: string                 # default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
-    fast: string                  # default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
-    reasoning: string             # default: "us.anthropic.claude-opus-4-6-v1"
-
 # ─── Spec Reviewers ──────────────────────────────
 # .ydk/spec-reviewers/ — YAML configs for each reviewer (N01-N10),
 # copied from src/ydk/spec_reviewers/ on `ydk init`. Each YAML has:
-# id, name, group, threshold, model_tier, tools, system_prompt.
+# id, name, group, threshold, tool_names, system_prompt. Reviewers with
+# tool_names get deterministic checks run by `ydk spec verify`; reviewers
+# without tools are skipped by the CLI (their system prompts are for the
+# in-session agent to apply).
 
 # ─── Spec Quality Check (Stage 01) ────────────────
 spec_check:
@@ -197,22 +192,13 @@ All hooks enabled by default after `ydk init`. Pre-push spec/task checks disable
 | `linker.layer_a` | bool | `true` | Enable deterministic `[ydk:...]` reference validation. |
 | `linker.layer_b` | bool | `true` | Enable LLM-based unlinked concept detection. |
 
-### ai
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `provider` | string | `"bedrock"` | AI provider. Currently only "bedrock" is supported. |
-| `model_tiers.smart` | string | `"us.anthropic.claude-sonnet-4-20250514-v1:0"` | Model for `smart` tier reviewers. |
-| `model_tiers.fast` | string | `"us.anthropic.claude-sonnet-4-20250514-v1:0"` | Model for `fast` tier reviewers. |
-| `model_tiers.reasoning` | string | `"us.anthropic.claude-opus-4-6-v1"` | Model for `reasoning` tier (complex analysis). |
-
 ### spec_check
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `timeout` | int | `60` | Seconds per reviewer. Timed out = score 0. |
 | `global_timeout` | int | `120` | Seconds for entire check. |
-| `concurrency` | int | `10` | Max concurrent Bedrock calls (ThreadPoolExecutor). |
+| `concurrency` | int | `10` | Max concurrent reviewer checks (ThreadPoolExecutor). |
 | `results_path` | string | `".ydk/spec-check-results.json"` | Where to save JSON results. |
 | `thresholds.*` | int (0-10) | varies | Minimum score per rubric group. |
 | `custom` | list | `[]` | Project-specific quality criteria. |
@@ -346,13 +332,6 @@ components:
   linker:
     layer_a: true
     layer_b: true
-
-ai:
-  provider: bedrock
-  model_tiers:
-    smart: us.anthropic.claude-sonnet-4-20250514-v1:0
-    fast: us.anthropic.claude-sonnet-4-20250514-v1:0
-    reasoning: us.anthropic.claude-opus-4-6-v1
 
 spec_check:
   thresholds:

@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 import textwrap
 from pathlib import Path  # noqa: TC003
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -267,7 +266,7 @@ class TestReviewerAgentToolsOnly:
 
     def test_tools_only_with_findings(self) -> None:
         config = _make_config(tools=[_dummy_tool])
-        agent = ReviewerAgent(config=config, model_config={})
+        agent = ReviewerAgent(config=config)
         result = agent._run_tools_only("some spec content")
         assert result.reviewer_id == "T01"
         assert result.score == 7  # 1 finding -> score 7
@@ -276,7 +275,7 @@ class TestReviewerAgentToolsOnly:
 
     def test_tools_only_no_findings(self) -> None:
         config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={})
+        agent = ReviewerAgent(config=config)
         result = agent._run_tools_only("clean spec content")
         assert result.score == 10
         assert result.passed is True
@@ -287,7 +286,7 @@ class TestReviewerAgentToolsOnly:
             return json.dumps([{"line": i, "text": f"issue {i}", "category": "test"} for i in range(15)])
 
         config = _make_config(tools=[many_findings_tool])
-        agent = ReviewerAgent(config=config, model_config={})
+        agent = ReviewerAgent(config=config)
         result = agent._run_tools_only("spec with many issues")
         assert result.score == 2  # 15 findings -> score 2
         assert result.passed is False
@@ -297,146 +296,10 @@ class TestReviewerAgentToolsOnly:
             raise RuntimeError("tool crashed")
 
         config = _make_config(tools=[broken_tool])
-        agent = ReviewerAgent(config=config, model_config={})
+        agent = ReviewerAgent(config=config)
         result = agent._run_tools_only("spec content")
         assert result.score == 10  # No findings collected
         assert len(result.findings) == 0
-
-
-class TestReviewerAgentParsing:
-    """Test JSON response parsing."""
-
-    def test_parse_valid_json(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        response = json.dumps(
-            {
-                "score": 9,
-                "reasoning": "Well written spec.",
-                "suggestions": ["Minor improvement possible."],
-                "findings": [{"line": 5, "text": "minor issue", "issue": "could be clearer"}],
-            }
-        )
-
-        result = agent._parse_response(response)
-        assert result.score == 9
-        assert result.passed is True
-        assert result.reasoning == "Well written spec."
-        assert len(result.suggestions) == 1
-        assert len(result.findings) == 1
-
-    def test_parse_json_with_markdown_fences(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        response = '```json\n{"score": 6, "reasoning": "Needs work.", "suggestions": [], "findings": []}\n```'
-        result = agent._parse_response(response)
-        assert result.score == 6
-
-    def test_parse_json_embedded_in_text(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        response = 'Here is my review:\n{"score": 8, "reasoning": "Good.", "suggestions": [], "findings": []}\nDone.'
-        result = agent._parse_response(response)
-        assert result.score == 8
-
-    def test_parse_unparseable_returns_fallback(self) -> None:
-        config = _make_config()
-        agent = ReviewerAgent(config=config, model_config={})
-
-        result = agent._parse_response("This is not JSON at all.")
-        assert result.score == 0
-        assert result.passed is False
-        assert "Failed to parse" in result.reasoning
-
-
-class TestRunWithLlm:
-    """Test _run_with_llm calls Anthropic Messages API with a forced tool_choice."""
-
-    def _mock_tool_use_response(self, **overrides: object) -> SimpleNamespace:
-        data = {
-            "score": 9,
-            "reasoning": "Well written spec.",
-            "suggestions": ["Minor improvement possible."],
-            "findings": [{"line": 5, "text": "minor issue", "issue": "could be clearer"}],
-        }
-        data.update(overrides)
-        return SimpleNamespace(content=[SimpleNamespace(type="tool_use", input=data)])
-
-    def test_calls_messages_create_with_forced_tool_choice(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
-
-        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
-            mock_client = MagicMock()
-            mock_anthropic.Anthropic.return_value = mock_client
-            mock_client.messages.create.return_value = self._mock_tool_use_response()
-
-            result = agent._run_with_llm("some spec content")
-
-        call_kwargs = mock_client.messages.create.call_args[1]
-        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_review"}
-        assert result.score == 9
-        assert result.reasoning == "Well written spec."
-        assert len(result.findings) == 1
-
-    def test_parses_tool_use_block_into_review_result(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
-
-        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
-            mock_client = MagicMock()
-            mock_anthropic.Anthropic.return_value = mock_client
-            mock_client.messages.create.return_value = self._mock_tool_use_response(score=6, reasoning="Needs work.")
-
-            result = agent._run_with_llm("some spec content")
-
-        assert result.reviewer_id == "T01"
-        assert result.score == 6
-        assert result.passed is False  # 6 < threshold 8
-
-    def test_missing_tool_use_block_returns_fallback_result(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-4-6", "api_key": None})
-
-        with patch("ydk.core.reviewer.anthropic") as mock_anthropic:
-            mock_client = MagicMock()
-            mock_anthropic.Anthropic.return_value = mock_client
-            mock_client.messages.create.return_value = SimpleNamespace(
-                content=[SimpleNamespace(type="text", text="I refuse to call the tool.")]
-            )
-
-            result = agent._run_with_llm("some spec content")
-
-        assert result.score == 0
-        assert result.passed is False
-        assert "Failed to parse reviewer response" in result.reasoning
-
-
-class TestReviewerAgentGracefulDegradation:
-    """Test that the agent falls back to tools-only when LLM is unavailable."""
-
-    def test_review_falls_back_to_tools_on_import_error(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-
-        with patch.object(agent, "_run_with_llm", side_effect=ImportError("no strands")):
-            result = agent.review("spec content")
-
-        assert result.score == 10
-        assert "Deterministic scan" in result.reasoning
-
-    def test_review_falls_back_on_credential_error(self) -> None:
-        config = _make_config(tools=[_dummy_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-
-        with patch.object(agent, "_run_with_llm", side_effect=RuntimeError("no credentials")):
-            result = agent.review("spec content")
-
-        assert result.reviewer_id == "T01"
-        assert result.score == 7  # 1 finding from dummy tool
 
 
 # ---------------------------------------------------------------------------
@@ -444,41 +307,21 @@ class TestReviewerAgentGracefulDegradation:
 # ---------------------------------------------------------------------------
 
 
-class TestCompileToolStrandsWrapping:
-    """Verify _compile_tool wraps functions with the Strands @tool decorator."""
+class TestCompileToolPlainFunction:
+    """Issue #231: compiled tools are plain callables (no Strands wrapping)."""
 
-    def test_compiled_tool_is_strands_decorated(self) -> None:
-        """When strands is installed, compiled tools should be DecoratedFunctionTool."""
-        from strands.tools.decorator import DecoratedFunctionTool
-
+    def test_compiled_tool_is_plain_function(self) -> None:
         tool_def = {
             "name": "greet",
             "description": "Greet someone",
-            "code": textwrap.dedent("""\
-                def greet(text: str) -> str:
+            "code": textwrap.dedent("""                def greet(text: str) -> str:
                     return f"hi {text}"
             """),
         }
         fn = _compile_tool(tool_def)
-        assert isinstance(fn, DecoratedFunctionTool)
-        # Should still be callable as a normal function
+        assert callable(fn)
+        assert getattr(fn, "__name__", None) == "greet"
         assert fn("alice") == "hi alice"
-
-    def test_compiled_tool_preserves_name_and_description(self) -> None:
-        from strands.tools.decorator import DecoratedFunctionTool
-
-        tool_def = {
-            "name": "scanner",
-            "description": "Scans text for issues",
-            "code": textwrap.dedent("""\
-                def scanner(text: str) -> str:
-                    import json
-                    return json.dumps([])
-            """),
-        }
-        fn = _compile_tool(tool_def)
-        assert isinstance(fn, DecoratedFunctionTool)
-        assert fn.tool_name == "scanner"
 
 
 class TestOutputCapture:
@@ -493,7 +336,7 @@ class TestOutputCapture:
 
         config = _make_config(tools=[_empty_tool])
 
-        # Patch _run_with_llm to print to stdout (simulating Strands streaming)
+        # Patch review to print to stdout (simulating a noisy tool)
         def _noisy_review(self: object, spec_content: str) -> ReviewResult:
             print("STREAMING OUTPUT THAT SHOULD BE CAPTURED")
             return ReviewResult(reviewer_id="T01", name="Test Reviewer", score=10, passed=True, reasoning="Good.")
@@ -503,7 +346,7 @@ class TestOutputCapture:
         sys.stdout = captured_terminal
         try:
             with patch.object(ReviewerAgent, "review", _noisy_review):
-                result = run_reviewer(config, "spec content", {})
+                result = run_reviewer(config, "spec content")
         finally:
             sys.stdout = old_stdout
 
@@ -551,7 +394,13 @@ class TestRunAllSync:
                 name: Failing
                 group: quality
                 threshold: 8
-                tools: []
+                tools:
+                  - name: noop
+                    description: No-op tool
+                    code: |
+                      def noop(text: str) -> str:
+                          import json
+                          return json.dumps([])
                 system_prompt: Review.
             """)
         )
@@ -570,7 +419,13 @@ class TestRunAllSync:
                 name: A
                 group: completeness
                 threshold: 8
-                tools: []
+                tools:
+                  - name: noop
+                    description: No-op tool
+                    code: |
+                      def noop(text: str) -> str:
+                          import json
+                          return json.dumps([])
                 system_prompt: Review.
             """)
         )
@@ -580,7 +435,13 @@ class TestRunAllSync:
                 name: B
                 group: quality
                 threshold: 8
-                tools: []
+                tools:
+                  - name: noop
+                    description: No-op tool
+                    code: |
+                      def noop(text: str) -> str:
+                          import json
+                          return json.dumps([])
                 system_prompt: Review.
             """)
         )
@@ -593,3 +454,35 @@ class TestRunAllSync:
 
         assert len(results) == 1
         assert results[0].reviewer_id == "A01"
+
+    def test_skips_reviewers_without_tools(self, tmp_path: Path) -> None:
+        """Issue #231: tool-less reviewers need LLM judgment, which YDK no longer runs."""
+        (tmp_path / "a.yaml").write_text(
+            textwrap.dedent("""                id: A01
+                name: A
+                group: quality
+                threshold: 8
+                tools: []
+                system_prompt: Review.
+            """)
+        )
+        (tmp_path / "b.yaml").write_text(
+            textwrap.dedent("""                id: B01
+                name: B
+                group: quality
+                threshold: 8
+                tools:
+                  - name: noop
+                    description: No-op tool
+                    code: |
+                      def noop(text: str) -> str:
+                          import json
+                          return json.dumps([])
+                system_prompt: Review.
+            """)
+        )
+
+        results = run_all_sync("spec", tmp_path)
+
+        assert [r.reviewer_id for r in results] == ["B01"]
+        assert results[0].score == 10

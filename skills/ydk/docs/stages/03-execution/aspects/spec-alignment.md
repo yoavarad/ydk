@@ -8,11 +8,12 @@ Spec alignment catches drift BEFORE the PR is created.
 
 ## How It Works
 
-1. YDK detects which files changed in the task
-2. Reads the task's spec references (from the task issue)
-3. Sends both (changed code + referenced spec sections) to an LLM evaluator
-4. The evaluator checks 6 specific dimensions
-5. Returns a scored report with specific findings
+There is no automated LLM evaluator for this check. Spec alignment is judgment the executing agent applies in-session, before opening the PR:
+
+1. Identify which files changed in the task
+2. Re-read the task's spec references
+3. Compare the changed code against the referenced spec sections across the 6 dimensions below
+4. Note any drift and either fix it or document it as legitimate (see "When Drift Is Legitimate")
 
 ## The 6 Dimensions
 
@@ -92,36 +93,7 @@ Does the code follow system-wide conventions?
 
 ## Running It
 
-```bash
-ydk verify spec-align                    # Check changed files against spec
-ydk verify spec-align --verbose          # Show detailed dimension analysis
-```
-
-Runs automatically as part of `ydk verify all` and pre-push hook.
-
-## The Output (Proof Artifact)
-
-```json
-{
-  "spec_alignment": {
-    "passed": false,
-    "dimensions": {
-      "entity_accuracy": {"score": 9, "passed": true,
-        "detail": "All Order fields match spec"},
-      "interface_compliance": {"score": 6, "passed": false,
-        "detail": "Error response uses {detail:str} instead of RFC 7807"},
-      "error_handling": {"score": 8, "passed": true,
-        "detail": "All 6 error scenarios implemented"},
-      "boundary_respect": {"score": 10, "passed": true,
-        "detail": "Validation in domain layer as specified"},
-      "scope_compliance": {"score": 10, "passed": true,
-        "detail": "Only task-scoped files modified"},
-      "cross_cutting": {"score": 6, "passed": false,
-        "detail": "Error format doesn't match RFC 7807 cross-cutting spec"}
-    }
-  }
-}
-```
+There is no `ydk verify` command for this check — it is not a deterministic gate and does not run in `ydk verify all` or the pre-push hook. The agent walks the 6 dimensions against the diff and the referenced spec sections before creating the PR, and records the result in the task summary (e.g. as a `cavecrew-reviewer` pass or plain narrative).
 
 ## When Drift Is Legitimate
 
@@ -133,7 +105,7 @@ Not all drift is bad. Sometimes reality forces a deviation:
 In these cases, the agent MUST:
 1. Document the deviation in the task issue with evidence
 2. Create a spec amendment PR (goes through Stage 01 brainstorming)
-3. The spec alignment check will pass once the spec is updated
+3. Spec alignment passes once the spec is updated to match the implementation
 
 Legitimate drift: cites an external constraint with evidence.
 Illegitimate drift: the agent made a design choice the spec didn't authorize.

@@ -35,6 +35,27 @@ class TestLoadConfig:
             load_config(config_path)
 
 
+class TestLegacyLlmKeysIgnored:
+    """Issue #231: LLM config keys were removed; old config files must still load."""
+
+    def test_loads_config_with_legacy_llm_keys(self, tmp_path) -> None:
+        config_path = tmp_path / "config.yaml"
+        data = {
+            **DEFAULT_CONFIG,
+            "spec_check": {**DEFAULT_CONFIG["spec_check"], "model": "us.anthropic.claude-sonnet-4-6"},
+            "ai": {"provider": "anthropic", "model_tiers": {"smart": "claude-sonnet-4-6"}},
+            "anthropic": {"api_key_env": "ANTHROPIC_API_KEY"},
+        }
+        config_path.write_text(yaml.dump(data))
+        cfg = load_config(config_path)
+        assert not hasattr(cfg, "ai")
+        assert not hasattr(cfg, "anthropic")
+        assert not hasattr(cfg.spec_check, "model")
+
+    def test_default_config_has_no_llm_model(self) -> None:
+        assert "model" not in DEFAULT_CONFIG["spec_check"]
+
+
 class TestInitConfig:
     def test_creates_file_with_defaults(self, tmp_path) -> None:
         config_path = tmp_path / ".ydk" / "config.yaml"

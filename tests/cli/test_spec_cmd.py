@@ -220,272 +220,66 @@ class TestFormatJsonReport:
 
 
 # ---------------------------------------------------------------------------
-# Issue 1: Tool findings injection into LLM prompt
+# Deterministic-only reviewers (#231: no external LLM calls)
 # ---------------------------------------------------------------------------
 
 
-class TestToolFindingsInjection:
-    """Verify that deterministic tool findings are injected into reviewer prompts."""
-
-    def test_findings_injected_into_prompt(self) -> None:
-        """When deterministic tools produce findings, they must appear in the reviewer prompt."""
-        from ydk.core.reviewer import ReviewerConfig
-
-        # Create a mock tool that returns findings
-        def mock_tool(spec_content: str) -> str:
-            return json.dumps(
-                [
-                    {"line": 10, "text": "POST /api/orders", "message": "URL path in prose"},
-                    {"line": 20, "text": "order_id (UUID)", "message": "Type annotation in prose"},
-                ]
-            )
-
-        reviewer = ReviewerConfig(
-            id="N08",
-            name="Testability",
-            system_prompt="You are a spec reviewer.",
-            tools=[mock_tool],
-            threshold=8,
-            group="quality",
-            model_tier="smart",
-        )
-
-        # Simulate what _run_cached_fanout does: run tools, build dicts
-        deterministic_findings: dict[str, list[dict[str, object]]] = {}
-        findings: list[dict[str, object]] = []
-        for tool_fn in reviewer.tools:
-            result_json = tool_fn("# Test spec")
-            parsed = json.loads(result_json)
-            if isinstance(parsed, list):
-                findings.extend(parsed)
-        if findings:
-            deterministic_findings[reviewer.id] = findings
-
-        # Build reviewer dict with injection (mirroring the fixed code)
-        det = deterministic_findings.get(reviewer.id, [])
-        assert len(det) == 2
-
-        # Build prompt with injection
-        findings_summary = f"\n\nDETERMINISTIC TOOL FINDINGS ({len(det)} issues found):\n"
-        for i, f in enumerate(det[:50], 1):
-            line = f.get("line", "?")
-            text = str(f.get("text", ""))[:100]
-            msg = f.get("message", "")
-            findings_summary += f"  {i}. Line {line}: {text} — {msg}\n"
-        findings_summary += (
-            "\nUse these findings as evidence in your evaluation. Score LOW if many violations are found.\n"
-        )
-        rev_prompt = reviewer.system_prompt + findings_summary
-
-        assert "DETERMINISTIC TOOL FINDINGS" in rev_prompt
-        assert "2 issues found" in rev_prompt
-        assert "POST /api/orders" in rev_prompt
-        assert "URL path in prose" in rev_prompt
-        assert "Score LOW" in rev_prompt
-
-    def test_no_findings_means_no_injection(self) -> None:
-        """When tools produce no findings, the prompt should remain unchanged."""
-        from ydk.core.reviewer import ReviewerConfig
-
-        def empty_tool(spec_content: str) -> str:
-            return json.dumps([])
-
-        reviewer = ReviewerConfig(
-            id="N01",
-            name="Clean",
-            system_prompt="You are a spec reviewer.",
-            tools=[empty_tool],
-            threshold=8,
-            group="quality",
-            model_tier="smart",
-        )
-
-        findings: list[dict[str, object]] = []
-        for tool_fn in reviewer.tools:
-            parsed = json.loads(tool_fn("# Test"))
-            if isinstance(parsed, list):
-                findings.extend(parsed)
-
-        assert len(findings) == 0
-        # No injection happens
-        rev_prompt = reviewer.system_prompt
-        assert "DETERMINISTIC TOOL FINDINGS" not in rev_prompt
-
-    def test_findings_capped_at_50(self) -> None:
-        """When more than 50 findings exist, only 50 are included with overflow note."""
-        findings = [{"line": i, "text": f"issue_{i}", "message": f"problem {i}"} for i in range(75)]
-
-        findings_summary = f"\n\nDETERMINISTIC TOOL FINDINGS ({len(findings)} issues found):\n"
-        for i, f in enumerate(findings[:50], 1):
-            line = f.get("line", "?")
-            text = str(f.get("text", ""))[:100]
-            msg = f.get("message", "")
-            findings_summary += f"  {i}. Line {line}: {text} — {msg}\n"
-        if len(findings) > 50:
-            findings_summary += f"  ... and {len(findings) - 50} more issues.\n"
-
-        assert "75 issues found" in findings_summary
-        assert "... and 25 more issues" in findings_summary
-        # Should not include issue 51+
-        assert "issue_50" not in findings_summary or "issue_74" not in findings_summary
+def _write_reviewer_yaml(directory: Path, rid: str, *, with_tool: bool, group: str = "quality") -> None:
+    tools = (
+        """tools:
+  - name: scan
+    description: Finds one issue
+    code: |
+      def scan(text: str) -> str:
+          import json
+          return json.dumps([{"line": 3, "text": "POST /api", "message": "URL path in prose"}])
+"""
+        if with_tool
+        else "tools: []\n"
+    )
+    (directory / f"{rid.lower()}.yaml").write_text(
+        f"id: {rid}\nname: Reviewer {rid}\ngroup: {group}\nthreshold: 8\n{tools}system_prompt: Review {rid}.\n"
+    )
 
 
-# ---------------------------------------------------------------------------
-# Issue 3: Min-score merging
-# ---------------------------------------------------------------------------
+def _config_for(reviewers_dir: Path) -> object:
+    from ydk.core.config import DEFAULT_CONFIG
+    from ydk.models.config import YdkConfig
+
+    cfg = YdkConfig.model_validate(DEFAULT_CONFIG)
+    cfg.spec_check.reviewers_path = str(reviewers_dir)
+    return cfg
 
 
-class TestLLMAuthoritativeScoring:
-    """Verify that LLM score is authoritative — tools provide evidence, not override."""
+class TestRunReviewerAgentsDeterministic:
+    def test_runs_only_reviewers_with_tools(self, tmp_path: Path) -> None:
+        from ydk.cli.spec_cmd import _run_reviewer_agents
 
-    def test_llm_score_is_final(self) -> None:
-        """LLM score is used directly regardless of tool finding count."""
-        llm_score = 9
-        final_score = llm_score  # No min with deterministic
-        assert final_score == 9
+        _write_reviewer_yaml(tmp_path, "N01", with_tool=False)
+        _write_reviewer_yaml(tmp_path, "N08", with_tool=True)
 
-    def test_tool_findings_are_evidence_not_judges(self) -> None:
-        """Tool findings inform the LLM but don't cap the score."""
-        llm_score = 8  # LLM judged most tool findings as false positives
-        # Even with 781 tool findings, if LLM says 8, score is 8
-        final_score = llm_score
-        assert final_score == 8
+        results, det = _run_reviewer_agents("# Spec", _config_for(tmp_path))
 
+        assert [r.reviewer_id for r in results] == ["N08"]
+        assert results[0].score == 7  # 1 finding -> deterministic score 7
+        assert det == {"N08": results[0].findings}
+        assert det["N08"][0]["message"] == "URL path in prose"
 
-# ---------------------------------------------------------------------------
-# Integration: _run_cached_fanout with all three fixes
-# ---------------------------------------------------------------------------
+    def test_rubric_filter_applies(self, tmp_path: Path) -> None:
+        from ydk.cli.spec_cmd import _run_reviewer_agents
 
+        _write_reviewer_yaml(tmp_path, "N07", with_tool=True, group="clarity")
+        _write_reviewer_yaml(tmp_path, "N08", with_tool=True, group="quality")
 
-class TestRunCachedFanoutIntegration:
-    """Integration test for the full _run_cached_fanout flow with fixes."""
+        results, _ = _run_reviewer_agents("# Spec", _config_for(tmp_path), rubric_filter="clarity")
 
-    def test_tool_findings_injected_and_min_scored(self) -> None:
-        """End-to-end: tools find issues -> injected into prompt -> min-score applied."""
-        # Ensure the module is importable before patching
-        import ydk.core.reviewer_engine  # noqa: F401
-        from ydk.cli.spec_cmd import _run_cached_fanout
-        from ydk.core.reviewer import ReviewerConfig
-        from ydk.models.config import YdkConfig
+        assert [r.reviewer_id for r in results] == ["N07"]
 
-        # Tool that finds 5 issues (det_score = 4)
-        def noisy_tool(spec_content: str) -> str:
-            return json.dumps([{"line": i, "text": f"violation {i}", "message": f"problem {i}"} for i in range(5)])
+    def test_module_has_no_llm_helpers(self) -> None:
+        import ydk.cli.spec_cmd as spec_cmd
 
-        reviewers = [
-            ReviewerConfig(
-                id="N08",
-                name="Testability",
-                system_prompt="Evaluate testability.",
-                tools=[noisy_tool],
-                threshold=8,
-                group="quality",
-                model_tier="smart",
-            ),
-        ]
-
-        captured_prompts: list[str] = []
-
-        def capture_run_all(*, spec_content: str, reviewers: list, model_tiers: dict, max_workers: int) -> list:
-            captured_prompts.extend(rev["system_prompt"] for rev in reviewers)
-            return [
-                {
-                    "reviewer_id": "N08",
-                    "name": "Testability",
-                    "score": 9,  # LLM says 9
-                    "passed": True,
-                    "reasoning": "LLM thinks it's good",
-                    "suggestions": [],
-                    "findings": [],
-                    "elapsed_seconds": 1.0,
-                }
-            ]
-
-        with patch("ydk.core.reviewer_engine.ReviewerEngine") as MockEngine:
-            mock_engine_instance = MockEngine.return_value
-            mock_engine_instance.run_all.side_effect = capture_run_all
-
-            config = MagicMock()
-            config.__class__ = YdkConfig
-            config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
-            config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
-            config.spec_check.concurrency = 4
-
-            results, det_findings = _run_cached_fanout("# Test spec", config, reviewers, verbose=False)
-
-        # Issue 1: Tool findings were injected into the prompt
-        assert len(captured_prompts) == 1
-        assert "DETERMINISTIC TOOL FINDINGS" in captured_prompts[0]
-        assert "5 issues found" in captured_prompts[0]
-        assert "violation 0" in captured_prompts[0]
-
-        # LLM score is authoritative — tool findings are evidence, not judges
-        assert len(results) == 1
-        assert results[0].score == 9  # LLM said 9, that's the final score
-        assert results[0].passed is True  # 9 >= threshold 8
-
-        # Deterministic findings returned separately
-        assert "N08" in det_findings
-        assert len(det_findings["N08"]) == 5
-
-    def test_no_tools_no_score_cap(self) -> None:
-        """Reviewer with no tools: no injection, score passes through unchanged."""
-        import ydk.core.reviewer_engine  # noqa: F401
-        from ydk.cli.spec_cmd import _run_cached_fanout
-        from ydk.core.reviewer import ReviewerConfig
-        from ydk.models.config import YdkConfig
-
-        reviewers = [
-            ReviewerConfig(
-                id="N01",
-                name="Completeness",
-                system_prompt="Evaluate completeness.",
-                tools=[],  # No tools
-                threshold=8,
-                group="completeness",
-                model_tier="smart",
-            ),
-        ]
-
-        captured_prompts: list[str] = []
-
-        def capture_run_all(*, spec_content: str, reviewers: list, model_tiers: dict, max_workers: int) -> list:
-            captured_prompts.extend(rev["system_prompt"] for rev in reviewers)
-            return [
-                {
-                    "reviewer_id": "N01",
-                    "name": "Completeness",
-                    "score": 9,
-                    "passed": True,
-                    "reasoning": "Good",
-                    "suggestions": [],
-                    "findings": [],
-                    "elapsed_seconds": 1.0,
-                }
-            ]
-
-        with patch("ydk.core.reviewer_engine.ReviewerEngine") as MockEngine:
-            mock_engine_instance = MockEngine.return_value
-            mock_engine_instance.run_all.side_effect = capture_run_all
-
-            config = MagicMock()
-            config.__class__ = YdkConfig
-            config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
-            config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
-            config.spec_check.concurrency = 4
-
-            results, det_findings = _run_cached_fanout("# Test spec", config, reviewers, verbose=False)
-
-        # No injection
-        assert "DETERMINISTIC TOOL FINDINGS" not in captured_prompts[0]
-        assert captured_prompts[0] == "Evaluate completeness."
-
-        # Score passes through: min(9, 10) = 9
-        assert results[0].score == 9
-        assert results[0].passed is True
-
-        # No deterministic findings
-        assert det_findings == {}
+        for name in ("_anthropic_available", "_strands_available", "_run_cached_fanout"):
+            assert not hasattr(spec_cmd, name), name
 
 
 # ---------------------------------------------------------------------------

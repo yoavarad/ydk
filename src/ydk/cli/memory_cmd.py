@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,12 +38,8 @@ def _get_engine(cfg: YdkConfig) -> object:  # type: ignore[return-type]  # Memor
 
 
 def _get_extractor(cfg: YdkConfig | None = None) -> object:  # type: ignore[return-type]  # MemoryExtractor is optional dep
-    """Lazily import MemoryExtractor. Fails gracefully if strands missing."""
-    try:
-        from ydk.core.extractor import MemoryExtractor  # type: ignore[import-untyped]
-    except ImportError:
-        console.print("[red]strands-agents is not installed.[/red] Install with: uv pip install 'ydk[ai]'")
-        raise typer.Exit(code=1) from None
+    """Lazily import MemoryExtractor (no LLM provider is injected; see #231)."""
+    from ydk.core.extractor import MemoryExtractor
 
     return MemoryExtractor()
 
@@ -144,7 +139,11 @@ def extract(
             console.print(f"[yellow]No session JSONL found for {task_id}.[/yellow] Use --jsonl to specify a path.")
             raise typer.Exit(code=1)
 
-    memories = extractor.extract_from_jsonl(jsonl_path=jsonl_path, task_context=task_id)  # ty: ignore[unresolved-attribute]  # MemoryExtractor is optional dep
+    try:
+        memories = extractor.extract_from_jsonl(jsonl_path=jsonl_path, task_context=task_id)  # ty: ignore[unresolved-attribute]  # MemoryExtractor is optional dep
+    except RuntimeError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        raise typer.Exit(code=1) from None
     if memories:
         # Store extracted memories in ChromaDB
         for m in memories:
@@ -224,7 +223,7 @@ def decision_history(
 def retrospective(
     sprint: str | None = typer.Option(None, help="Sprint/milestone to review"),
 ) -> None:
-    """Sprint retrospective — aggregate learnings across tasks using LLM analysis."""
+    """Sprint retrospective — list shipped tasks and point to stored learnings."""
     from ydk.repositories.factory import get_task_repository
 
     repo = get_task_repository()
@@ -244,77 +243,9 @@ def retrospective(
     for t in shipped:
         console.print(f"    - {t.id}: {t.title}")
 
-    # Try LLM retrospective analysis
-    proposals = _run_llm_retrospective(shipped, sprint)
-    if proposals:
-        console.print("\n  [bold]AI Analysis:[/bold]")
-        for proposal in proposals.get("patterns", []):
-            console.print(f"    Pattern: {proposal}")
-        for template in proposals.get("templates", []):
-            console.print(f"    Template suggestion: {template}")
-        for rule in proposals.get("rules", []):
-            console.print(f"    Rule suggestion: {rule}")
-
-        # Save to proofs directory
-        proofs_dir = Path(".ydk/proofs")
-        proofs_dir.mkdir(parents=True, exist_ok=True)
-        sprint_label = sprint or "current"
-        output_path = proofs_dir / f"retrospective-{sprint_label}.json"
-        output_path.write_text(json.dumps(proposals, indent=2))
-        console.print(f"\n  [dim]Saved to {output_path}[/dim]")
-    else:
-        console.print("\n  [bold]Patterns & Learnings:[/bold]")
-        console.print("    Run `ydk memory search <topic>` to find specific learnings.")
-        console.print("    Review extracted memories in .ydk/memory/ for aggregate insights.")
-
-
-def _run_llm_retrospective(
-    tasks: list,  # type: ignore[type-arg]
-    sprint: str | None,
-) -> dict | None:
-    """Run LLM analysis on sprint data. Returns structured proposals or None."""
-    from ydk.core.config import load_config
-    from ydk.core.llm_provider import get_llm_provider
-
-    provider = get_llm_provider(load_config())
-    if provider is None:
-        return None
-
-    system_prompt = (
-        "You are a sprint retrospective analyst. "
-        "Given completed task data, identify patterns, suggest templates, "
-        "and recommend rules for future sprints.\n\n"
-        "Respond with ONLY valid JSON:\n"
-        '{"patterns": ["..."], "templates": ["..."], "rules": ["..."], "summary": "..."}'
-    )
-
-    task_data = "\n".join(f"- {t.id}: {t.title}" for t in tasks)
-    prompt = (
-        f"{system_prompt}\n\n"
-        f"Sprint: {sprint or 'current'}\n"
-        f"Completed tasks:\n{task_data}\n\n"
-        "Analyze this sprint data. What patterns emerged? "
-        "What should be templated? What rules should be added?"
-    )
-
-    try:
-        response_text = provider.invoke(prompt)
-    except Exception:
-        return None
-
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError:
-        start_idx = response_text.find("{")
-        end_idx = response_text.rfind("}") + 1
-        if start_idx < 0 or end_idx <= start_idx:
-            return None
-        try:
-            parsed = json.loads(response_text[start_idx:end_idx])
-        except json.JSONDecodeError:
-            return None
-
-    return parsed if isinstance(parsed, dict) else None
+    console.print("\n  [bold]Patterns & Learnings:[/bold]")
+    console.print("    Run `ydk memory search <topic>` to find specific learnings.")
+    console.print("    Review extracted memories in .ydk/memory/ for aggregate insights.")
 
 
 @memory_app.command()

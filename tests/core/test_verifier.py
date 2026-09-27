@@ -608,11 +608,11 @@ class TestLoadDotenv:
 
     def test_parses_utf16_le_bom_env_file(self, tmp_path: Path) -> None:
         env_path = tmp_path / ".env"
-        content = "ANTHROPIC_API_KEY=sk-test-123\n"
+        content = "EXAMPLE_API_KEY=sk-test-123\n"
         raw = content.encode("utf-16-le")
         assert raw[:2] != b"\xff\xfe"  # encode() alone has no BOM; prepend explicitly
         env_path.write_bytes(b"\xff\xfe" + raw)
-        assert _load_dotenv(env_path) == {"ANTHROPIC_API_KEY": "sk-test-123"}
+        assert _load_dotenv(env_path) == {"EXAMPLE_API_KEY": "sk-test-123"}
 
 
 class TestRunCheckScriptEnv:

@@ -1,6 +1,6 @@
 """LLM-based memory extraction from development session transcripts.
 
-Sends a transcript to the configured LLM provider and parses structured
+Sends a transcript to an injected LLM provider (YDK ships none) and parses structured
 memory entries from the response.
 """
 
@@ -137,7 +137,12 @@ class MemoryExtractor:
         if not conversation.strip():
             return []
 
-        provider = self._llm_provider or self._build_provider()
+        provider = self._llm_provider
+        if provider is None:
+            raise RuntimeError(
+                "Memory extraction needs an injected LLM provider; YDK ships none "
+                "(no external LLM calls). Capture learnings in-session instead."
+            )
 
         user_message = self._build_user_message(conversation, task_context)
         prompt = f"{EXTRACTION_PROMPT}\n\n{user_message}"
@@ -159,20 +164,6 @@ class MemoryExtractor:
         messages = parse_transcript(jsonl_path)
         conversation = format_as_conversation(messages)
         return self.extract_from_transcript(conversation, task_context)
-
-    @staticmethod
-    def _build_provider() -> LLMProvider:
-        """Construct the configured LLM provider for memory extraction."""
-        from ydk.core.config import load_config
-        from ydk.core.llm_provider import get_llm_provider
-
-        provider = get_llm_provider(load_config())
-        if provider is None:
-            raise ImportError(
-                "Memory extraction requires a configured LLM provider "
-                "(set ANTHROPIC_API_KEY and ai.provider in .ydk/config.yaml)"
-            )
-        return provider
 
     @staticmethod
     def _build_user_message(conversation: str, task_context: str) -> str:

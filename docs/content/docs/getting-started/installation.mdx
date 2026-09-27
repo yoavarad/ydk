@@ -68,26 +68,15 @@ Each check reports its status with a clear pass/fail indicator. If something is 
 
 ## Optional Dependencies
 
-YDK's core CLI works with no extra dependencies -- you can create tasks, manage specs, run verification, and scaffold projects out of the box. However, some of the more advanced features require optional extras that pull in larger libraries.
+YDK makes no external LLM API calls and needs no API key. The memory system (ChromaDB, running locally) is a base dependency, so it works out of the box. The only optional extra is for contributing to YDK itself:
 
 ```bash
-# AI features (spec checking, complexity scoring, AI code review)
-uv add "ydk[ai]"
-
-# Memory system (ChromaDB + Amazon Bedrock embeddings)
-uv add "ydk[memory]"
-
 # Development tools (for contributing to YDK itself)
 uv add "ydk[dev]"
-
-# Everything
-uv add "ydk[ai,memory,dev]"
 ```
 
-The `ai` extra installs `boto3` and the Bedrock SDK, enabling YDK to call Claude for spec quality evaluation, complexity scoring, and AI-powered code review. The `memory` extra adds ChromaDB for vector storage and Bedrock embedding functions for hybrid search. Both require AWS credentials configured for Amazon Bedrock access -- set `aws.profile` and `aws.region` in your YDK config after initialization.
-
 <Callout type="info">
-If you are just getting started, install the base package first and add extras later as you need them. The core workflow -- specs, tasks, verification, and component manifests -- works without any AI or memory features.
+The core workflow -- specs, tasks, verification, component manifests, and memory -- works out of the box with no optional extras and no AI credentials.
 </Callout>
 
 ## What You Just Installed

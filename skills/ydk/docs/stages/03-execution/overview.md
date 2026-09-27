@@ -10,7 +10,7 @@ This is where code gets written. Without a disciplined execution flow, agents ta
 
 ## Core Concept: Proof-Based Development
 
-Every agent action must produce verifiable proof. Not "I wrote tests" — the actual test output. Not "it matches the spec" — the actual spec alignment check result. Not "the UI looks right" — the actual screenshot.
+Every agent action must produce verifiable proof. Not "I wrote tests" — the actual test output. Not "it matches the spec" — the actual in-session spec-alignment check. Not "the UI looks right" — the actual screenshot.
 
 This term is central to YDK's execution philosophy. It's what enables hands-off-keyboard development: the human reviews proofs, not code.
 
@@ -22,8 +22,8 @@ This term is central to YDK's execution philosophy. It's what enables hands-off-
 
 ## Exit Criteria (per task)
 
-- All verifications pass (lint, types, tests, enforcements, spec alignment)
-- External AI review completed with no blocking issues
+- All verifications pass (lint, types, tests, enforcements)
+- In-session spec alignment and code review completed with no blocking issues
 - Proof artifacts collected and posted to task issue
 - PR created with proof in description
 - Human approved and merged
@@ -84,7 +84,7 @@ Aspects are sub-topics loaded during execution as needed. The instructions.md te
 | Testing Strategy | `aspects/testing-strategy.md` | Before writing any tests (always) |
 | Verification | `aspects/verification.md` | Before running `ydk task done` |
 | Git Workflow | `aspects/git-workflow.md` | Understanding branch/worktree lifecycle |
-| Code Review | `aspects/code-review.md` | Understanding the AI review process |
+| Code Review | `aspects/code-review.md` | Understanding the in-session review process |
 | Proof System | `aspects/proof-based-development.md` | Understanding proof artifacts |
 | Spec Alignment | `aspects/spec-alignment.md` | Understanding drift detection |
 

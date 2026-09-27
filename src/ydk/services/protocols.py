@@ -11,7 +11,7 @@ _T = TypeVar("_T")
 
 
 class LLMProvider(Protocol):
-    """Abstract LLM interaction. AnthropicLLMProvider is the concrete implementation."""
+    """Abstract LLM interaction. YDK ships no concrete implementation (no external LLM calls)."""
 
     async def complete(self, system_prompt: str, user_prompt: str) -> str:
         """Single completion."""

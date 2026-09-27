@@ -99,7 +99,7 @@ Gates are external conditions that must be satisfied before a task can start. Th
 
 ## Complexity Scoring
 
-YDK uses an LLM to analyze task complexity on a 1-10 scale. The scorer sends the task's title, description, acceptance criteria, dependencies, and spec references to an LLM with a structured prompt that asks for a score, reasoning, and expansion recommendations.
+YDK can score task complexity on a 1-10 scale if a project injects its own `LLMProvider`, but YDK ships none, so `ydk task analyze-complexity` calls no LLM and always returns the default score below.
 
 The scale is designed to be actionable:
 
@@ -107,7 +107,7 @@ The scale is designed to be actionable:
 - **4-6 (Moderate)** -- Multiple files, some design decisions, moderate risk. Most tasks fall here.
 - **7-10 (Complex)** -- Cross-cutting changes, high ambiguity, significant design risk. Should likely be split into smaller tasks.
 
-Tasks scoring 8 or above get `should_expand=True` with suggested splits. When no LLM provider is configured, the scorer returns a default score of 5 -- the deterministic fallback that every LLM-powered feature in YDK provides.
+Tasks scoring 8 or above would get `should_expand=True` with suggested splits if an LLM provider were configured. Since YDK ships none, `ydk task analyze-complexity` always returns a default score of 5.
 
 ## Scheduling
 
@@ -178,7 +178,6 @@ On completion, it prints a structured results table showing pass/fail status for
 │ types-ty            │ PASS   │ 2.1s     │
 │ pytest              │ PASS   │ 4.3s     │
 │ architecture-check  │ PASS   │ 1.2s     │
-│ ai-code-review      │ PASS   │ 8.5s     │
 └─────────────────────┴────────┴──────────┘
 ```
 

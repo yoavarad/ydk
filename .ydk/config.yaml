@@ -9,7 +9,6 @@ hooks:
     spec_check: false
     task_check: false
 spec_check:
-  model: us.anthropic.claude-sonnet-4-6
   timeout: 60
   global_timeout: 120
   concurrency: 10
@@ -32,6 +31,4 @@ verification:
     - python-quality       # pre-commit: ruff format + ruff lint + ty (mirrors CI lint job)
     - python-tdd-guard     # pre-commit: every source file has a test file
     - tests-pytest         # pre-push: pytest (mirrors CI test job)
-    - ai-code-review       # pre-push: AI diff review
-    - spec-alignment       # pre-push: AI spec alignment
     - pr-body-validation   # ydk task done: PR body proof gate

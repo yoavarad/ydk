@@ -35,11 +35,10 @@ Controls core project identity and repository settings.
 
 ## SpecCheckConfig
 
-Controls the AI-powered specification quality evaluator.
+Controls the specification quality evaluator. `ydk spec verify` runs component checks, reference integrity, and only the reviewer criteria that define deterministic tools; criteria without tools are rubrics for in-session review.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model` | str | `"us.anthropic.claude-sonnet-4-6"` | Amazon Bedrock model ID for spec evaluation |
 | `timeout` | int | `60` | Per-criterion evaluation timeout in seconds |
 | `global_timeout` | int | `120` | Total evaluation timeout across all criteria |
 | `concurrency` | int | `10` | Maximum concurrent criterion evaluations |

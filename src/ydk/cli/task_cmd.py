@@ -1542,18 +1542,13 @@ def analyze_complexity(
     ctx: typer.Context,
     task_id: str | None = typer.Option(None, "--task-id", help="Score a single task (default: all open)"),
 ) -> None:
-    """Score task complexity (1-10) using LLM analysis."""
+    """Score task complexity (1-10). YDK calls no LLM, so tasks get the default score."""
     from rich.table import Table
 
     from ydk.core.complexity_scorer import ComplexityScorer
-    from ydk.core.config import load_config
-    from ydk.core.llm_provider import get_llm_provider
 
     repo = _get_repo()
-
-    cfg = load_config()
-    llm_provider = get_llm_provider(cfg)
-    scorer = ComplexityScorer(llm_provider=llm_provider)
+    scorer = ComplexityScorer()
 
     scores: list[ComplexityScore] = []
     if task_id:

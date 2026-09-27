@@ -176,3 +176,31 @@ def test_memory_retrospective(mock_repo_factory: MagicMock) -> None:
     result = runner.invoke(app, ["memory", "retrospective"])
     assert result.exit_code == 0
     assert "Sprint Retrospective" in result.output
+
+
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
+def test_memory_extract_without_llm_provider_fails_clearly(
+    mock_config: MagicMock, mock_get_engine: MagicMock, tmp_path: Path
+) -> None:
+    """Issue #231: no LLM provider ships, so extract exits 1 with a clear message (no traceback)."""
+    mock_get_engine.return_value = _mock_engine()
+    jsonl_file = tmp_path / "session.jsonl"
+    jsonl_file.write_text('{"type": "user", "message": {"role": "user", "content": "hello"}}\n')
+    result = runner.invoke(app, ["memory", "extract", "T-001", "--jsonl", str(jsonl_file)])
+    assert result.exit_code == 1
+    assert "LLM provider" in result.output
+    assert not isinstance(result.exception, RuntimeError)
+
+
+@patch("ydk.repositories.factory.get_task_repository")
+def test_memory_retrospective_has_no_ai_analysis(mock_repo_factory: MagicMock) -> None:
+    """Issue #231: retrospective makes no LLM call and shows the non-LLM guidance."""
+    mock_repo = MagicMock()
+    task = MagicMock(id="T-001", title="Completed task", status="done", milestone=None)
+    mock_repo.list_tasks.return_value = [task]
+    mock_repo_factory.return_value = mock_repo
+    result = runner.invoke(app, ["memory", "retrospective"])
+    assert result.exit_code == 0
+    assert "AI Analysis" not in result.output
+    assert "Patterns & Learnings" in result.output

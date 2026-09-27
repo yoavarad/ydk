@@ -60,11 +60,10 @@ class CustomCriterion(BaseModel):
 
 
 class SpecCheckConfig(BaseModel):
-    """Settings for the AI-powered specification checker."""
+    """Settings for the specification checker."""
 
     model_config = ConfigDict(extra="forbid")
 
-    model: str = "claude-sonnet-4-6"
     timeout: int = 60
     global_timeout: int = 120
     concurrency: int = 10
@@ -92,27 +91,6 @@ class ExecutionConfig(BaseModel):
     max_parallel_agents: int = 5
     task_timeout_minutes: int = 30
     worktree_isolation: bool = True
-
-
-class AIConfig(BaseModel):
-    """AI model tier configuration for cached fan-out reviewer engine."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    provider: str = "anthropic"
-    model_tiers: dict[str, str] = {
-        "smart": "claude-sonnet-4-6",
-        "fast": "claude-sonnet-4-6",
-        "reasoning": "claude-opus-4-6",
-    }
-
-
-class AnthropicConfig(BaseModel):
-    """Anthropic API credential settings."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    api_key_env: str = "ANTHROPIC_API_KEY"
 
 
 class MemoryConfig(BaseModel):
@@ -155,8 +133,6 @@ class YdkConfig(BaseModel):
     spec_check: SpecCheckConfig = SpecCheckConfig()
     task_management: TaskManagementConfig = TaskManagementConfig()
     execution: ExecutionConfig = ExecutionConfig()
-    ai: AIConfig = AIConfig()
-    anthropic: AnthropicConfig = AnthropicConfig()
     memory: MemoryConfig = MemoryConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()

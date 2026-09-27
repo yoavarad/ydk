@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -241,10 +241,12 @@ class TestAbandonedExtraction:
 
 
 class TestNoProviderConfigured:
-    def test_raises_clear_error_when_no_llm_provider_configured(self) -> None:
+    """Issue #231: YDK ships no LLM provider; extraction needs one injected."""
+
+    def test_raises_clear_error_without_injected_provider(self) -> None:
         extractor = MemoryExtractor()
-        with (
-            patch("ydk.core.llm_provider.get_llm_provider", return_value=None),
-            pytest.raises(ImportError, match="LLM provider"),
-        ):
-            extractor._build_provider()
+        with pytest.raises(RuntimeError, match="LLM provider"):
+            extractor.extract_from_transcript("user: hi")
+
+    def test_no_provider_factory_fallback(self) -> None:
+        assert not hasattr(MemoryExtractor, "_build_provider")

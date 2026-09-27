@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import typer
 from rich.console import Console
@@ -21,7 +19,7 @@ from ydk.core.config import load_config
 from ydk.core.reviewer import (
     ReviewResult,
     load_all_reviewers,
-    run_all_sync,
+    run_reviewer,
 )
 from ydk.models.component import LinkerResult, ScannerResult
 from ydk.models.evaluation import (
@@ -33,26 +31,6 @@ from ydk.output.console import console
 from ydk.services.git import LocalGitService
 
 spec_app = typer.Typer(name="spec", help="Spec management and quality checks")
-
-
-def _strands_available() -> bool:
-    """Check if strands-agents is importable."""
-    try:
-        import strands  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
-def _anthropic_available() -> bool:
-    """Check if anthropic is importable (for cached fan-out engine)."""
-    try:
-        import anthropic  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
 
 
 def _reviewer_results_to_criterion_results(
@@ -81,12 +59,13 @@ def _run_reviewer_agents(
     rubric_filter: str | None = None,
     verbose: bool = False,
 ) -> tuple[list[ReviewResult], dict[str, list[dict[str, object]]]]:
-    """Run parallel reviewer agents against spec content.
+    """Run the deterministic reviewer tools against spec content.
 
-    Prefers the cached fan-out engine (direct Anthropic Messages API with
-    prompt caching).  Falls back to the simpler per-reviewer path if
-    anthropic is not available (defensive only — anthropic is a hard
-    dependency, so this branch should not normally be reachable).
+    YDK makes no external LLM calls (#231): only reviewers that define
+    deterministic tools run; the rest are judged by the in-session agent.
+
+    Returns:
+        A tuple of (review results, deterministic findings per reviewer ID).
     """
     from ydk.models.config import YdkConfig
 
@@ -113,9 +92,10 @@ def _run_reviewer_agents(
     if custom_dir.is_dir() and any(custom_dir.glob("*.yaml")):
         reviewers.extend(load_all_reviewers(custom_dir, threshold_overrides=threshold_overrides))
 
-    # Apply rubric filter
+    # Apply rubric filter; keep only reviewers with deterministic tools
     if rubric_filter is not None:
         reviewers = [r for r in reviewers if r.group == rubric_filter]
+    reviewers = [r for r in reviewers if r.tools]
 
     if not reviewers:
         return [], {}
@@ -127,158 +107,8 @@ def _run_reviewer_agents(
                 f"  [{r.id}] {r.group}/{r.name} (threshold={r.threshold}, tier={r.model_tier}) tools={tool_names}"
             )
 
-    # --- Cached fan-out engine (preferred) ---
-    if _anthropic_available():
-        return _run_cached_fanout(spec_content, config, reviewers, verbose=verbose)
-
-    # --- Simpler per-reviewer fallback (anthropic unavailable) ---
-    if verbose:
-        typer.echo("  [fallback] anthropic not available, using per-reviewer path")
-
-    model_config: dict[str, Any] = {
-        "api_key": os.getenv(config.anthropic.api_key_env),
-        "model_id": config.spec_check.model,
-    }
-
-    results = run_all_sync(
-        spec_content,
-        reviewers_dir,
-        model_config=model_config,
-        threshold_overrides=threshold_overrides,
-        max_workers=config.spec_check.concurrency,
-        rubric_filter=rubric_filter,
-    )
-    return results, {}
-
-
-def _run_cached_fanout(
-    spec_content: str,
-    config: object,
-    reviewers: list[Any],
-    *,
-    verbose: bool = False,
-) -> tuple[list[ReviewResult], dict[str, list[dict[str, object]]]]:
-    """Run reviewers via the cached fan-out engine (direct Anthropic Messages API).
-
-    Returns:
-        A tuple of (review results, deterministic findings per reviewer ID).
-    """
-    from ydk.core.reviewer import ReviewerConfig
-    from ydk.core.reviewer_engine import ReviewerEngine
-    from ydk.models.config import YdkConfig
-
-    assert isinstance(config, YdkConfig)
-
-    # Run deterministic tools first and collect their findings
-    deterministic_findings: dict[str, list[dict[str, object]]] = {}
-    for rev in reviewers:
-        assert isinstance(rev, ReviewerConfig)
-        if rev.tools:
-            findings: list[dict[str, object]] = []
-            for tool_fn in rev.tools:
-                try:
-                    result_json = tool_fn(spec_content)
-                    import json as _json
-
-                    parsed = _json.loads(result_json)
-                    if isinstance(parsed, list):
-                        findings.extend(parsed)
-                    elif isinstance(parsed, dict):
-                        findings.append(parsed)
-                except Exception:
-                    pass
-            if findings:
-                deterministic_findings[rev.id] = findings
-                if verbose:
-                    typer.echo(f"  [{rev.id}] deterministic tools found {len(findings)} issue(s)")
-
-    # Build reviewer dicts for the engine — inject tool findings into prompt
-    reviewer_dicts: list[dict[str, object]] = []
-    for rev in reviewers:
-        assert isinstance(rev, ReviewerConfig)
-        det = deterministic_findings.get(rev.id, [])
-        if det:
-            # Inject tool findings into the prompt the LLM will see
-            findings_summary = f"\n\nDETERMINISTIC TOOL FINDINGS ({len(det)} issues found):\n"
-            for i, f in enumerate(det[:50], 1):
-                line = f.get("line", "?")
-                text = str(f.get("text", ""))[:100]
-                msg = f.get("message", "")
-                findings_summary += f"  {i}. Line {line}: {text} — {msg}\n"
-            if len(det) > 50:
-                findings_summary += f"  ... and {len(det) - 50} more issues.\n"
-            findings_summary += (
-                "\nThese are AUTOMATED tool findings. Use your JUDGMENT to assess them:\n"
-                "- Some may be FALSE POSITIVES (e.g., common English words flagged as acronyms, "
-                "nearby error handling outside the tool's scan window).\n"
-                "- Filter out false positives and only count REAL violations in your score.\n"
-                "- If most findings are false positives, score HIGH despite the tool count.\n"
-                "- If most findings are REAL violations, score LOW.\n"
-            )
-            rev_prompt = rev.system_prompt + findings_summary
-        else:
-            rev_prompt = rev.system_prompt
-
-        reviewer_dicts.append(
-            {
-                "id": rev.id,
-                "name": rev.name,
-                "system_prompt": rev_prompt,
-                "model_tier": rev.model_tier,
-                "threshold": rev.threshold,
-                "group": rev.group,
-            }
-        )
-
-    # Create engine and run
-    engine = ReviewerEngine(api_key=os.getenv(config.anthropic.api_key_env))
-
-    model_tiers = config.ai.model_tiers
-
-    if verbose:
-        typer.echo(f"  [engine] model tiers: {model_tiers}")
-        typer.echo(f"  [engine] {len(reviewer_dicts)} reviewers, priming cache with first smart-tier call")
-
-    raw_results = engine.run_all(
-        spec_content=spec_content,
-        reviewers=reviewer_dicts,
-        model_tiers=model_tiers,
-        max_workers=config.spec_check.concurrency,
-    )
-
-    # Merge deterministic findings into LLM results
-    # LLM score is authoritative — tool findings are evidence, not judges.
-    # Tools inject evidence into the prompt; LLM uses judgment to filter false positives.
-    results: list[ReviewResult] = []
-    for raw in raw_results:
-        reviewer_id = raw.get("reviewer_id", "")
-        det_findings = deterministic_findings.get(reviewer_id, [])
-        all_findings = raw.get("findings", []) + det_findings
-
-        llm_score: int = raw.get("score", 0)
-        final_score = llm_score
-
-        # Look up threshold for pass/fail
-        threshold = 8
-        for rd in reviewer_dicts:
-            if rd["id"] == reviewer_id:
-                raw_threshold = rd.get("threshold", 8)
-                threshold = raw_threshold if isinstance(raw_threshold, int) else 8
-                break
-
-        results.append(
-            ReviewResult(
-                reviewer_id=reviewer_id,
-                name=raw.get("name", ""),
-                score=final_score,
-                passed=final_score >= threshold,
-                reasoning=raw.get("reasoning", ""),
-                suggestions=raw.get("suggestions", []),
-                findings=all_findings,
-                elapsed_seconds=raw.get("elapsed_seconds", 0.0),
-            )
-        )
-
+    results = sorted((run_reviewer(r, spec_content) for r in reviewers), key=lambda r: r.reviewer_id)
+    deterministic_findings = {r.reviewer_id: r.findings for r in results if r.findings}
     return results, deterministic_findings
 
 
@@ -867,15 +697,7 @@ def verify(
     output_format: str = typer.Option("human", "--format", "-f", help="Output format: human or json"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
-    """Run unified quality verification: components, references, and reviewer agents."""
-    # Early check: guard against broken installs where anthropic is missing
-    if not _anthropic_available() and not _strands_available():
-        console.print(
-            "[red]Error:[/red] Spec reviewers require anthropic (a core YDK dependency).\n"
-            "Your installation appears broken. Reinstall with: uv pip install ydk"
-        )
-        raise typer.Exit(code=1)
-
+    """Run unified quality verification: components, references, and deterministic reviewer tools."""
     start_time = time.monotonic()
     config = load_config()
     git = LocalGitService()
@@ -886,7 +708,7 @@ def verify(
     # Phase 2: Reference integrity (deterministic)
     linker_result = _run_linker_checks(config)
 
-    # Phase 3: Narrative quality checks (parallel reviewer agents)
+    # Phase 3: Narrative quality checks (deterministic reviewer tools)
     narrative_scores: list[CriterionResult] = []
     reviewer_results: list[ReviewResult] = []
     deterministic_findings: dict[str, list[dict[str, object]]] = {}
@@ -894,8 +716,6 @@ def verify(
         spec_files = git.all_files(config.project.spec_location, extension=".md")
     else:
         spec_files = git.changed_files(config.project.spec_location, base_ref=base_ref, extension=".md")
-
-    llm_available = _anthropic_available() or _strands_available()
 
     if not spec_files and not all_files:
         console.print("[yellow]No changed spec files found.[/yellow]")
@@ -940,12 +760,6 @@ def verify(
                 threshold_map[lr.id] = lr.threshold
 
             narrative_scores = _reviewer_results_to_criterion_results(reviewer_results, threshold_map)
-
-        if not llm_available and verbose:
-            typer.echo(
-                "LLM reviewers skipped — no AI provider configured. "
-                "Only deterministic checks ran. Install: uv pip install 'ydk[ai]'"
-            )
 
     # Phase 4: Scanner result (reviewer agents subsume this)
     scanner_result = ScannerResult(unlinked_mentions=[], suggested_ids=[])
