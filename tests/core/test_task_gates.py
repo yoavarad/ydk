@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +12,7 @@ from ydk.core.events import EventBus
 from ydk.core.task_lifecycle import TaskLifecycle
 from ydk.models.gate import Gate, GateStatus, GateType
 from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskDetail
+from ydk.repositories.github.tasks import GitHubTaskRepository
 from ydk.repositories.local.frontmatter import parse_frontmatter
 from ydk.repositories.local.tasks import LocalTaskRepository
 
@@ -149,3 +151,27 @@ class TestGateSerializationInFrontmatter:
         task_entry = data["tasks"][detail.id]
         assert "gates" in task_entry
         assert len(task_entry["gates"]) == 1
+
+
+class TestGitHubBackendGateBlocksStart:
+    def test_gated_github_task_cannot_be_started(self) -> None:
+        body = "**Story**: #1\n\n### Description\nx\n\n### Gates\n- **G-1** (human): Approval [pending]"
+        payload = {"number": 42, "title": "T", "state": "OPEN", "labels": [], "body": body, "url": ""}
+
+        def fake_gh(cmd: list[str], *args: object, **kwargs: object) -> MagicMock:
+            return MagicMock(returncode=0, stdout=json.dumps(payload), stderr="")
+
+        wt = MagicMock()
+        lifecycle = TaskLifecycle(
+            repo=GitHubTaskRepository(),
+            events=EventBus(),
+            worktree_mgr=wt,
+            verifier=MagicMock(),
+            project_root=Path("/tmp/project"),
+        )
+        with (
+            patch("ydk.repositories.github.tasks.run_gh", side_effect=fake_gh),
+            pytest.raises(ValueError, match="Unresolved gates"),
+        ):
+            lifecycle.start("42")
+        wt.create.assert_not_called()
