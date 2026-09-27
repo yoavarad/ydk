@@ -169,11 +169,100 @@ class TestList:
         label_indices = [i for i, v in enumerate(cmd) if v == "--label"]
         assert len(label_indices) == 2
 
-    def test_returns_empty_on_failure(self) -> None:
+    def test_raises_on_failure(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run(returncode=1, stderr="network error")
-        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake):
-            assert repo.list() == []
+        with (
+            patch("ydk.repositories.github.tasks.run_gh", return_value=fake),
+            pytest.raises(RuntimeError, match="network error"),
+        ):
+            repo.list()
+
+    def test_status_open_maps_to_state_open(self) -> None:
+        repo = GitHubTaskRepository()
+        fake = _fake_run(stdout="[]")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.list(status="open")
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--state") + 1] == "open"
+
+    def test_status_done_maps_to_state_closed(self) -> None:
+        repo = GitHubTaskRepository()
+        fake = _fake_run(stdout="[]")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.list(status="done")
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--state") + 1] == "closed"
+
+    def test_status_in_progress_maps_to_open_plus_label(self) -> None:
+        repo = GitHubTaskRepository()
+        fake = _fake_run(stdout="[]")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.list(status="in-progress")
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--state") + 1] == "open"
+        assert "in-progress" in cmd
+        # Base task label filter must still be present alongside the status label.
+        label_values = [cmd[i + 1] for i, v in enumerate(cmd) if v == "--label"]
+        assert "task" in label_values
+        assert "in-progress" in label_values
+
+    def test_status_in_review_maps_to_open_plus_label(self) -> None:
+        repo = GitHubTaskRepository()
+        fake = _fake_run(stdout="[]")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.list(status="in-review")
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--state") + 1] == "open"
+        assert "in-review" in cmd
+        label_values = [cmd[i + 1] for i, v in enumerate(cmd) if v == "--label"]
+        assert "task" in label_values
+        assert "in-review" in label_values
+
+    def test_status_closed_maps_to_state_closed(self) -> None:
+        repo = GitHubTaskRepository()
+        fake = _fake_run(stdout="[]")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.list(status="closed")
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--state") + 1] == "closed"
+
+    def test_status_blocked_fetches_open_and_filters_by_parsed_status(self) -> None:
+        repo = GitHubTaskRepository()
+        items = [
+            {
+                "number": 1,
+                "title": "Blocked one",
+                "state": "OPEN",
+                "labels": [{"name": "task"}, {"name": "blocked-by-code"}],
+                "body": "",
+                "url": "https://github.com/org/repo/issues/1",
+            },
+            {
+                "number": 2,
+                "title": "Not blocked",
+                "state": "OPEN",
+                "labels": [{"name": "task"}],
+                "body": "",
+                "url": "https://github.com/org/repo/issues/2",
+            },
+        ]
+        fake = _fake_run(stdout=json.dumps(items))
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            result = repo.list(status="blocked")
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--state") + 1] == "open"
+        assert len(result) == 1
+        assert result[0].number == 1
+
+    def test_status_all_maps_to_state_all(self) -> None:
+        repo = GitHubTaskRepository()
+        fake = _fake_run(stdout="[]")
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.list(status="all")
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--state") + 1] == "all"
 
 
 # ---------------------------------------------------------------------------
