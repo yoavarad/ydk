@@ -44,7 +44,7 @@ ydk memory index
 After tasks complete, the extraction system identifies learnings from the session transcript. Review what was extracted.
 
 **Constraints:**
-- Extraction runs automatically after `ydk task done` when `memory.auto_extract: true`
+- Extraction is explicit: run `ydk memory extract <task-id>` after `ydk task done`
 - You SHOULD review extracted memories for accuracy
 - You MUST correct or remove any misidentified learnings
 - Extraction targets: discoveries, decisions, gotchas, patterns, **abandoned approaches** (negative knowledge)

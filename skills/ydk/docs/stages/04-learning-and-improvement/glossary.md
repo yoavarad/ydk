@@ -81,7 +81,7 @@ Tracks which prompts, patterns, and approaches were effective across tasks. `ydk
 
 ## Extraction
 
-The process of reading a completed task's session transcript and identifying learnings worth remembering: discoveries about external APIs, design decisions with rationale, implementation gotchas, repeating patterns, and **abandoned approaches**. Runs automatically after `ydk task done` when configured.
+The process of reading a completed task's session transcript and identifying learnings worth remembering: discoveries about external APIs, design decisions with rationale, implementation gotchas, repeating patterns, and **abandoned approaches**. Run explicitly with `ydk memory extract <task-id>`.
 
 ## Bootstrap
 

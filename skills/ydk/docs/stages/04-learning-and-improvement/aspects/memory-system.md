@@ -191,7 +191,6 @@ All memory settings live in `.ydk/config.yaml` under the `memory` key:
 memory:
   embedding_model: cohere.embed-english-v3    # Bedrock embedding model
   auto_bootstrap: true                         # Bootstrap on task start
-  auto_extract: true                           # Extract on task done
   chroma_path: .ydk/memory/chroma              # ChromaDB storage location
   search_mode: hybrid                          # Default: hybrid | vector | keyword
   scoring:
