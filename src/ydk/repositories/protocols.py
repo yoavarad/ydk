@@ -144,3 +144,7 @@ class EpicRepository(Protocol):
     def create_epic(self, epic: EpicCreate) -> EpicDetail:
         """Create a new epic and return its detail."""
         ...
+
+    def list_epics(self, status: str = "open") -> builtins.list:
+        """List epics, optionally filtered by status."""
+        ...
