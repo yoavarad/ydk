@@ -252,13 +252,31 @@ class TaskLifecycle:
             task_files = []
             logger.debug("No TODO registry — verification will use git diff scoping")
 
+        # Load config so AI verification plugins (ai-code-review,
+        # spec-alignment) get real credential/model settings instead of
+        # silently skipping.
+        from ydk.core.config import load_config
+
+        config = load_config(scan_root / ".ydk" / "config.yaml")
+
         # Build context scoped to task files
         context: dict[str, object] = {
             "project_root": str(scan_root),
             "task_id": task_id,
+            "config": {
+                "anthropic": {"api_key_env": config.anthropic.api_key_env},
+                "spec_check": {
+                    "model": config.spec_check.model,
+                    "thresholds": {"architecture": config.spec_check.thresholds.architecture},
+                },
+            },
         }
         if task_files:
             context["changed_files"] = task_files
+
+        task_for_spec_refs = self._repo.get_task(task_id)
+        if task_for_spec_refs.spec_refs:
+            context["spec_refs"] = task_for_spec_refs.spec_refs
 
         # Run verifications scoped to task files
         report = asyncio.run(self._verifier.run_all(trigger="pre-push", context=context))

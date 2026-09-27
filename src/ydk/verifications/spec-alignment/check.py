@@ -2,7 +2,8 @@
 """Verification plugin: spec-alignment.
 
 Evaluates whether changed code aligns with referenced spec files
-across 6 dimensions using a Strands Agent with the Anthropic API.
+across 6 dimensions, calling the Anthropic API directly through the
+shared YDK Claude client factory.
 
 Uses git diff output (not full files) to focus on what actually changed.
 
@@ -11,11 +12,11 @@ boundary respect, scope compliance, cross-cutting adherence.
 """
 
 import json
-import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, cast
 
 DIMENSIONS = [
     "entity_accuracy",
@@ -43,33 +44,36 @@ Dimensions:
 5. scope_compliance — Does the code stay within the spec's scope?
 6. cross_cutting_adherence — Are cross-cutting concerns (logging, auth, etc.) handled per spec?
 
-Respond with ONLY valid JSON (no markdown fences):
-{
-  "dimensions": {
-    "entity_accuracy": {"score": N, "reasoning": "..."},
-    "interface_compliance": {"score": N, "reasoning": "..."},
-    "error_handling": {"score": N, "reasoning": "..."},
-    "boundary_respect": {"score": N, "reasoning": "..."},
-    "scope_compliance": {"score": N, "reasoning": "..."},
-    "cross_cutting_adherence": {"score": N, "reasoning": "..."}
-  },
-  "overall_score": N,
-  "summary": "..."
-}
+Call the submit_evaluation tool with your scores and reasoning for each dimension.
 """
 
-
-def _skip(reason: str) -> None:
-    """Emit a skip result and exit cleanly."""
-    result = {
-        "name": "spec-alignment",
-        "passed": True,
-        "output": f"SKIPPED: {reason}",
-        "duration_seconds": 0,
-        "detail": {"skipped": True},
-    }
-    json.dump(result, sys.stdout)
-    sys.exit(0)
+EVALUATION_TOOL_SPEC = {
+    "name": "submit_evaluation",
+    "description": "Submit the structured spec-alignment evaluation result",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "dimensions": {
+                "type": "object",
+                "properties": {
+                    dim: {
+                        "type": "object",
+                        "properties": {
+                            "score": {"type": "number"},
+                            "reasoning": {"type": "string"},
+                        },
+                        "required": ["score", "reasoning"],
+                    }
+                    for dim in DIMENSIONS
+                },
+                "required": DIMENSIONS,
+            },
+            "overall_score": {"type": "number"},
+            "summary": {"type": "string"},
+        },
+        "required": ["dimensions", "overall_score", "summary"],
+    },
+}
 
 
 def _read_files(root: Path, file_paths: list[str]) -> str:
@@ -120,39 +124,23 @@ def _get_git_diff(root: Path, changed_files: list[str]) -> str:
 
 def run_check(context: dict) -> dict:
     """Core check logic. Separated for testability."""
+    from ydk.core.claude_client import (
+        DEFAULT_API_KEY_ENV,
+        ClaudeAPIError,
+        MissingCredentialsError,
+        build_client,
+        create_message,
+    )
+
     start = time.time()
     project_root = Path(context["project_root"])
     changed_files = context.get("changed_files", [])
     spec_refs = context.get("spec_refs", [])
     config = context.get("config", {})
     anthropic_config = config.get("anthropic", {})
-    api_key_env = anthropic_config.get("api_key_env", "ANTHROPIC_API_KEY")
+    api_key_env = anthropic_config.get("api_key_env", DEFAULT_API_KEY_ENV)
     spec_check_config = config.get("spec_check", {})
     model_id = spec_check_config.get("model", "claude-sonnet-4-6")
-
-    # Check strands-agents availability
-    try:
-        from strands import Agent
-        from strands.models.anthropic import AnthropicModel
-    except ImportError:
-        return {
-            "name": "spec-alignment",
-            "passed": True,
-            "output": "SKIPPED: strands-agents not installed",
-            "duration_seconds": 0,
-            "detail": {"skipped": True},
-        }
-
-    # Check Anthropic API key
-    api_key = os.getenv(api_key_env)
-    if not api_key:
-        return {
-            "name": "spec-alignment",
-            "passed": True,
-            "output": f"SKIPPED: {api_key_env} not configured",
-            "duration_seconds": 0,
-            "detail": {"skipped": True},
-        }
 
     if not changed_files:
         return {
@@ -172,6 +160,21 @@ def run_check(context: dict) -> dict:
             "detail": {"skipped": True},
         }
 
+    try:
+        client = build_client(api_key_env)
+    except MissingCredentialsError as exc:
+        return {
+            "name": "spec-alignment",
+            "passed": False,
+            "output": (
+                f"{exc} Set up credentials via the `ydk init` instructions, or disable "
+                "this plugin by removing it from `verification.enabled` in .ydk/config.yaml "
+                "if it is intentionally unused."
+            ),
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"credential_error": True, "no_cache": True},
+        }
+
     # Read spec content
     spec_content = _read_files(project_root, spec_refs)
 
@@ -181,50 +184,50 @@ def run_check(context: dict) -> dict:
         # Fallback: read full files if diff is empty (new files)
         git_diff = _read_files(project_root, changed_files)
 
-    # Build system prompt with spec content as cached prefix
-    from strands import Agent
-    from strands.models.anthropic import AnthropicModel
-
-    anthropic_model = AnthropicModel(
-        client_args={"api_key": api_key},
-        model_id=model_id,
-        max_tokens=8192,
-    )
-
-    system_prompt_with_spec = (
-        SYSTEM_PROMPT + "\n\n=== SPEC CONTENT (reference) ===\n\n" + spec_content + "\n\n{{cachePoint}}"
-    )
-
-    agent = Agent(
-        model=anthropic_model,
-        system_prompt=system_prompt_with_spec,
-    )
+    system_blocks: list[dict] = [{"type": "text", "text": SYSTEM_PROMPT}]
+    if spec_content:
+        system_blocks.append(
+            {
+                "type": "text",
+                "text": "=== SPEC CONTENT (reference) ===\n\n" + spec_content,
+                "cache_control": {"type": "ephemeral"},
+            }
+        )
 
     user_message = (
         "Evaluate the following code changes (git diff) for spec alignment:\n\n=== GIT DIFF ===\n\n" + git_diff
     )
 
-    response = agent(user_message)
-    response_text = str(response)
-
-    # Parse structured response
     try:
-        evaluation = json.loads(response_text)
-    except json.JSONDecodeError:
-        # Try to extract JSON from response
-        start_idx = response_text.find("{")
-        end_idx = response_text.rfind("}") + 1
-        if start_idx >= 0 and end_idx > start_idx:
-            evaluation = json.loads(response_text[start_idx:end_idx])
-        else:
-            return {
-                "name": "spec-alignment",
-                "passed": False,
-                "output": f"Failed to parse AI response: {response_text[:500]}",
-                "duration_seconds": round(time.time() - start, 1),
-                "detail": {"parse_error": True},
-            }
+        response = create_message(
+            client,
+            model=model_id,
+            max_tokens=8192,
+            system=system_blocks,
+            messages=[{"role": "user", "content": user_message}],
+            tools=[EVALUATION_TOOL_SPEC],
+            tool_choice={"type": "tool", "name": "submit_evaluation"},
+        )
+    except ClaudeAPIError as exc:
+        return {
+            "name": "spec-alignment",
+            "passed": False,
+            "output": f"ERROR: {exc}",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"error": True, "no_cache": True},
+        }
 
+    tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+    if tool_use_block is None:
+        return {
+            "name": "spec-alignment",
+            "passed": False,
+            "output": "ERROR: no tool_use block in Anthropic response (unexpected)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"error": True, "no_cache": True},
+        }
+
+    evaluation = cast("dict[str, Any]", cast("Any", tool_use_block).input)
     overall_score = evaluation.get("overall_score", 0)
     threshold = spec_check_config.get("thresholds", {}).get("architecture", 8)
     passed = overall_score >= threshold
@@ -259,11 +262,6 @@ def main() -> None:
     context = json.loads(sys.stdin.read())
 
     try:
-        import strands  # noqa: F401
-    except ImportError:
-        _skip("strands-agents not installed")
-
-    try:
         result = run_check(context)
     except Exception as exc:
         # A crash must never report PASS — emit a well-formed failing result
@@ -272,7 +270,7 @@ def main() -> None:
             "passed": False,
             "output": f"ERROR: plugin error - {exc}",
             "duration_seconds": 0,
-            "detail": {"error": str(exc), "crashed": True},
+            "detail": {"error": str(exc), "crashed": True, "no_cache": True},
         }
     json.dump(result, sys.stdout)
     sys.exit(0 if result["passed"] else 1)

@@ -1,15 +1,22 @@
-"""Tests for AI verification plugins (spec-alignment, ai-code-review)."""
+"""Tests for AI verification plugins (spec-alignment, ai-code-review).
+
+Mocks only at the Anthropic SDK boundary (``anthropic.Anthropic``), per the
+project's no-mocks-of-internal-classes rule.
+"""
 
 from __future__ import annotations
 
 import json
-import sys
-import types
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
+import anthropic
+import httpx
 import pytest
+
+if TYPE_CHECKING:
+    import types
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,6 +69,23 @@ def _write_file(root: Path, relpath: str, content: str) -> None:
     full.write_text(content)
 
 
+def _mock_tool_use_response(tool_input: dict[str, Any]) -> MagicMock:
+    """Build a fake anthropic.types.Message with a single tool_use block."""
+    block = MagicMock()
+    block.type = "tool_use"
+    block.input = tool_input
+    message = MagicMock()
+    message.content = [block]
+    message.stop_reason = "tool_use"
+    return message
+
+
+@pytest.fixture(autouse=True)
+def _clear_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Spec-alignment tests
 # ---------------------------------------------------------------------------
@@ -70,210 +94,132 @@ def _write_file(root: Path, relpath: str, content: str) -> None:
 class TestSpecAlignmentSkips:
     """Test graceful skip conditions for spec-alignment."""
 
-    def test_skip_when_strands_not_installed(self, tmp_path: Path) -> None:
-        mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
-        ctx = _make_context(tmp_path, changed_files=["src/main.py"])
-
-        # Simulate strands not importable
-        with patch.dict(sys.modules, {"strands": None, "strands.models.anthropic": None}):
-            # Reload won't help since the import is inside the function,
-            # so we patch the import mechanism
-            original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
-
-            def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-                if name in ("strands", "strands.models.anthropic"):
-                    raise ImportError(f"No module named '{name}'")
-                return original_import(name, *args, **kwargs)
-
-            with patch("builtins.__import__", side_effect=mock_import):
-                result = mod.run_check(ctx)
-
-        assert result["passed"] is True
-        assert "SKIPPED" in result["output"]
-        assert "strands-agents not installed" in result["output"]
-        assert result["detail"]["skipped"] is True
-
-    def test_skip_when_api_key_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
-        ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
-        _write_file(tmp_path, "src/main.py", "print('hello')")
-        _write_file(tmp_path, "docs/spec.md", "# Spec")
-
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-        mock_strands = MagicMock()
-        mock_anthropic_model = MagicMock()
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands,
-                "strands.models": MagicMock(),
-                "strands.models.anthropic": mock_anthropic_model,
-            },
-        ):
-            result = mod.run_check(ctx)
-
-        assert result["passed"] is True
-        assert "SKIPPED" in result["output"]
-        assert "ANTHROPIC_API_KEY not configured" in result["output"]
-
-    def test_skip_when_no_changed_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skip_when_no_changed_files(self, tmp_path: Path) -> None:
         mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
         ctx = _make_context(tmp_path, changed_files=[], spec_refs=["docs/spec.md"])
 
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-
-        mock_strands = MagicMock()
-        mock_anthropic_model = MagicMock()
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands,
-                "strands.models": MagicMock(),
-                "strands.models.anthropic": mock_anthropic_model,
-            },
-        ):
-            result = mod.run_check(ctx)
+        result = mod.run_check(ctx)
 
         assert result["passed"] is True
         assert "No changed files" in result["output"]
 
-    def test_skip_when_no_spec_refs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skip_when_no_spec_refs(self, tmp_path: Path) -> None:
         mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
         ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=[])
         _write_file(tmp_path, "src/main.py", "print('hello')")
 
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-
-        mock_strands = MagicMock()
-        mock_anthropic_model = MagicMock()
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands,
-                "strands.models": MagicMock(),
-                "strands.models.anthropic": mock_anthropic_model,
-            },
-        ):
-            result = mod.run_check(ctx)
+        result = mod.run_check(ctx)
 
         assert result["passed"] is True
         assert "No spec references" in result["output"]
 
 
-class TestSpecAlignmentWithMockedAgent:
-    """Test spec-alignment with mocked Strands Agent returning structured results."""
+class TestSpecAlignmentMissingCredentials:
+    """Missing credentials must fail loudly, not skip silently."""
+
+    def test_missing_key_fails_with_setup_guidance(self, tmp_path: Path) -> None:
+        mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
+        _write_file(tmp_path, "src/main.py", "print('hello')")
+        _write_file(tmp_path, "docs/spec.md", "# Spec")
+
+        result = mod.run_check(ctx)
+
+        assert result["passed"] is False
+        assert "ydk init" in result["output"]
+        assert result["detail"]["credential_error"] is True
+        assert result["detail"]["no_cache"] is True
+
+
+class TestSpecAlignmentWithMockedClient:
+    """Test spec-alignment calling the anthropic SDK directly (mocked at the SDK boundary)."""
 
     def test_passing_evaluation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
         _write_file(tmp_path, "src/main.py", "def greet(name: str) -> str:\n    return f'Hello {name}'")
         _write_file(tmp_path, "docs/spec.md", "# Greeting API\nMust accept name parameter.")
 
-        ctx = _make_context(
-            tmp_path,
-            changed_files=["src/main.py"],
-            spec_refs=["docs/spec.md"],
-        )
-
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-        ai_response = json.dumps(
-            {
-                "dimensions": {
-                    "entity_accuracy": {"score": 9, "reasoning": "Entities match spec."},
-                    "interface_compliance": {"score": 9, "reasoning": "Interface matches."},
-                    "error_handling": {"score": 8, "reasoning": "Basic handling present."},
-                    "boundary_respect": {"score": 9, "reasoning": "Boundaries respected."},
-                    "scope_compliance": {"score": 9, "reasoning": "Within scope."},
-                    "cross_cutting_adherence": {"score": 8, "reasoning": "Logging adequate."},
-                },
-                "overall_score": 9,
-                "summary": "Code aligns well with spec.",
-            }
-        )
-
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.return_value = ai_response
-        mock_agent_cls = MagicMock(return_value=mock_agent_instance)
-        mock_anthropic_model_cls = MagicMock()
-
-        mock_strands_mod = types.ModuleType("strands")
-        mock_strands_mod.Agent = mock_agent_cls
-        mock_anthropic_mod = types.ModuleType("strands.models.anthropic")
-        mock_anthropic_mod.AnthropicModel = mock_anthropic_model_cls
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands_mod,
-                "strands.models": types.ModuleType("strands.models"),
-                "strands.models.anthropic": mock_anthropic_mod,
+        evaluation = {
+            "dimensions": {
+                "entity_accuracy": {"score": 9, "reasoning": "Entities match spec."},
+                "interface_compliance": {"score": 9, "reasoning": "Interface matches."},
+                "error_handling": {"score": 8, "reasoning": "Basic handling present."},
+                "boundary_respect": {"score": 9, "reasoning": "Boundaries respected."},
+                "scope_compliance": {"score": 9, "reasoning": "Within scope."},
+                "cross_cutting_adherence": {"score": 8, "reasoning": "Logging adequate."},
             },
-        ):
+            "overall_score": 9,
+            "summary": "Code aligns well with spec.",
+        }
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(evaluation)
+
+        with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
 
         assert result["passed"] is True
         assert result["detail"]["overall_score"] == 9
         assert "9/10" in result["output"]
-        mock_anthropic_model_cls.assert_called_once_with(
-            client_args={"api_key": "test-key"},
-            model_id="claude-sonnet-4-6",
-            max_tokens=8192,
-        )
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["model"] == "claude-sonnet-4-6"
+        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_evaluation"}
 
     def test_failing_evaluation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
         _write_file(tmp_path, "src/main.py", "x = 1")
         _write_file(tmp_path, "docs/spec.md", "# Complex API spec")
 
-        ctx = _make_context(
-            tmp_path,
-            changed_files=["src/main.py"],
-            spec_refs=["docs/spec.md"],
-        )
-
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-        ai_response = json.dumps(
-            {
-                "dimensions": {
-                    "entity_accuracy": {"score": 3, "reasoning": "Missing entities."},
-                    "interface_compliance": {"score": 2, "reasoning": "No interface."},
-                    "error_handling": {"score": 1, "reasoning": "No error handling."},
-                    "boundary_respect": {"score": 4, "reasoning": "No boundaries."},
-                    "scope_compliance": {"score": 3, "reasoning": "Out of scope."},
-                    "cross_cutting_adherence": {"score": 2, "reasoning": "Missing."},
-                },
-                "overall_score": 3,
-                "summary": "Code does not align with spec.",
-            }
-        )
-
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.return_value = ai_response
-        mock_agent_cls = MagicMock(return_value=mock_agent_instance)
-        mock_anthropic_model_cls = MagicMock()
-
-        mock_strands_mod = types.ModuleType("strands")
-        mock_strands_mod.Agent = mock_agent_cls
-        mock_anthropic_mod = types.ModuleType("strands.models.anthropic")
-        mock_anthropic_mod.AnthropicModel = mock_anthropic_model_cls
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands_mod,
-                "strands.models": types.ModuleType("strands.models"),
-                "strands.models.anthropic": mock_anthropic_mod,
+        evaluation = {
+            "dimensions": {
+                "entity_accuracy": {"score": 3, "reasoning": "Missing entities."},
+                "interface_compliance": {"score": 2, "reasoning": "No interface."},
+                "error_handling": {"score": 1, "reasoning": "No error handling."},
+                "boundary_respect": {"score": 4, "reasoning": "No boundaries."},
+                "scope_compliance": {"score": 3, "reasoning": "Out of scope."},
+                "cross_cutting_adherence": {"score": 2, "reasoning": "Missing."},
             },
-        ):
+            "overall_score": 3,
+            "summary": "Code does not align with spec.",
+        }
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(evaluation)
+
+        with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
 
         assert result["passed"] is False
         assert result["detail"]["overall_score"] == 3
+
+    def test_authentication_error_fails_loudly_and_is_not_cached(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
+        _write_file(tmp_path, "src/main.py", "x = 1")
+        _write_file(tmp_path, "docs/spec.md", "# Spec")
+
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "bad-key")
+
+        fake_response = httpx.Response(401, request=httpx.Request("POST", "https://api.anthropic.com"))
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = anthropic.AuthenticationError(
+            "invalid x-api-key", response=fake_response, body=None
+        )
+
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            result = mod.run_check(ctx)
+
+        assert result["passed"] is False
+        assert "401" in result["output"]
+        assert result["detail"]["no_cache"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -284,109 +230,47 @@ class TestSpecAlignmentWithMockedAgent:
 class TestAiCodeReviewSkips:
     """Test graceful skip conditions for ai-code-review."""
 
-    def test_skip_when_strands_not_installed(self, tmp_path: Path) -> None:
-        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
-        ctx = _make_context(tmp_path, changed_files=["src/main.py"])
-
-        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
-
-        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-            if name in ("strands", "strands.models.anthropic"):
-                raise ImportError(f"No module named '{name}'")
-            return original_import(name, *args, **kwargs)
-
-        with patch("builtins.__import__", side_effect=mock_import):
-            result = mod.run_check(ctx)
-
-        assert result["passed"] is True
-        assert "SKIPPED" in result["output"]
-        assert "strands-agents not installed" in result["output"]
-        assert result["detail"]["skipped"] is True
-
-    def test_skip_when_api_key_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
-        ctx = _make_context(tmp_path, changed_files=["src/main.py"])
-        _write_file(tmp_path, "src/main.py", "print('hello')")
-
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-        mock_strands = MagicMock()
-        mock_anthropic_model = MagicMock()
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands,
-                "strands.models": MagicMock(),
-                "strands.models.anthropic": mock_anthropic_model,
-            },
-        ):
-            result = mod.run_check(ctx)
-
-        assert result["passed"] is True
-        assert "SKIPPED" in result["output"]
-        assert "ANTHROPIC_API_KEY not configured" in result["output"]
-
-    def test_skip_when_no_changed_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skip_when_no_changed_files(self, tmp_path: Path) -> None:
         mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
         ctx = _make_context(tmp_path, changed_files=[])
 
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-
-        mock_strands = MagicMock()
-        mock_anthropic_model = MagicMock()
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands,
-                "strands.models": MagicMock(),
-                "strands.models.anthropic": mock_anthropic_model,
-            },
-        ):
-            result = mod.run_check(ctx)
+        result = mod.run_check(ctx)
 
         assert result["passed"] is True
         assert "No changed files" in result["output"]
 
 
-class TestAiCodeReviewWithMockedAgent:
-    """Test ai-code-review with mocked Strands Agent."""
+class TestAiCodeReviewMissingCredentials:
+    """Missing credentials must fail loudly, not skip silently."""
+
+    def test_missing_key_fails_with_setup_guidance(self, tmp_path: Path) -> None:
+        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"])
+        _write_file(tmp_path, "src/main.py", "print('hello')")
+
+        result = mod.run_check(ctx)
+
+        assert result["passed"] is False
+        assert "ydk init" in result["output"]
+        assert result["detail"]["credential_error"] is True
+        assert result["detail"]["no_cache"] is True
+
+
+class TestAiCodeReviewWithMockedClient:
+    """Test ai-code-review calling the anthropic SDK directly (mocked at the SDK boundary)."""
 
     def test_clean_review_passes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
         _write_file(tmp_path, "src/main.py", "def safe_func() -> str:\n    return 'ok'")
 
         ctx = _make_context(tmp_path, changed_files=["src/main.py"])
-
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-        ai_response = json.dumps(
-            {
-                "findings": [],
-                "summary": "No issues found.",
-                "passed": True,
-            }
-        )
+        review = {"findings": [], "summary": "No issues found.", "passed": True}
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(review)
 
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.return_value = ai_response
-        mock_agent_cls = MagicMock(return_value=mock_agent_instance)
-        mock_anthropic_model_cls = MagicMock()
-
-        mock_strands_mod = types.ModuleType("strands")
-        mock_strands_mod.Agent = mock_agent_cls
-        mock_anthropic_mod = types.ModuleType("strands.models.anthropic")
-        mock_anthropic_mod.AnthropicModel = mock_anthropic_model_cls
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands_mod,
-                "strands.models": types.ModuleType("strands.models"),
-                "strands.models.anthropic": mock_anthropic_mod,
-            },
-        ):
+        with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
 
         assert result["passed"] is True
@@ -398,43 +282,25 @@ class TestAiCodeReviewWithMockedAgent:
         _write_file(tmp_path, "src/main.py", "password = 'hunter2'")
 
         ctx = _make_context(tmp_path, changed_files=["src/main.py"])
-
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-        ai_response = json.dumps(
-            {
-                "findings": [
-                    {
-                        "severity": "critical",
-                        "category": "security",
-                        "file": "src/main.py",
-                        "description": "Hardcoded password found",
-                        "suggestion": "Use environment variables or secrets manager",
-                    }
-                ],
-                "summary": "Critical security issue found.",
-                "passed": False,
-            }
-        )
+        review = {
+            "findings": [
+                {
+                    "severity": "critical",
+                    "category": "security",
+                    "file": "src/main.py",
+                    "description": "Hardcoded password found",
+                    "suggestion": "Use environment variables or secrets manager",
+                }
+            ],
+            "summary": "Critical security issue found.",
+            "passed": False,
+        }
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(review)
 
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.return_value = ai_response
-        mock_agent_cls = MagicMock(return_value=mock_agent_instance)
-        mock_anthropic_model_cls = MagicMock()
-
-        mock_strands_mod = types.ModuleType("strands")
-        mock_strands_mod.Agent = mock_agent_cls
-        mock_anthropic_mod = types.ModuleType("strands.models.anthropic")
-        mock_anthropic_mod.AnthropicModel = mock_anthropic_model_cls
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands_mod,
-                "strands.models": types.ModuleType("strands.models"),
-                "strands.models.anthropic": mock_anthropic_mod,
-            },
-        ):
+        with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
 
         assert result["passed"] is False
@@ -447,48 +313,52 @@ class TestAiCodeReviewWithMockedAgent:
         _write_file(tmp_path, "src/main.py", "x = 1  # short var name")
 
         ctx = _make_context(tmp_path, changed_files=["src/main.py"])
-
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-        ai_response = json.dumps(
-            {
-                "findings": [
-                    {
-                        "severity": "warning",
-                        "category": "quality",
-                        "file": "src/main.py",
-                        "description": "Variable name too short",
-                        "suggestion": "Use descriptive name",
-                    }
-                ],
-                "summary": "Minor quality issue.",
-                "passed": True,
-            }
-        )
+        review = {
+            "findings": [
+                {
+                    "severity": "warning",
+                    "category": "best_practices",
+                    "file": "src/main.py",
+                    "description": "Variable name too short",
+                    "suggestion": "Use descriptive name",
+                }
+            ],
+            "summary": "Minor quality issue.",
+            "passed": True,
+        }
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(review)
 
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.return_value = ai_response
-        mock_agent_cls = MagicMock(return_value=mock_agent_instance)
-        mock_anthropic_model_cls = MagicMock()
-
-        mock_strands_mod = types.ModuleType("strands")
-        mock_strands_mod.Agent = mock_agent_cls
-        mock_anthropic_mod = types.ModuleType("strands.models.anthropic")
-        mock_anthropic_mod.AnthropicModel = mock_anthropic_model_cls
-
-        with patch.dict(
-            sys.modules,
-            {
-                "strands": mock_strands_mod,
-                "strands.models": types.ModuleType("strands.models"),
-                "strands.models.anthropic": mock_anthropic_mod,
-            },
-        ):
+        with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
 
         assert result["passed"] is True
         assert result["detail"]["warning_count"] == 1
         assert result["detail"]["critical_count"] == 0
+
+    def test_rate_limit_error_fails_loudly_and_is_not_cached(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
+        _write_file(tmp_path, "src/main.py", "x = 1")
+
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"])
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+        fake_response = httpx.Response(429, request=httpx.Request("POST", "https://api.anthropic.com"))
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = anthropic.RateLimitError(
+            "rate limited", response=fake_response, body=None
+        )
+
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            result = mod.run_check(ctx)
+
+        assert result["passed"] is False
+        assert "429" in result["output"] or "rate limit" in result["output"].lower()
+        assert result["detail"]["no_cache"] is True
 
 
 class TestPluginCrashReportsFailure:
@@ -505,6 +375,7 @@ class TestPluginCrashReportsFailure:
         self, path: Path, name: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         import io
+        import sys
 
         mod = _load_check_module(path, name.replace("-", "_") + "_crash")
 
@@ -514,10 +385,7 @@ class TestPluginCrashReportsFailure:
         monkeypatch.setattr(mod, "run_check", boom)
         monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
 
-        with (
-            patch.dict(sys.modules, {"strands": types.ModuleType("strands")}),
-            pytest.raises(SystemExit) as exc_info,
-        ):
+        with pytest.raises(SystemExit) as exc_info:
             mod.main()
 
         assert exc_info.value.code == 1
@@ -526,5 +394,5 @@ class TestPluginCrashReportsFailure:
         assert not result["output"].startswith("SKIPPED")
         assert result["output"].startswith("ERROR: plugin error")
         assert result["detail"]["crashed"] is True
+        assert result["detail"]["no_cache"] is True
         assert "agent exploded" in result["detail"]["error"]
-        assert "skipped" not in result["detail"]

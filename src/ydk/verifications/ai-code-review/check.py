@@ -2,17 +2,18 @@
 """Verification plugin: ai-code-review.
 
 External AI code review covering BOTH spec compliance AND standard
-code review using a Strands Agent with the Anthropic API.
+code review, calling the Anthropic API directly through the shared
+YDK Claude client factory.
 
 Uses git diff output for focused review of actual changes.
 """
 
 import json
-import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, cast
 
 SYSTEM_PROMPT = """\
 You are a senior code reviewer performing a comprehensive automated review.
@@ -44,37 +45,47 @@ And a category from:
 - "security" — security issue
 - "best_practices" — naming, error handling, test quality
 
-Respond with ONLY valid JSON (no markdown fences):
-{
-  "findings": [
-    {
-      "severity": "critical|warning|info",
-      "category": "spec_compliance|dry|yagni|solid|security|best_practices",
-      "file": "path/to/file",
-      "description": "...",
-      "suggestion": "..."
-    }
-  ],
-  "summary": "...",
-  "passed": true/false
-}
-
-Set "passed" to false ONLY if there are any "critical" findings.
-If no issues found, return empty findings list and passed=true.
+Call the submit_review tool with your findings. Set "passed" to false ONLY if
+there are any "critical" findings. If no issues found, return an empty
+findings list and passed=true.
 """
 
-
-def _skip(reason: str) -> None:
-    """Emit a skip result and exit cleanly."""
-    result = {
-        "name": "ai-code-review",
-        "passed": True,
-        "output": f"SKIPPED: {reason}",
-        "duration_seconds": 0,
-        "detail": {"skipped": True},
-    }
-    json.dump(result, sys.stdout)
-    sys.exit(0)
+REVIEW_TOOL_SPEC = {
+    "name": "submit_review",
+    "description": "Submit the structured code review result",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "severity": {"type": "string", "enum": ["critical", "warning", "info"]},
+                        "category": {
+                            "type": "string",
+                            "enum": [
+                                "spec_compliance",
+                                "dry",
+                                "yagni",
+                                "solid",
+                                "security",
+                                "best_practices",
+                            ],
+                        },
+                        "file": {"type": "string"},
+                        "description": {"type": "string"},
+                        "suggestion": {"type": "string"},
+                    },
+                    "required": ["severity", "category", "file", "description"],
+                },
+            },
+            "summary": {"type": "string"},
+            "passed": {"type": "boolean"},
+        },
+        "required": ["findings", "summary", "passed"],
+    },
+}
 
 
 def _read_files(root: Path, file_paths: list[str]) -> str:
@@ -125,39 +136,23 @@ def _get_git_diff(root: Path, changed_files: list[str]) -> str:
 
 def run_check(context: dict) -> dict:
     """Core check logic. Separated for testability."""
+    from ydk.core.claude_client import (
+        DEFAULT_API_KEY_ENV,
+        ClaudeAPIError,
+        MissingCredentialsError,
+        build_client,
+        create_message,
+    )
+
     start = time.time()
     project_root = Path(context["project_root"])
     changed_files = context.get("changed_files", [])
     spec_refs = context.get("spec_refs", [])
     config = context.get("config", {})
     anthropic_config = config.get("anthropic", {})
-    api_key_env = anthropic_config.get("api_key_env", "ANTHROPIC_API_KEY")
+    api_key_env = anthropic_config.get("api_key_env", DEFAULT_API_KEY_ENV)
     spec_check_config = config.get("spec_check", {})
     model_id = spec_check_config.get("model", "claude-sonnet-4-6")
-
-    # Check strands-agents availability
-    try:
-        from strands import Agent
-        from strands.models.anthropic import AnthropicModel
-    except ImportError:
-        return {
-            "name": "ai-code-review",
-            "passed": True,
-            "output": "SKIPPED: strands-agents not installed",
-            "duration_seconds": 0,
-            "detail": {"skipped": True},
-        }
-
-    # Check Anthropic API key
-    api_key = os.getenv(api_key_env)
-    if not api_key:
-        return {
-            "name": "ai-code-review",
-            "passed": True,
-            "output": f"SKIPPED: {api_key_env} not configured",
-            "duration_seconds": 0,
-            "detail": {"skipped": True},
-        }
 
     if not changed_files:
         return {
@@ -168,58 +163,73 @@ def run_check(context: dict) -> dict:
             "detail": {"skipped": True},
         }
 
+    try:
+        client = build_client(api_key_env)
+    except MissingCredentialsError as exc:
+        return {
+            "name": "ai-code-review",
+            "passed": False,
+            "output": (
+                f"{exc} Set up credentials via the `ydk init` instructions, or disable "
+                "this plugin by removing it from `verification.enabled` in .ydk/config.yaml "
+                "if it is intentionally unused."
+            ),
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"credential_error": True, "no_cache": True},
+        }
+
     # Get git diff instead of full file contents
     git_diff = _get_git_diff(project_root, changed_files)
     if not git_diff:
         # Fallback: read full files if diff is empty (new files)
         git_diff = _read_files(project_root, changed_files)
 
-    # Build system prompt (with spec content as cached prefix if available)
-    from strands import Agent
-    from strands.models.anthropic import AnthropicModel
-
-    anthropic_model = AnthropicModel(
-        client_args={"api_key": api_key},
-        model_id=model_id,
-        max_tokens=8192,
-    )
-
-    system_prompt = SYSTEM_PROMPT
+    system_blocks: list[dict] = [{"type": "text", "text": SYSTEM_PROMPT}]
     if spec_refs:
         spec_content = _read_files(project_root, spec_refs)
         if spec_content:
-            system_prompt += "\n\n=== SPEC CONTENT (reference for compliance review) ===\n\n" + spec_content
-    system_prompt += "\n\n{{cachePoint}}"
-
-    agent = Agent(
-        model=anthropic_model,
-        system_prompt=system_prompt,
-    )
+            system_blocks.append(
+                {
+                    "type": "text",
+                    "text": "=== SPEC CONTENT (reference for compliance review) ===\n\n" + spec_content,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            )
 
     user_message = (
         "Review the following git diff for spec compliance and code quality:\n\n=== GIT DIFF ===\n\n" + git_diff
     )
 
-    response = agent(user_message)
-    response_text = str(response)
-
-    # Parse structured response
     try:
-        review = json.loads(response_text)
-    except json.JSONDecodeError:
-        start_idx = response_text.find("{")
-        end_idx = response_text.rfind("}") + 1
-        if start_idx >= 0 and end_idx > start_idx:
-            review = json.loads(response_text[start_idx:end_idx])
-        else:
-            return {
-                "name": "ai-code-review",
-                "passed": False,
-                "output": f"Failed to parse AI response: {response_text[:500]}",
-                "duration_seconds": round(time.time() - start, 1),
-                "detail": {"parse_error": True},
-            }
+        response = create_message(
+            client,
+            model=model_id,
+            max_tokens=8192,
+            system=system_blocks,
+            messages=[{"role": "user", "content": user_message}],
+            tools=[REVIEW_TOOL_SPEC],
+            tool_choice={"type": "tool", "name": "submit_review"},
+        )
+    except ClaudeAPIError as exc:
+        return {
+            "name": "ai-code-review",
+            "passed": False,
+            "output": f"ERROR: {exc}",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"error": True, "no_cache": True},
+        }
 
+    tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+    if tool_use_block is None:
+        return {
+            "name": "ai-code-review",
+            "passed": False,
+            "output": "ERROR: no tool_use block in Anthropic response (unexpected)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"error": True, "no_cache": True},
+        }
+
+    review = cast("dict[str, Any]", cast("Any", tool_use_block).input)
     findings = review.get("findings", [])
     summary = review.get("summary", "")
 
@@ -265,13 +275,8 @@ def main() -> None:
     """Run the ai-code-review verification check."""
     context = json.loads(sys.stdin.read())
 
-    try:
-        import strands  # noqa: F401
-    except ImportError:
-        _skip("strands-agents not installed")
-
     # Redirect stdout to stderr during check execution to capture any
-    # debug/print output from third-party libraries (e.g. strands, boto3).
+    # debug/print output from third-party libraries.
     # This ensures ONLY our final JSON object goes to real stdout.
     real_stdout = sys.stdout
     sys.stdout = sys.stderr
@@ -285,7 +290,7 @@ def main() -> None:
             "passed": False,
             "output": f"ERROR: plugin error - {exc}",
             "duration_seconds": 0,
-            "detail": {"error": str(exc), "crashed": True},
+            "detail": {"error": str(exc), "crashed": True, "no_cache": True},
         }
     finally:
         # Restore stdout before writing the result
