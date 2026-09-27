@@ -245,3 +245,69 @@ class TestAddComment:
         fake = _fake_run(returncode=1, stderr="error")
         with patch("ydk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
             repo.add_comment(42, "text")
+
+
+# ---------------------------------------------------------------------------
+# compact_task
+# ---------------------------------------------------------------------------
+
+
+class TestCompactTask:
+    def _issue_json(self) -> str:
+        return json.dumps(
+            {
+                "number": 42,
+                "title": "Validate orders",
+                "state": "CLOSED",
+                "labels": [{"name": "task"}],
+                "body": (
+                    "**Story**: S-001\n\n### Description\nValidation logic\n\n### Acceptance Criteria\n- [x] It works"
+                ),
+                "url": "https://github.com/org/repo/issues/42",
+            }
+        )
+
+    def test_does_not_overwrite_issue_body(self) -> None:
+        """compact_task must never call `gh issue edit --body` on the issue."""
+        repo = GitHubTaskRepository()
+        fake_get = _fake_run(stdout=self._issue_json())
+        fake_ok = _fake_run()
+
+        def _dispatch(cmd: list[object], **_kwargs: object) -> MagicMock:
+            if "view" in cmd:
+                return fake_get
+            return fake_ok
+
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=_dispatch) as mock_run:
+            repo.compact_task("42")
+
+        for call in mock_run.call_args_list:
+            cmd = call[0][0]
+            assert not (cmd[:2] == ["gh", "issue"] and "edit" in cmd and "--body" in cmd), (
+                f"compact_task must not overwrite the issue body via: {cmd}"
+            )
+
+    def test_posts_summary_as_comment_and_archives(self) -> None:
+        repo = GitHubTaskRepository()
+        fake_get = _fake_run(stdout=self._issue_json())
+        fake_ok = _fake_run()
+
+        def _dispatch(cmd: list[object], **_kwargs: object) -> MagicMock:
+            if "view" in cmd:
+                return fake_get
+            return fake_ok
+
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=_dispatch) as mock_run:
+            compacted = repo.compact_task("42")
+
+        assert compacted.title == "Validate orders"
+        assert "Completed" in compacted.summary
+
+        comment_calls = [c[0][0] for c in mock_run.call_args_list if "comment" in c[0][0]]
+        assert len(comment_calls) == 1
+        assert "--body" in comment_calls[0]
+        assert any("Completed" in str(a) for a in comment_calls[0])
+
+        label_calls = [c[0][0] for c in mock_run.call_args_list if "--add-label" in c[0][0]]
+        assert len(label_calls) == 1
+        assert "archived" in [str(a) for a in label_calls[0]]
