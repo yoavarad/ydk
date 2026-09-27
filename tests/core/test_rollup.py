@@ -130,6 +130,15 @@ class TestAdvanceStageIfComplete:
         advance_stage_if_complete(tmp_path, local.tasks)
         assert self._state(tmp_path)["stage"] == "03"
 
+    def test_stays_on_03_when_a_task_is_in_review(self, local: _Local, tmp_path: Path) -> None:
+        """`task done` leaves the last task in-review (PR not yet merged) -- must still block advance."""
+        local.done(local.t1)
+        local.done(local.t2)
+        local.tasks.update_status(local.t3, "in-review")
+        self._write_state(tmp_path, "03")
+        advance_stage_if_complete(tmp_path, local.tasks)
+        assert self._state(tmp_path)["stage"] == "03"
+
     def test_noop_when_not_in_stage_03(self, local: _Local, tmp_path: Path) -> None:
         local.done(local.t1)
         local.done(local.t2)
