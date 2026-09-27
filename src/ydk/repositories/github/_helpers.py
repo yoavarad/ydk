@@ -25,3 +25,16 @@ def check_result(result: subprocess.CompletedProcess[str], action: str) -> None:
 def label_names(raw_labels: list[dict]) -> list[str]:
     """Extract label name strings from the gh JSON label objects."""
     return [lbl["name"] for lbl in raw_labels if isinstance(lbl, dict) and "name" in lbl]
+
+
+# Single source of truth for labels YDK relies on. Used by `ydk init`, `ydk task
+# create-batch`, and `ydk doctor` so the three never disagree about names/colors again.
+REQUIRED_LABELS: list[tuple[str, str, str]] = [
+    ("epic", "0052cc", "Epic-level work item"),
+    ("story", "2ea44f", "Story-level work item"),
+    ("task", "fbca04", "Task-level work item"),
+    ("in-progress", "6f42c1", "Work actively in progress"),
+    ("in-review", "1d76db", "Work in code review"),
+    ("blocked-by-code", "d73a4a", "Blocked by unmerged code dependency"),
+    ("blocked-by-decision", "e99695", "Blocked pending a decision"),
+]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -171,6 +172,157 @@ class TestCheckRemoteCli:
         assert result.name == "Remote CLI"
 
 
+class TestGhSkipReason:
+    def test_no_config_falls_back_to_github_like_check_remote_cli(self, tmp_path: Path) -> None:
+        """When config fails to load, gh checks should agree with _check_remote_cli's
+        "github" fallback rather than silently skipping."""
+        doc = Doctor(project_root=tmp_path)
+        with patch("ydk.core.doctor.shutil.which", return_value=None):
+            reason = doc._gh_skip_reason()
+        assert reason == "gh not found"  # not "remote is not github"
+
+
+class TestCheckGhAuth:
+    def test_skips_when_remote_not_github(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: local\n")
+        doc = Doctor(project_root=tmp_path)
+        result = doc._check_gh_auth()
+        assert result.severity == CheckSeverity.ok
+        assert "Skipped" in result.message
+
+    def test_skips_when_gh_not_found(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        with patch("ydk.core.doctor.shutil.which", return_value=None):
+            result = doc._check_gh_auth()
+        assert result.severity == CheckSeverity.ok
+        assert "Skipped" in result.message
+
+    def test_ok_when_authenticated(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        with (
+            patch("ydk.core.doctor.shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.core.doctor.subprocess.run", return_value=MagicMock(returncode=0, stdout="", stderr="")),
+        ):
+            result = doc._check_gh_auth()
+        assert result.severity == CheckSeverity.ok
+
+    def test_error_when_not_authenticated(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        with (
+            patch("ydk.core.doctor.shutil.which", return_value="/usr/bin/gh"),
+            patch(
+                "ydk.core.doctor.subprocess.run",
+                return_value=MagicMock(returncode=1, stdout="", stderr="not logged in"),
+            ),
+        ):
+            result = doc._check_gh_auth()
+        assert result.severity == CheckSeverity.error
+        assert "not logged in" in (result.detail or "")
+
+
+class TestCheckGhRepo:
+    def test_skips_when_remote_not_github(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: local\n")
+        doc = Doctor(project_root=tmp_path)
+        result = doc._check_gh_repo()
+        assert result.severity == CheckSeverity.ok
+        assert "Skipped" in result.message
+
+    def test_error_when_repo_not_accessible(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        with (
+            patch("ydk.core.doctor.shutil.which", return_value="/usr/bin/gh"),
+            patch(
+                "ydk.core.doctor.subprocess.run",
+                return_value=MagicMock(returncode=1, stdout="", stderr="no such repo"),
+            ),
+        ):
+            result = doc._check_gh_repo()
+        assert result.severity == CheckSeverity.error
+
+    def test_warning_when_issues_disabled(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        stdout = '{"nameWithOwner": "acme/repo", "hasIssuesEnabled": false}'
+        with (
+            patch("ydk.core.doctor.shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.core.doctor.subprocess.run", return_value=MagicMock(returncode=0, stdout=stdout, stderr="")),
+        ):
+            result = doc._check_gh_repo()
+        assert result.severity == CheckSeverity.warning
+
+    def test_ok_when_accessible_and_issues_enabled(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        stdout = '{"nameWithOwner": "acme/repo", "hasIssuesEnabled": true}'
+        with (
+            patch("ydk.core.doctor.shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.core.doctor.subprocess.run", return_value=MagicMock(returncode=0, stdout=stdout, stderr="")),
+        ):
+            result = doc._check_gh_repo()
+        assert result.severity == CheckSeverity.ok
+
+
+class TestCheckGhLabels:
+    def test_skips_when_remote_not_github(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: local\n")
+        doc = Doctor(project_root=tmp_path)
+        result = doc._check_gh_labels()
+        assert result.severity == CheckSeverity.ok
+        assert "Skipped" in result.message
+
+    def test_warning_when_labels_missing(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        stdout = '[{"name": "epic"}, {"name": "task"}]'
+        with (
+            patch("ydk.core.doctor.shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.core.doctor.subprocess.run", return_value=MagicMock(returncode=0, stdout=stdout, stderr="")),
+        ):
+            result = doc._check_gh_labels()
+        assert result.severity == CheckSeverity.warning
+        assert "story" in (result.detail or "")
+
+    def test_ok_when_all_labels_present(self, tmp_path: Path) -> None:
+        from ydk.repositories.github._helpers import REQUIRED_LABELS
+
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\n  remote: github\n")
+        doc = Doctor(project_root=tmp_path)
+        stdout = json.dumps([{"name": name} for name, _color, _description in REQUIRED_LABELS])
+        with (
+            patch("ydk.core.doctor.shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.core.doctor.subprocess.run", return_value=MagicMock(returncode=0, stdout=stdout, stderr="")),
+        ):
+            result = doc._check_gh_labels()
+        assert result.severity == CheckSeverity.ok
+
+
 class TestRunAll:
     def test_returns_results_for_all_checks(self, tmp_path: Path) -> None:
         subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
@@ -179,7 +331,7 @@ class TestRunAll:
         (config_dir / "config.yaml").write_text("project:\n  name: test\n")
         doc = Doctor(project_root=tmp_path)
         results = doc.run_all()
-        assert len(results) == 13
+        assert len(results) == 16
         assert all(isinstance(r, CheckResult) for r in results)
 
 

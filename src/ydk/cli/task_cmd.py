@@ -422,19 +422,12 @@ def _validate_batch_yaml(
 
 def _ensure_labels(repo: object) -> None:
     """Ensure required labels exist. Works for GitHub repos that have add_label."""
-    required_labels = {
-        "epic": "7057ff",
-        "story": "0075ca",
-        "task": "008672",
-        "blocked-by-code": "d73a4a",
-        "blocked-by-decision": "fbca04",
-    }
     # Only GitHub repos support label creation via gh CLI
     try:
-        from ydk.repositories.github._helpers import run_gh
+        from ydk.repositories.github._helpers import REQUIRED_LABELS, run_gh
 
-        for label, color in required_labels.items():
-            run_gh(["gh", "label", "create", label, "--color", color, "--force"])
+        for label, color, description in REQUIRED_LABELS:
+            run_gh(["gh", "label", "create", label, "--color", color, "--description", description, "--force"])
     except ImportError:
         pass  # Local repos don't need label creation
 
