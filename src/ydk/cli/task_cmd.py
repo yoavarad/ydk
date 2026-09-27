@@ -2198,3 +2198,60 @@ def scaffold_batch(
     console.print(f"  {len(epics)} epic(s), {len(stories)} story(ies), {len(tasks)} task(s)")
     console.print(f"  Covering {len(items)} TODO(s)")
     console.print("  [bold]T-FINAL[/bold] added — depends on all tasks, verifies zero xfail")
+
+
+_MERGE_DRIVER_NAME = "ydk-bookkeeping"
+_MERGE_DRIVER_PATTERNS = (".ydk/manifest.yaml", ".ydk/tasks/*.md")
+
+
+@task_app.command("merge-driver")
+def merge_driver(
+    base: str = typer.Argument(..., help="Ancestor version (%O)"),
+    ours: str = typer.Argument(..., help="Current version (%A); merged result is written here"),
+    theirs: str = typer.Argument(..., help="Other branch version (%B)"),
+    path: str = typer.Argument(..., help="Repository path of the file (%P)"),
+) -> None:
+    """Git merge driver: deterministically merge YDK bookkeeping files."""
+    import yaml as _yaml
+
+    from ydk.repositories.local.bookkeeping_merge import merge_text
+
+    try:
+        merged = merge_text(
+            path,
+            Path(base).read_text(encoding="utf-8"),
+            Path(ours).read_text(encoding="utf-8"),
+            Path(theirs).read_text(encoding="utf-8"),
+        )
+    except (ValueError, _yaml.YAMLError) as exc:
+        typer.echo(f"ydk merge-driver: cannot merge {path}: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    Path(ours).write_text(merged, encoding="utf-8", newline="\n")
+
+
+@task_app.command("install-merge-driver")
+def install_merge_driver(
+    command: str = typer.Option("ydk", "--command", help="Command prefix used to invoke ydk (e.g. 'uv run ydk')"),
+) -> None:
+    """Register the bookkeeping merge driver in git config and .gitattributes."""
+    import subprocess
+
+    driver = f"{command} task merge-driver %O %A %B %P"
+    for key, value in (
+        (f"merge.{_MERGE_DRIVER_NAME}.name", "YDK bookkeeping merge"),
+        (f"merge.{_MERGE_DRIVER_NAME}.driver", driver),
+    ):
+        result = subprocess.run(["git", "config", key, value], capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            typer.echo(f"Error: git config failed: {result.stderr.strip()}", err=True)
+            raise typer.Exit(1)
+
+    attrs_path = Path(".gitattributes")
+    existing = attrs_path.read_text(encoding="utf-8") if attrs_path.exists() else ""
+    lines = existing.splitlines()
+    missing = [f"{p} merge={_MERGE_DRIVER_NAME}" for p in _MERGE_DRIVER_PATTERNS]
+    missing = [line for line in missing if line not in lines]
+    if missing:
+        prefix = existing if not existing or existing.endswith("\n") else existing + "\n"
+        attrs_path.write_text(prefix + "\n".join(missing) + "\n", encoding="utf-8", newline="\n")
+    typer.echo(f"Merge driver '{_MERGE_DRIVER_NAME}' installed: {driver}")

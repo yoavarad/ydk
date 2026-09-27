@@ -1,0 +1,2 @@
+.ydk/manifest.yaml merge=ydk-bookkeeping
+.ydk/tasks/*.md merge=ydk-bookkeeping

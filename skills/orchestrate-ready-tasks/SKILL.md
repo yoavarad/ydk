@@ -78,9 +78,13 @@ This is a documented follow-up, not automatic — no merge-watching, no auto-mer
 
 Root cause: `ydk task start`/`ydk task done` write shared bookkeeping (`.ydk/manifest.yaml`, `.ydk/tasks/<id>.md`) into each task's own branch. Since every parallel task branched off the same `origin/main`, every PR in the batch carries a diff to the same shared files — whichever merges first wins, the rest conflict against the new main tip. This is accepted as an expected side effect of running tasks in parallel, not something the spawn step tries to avoid up front.
 
-For each conflicted PR, spawn one `ydk-conflict-fixer` agent (scoped to avoid touching any other conflicted PR's branch/worktree in parallel with a sibling fixer). Note: a deterministic, no-LLM manifest-merge tool that would remove the need for this spawn entirely is tracked in task #229 — until that lands, this stays an LLM fixer:
-1. `git fetch origin main`, then `git merge origin/main` into the PR's branch inside its worktree.
-2. Resolve conflicts: on `.ydk/manifest.yaml` / task-status files, keep both sides' updates (don't drop either task's bookkeeping). On actual code, preserve the real intended logic from the PR's own commits.
+**Deterministic path first (no LLM).** The repo's `.gitattributes` routes `.ydk/manifest.yaml` and `.ydk/tasks/*.md` to the `ydk-bookkeeping` git merge driver. Register it once per clone (git config is local, not committed): `uv run ydk task install-merge-driver --command "uv run ydk"`. Then, for each conflicted PR, inside its worktree:
+1. `git fetch origin main`, then `git merge origin/main`. The driver merges bookkeeping automatically: task entries from both sides are kept, a same-task `status` conflict resolves to the most advanced status (done > in-review > in-progress > blocked > open), lists are unioned, `last_*_id` counters take the max, and task-file bodies keep both sides' added lines.
+2. If the merge completes cleanly, re-run tests, push, and re-verify with `gh pr view --json mergeable,mergeStateStatus`. No agent spawn needed.
+
+**LLM fixer only for real code conflicts.** If `git merge` still reports conflicts in non-bookkeeping files, abort it (`git merge --abort`) and spawn one `ydk-conflict-fixer` agent for that PR (scoped to avoid touching any other conflicted PR's branch/worktree in parallel with a sibling fixer):
+1. `git fetch origin main`, then `git merge origin/main` into the PR's branch inside its worktree (bookkeeping files are merged by the driver).
+2. Resolve the remaining code conflicts, preserving the real intended logic from the PR's own commits.
 3. Rebuild and re-run tests to confirm nothing broke.
 4. Commit the merge, push.
 5. Re-verify with `gh pr view --json mergeable,mergeStateStatus` that the PR is now clean.
@@ -89,5 +93,5 @@ For each conflicted PR, spawn one `ydk-conflict-fixer` agent (scoped to avoid to
 
 - **`ydk task done` doesn't auto-commit.** See step 3 above — always commit before running it, always verify the PR diff after.
 - **`ydk task start`/`ydk task quick` default to branching off current HEAD, not a clean main.** Always pass `--base origin/main` explicitly on both commands.
-- **`.ydk/manifest.yaml` conflicts between parallel PRs.** Expected, not a bug to prevent — see the cleanup sub-flow (step 5).
+- **`.ydk/manifest.yaml` conflicts between parallel PRs.** Expected, not a bug to prevent — the `ydk-bookkeeping` merge driver resolves them deterministically once installed; see the cleanup sub-flow (step 5).
 - **`pr-body-validation` verification plugin can replay a stale FAIL.** Its cache key is a hash of `*.py` files project-wide, not the actual plugin input, so it can replay an old failure regardless of current PR content. If a plugin result looks stale/wrong, clear `.ydk/cache/verification/pr-body-validation/` and retry. To skip a genuinely-failing plugin, pass its real plugin name to `--skip-plugin` (e.g. `pr-body-validation`) — not a requirement-key string that appears inside its output (e.g. `screenshot_for_ui` is a requirement key, not the plugin's name, and won't work as a skip target).
