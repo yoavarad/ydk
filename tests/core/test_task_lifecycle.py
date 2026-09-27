@@ -11,6 +11,7 @@ import pytest
 from ydk.core.events import EventBus
 from ydk.core.task_lifecycle import TaskLifecycle
 from ydk.core.verifier import Verifier
+from ydk.models.config import DEFAULT_MODEL_TIERS
 from ydk.models.pm import DependencyStatus, TaskCreate, TaskDetail
 from ydk.models.verification import CheckResult, VerificationReport
 
@@ -151,8 +152,8 @@ def test_done_runs_verifications(
             "task_id": "T-001",
             "config": {
                 "anthropic": {"api_key_env": "ANTHROPIC_API_KEY"},
+                "ai": {"model_tiers": DEFAULT_MODEL_TIERS},
                 "spec_check": {
-                    "model": "us.anthropic.claude-sonnet-4-6",
                     "thresholds": {"architecture": 8},
                 },
             },

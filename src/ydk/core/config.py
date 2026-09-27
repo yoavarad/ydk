@@ -20,7 +20,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "hooks": {"pre_push": {"spec_check": False, "task_check": False}},
     "spec_check": {
-        "model": "us.anthropic.claude-sonnet-4-6",
         "timeout": 60,
         "global_timeout": 120,
         "concurrency": 10,
@@ -108,7 +107,7 @@ def _set_nested(data: dict[str, Any], key_path: str, value: str | int | float | 
 def get_config_value(
     config: dict[str, Any], key_path: str
 ) -> str | int | float | bool | dict[str, Any] | list[Any] | None:
-    """Get nested value via dot notation: 'spec_check.model'"""
+    """Get nested value via dot notation: 'spec_check.timeout'"""
     keys = key_path.split(".")
     current: Any = config
     for key in keys:

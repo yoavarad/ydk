@@ -2,7 +2,7 @@ id: N07
 name: Information Density
 group: quality
 threshold: 7
-model_tier: smart
+model_tier: review
 
 tools:
   - name: scan_filler_phrases

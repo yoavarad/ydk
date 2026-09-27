@@ -99,3 +99,15 @@ def test_task_tdd_rejects_invalid() -> None:
     """ydk task tdd rejects invalid stage names."""
     result = runner.invoke(app, ["task", "tdd", "T-001", "--stage", "purple"])
     assert result.exit_code != 0
+
+
+def test_task_done_has_no_silent_auto_extract() -> None:
+    """The swallowed auto-extract hook in `task done` was removed; `ydk memory extract` is the explicit path."""
+    import inspect
+
+    import ydk.cli.task_cmd as task_cmd
+
+    assert not hasattr(task_cmd, "_find_session_jsonl")
+    source = inspect.getsource(task_cmd.done)
+    assert "extract" not in source
+    assert "except (ImportError, Exception)" not in source

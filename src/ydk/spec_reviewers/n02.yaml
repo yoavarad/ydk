@@ -2,7 +2,7 @@ id: N02
 name: Success Criteria
 group: completeness
 threshold: 8
-model_tier: smart
+model_tier: review
 
 tools: []
 

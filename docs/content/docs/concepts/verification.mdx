@@ -116,13 +116,13 @@ Every reviewer's system prompt requires the LLM to quote exact text from the spe
 
 ### Model Tiers
 
-Reviewers declare a `model_tier` (not a model ID). The tier maps to a Bedrock model via `ai.model_tiers` in config:
+Reviewers declare a `model_tier` (not a model ID). The tier maps to a first-party Anthropic model ID via `ai.model_tiers` in config (defaults live in `DEFAULT_MODEL_TIERS`, `src/ydk/models/config.py`):
 
 | Tier | Default | Purpose |
 |---|---|---|
-| `smart` | Sonnet 4 | Most reviewers |
-| `fast` | Sonnet 4 | Lightweight reviewers |
-| `reasoning` | Opus | Complex reasoning tasks |
+| `fast` | `claude-haiku-4-5` | Lightweight LLM calls (memory extraction, complexity scoring) |
+| `review` | `claude-sonnet-5` | Spec reviewers, ai-code-review, spec-alignment |
+| `deep` | `claude-opus-5` | Complex reasoning tasks |
 
 ### Structured Report Output
 

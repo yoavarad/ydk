@@ -5,21 +5,15 @@ from __future__ import annotations
 import json
 import textwrap
 from pathlib import Path  # noqa: TC003
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ydk.core.reviewer import (
-    ReviewerAgent,
     ReviewerConfig,
-    ReviewResult,
     _compile_tool,
     load_all_reviewers,
     load_reviewer,
-    run_all_sync,
 )
-from ydk.core.reviewer_engine import ReviewVerdict
 
 
 def _dummy_tool(text: str) -> str:
@@ -145,6 +139,7 @@ class TestLoadReviewer:
         config = load_reviewer(yaml_file)
         assert config.threshold == 8
         assert config.group == "quality"
+        assert config.model_tier == "review"
 
 
 class TestLoadAllReviewers:
@@ -243,11 +238,6 @@ class TestLoadBuiltInReviewers:
                 assert isinstance(parsed, (list, dict)), f"{c.id}/{tool.__name__} returned non-JSON"
 
 
-# ---------------------------------------------------------------------------
-# ReviewerAgent
-# ---------------------------------------------------------------------------
-
-
 class TestReviewerConfig:
     def test_create_config(self) -> None:
         config = _make_config()
@@ -261,162 +251,6 @@ class TestReviewerConfig:
         config = _make_config()
         with pytest.raises(AttributeError):
             config.id = "T02"  # type: ignore[misc]
-
-
-class TestReviewerAgentToolsOnly:
-    """Test the ReviewerAgent in tools-only mode (no LLM)."""
-
-    def test_tools_only_with_findings(self) -> None:
-        config = _make_config(tools=[_dummy_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-        result = agent._run_tools_only("some spec content")
-        assert result.reviewer_id == "T01"
-        assert result.score == 7  # 1 finding -> score 7
-        assert len(result.findings) == 1
-        assert "test finding" in result.findings[0]["text"]
-
-    def test_tools_only_no_findings(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-        result = agent._run_tools_only("clean spec content")
-        assert result.score == 10
-        assert result.passed is True
-        assert len(result.findings) == 0
-
-    def test_tools_only_many_findings(self) -> None:
-        def many_findings_tool(text: str) -> str:
-            return json.dumps([{"line": i, "text": f"issue {i}", "category": "test"} for i in range(15)])
-
-        config = _make_config(tools=[many_findings_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-        result = agent._run_tools_only("spec with many issues")
-        assert result.score == 2  # 15 findings -> score 2
-        assert result.passed is False
-
-    def test_tools_only_falls_back_on_tool_error(self) -> None:
-        def broken_tool(text: str) -> str:
-            raise RuntimeError("tool crashed")
-
-        config = _make_config(tools=[broken_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-        result = agent._run_tools_only("spec content")
-        assert result.score == 10  # No findings collected
-        assert len(result.findings) == 0
-
-
-class TestRunWithLlm:
-    """Test _run_with_llm calls the Messages API with structured output."""
-
-    def _mock_parsed_response(self, **overrides: object) -> SimpleNamespace:
-        data: dict[str, object] = {
-            "score": 9,
-            "reasoning": "Well written spec.",
-            "suggestions": ["Minor improvement possible."],
-            "findings": [{"line": 5, "text": "minor issue", "issue": "could be clearer"}],
-        }
-        data.update(overrides)
-        return SimpleNamespace(stop_reason="end_turn", parsed_output=ReviewVerdict.model_validate(data))
-
-    def test_uses_structured_output_without_sampling_or_tool_choice(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-5"})
-
-        with patch("anthropic.Anthropic") as mock_anthropic_cls:
-            mock_client = MagicMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.parse.return_value = self._mock_parsed_response()
-
-            result = agent._run_with_llm("some spec content")
-
-        call_kwargs = mock_client.messages.parse.call_args[1]
-        assert call_kwargs["output_format"] is ReviewVerdict
-        assert call_kwargs["model"] == "claude-sonnet-5"
-        for absent in ("temperature", "tool_choice", "tools"):
-            assert absent not in call_kwargs
-        assert result.score == 9
-        assert result.reasoning == "Well written spec."
-        assert result.suggestions == ["Minor improvement possible."]
-        assert result.findings == [{"line": 5, "text": "minor issue", "issue": "could be clearer"}]
-
-    def test_threshold_applied_to_parsed_score(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-5"})
-
-        with patch("anthropic.Anthropic") as mock_anthropic_cls:
-            mock_client = MagicMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.parse.return_value = self._mock_parsed_response(score=6, reasoning="Needs work.")
-
-            result = agent._run_with_llm("some spec content")
-
-        assert result.reviewer_id == "T01"
-        assert result.score == 6
-        assert result.passed is False  # 6 < threshold 8
-
-    def test_missing_structured_output_raises(self) -> None:
-        from ydk.core.claude_client import ClaudeAPIError
-
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"model_id": "claude-sonnet-5"})
-
-        with patch("anthropic.Anthropic") as mock_anthropic_cls:
-            mock_client = MagicMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.parse.return_value = SimpleNamespace(stop_reason="refusal", parsed_output=None)
-
-            with pytest.raises(ClaudeAPIError, match="no structured output"):
-                agent._run_with_llm("some spec content")
-
-
-class TestReviewerAgentGracefulDegradation:
-    """Test that the agent falls back to tools-only when LLM is unavailable."""
-
-    def test_review_falls_back_to_tools_on_import_error(self) -> None:
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-
-        with patch.object(agent, "_run_with_llm", side_effect=ImportError("no strands")):
-            result = agent.review("spec content")
-
-        assert result.score == 10
-        assert "Deterministic scan" in result.reasoning
-
-    def test_review_does_not_hide_claude_api_errors(self) -> None:
-        from ydk.core.claude_client import ClaudeAPIError
-
-        config = _make_config(tools=[_dummy_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-
-        with (
-            patch.object(agent, "_run_with_llm", side_effect=ClaudeAPIError("invalid or missing API key")),
-            pytest.raises(ClaudeAPIError),
-        ):
-            agent.review("spec content")
-
-    def test_run_with_llm_uses_configured_api_key_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from ydk.core.claude_client import MissingCredentialsError
-
-        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
-        config = _make_config(tools=[_empty_tool])
-        agent = ReviewerAgent(config=config, model_config={"api_key_env": "YDK_TEST_MISSING_KEY"})
-
-        with pytest.raises(MissingCredentialsError):
-            agent._run_with_llm("spec content")
-
-    def test_review_falls_back_on_credential_error(self) -> None:
-        config = _make_config(tools=[_dummy_tool])
-        agent = ReviewerAgent(config=config, model_config={})
-
-        with patch.object(agent, "_run_with_llm", side_effect=RuntimeError("no credentials")):
-            result = agent.review("spec content")
-
-        assert result.reviewer_id == "T01"
-        assert result.score == 7  # 1 finding from dummy tool
-
-
-# ---------------------------------------------------------------------------
-# run_all_sync
-# ---------------------------------------------------------------------------
 
 
 class TestCompileToolStrandsWrapping:
@@ -456,115 +290,19 @@ class TestCompileToolStrandsWrapping:
         assert fn.tool_name == "scanner"
 
 
-class TestOutputCapture:
-    """Verify that concurrent reviewer output is captured, not printed."""
+class TestModelTiers:
+    def test_built_in_reviewers_use_a_configured_tier(self) -> None:
+        from ydk.models.config import DEFAULT_MODEL_TIERS
+        from ydk.spec_reviewers import REVIEWERS_DIR
 
-    def test_run_reviewer_captures_stdout(self) -> None:
-        """run_reviewer should capture agent stdout so parallel runs don't garble."""
-        import io
-        import sys
-
-        from ydk.core.reviewer import run_reviewer
-
-        config = _make_config(tools=[_empty_tool])
-
-        # Patch _run_with_llm to print to stdout (simulating Strands streaming)
-        def _noisy_review(self: object, spec_content: str) -> ReviewResult:
-            print("STREAMING OUTPUT THAT SHOULD BE CAPTURED")
-            return ReviewResult(reviewer_id="T01", name="Test Reviewer", score=10, passed=True, reasoning="Good.")
-
-        captured_terminal = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = captured_terminal
-        try:
-            with patch.object(ReviewerAgent, "review", _noisy_review):
-                result = run_reviewer(config, "spec content", {})
-        finally:
-            sys.stdout = old_stdout
-
-        # The noisy output should NOT have reached the real terminal
-        assert "STREAMING OUTPUT" not in captured_terminal.getvalue()
-        # But it should be in debug_output
-        assert "STREAMING OUTPUT" in result.debug_output
+        reviewers = load_all_reviewers(REVIEWERS_DIR)
+        assert reviewers
+        assert {r.model_tier for r in reviewers} <= set(DEFAULT_MODEL_TIERS)
 
 
-class TestRunAllSync:
-    def test_runs_all_reviewers(self, tmp_path: Path) -> None:
-        for i in range(1, 3):
-            (tmp_path / f"r{i:02d}.yaml").write_text(
-                textwrap.dedent(f"""\
-                    id: R{i:02d}
-                    name: Reviewer {i}
-                    group: quality
-                    threshold: 8
-                    tools:
-                      - name: noop
-                        description: No-op tool
-                        code: |
-                          def noop(text: str) -> str:
-                              import json
-                              return json.dumps([])
-                    system_prompt: Review criterion {i}.
-                """)
-            )
+class TestPerReviewerFallbackRemoved:
+    def test_unreachable_per_reviewer_llm_path_is_gone(self) -> None:
+        import ydk.core.reviewer as reviewer_mod
 
-        with patch.object(ReviewerAgent, "review") as mock_review:
-            mock_review.side_effect = [
-                ReviewResult(reviewer_id="R01", name="Reviewer 1", score=10, passed=True, reasoning="Good."),
-                ReviewResult(reviewer_id="R02", name="Reviewer 2", score=5, passed=False, reasoning="Issues."),
-            ]
-            results = run_all_sync("spec content", tmp_path)
-
-        assert len(results) == 2
-        assert results[0].reviewer_id == "R01"
-        assert results[1].reviewer_id == "R02"
-
-    def test_handles_reviewer_exceptions(self, tmp_path: Path) -> None:
-        (tmp_path / "r01.yaml").write_text(
-            textwrap.dedent("""\
-                id: R01
-                name: Failing
-                group: quality
-                threshold: 8
-                tools: []
-                system_prompt: Review.
-            """)
-        )
-
-        with patch.object(ReviewerAgent, "review", side_effect=RuntimeError("crash")):
-            results = run_all_sync("spec content", tmp_path)
-
-        assert len(results) == 1
-        assert results[0].score == 0
-        assert results[0].passed is False
-
-    def test_rubric_filter(self, tmp_path: Path) -> None:
-        (tmp_path / "a.yaml").write_text(
-            textwrap.dedent("""\
-                id: A01
-                name: A
-                group: completeness
-                threshold: 8
-                tools: []
-                system_prompt: Review.
-            """)
-        )
-        (tmp_path / "b.yaml").write_text(
-            textwrap.dedent("""\
-                id: B01
-                name: B
-                group: quality
-                threshold: 8
-                tools: []
-                system_prompt: Review.
-            """)
-        )
-
-        with patch.object(ReviewerAgent, "review") as mock_review:
-            mock_review.return_value = ReviewResult(
-                reviewer_id="A01", name="A", score=10, passed=True, reasoning="Good."
-            )
-            results = run_all_sync("spec", tmp_path, rubric_filter="completeness")
-
-        assert len(results) == 1
-        assert results[0].reviewer_id == "A01"
+        for name in ("ReviewerAgent", "run_reviewer", "run_all_sync"):
+            assert not hasattr(reviewer_mod, name), name

@@ -247,7 +247,7 @@ class TestToolFindingsInjection:
             tools=[mock_tool],
             threshold=8,
             group="quality",
-            model_tier="smart",
+            model_tier="review",
         )
 
         # Simulate what _run_cached_fanout does: run tools, build dicts
@@ -297,7 +297,7 @@ class TestToolFindingsInjection:
             tools=[empty_tool],
             threshold=8,
             group="quality",
-            model_tier="smart",
+            model_tier="review",
         )
 
         findings: list[dict[str, object]] = []
@@ -380,14 +380,16 @@ class TestRunCachedFanoutIntegration:
                 tools=[noisy_tool],
                 threshold=8,
                 group="quality",
-                model_tier="smart",
+                model_tier="review",
             ),
         ]
 
         captured_prompts: list[str] = []
+        captured_tiers: list[dict] = []
 
         def capture_run_all(*, spec_content: str, reviewers: list, model_tiers: dict, max_workers: int) -> list:
             captured_prompts.extend(rev["system_prompt"] for rev in reviewers)
+            captured_tiers.append(model_tiers)
             return [
                 {
                     "reviewer_id": "N08",
@@ -408,10 +410,15 @@ class TestRunCachedFanoutIntegration:
             config = MagicMock()
             config.__class__ = YdkConfig
             config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
-            config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
+            config.ai.model_tiers = {"review": "claude-review-override"}
             config.spec_check.concurrency = 4
 
             results, det_findings = _run_cached_fanout("# Test spec", config, reviewers, verbose=False)
+
+        # Partial tier override is merged over the built-in defaults
+        from ydk.models.config import DEFAULT_MODEL_TIERS
+
+        assert captured_tiers == [{**DEFAULT_MODEL_TIERS, "review": "claude-review-override"}]
 
         # Issue 1: Tool findings were injected into the prompt
         assert len(captured_prompts) == 1
@@ -443,7 +450,7 @@ class TestRunCachedFanoutIntegration:
                 tools=[],  # No tools
                 threshold=8,
                 group="completeness",
-                model_tier="smart",
+                model_tier="review",
             ),
         ]
 
@@ -471,7 +478,7 @@ class TestRunCachedFanoutIntegration:
             config = MagicMock()
             config.__class__ = YdkConfig
             config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
-            config.ai.model_tiers = {"smart": "us.anthropic.claude-sonnet-4-6-v1:0"}
+            config.ai.model_tiers = {"review": "claude-review-override"}
             config.spec_check.concurrency = 4
 
             results, det_findings = _run_cached_fanout("# Test spec", config, reviewers, verbose=False)

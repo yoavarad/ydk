@@ -905,55 +905,6 @@ def done(
 
     advance_stage_if_complete(Path("."), _get_repo())
 
-    # Auto-extract memories if configured
-    try:
-        from ydk.core.config import load_config
-
-        cfg = load_config()
-        if cfg.memory.auto_extract:
-            from ydk.cli.memory_cmd import _get_engine, _get_extractor
-
-            engine = _get_engine(cfg)
-            extractor = _get_extractor()
-
-            # Try session_id from task metadata first, then fallback
-            jsonl_path = _find_session_jsonl(task_id)
-            if jsonl_path is None:
-                jsonl_path = Path(f".ydk/sessions/{task_id}.jsonl")
-            if jsonl_path.is_file():
-                memories = extractor.extract(task_id=task_id, jsonl_path=jsonl_path)  # ty: ignore[unresolved-attribute]  # MemoryExtractor is optional dep
-                if memories:
-                    engine.store(memories)  # ty: ignore[unresolved-attribute]  # MemoryEngine is optional dep
-                    typer.echo(f"Memory: extracted {len(memories)} learnings from {task_id}")
-    except (ImportError, Exception):
-        # Memory is optional — don't break task done if it fails
-        pass
-
-
-def _find_session_jsonl(task_id: str) -> Path | None:
-    """Find Claude Code session JSONL for a task.
-
-    Searches for session_id in task comments, then finds the
-    corresponding JSONL file in ~/.claude/projects/.
-    """
-    try:
-        repo = _get_repo()
-        task = repo.get_task(task_id)
-
-        # Check if session_id is stored
-        session_id = getattr(task, "session_id", None)
-        if not session_id:
-            return None
-
-        # Glob search for JSONL in Claude Code projects
-        claude_projects = Path.home() / ".claude" / "projects"
-        if claude_projects.is_dir():
-            for jsonl in claude_projects.rglob(f"{session_id}.jsonl"):
-                return jsonl
-    except Exception:
-        pass
-    return None
-
 
 @task_app.command("add-gate")
 def add_gate(
