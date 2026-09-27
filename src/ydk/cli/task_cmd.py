@@ -629,6 +629,63 @@ def create_batch(
         raise typer.Exit(code=1)
 
 
+@task_app.command("migrate")
+def migrate(
+    ctx: typer.Context,
+    to: str = typer.Option(..., "--to", help="Target backend (only 'github' is supported)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the migration plan without creating anything"),
+) -> None:
+    """Migrate local epics, stories and tasks to GitHub issues.
+
+    Re-runnable: IDs already in ``.ydk/batch-mapping.json`` are skipped, and the
+    mapping (``T-xxxx -> #N``) is updated after each created issue. Items whose
+    follow-up calls failed are tracked in ``.ydk/migrate-pending.json`` and
+    finalized on the next run.
+    """
+    from rich.table import Table
+
+    from ydk.core.migrate import migrate_to_github
+    from ydk.repositories.github.epics import GitHubEpicRepository
+    from ydk.repositories.github.stories import GitHubStoryRepository
+    from ydk.repositories.github.tasks import GitHubTaskRepository
+
+    if to != "github":
+        typer.echo(f"Error: unsupported target {to!r}; only 'github' is supported.", err=True)
+        raise typer.Exit(code=1)
+
+    root = Path(".ydk")
+    task_repo = GitHubTaskRepository()
+    if not dry_run:
+        _ensure_labels(task_repo)
+    try:
+        plan = migrate_to_github(
+            root,
+            root / "batch-mapping.json",
+            epic_repo=GitHubEpicRepository(),
+            story_repo=GitHubStoryRepository(),
+            task_repo=task_repo,
+            dry_run=dry_run,
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}\nProgress is saved in .ydk/batch-mapping.json; re-run to resume.", err=True)
+        raise typer.Exit(code=1) from None
+
+    rows = [
+        {"type": p.kind, "local_id": p.local_id, "title": p.title, "action": p.action, "id": p.target} for p in plan
+    ]
+    if format_or_echo(ctx, rows):
+        return
+
+    table = Table(title="Migration plan (dry run)" if dry_run else "Migration results")
+    for column in ("Type", "Local ID", "Title", "Action", "GitHub"):
+        table.add_column(column)
+    for row in rows:
+        table.add_row(row["type"], row["local_id"], row["title"], row["action"], row["id"])
+    console.print(table)
+    if not dry_run:
+        console.print("Set project.remote: github in .ydk/config.yaml to switch backends.")
+
+
 def _serialize_deps_for_update(
     deps: list[str | Dependency],
 ) -> list[str | dict[str, str]]:
