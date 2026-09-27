@@ -70,9 +70,7 @@ Higher provenance contributes to a higher memory score, making the memory more l
 
 ## When Extraction Runs
 
-- **Automatically:** After `ydk task done` when `memory.auto_extract: true` in config. The system looks for the session JSONL at `.ydk/sessions/<task-id>.jsonl`.
-
-- **Manually:** `ydk memory extract T-a1b2c3d4 --jsonl /path/to/session.jsonl` for cases where the JSONL is saved elsewhere or auto-extract was disabled.
+- **Explicitly:** `ydk memory extract T-a1b2c3d4` reads the session JSONL at `.ydk/sessions/<task-id>.jsonl`; pass `--jsonl /path/to/session.jsonl` when it is saved elsewhere. `ydk task done` does not extract automatically.
 
 ## Contradiction Detection on Write
 

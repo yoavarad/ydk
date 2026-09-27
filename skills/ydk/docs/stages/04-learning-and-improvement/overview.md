@@ -102,13 +102,12 @@ ydk memory bootstrap T-xxx    → Assemble context for a new task automatically
 
 ## Automatic Integration
 
-When configured (`memory.auto_bootstrap: true` and `memory.auto_extract: true`):
+When configured (`memory.auto_bootstrap: true`):
 
 - `ydk task start` automatically bootstraps relevant memories for the new task (using hybrid search with scoring)
-- `ydk task done` automatically extracts learnings from the completed task (including abandoned approaches)
 - Contradiction detection runs automatically on every memory write
 
-This means the learning loop runs without explicit invocation — agents benefit from past knowledge and contribute new knowledge as a side effect of normal task execution.
+Extraction is explicit: run `ydk memory extract <task-id>` after a task to capture its learnings (including abandoned approaches). `ydk task done` does not extract.
 
 ## Aspects
 
