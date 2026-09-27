@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -14,6 +13,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from ydk.core.claude_client import ClaudeAPIError
 from ydk.core.component_checker import ComponentChecker
 from ydk.core.component_linker import ComponentLinker
 from ydk.core.component_registry import ComponentRegistry
@@ -136,7 +136,7 @@ def _run_reviewer_agents(
         typer.echo("  [fallback] anthropic not available, using per-reviewer path")
 
     model_config: dict[str, Any] = {
-        "api_key": os.getenv(config.anthropic.api_key_env),
+        "api_key_env": config.anthropic.api_key_env,
         "model_id": config.spec_check.model,
     }
 
@@ -231,7 +231,7 @@ def _run_cached_fanout(
         )
 
     # Create engine and run
-    engine = ReviewerEngine(api_key=os.getenv(config.anthropic.api_key_env))
+    engine = ReviewerEngine(api_key_env=config.anthropic.api_key_env)
 
     model_tiers = config.ai.model_tiers
 
@@ -915,6 +915,9 @@ def verify(
                 rubric_filter=rubric,
                 verbose=verbose,
             )
+        except ClaudeAPIError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
         except Exception as exc:
             if verbose:
                 console.print(f"[yellow]Reviewer agents failed:[/yellow] {exc}")

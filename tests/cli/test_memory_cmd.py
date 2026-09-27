@@ -163,8 +163,15 @@ def test_memory_audit(mock_config: MagicMock) -> None:
 
 
 @patch("ydk.repositories.factory.get_task_repository")
-def test_memory_retrospective(mock_repo_factory: MagicMock) -> None:
+def test_memory_retrospective(mock_repo_factory: MagicMock, tmp_path: Path, monkeypatch: object) -> None:
     """ydk memory retrospective exits 0."""
+    from types import SimpleNamespace
+
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    client = MagicMock()
+    client.messages.create.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text='{"patterns": ["p"]}')], stop_reason="end_turn"
+    )
     mock_repo = MagicMock()
     task = MagicMock()
     task.id = "T-001"
@@ -173,6 +180,89 @@ def test_memory_retrospective(mock_repo_factory: MagicMock) -> None:
     task.milestone = None
     mock_repo.list_tasks.return_value = [task]
     mock_repo_factory.return_value = mock_repo
-    result = runner.invoke(app, ["memory", "retrospective"])
+    with patch("anthropic.Anthropic", return_value=client):
+        result = runner.invoke(app, ["memory", "retrospective"])
     assert result.exit_code == 0
     assert "Sprint Retrospective" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Claude API failures surface clearly (mock only the anthropic SDK boundary)
+# ---------------------------------------------------------------------------
+
+
+def _auth_failing_client() -> MagicMock:
+    import anthropic
+    import httpx
+
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    client = MagicMock()
+    client.messages.create.side_effect = anthropic.AuthenticationError(
+        "bad key", response=httpx.Response(401, request=request), body=None
+    )
+    return client
+
+
+def _closed_task_repo() -> MagicMock:
+    repo = MagicMock()
+    task = MagicMock()
+    task.id = "T-001"
+    task.title = "Completed task"
+    task.status = "done"
+    task.milestone = None
+    repo.list_tasks.return_value = [task]
+    return repo
+
+
+@patch("ydk.cli.memory_cmd._get_engine")
+def test_memory_extract_authentication_error_is_clear(
+    mock_get_engine: MagicMock, tmp_path: Path, monkeypatch: object
+) -> None:
+    import json
+
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    mock_get_engine.return_value = _mock_engine()
+    jsonl_file = tmp_path / "session.jsonl"
+    jsonl_file.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "Fix the bug"}}) + "\n")
+
+    with patch("anthropic.Anthropic", return_value=_auth_failing_client()):
+        result = runner.invoke(app, ["memory", "extract", "T-001", "--jsonl", str(jsonl_file)])
+
+    assert result.exit_code == 1
+    assert "invalid or missing API key" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+@patch("ydk.repositories.factory.get_task_repository")
+def test_memory_retrospective_authentication_error_is_clear(
+    mock_repo_factory: MagicMock, tmp_path: Path, monkeypatch: object
+) -> None:
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    mock_repo_factory.return_value = _closed_task_repo()
+
+    with patch("anthropic.Anthropic", return_value=_auth_failing_client()):
+        result = runner.invoke(app, ["memory", "retrospective"])
+
+    assert result.exit_code == 1
+    assert "invalid or missing API key" in result.output
+    assert isinstance(result.exception, SystemExit)
+
+
+@patch("ydk.repositories.factory.get_task_repository")
+def test_memory_retrospective_missing_credentials_reported(
+    mock_repo_factory: MagicMock, tmp_path: Path, monkeypatch: object
+) -> None:
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: t\nanthropic:\n  api_key_env: YDK_TEST_MISSING_KEY\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)  # type: ignore[attr-defined]
+    mock_repo_factory.return_value = _closed_task_repo()
+
+    with patch("anthropic.Anthropic") as mock_cls:
+        result = runner.invoke(app, ["memory", "retrospective"])
+
+    assert result.exit_code == 1
+    assert "YDK_TEST_MISSING_KEY" in result.output
+    mock_cls.assert_not_called()

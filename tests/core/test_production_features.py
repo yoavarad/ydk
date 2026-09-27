@@ -669,3 +669,40 @@ class TestYAMLOutput:
         output = formatter.format(data)
         parsed = yaml.safe_load(output)
         assert parsed == data
+
+
+class TestRetrospectiveClaudeErrors:
+    """Mock only the anthropic SDK boundary."""
+
+    def test_run_llm_retrospective_requests_large_max_tokens(self, tmp_path: Path, monkeypatch: object) -> None:
+        from types import SimpleNamespace
+
+        from ydk.cli.memory_cmd import _run_llm_retrospective
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="{}")], stop_reason="end_turn"
+        )
+
+        with patch("anthropic.Anthropic", return_value=client):
+            _run_llm_retrospective([MagicMock(id="T-001", title="Task 1")], None)
+
+        assert client.messages.create.call_args.kwargs["max_tokens"] == 16000
+
+    def test_run_llm_retrospective_truncated_output_is_error(self, tmp_path: Path, monkeypatch: object) -> None:
+        from types import SimpleNamespace
+
+        import pytest
+
+        from ydk.cli.memory_cmd import _run_llm_retrospective
+        from ydk.core.claude_client import ClaudeAPIError
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text='{"patterns": [')], stop_reason="max_tokens"
+        )
+
+        with patch("anthropic.Anthropic", return_value=client), pytest.raises(ClaudeAPIError, match="max_tokens"):
+            _run_llm_retrospective([MagicMock(id="T-001", title="Task 1")], None)

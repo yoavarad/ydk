@@ -14,9 +14,12 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-import anthropic
+if TYPE_CHECKING:
+    import anthropic
+
+from ydk.core.claude_client import DEFAULT_API_KEY_ENV, ClaudeAPIError, build_client, create_message
 
 logger = logging.getLogger("ydk.reviewer_engine")
 
@@ -55,8 +58,8 @@ REVIEW_TOOL_SPEC: dict[str, Any] = {
 class ReviewerEngine:
     """Runs spec reviewers using the Anthropic Messages API with prompt caching."""
 
-    def __init__(self, api_key: str | None = None):
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=300.0, max_retries=2)
+    def __init__(self, api_key_env: str = DEFAULT_API_KEY_ENV, *, client: anthropic.Anthropic | None = None):
+        self._client = client or build_client(api_key_env, timeout=300.0, max_retries=2)
 
     # ------------------------------------------------------------------
     # System prompt construction
@@ -96,82 +99,63 @@ class ReviewerEngine:
         start = time.monotonic()
         logger.info("Reviewer %s: calling Anthropic (%s)", reviewer_id, model_id)
 
-        try:
-            response = self._client.messages.create(
-                model=model_id,
-                max_tokens=8192,
-                temperature=0.0,
-                system=cast("Any", system_blocks),
-                messages=[
-                    {
-                        "role": "user",
-                        "content": reviewer_prompt,
-                    },
-                ],
-                tools=cast("Any", [REVIEW_TOOL_SPEC]),
-                tool_choice={"type": "tool", "name": "submit_review"},
-            )
+        response = create_message(
+            self._client,
+            model=model_id,
+            max_tokens=8192,
+            temperature=0.0,
+            system=cast("Any", system_blocks),
+            messages=[
+                {
+                    "role": "user",
+                    "content": reviewer_prompt,
+                },
+            ],
+            tools=cast("Any", [REVIEW_TOOL_SPEC]),
+            tool_choice={"type": "tool", "name": "submit_review"},
+        )
 
-            elapsed = time.monotonic() - start
+        elapsed = time.monotonic() - start
 
-            # Log cache metrics
-            usage = response.usage
-            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-            cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
-            input_tokens = getattr(usage, "input_tokens", 0) or 0
-            output_tokens = getattr(usage, "output_tokens", 0) or 0
-            logger.info(
-                "Reviewer %s: done in %.1fs — input=%d, output=%d, cache_read=%d, cache_write=%d",
-                reviewer_id,
-                elapsed,
-                input_tokens,
-                output_tokens,
-                cache_read,
-                cache_write,
-            )
+        # Log cache metrics
+        usage = response.usage
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        input_tokens = getattr(usage, "input_tokens", 0) or 0
+        output_tokens = getattr(usage, "output_tokens", 0) or 0
+        logger.info(
+            "Reviewer %s: done in %.1fs — input=%d, output=%d, cache_read=%d, cache_write=%d",
+            reviewer_id,
+            elapsed,
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_write,
+        )
 
-            # Extract structured data from tool_use block
-            tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
-            if tool_use_block is not None:
-                data = cast("dict[str, Any]", cast("Any", tool_use_block).input)
-                return {
-                    "reviewer_id": reviewer_id,
-                    "score": int(data.get("score", 0)),
-                    "reasoning": str(data.get("reasoning", "")),
-                    "suggestions": [str(s) for s in data.get("suggestions", [])],
-                    "findings": data.get("findings", []),
-                    "elapsed_seconds": elapsed,
-                }
-
-            # No tool_use block found — should not happen with forced tool_choice
-            logger.warning("Reviewer %s: no tool_use block in response", reviewer_id)
+        # Extract structured data from tool_use block
+        tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+        if tool_use_block is not None:
+            data = cast("dict[str, Any]", cast("Any", tool_use_block).input)
             return {
                 "reviewer_id": reviewer_id,
-                "score": 0,
-                "reasoning": "No tool_use block in Anthropic response (unexpected)",
-                "suggestions": [],
-                "findings": [],
+                "score": int(data.get("score", 0)),
+                "reasoning": str(data.get("reasoning", "")),
+                "suggestions": [str(s) for s in data.get("suggestions", [])],
+                "findings": data.get("findings", []),
                 "elapsed_seconds": elapsed,
             }
 
-        except Exception as exc:
-            elapsed = time.monotonic() - start
-            logger.error(
-                "Reviewer %s: FAILED after %.1fs — %s: %s",
-                reviewer_id,
-                elapsed,
-                type(exc).__name__,
-                exc,
-            )
-            return {
-                "reviewer_id": reviewer_id,
-                "score": 0,
-                "passed": False,
-                "reasoning": f"ANTHROPIC ERROR after {elapsed:.1f}s: {type(exc).__name__}: {str(exc)[:200]}",
-                "suggestions": [],
-                "findings": [],
-                "elapsed_seconds": elapsed,
-            }
+        # No tool_use block found — should not happen with forced tool_choice
+        logger.warning("Reviewer %s: no tool_use block in response", reviewer_id)
+        return {
+            "reviewer_id": reviewer_id,
+            "score": 0,
+            "reasoning": "No tool_use block in Anthropic response (unexpected)",
+            "suggestions": [],
+            "findings": [],
+            "elapsed_seconds": elapsed,
+        }
 
     # ------------------------------------------------------------------
     # Orchestration: prime per-tier + fan-out
@@ -268,6 +252,8 @@ class ReviewerEngine:
                             result["name"] = rev["name"]
                             result["passed"] = result.get("score", 0) >= rev.get("threshold", 8)
                             results.append(result)
+                        except ClaudeAPIError:
+                            raise
                         except Exception as exc:
                             results.append(
                                 {
