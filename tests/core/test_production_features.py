@@ -187,6 +187,8 @@ class TestSessionID:
         calls = mock_repo.add_comment.call_args_list
         session_calls = [c for c in calls if "Session: sess-abc123" in c[0][1]]
         assert len(session_calls) == 1
+        # And persisted as a readable field so get_task can return it
+        mock_repo.update_frontmatter.assert_any_call("T-001", {"session_id": "sess-abc123"})
 
     def test_start_without_session_id(
         self,
@@ -201,6 +203,8 @@ class TestSessionID:
         if mock_repo.add_comment.call_count > 0:
             for call in mock_repo.add_comment.call_args_list:
                 assert "Session:" not in call[0][1]
+        for call in mock_repo.update_frontmatter.call_args_list:
+            assert "session_id" not in call[0][1]
 
     def test_session_id_in_task_detail_model(self) -> None:
         """TaskDetail model should accept session_id field."""

@@ -131,6 +131,7 @@ class TaskLifecycle:
         # Store session ID if provided
         if session_id:
             self._repo.add_comment(task_id, f"Session: {session_id}")
+            self._repo.update_frontmatter(task_id, {"session_id": session_id})
 
         # Emit event (async -- doesn't block)
         self._events.emit(TaskStartedEvent(task_id=task_id, summary=summary))

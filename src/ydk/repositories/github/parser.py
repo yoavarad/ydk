@@ -16,7 +16,9 @@ Task issue body format:
 
 Story issue body format:
 
-    **Epic**: E-001
+    **Epic**: #1
+    **Spec refs**: orders.md#entities
+    **Component refs**: order-service
 
     ### Description
     As a trader I want ...
@@ -26,14 +28,22 @@ Story issue body format:
 
 Epic issue body format:
 
+    **Release**: v1.0
+    **Spec refs**: orders.md
+
     ### Description
     The orders epic covers ...
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 
+from pydantic import ValidationError
+
+from ydk.models.gate import Gate, GateStatus, GateType
 from ydk.models.pm import (
     AcceptanceCriterion,
     Dependency,
@@ -45,6 +55,8 @@ from ydk.models.pm import (
     TaskDetail,
     TaskStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Render: model -> markdown
@@ -103,12 +115,74 @@ def render_task_body(task: TaskCreate) -> str:
             else:
                 check = "x" if ac.done else " "
                 lines.append(f"- [{check}] {ac.text}")
+    if task.gates:
+        if lines and lines[-1] != "":
+            lines.append("")
+        lines.append("### Gates")
+        lines.extend(render_gate_line(g) for g in task.gates)
+    return "\n".join(lines)
+
+
+def render_gate_line(gate: Gate) -> str:
+    """Render one gate as a ``### Gates`` bullet.
+
+    ``config`` / ``resolved_at`` are carried in a trailing HTML comment (hidden
+    in the rendered issue) so the gate round-trips losslessly.
+    """
+    line = f"- **{gate.id}** ({gate.type}): {gate.description} [{gate.status}]"
+    meta: dict[str, object] = {}
+    if gate.config:
+        meta["config"] = gate.config
+    if gate.resolved_at:
+        meta["resolved_at"] = gate.resolved_at
+    if meta:
+        # Escape '>' so a value can never close the HTML comment early.
+        encoded = json.dumps(meta, sort_keys=True).replace(">", "\\u003e")
+        line += f" <!-- ydk-gate {encoded} -->"
+    return line
+
+
+def set_body_field(body: str, label: str, value: str) -> str:
+    """Set a ``**Label**: value`` header field, replacing it or adding it if missing.
+
+    Header fields live before the first ``### `` heading. An empty *value*
+    removes the field.
+    """
+    lines = body.splitlines()
+    header_end = next((i for i, line in enumerate(lines) if line.startswith("### ")), len(lines))
+    new_line = f"**{label}**: {value}"
+    last_field = -1
+    for i in range(header_end):
+        m = _FIELD_LINE_RE.match(lines[i])
+        if not m:
+            continue
+        if m.group(1).strip().lower() == label.lower():
+            if value:
+                lines[i] = new_line
+            else:
+                del lines[i]
+            return "\n".join(lines)
+        last_field = i
+    if not value:
+        return body
+    if last_field >= 0:
+        lines.insert(last_field + 1, new_line)
+    elif lines:
+        lines[0:0] = [new_line, ""]
+    else:
+        lines = [new_line]
     return "\n".join(lines)
 
 
 def render_epic_body(epic: EpicCreate) -> str:
     """Render an EpicCreate into markdown body."""
     lines: list[str] = []
+    if epic.release:
+        lines.append(f"**Release**: {epic.release}")
+    if epic.spec_refs:
+        lines.append(f"**Spec refs**: {', '.join(epic.spec_refs)}")
+    if lines:
+        lines.append("")
     if epic.description:
         lines.append("### Description")
         lines.append(epic.description)
@@ -120,6 +194,11 @@ def render_story_body(story: StoryCreate) -> str:
     lines: list[str] = []
     if story.epic_id:
         lines.append(f"**Epic**: {_github_ref(story.epic_id)}")
+    if story.spec_refs:
+        lines.append(f"**Spec refs**: {', '.join(story.spec_refs)}")
+    if story.component_refs:
+        lines.append(f"**Component refs**: {', '.join(story.component_refs)}")
+    if lines:
         lines.append("")
     if story.description:
         lines.append("### Description")
@@ -141,7 +220,12 @@ def render_story_body(story: StoryCreate) -> str:
 # ---------------------------------------------------------------------------
 
 _FIELD_RE = re.compile(r"^\*\*(.+?)\*\*:\s*(.+)$")
+_FIELD_LINE_RE = re.compile(r"^\*\*(.+?)\*\*:(.*)$")
 _AC_RE = re.compile(r"^- \[([ x])] (.+)$")
+_GATE_RE = re.compile(
+    r"^- \*\*(?P<id>.+?)\*\* \((?P<type>[^)]+)\): (?P<desc>.*) \[(?P<status>\w+)\]"
+    r"(?: <!-- ydk-gate (?P<meta>\{.*\}) -->)?$"
+)
 
 
 def _parse_body(body: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -195,6 +279,31 @@ def _parse_acceptance_criteria(text: str) -> list[AcceptanceCriterion]:
     return criteria
 
 
+def _parse_gates(text: str) -> list[Gate]:
+    """Extract gates from a ``### Gates`` section body (see ``render_gate_line``)."""
+    gates: list[Gate] = []
+    for line in text.splitlines():
+        m = _GATE_RE.match(line.strip())
+        if not m:
+            continue
+        try:
+            meta = json.loads(m.group("meta")) if m.group("meta") else {}
+            gates.append(
+                Gate(
+                    id=m.group("id"),
+                    type=GateType(m.group("type")),
+                    description=m.group("desc"),
+                    status=GateStatus(m.group("status")),
+                    config=meta.get("config", {}),
+                    resolved_at=meta.get("resolved_at"),
+                )
+            )
+        except (ValidationError, ValueError, AttributeError):
+            logger.warning("Skipping unparseable gate line: %s", line)
+            continue
+    return gates
+
+
 def _gh_state_to_status(state: str, labels: list[str]) -> TaskStatus:
     """Map GitHub issue state + labels to TaskStatus."""
     if state.upper() == "CLOSED":
@@ -240,6 +349,9 @@ def parse_task_detail(
         status=status,
         labels=labels,
         url=url,
+        session_id=fields.get("session") or None,
+        tdd_stage=fields.get("tdd stage") or None,
+        gates=_parse_gates(sections.get("gates", "")),
     )
 
 
@@ -258,6 +370,8 @@ def parse_story_detail(
         number=number,
         title=title,
         epic_id=fields.get("epic") or None,
+        spec_refs=_parse_csv(fields.get("spec refs", "")),
+        component_refs=_parse_csv(fields.get("component refs", "")),
         description=sections.get("description", ""),
         acceptance_criteria=_parse_acceptance_criteria(sections.get("acceptance criteria", "")),
         labels=labels,
@@ -275,12 +389,14 @@ def parse_epic_detail(
     url: str = "",
 ) -> EpicDetail:
     """Parse a GitHub Issue into an EpicDetail."""
-    _fields, sections = _parse_body(body or "")
+    fields, sections = _parse_body(body or "")
     status = _gh_state_to_status(state, labels)
     return EpicDetail(
         number=number,
         title=title,
         description=sections.get("description", ""),
+        release=fields.get("release", ""),
+        spec_refs=_parse_csv(fields.get("spec refs", "")),
         labels=labels,
         status=status,
         url=url,

@@ -110,7 +110,7 @@ class LocalStoryRepository:
                 StorySummary(
                     id=sid,
                     title=info["title"],
-                    epic_id=info.get("epic", ""),
+                    epic_id=info.get("epic") or "",
                     status=info.get("status", "open"),
                 )
             )

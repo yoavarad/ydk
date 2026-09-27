@@ -11,7 +11,10 @@ from typer.testing import CliRunner
 
 from ydk.cli import app
 from ydk.cli.task_cmd import task_app
-from ydk.models.pm import TaskSummary
+from ydk.models.pm import EpicCreate, StoryCreate, TaskCreate, TaskSummary
+from ydk.repositories.local.epics import LocalEpicRepository
+from ydk.repositories.local.stories import LocalStoryRepository
+from ydk.repositories.local.tasks import LocalTaskRepository
 
 runner = CliRunner()
 
@@ -240,3 +243,29 @@ class TestTaskSyncQuickTasks:
         ):
             result = runner.invoke(task_app, ["sync"])
         assert result.exit_code == 0
+
+
+class TestTaskSyncRollup:
+    def test_sync_of_last_tasks_closes_story_and_epic(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        root = tmp_path / ".ydk"
+        tasks, stories, epics = LocalTaskRepository(root), LocalStoryRepository(root), LocalEpicRepository(root)
+        epic = epics.create_epic(EpicCreate(title="Big epic")).id
+        story = stories.create_story(StoryCreate(title="S", epic_id=epic)).id
+        t1 = tasks.create_task(TaskCreate(title="a", story_id=story)).id
+        t2 = tasks.create_task(TaskCreate(title="b", story_id=story)).id
+        tasks.update_status(t1, "in-review")
+        tasks.update_status(t2, "in-review")
+        monkeypatch.setattr("ydk.cli.task_cmd._get_repo", lambda: tasks)
+        monkeypatch.setattr("ydk.cli.task_cmd._get_story_repo", lambda: stories)
+        monkeypatch.setattr("ydk.cli.task_cmd._get_epic_repo", lambda: epics)
+        pr = {"number": 5, "state": "MERGED", "createdAt": "2026-01-01T00:00:00Z"}
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.core.task_pr_lookup.list_prs", return_value=[pr]),
+            patch("ydk.core.task_pr_lookup.find_task_pr", return_value=pr),
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0, result.output
+        assert f'Epic {epic} "Big epic" complete (2/2 tasks)' in result.output
+        assert f"Next: ydk memory retrospective --epic {epic}" in result.output
+        assert next(e.status for e in epics.list_epics(status="all") if e.id == epic) == "done"

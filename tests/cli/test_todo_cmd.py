@@ -173,3 +173,25 @@ def test_coverage_with_items(project: Path) -> None:
     assert result.exit_code == 0
     assert "Total:" in result.output
     assert "2" in result.output
+
+
+# --- assign-batch mapping resolution ---
+
+
+@pytest.mark.parametrize(("placeholder", "expected"), [("T-001", "42"), ("S-001", "17"), ("E-001", "9"), ("#5", "5")])
+def test_assign_batch_resolves_mapped_placeholders(
+    project: Path, monkeypatch: pytest.MonkeyPatch, placeholder: str, expected: str
+) -> None:
+    from ydk.core.todo_manager import TodoManager
+
+    (project / ".ydk" / "batch-mapping.json").write_text(
+        '{"T-001": "#42", "S-001": "#17", "E-001": "9"}', encoding="utf-8"
+    )
+    mgr = TodoManager(project)
+    mgr.register(file="a.py", line=1, method="A.x", description="First")
+    monkeypatch.chdir(project)
+
+    result = runner.invoke(app, ["todo", "assign-batch", f"YDK-TODO-001:{placeholder}"])
+
+    assert result.exit_code == 0, result.output
+    assert TodoManager(project).list_todos()[0].task_id == expected

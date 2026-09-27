@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 import typer
 
 from ydk.cli._helpers import format_or_echo
+from ydk.core.task_ref import resolve_task_ref
 from ydk.core.task_validator import validate_dag
 from ydk.models.task import Task
 from ydk.output.console import console
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from ydk.models.complexity import ComplexityScore
     from ydk.models.gate import Gate
     from ydk.models.pm import Dependency
-    from ydk.repositories.protocols import LifecycleTaskRepository
+    from ydk.repositories.protocols import EpicRepository, LifecycleTaskRepository, StoryRepository
 
 
 def _validate_component_refs_cli(refs: list[str], project_root: Path) -> None:
@@ -77,25 +78,11 @@ task_app = typer.Typer(
 
 
 def _resolve_task_id(raw_id: str) -> str:
-    """Resolve T-001 placeholder to GitHub issue number via batch mapping.
+    """Resolve batch placeholders (task/story/epic) and normalize '#N' to 'N'.
 
-    If a batch-mapping.json exists and contains the ID, returns the resolved value.
-    If no mapping file exists or the ID is not in the mapping, returns the raw ID
-    as-is (it may be a valid local-backend task ID like T-001).
+    Unmapped IDs are returned as-is; backend parsers validate the final format.
     """
-    import json as _json
-
-    if raw_id.startswith("T-") or raw_id.startswith("t-"):
-        mapping_file = Path(".ydk") / "batch-mapping.json"
-        if mapping_file.exists():
-            try:
-                mapping = _json.loads(mapping_file.read_text(encoding="utf-8"))
-                resolved = mapping.get(raw_id.upper())
-                if resolved:
-                    return resolved
-            except (ValueError, OSError):
-                pass
-    return raw_id
+    return resolve_task_ref(raw_id)
 
 
 _VALID_DEP_TYPES = frozenset(
@@ -183,6 +170,34 @@ def _get_repo() -> LifecycleTaskRepository:
     return get_task_repository()
 
 
+def _get_story_repo() -> StoryRepository:
+    """Lazily import and return the story repository."""
+    from ydk.repositories.factory import get_story_repository
+
+    return get_story_repository()
+
+
+def _get_epic_repo() -> EpicRepository:
+    """Lazily import and return the epic repository."""
+    from ydk.repositories.factory import get_epic_repository
+
+    return get_epic_repository()
+
+
+def _rollup(task_id: str, repo: LifecycleTaskRepository) -> list[str]:
+    """Close the task's story/epic if it was their last open task; return report lines.
+
+    Best-effort: a rollup failure warns but never fails the task close itself.
+    """
+    from ydk.core.rollup import rollup_task_done
+
+    try:
+        return rollup_task_done(task_id, repo, _get_story_repo(), _get_epic_repo())
+    except Exception as exc:  # task is already done; any rollup failure must only warn
+        typer.echo(f"Warning: story/epic rollup skipped for {task_id}: {exc}", err=True)
+        return []
+
+
 @task_app.command()
 def create(
     ctx: typer.Context,
@@ -240,7 +255,10 @@ def create(
     _warn_missing_acceptance(list(acceptance), ctx)
     _warn_missing_test_strategy(test_strategy, ctx)
 
-    parsed_deps = _parse_depends_on_arg(depends_on)
+    parsed_deps = [
+        _Dep(task_id=_resolve_task_id(d.task_id), type=d.type) if isinstance(d, _Dep) else _resolve_task_id(d)
+        for d in _parse_depends_on_arg(depends_on)
+    ]
 
     if dry_run:
         console.print("[yellow]Dry run -- no task will be created[/yellow]")
@@ -1069,22 +1087,26 @@ def list_tasks(
 
     # Post-filter by epic or story if requested
     if epic or story:
+        epic_story_ids: set[str] = set()
+        if epic:
+            try:
+                from ydk.repositories.factory import get_story_repository
+
+                for s in get_story_repository().list_stories(epic_id=epic):
+                    if s.id:
+                        epic_story_ids.add(s.id)
+                    # GitHub stories are identified by issue number; tasks reference them as "#N".
+                    number = getattr(s, "number", 0)
+                    if number:
+                        epic_story_ids.update({f"#{number}", str(number)})
+            except Exception:
+                epic_story_ids = set()
         filtered = []
         for t in tasks:
             try:
                 detail = repo.get_task(t.id)
-                if epic and detail.story_id:
-                    # Check if the story belongs to the requested epic
-                    try:
-                        from ydk.repositories.factory import get_story_repository
-
-                        story_repo = get_story_repository()
-                        stories = story_repo.list_stories(epic_id=epic)
-                        epic_story_ids = {s.id for s in stories}
-                        if detail.story_id not in epic_story_ids:
-                            continue
-                    except Exception:
-                        continue
+                if epic and detail.story_id not in epic_story_ids:
+                    continue
                 if story and detail.story_id != story:
                     continue
                 filtered.append(t)
@@ -1469,25 +1491,9 @@ def coverage(
         story_repo = get_story_repository()
         stories = story_repo.list_stories()
         for s in stories:
-            # For GitHub backend, parse spec_refs from issue body via parser
-            sid = s.id if hasattr(s, "id") else str(getattr(s, "number", ""))
-            # Try to get full story detail with spec_refs
-            try:
-                from ydk.repositories.github.parser import _parse_body
-
-                # If the story has body content, parse spec_refs from it
-                if hasattr(s, "description") and s.description:
-                    fields, _sections = _parse_body(
-                        f"**Spec refs**: {','.join(getattr(s, 'spec_refs', []))}" if hasattr(s, "spec_refs") else ""
-                    )
-                    refs = fields.get("spec refs", "")
-                    if refs:
-                        for ref in refs.split(","):
-                            ref = ref.strip()
-                            if ref:
-                                story_refs.setdefault(ref, set()).add(sid)
-            except (ImportError, AttributeError):
-                pass
+            sid = s.id or str(getattr(s, "number", ""))
+            for ref in getattr(s, "spec_refs", []):
+                story_refs.setdefault(ref, set()).add(sid)
     except (ImportError, Exception):
         pass
 
@@ -1947,6 +1953,10 @@ def close(
     task is marked done. An unknown --delivered-by task id errors before any
     change.
 
+    When the closed task was the last open one in its story, the story is
+    closed too; when it was the last in its epic, the epic is closed and
+    "Epic ... complete" is printed with the retrospective next step.
+
     To reconcile many tasks at once, use `ydk task sync`.
 
     
@@ -1973,6 +1983,8 @@ def close(
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from None
         typer.echo(f"Task {task_id} closed without PR -> status done ({'; '.join(audit_parts)})")
+        for line in _rollup(task_id, repo):
+            typer.echo(line)
         return
 
     pr = _find_task_pr(task_id)
@@ -1995,6 +2007,8 @@ def close(
     except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
+    for line in _rollup(task_id, repo):
+        typer.echo(line)
 
 
 def _open_quick_task_files() -> list[tuple[str, Path]]:
@@ -2029,7 +2043,8 @@ def sync(ctx: typer.Context) -> None:
 
     This is the bulk version of `ydk task close`. Prefer `ydk task close <id>` to
     reconcile a single task, or to close a task that has no PR of its own. Prefer
-    `ydk task sync` to sweep every open/in-review task at once.
+    `ydk task sync` to sweep every open/in-review task at once. Like close, it
+    closes stories/epics whose last task it marks done.
     """
     import shutil
 
@@ -2051,6 +2066,7 @@ def sync(ctx: typer.Context) -> None:
 
     reconciled: list[dict[str, object]] = []
     skipped: list[dict[str, object]] = []
+    rollup: list[str] = []
 
     prs = list_prs()
     for s in candidates:
@@ -2066,6 +2082,8 @@ def sync(ctx: typer.Context) -> None:
             reconciled.append({"id": s.id, "pr_number": pr.get("number")})
         except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
             skipped.append({"id": s.id, "reason": str(exc)})
+            continue
+        rollup.extend(_rollup(s.id, repo))
 
     # Quick tasks (QD-*) live only as files, not in the manifest/repo backend.
     for qid, qpath in quick_tasks:
@@ -2082,13 +2100,15 @@ def sync(ctx: typer.Context) -> None:
         except (OSError, ValueError) as exc:
             skipped.append({"id": qid, "reason": str(exc)})
 
-    if format_or_echo(ctx, {"reconciled": reconciled, "skipped": skipped}):
+    if format_or_echo(ctx, {"reconciled": reconciled, "skipped": skipped, "rollup": rollup}):
         return
 
     if reconciled:
         typer.echo("Reconciled:")
         for item in reconciled:
             typer.echo(f"  {item['id']}: PR #{item['pr_number']} merged -> status done")
+    for line in rollup:
+        typer.echo(line)
     if skipped:
         typer.echo("Skipped:")
         for item in skipped:

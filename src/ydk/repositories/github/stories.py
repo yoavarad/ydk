@@ -7,7 +7,7 @@ import json
 from typing import TYPE_CHECKING
 
 from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
-from ydk.repositories.github.parser import parse_story_detail, render_story_body
+from ydk.repositories.github.parser import _github_ref, parse_story_detail, render_story_body
 
 if TYPE_CHECKING:
     from ydk.models.pm import StoryCreate, StoryDetail
@@ -119,6 +119,9 @@ class GitHubStoryRepository:
         return self.create(story)
 
     def list_stories(self, epic_id: str | None = None) -> _list[StoryDetail]:
-        """List stories, optionally filtered by epic label."""
-        labels = [f"epic:{epic_id}"] if epic_id else None
-        return self.list(labels=labels)
+        """List stories, optionally filtered by the epic in each story's ``**Epic**`` body field."""
+        stories = self.list()
+        if not epic_id:
+            return stories
+        target = _github_ref(epic_id)
+        return [s for s in stories if s.epic_id and _github_ref(s.epic_id) == target]
