@@ -1,7 +1,15 @@
 """Tests for the GitHub Issue body parser — round-trip and edge cases."""
 
 from ydk.models.gate import Gate, GateStatus, GateType
-from ydk.models.pm import AcceptanceCriterion, EpicCreate, StoryCreate, TaskCreate, TaskStatus
+from ydk.models.pm import (
+    AcceptanceCriterion,
+    Dependency,
+    DependencyType,
+    EpicCreate,
+    StoryCreate,
+    TaskCreate,
+    TaskStatus,
+)
 from ydk.repositories.github.parser import (
     _github_ref,
     parse_epic_detail,
@@ -50,7 +58,7 @@ class TestTaskRoundTrip:
         assert detail.title == task.title
         assert detail.story_id == "#6"
         assert detail.spec_refs == task.spec_refs
-        assert detail.dependencies == task.dependencies
+        assert detail.dependencies == [Dependency(task_id="T-001"), Dependency(task_id="T-003")]
         assert detail.test_strategy == task.test_strategy
         assert detail.description == task.description
         assert len(detail.acceptance_criteria) == len(task.acceptance_criteria)
@@ -377,3 +385,39 @@ class TestEpicStoryRefsRoundTrip:
         detail = parse_story_detail(number=2, title="S", body="", state="OPEN", labels=[])
         assert detail.spec_refs == []
         assert detail.component_refs == []
+
+
+# ---------------------------------------------------------------------------
+# Dependency type persistence
+# ---------------------------------------------------------------------------
+
+
+def _parse_deps(body: str) -> list[object]:
+    return list(parse_task_detail(number=1, title="T", body=body, state="OPEN", labels=[]).dependencies)
+
+
+class TestDependencyTypeRoundTrip:
+    def test_typed_dependencies_round_trip(self) -> None:
+        deps = [
+            Dependency(task_id="#5"),
+            Dependency(task_id="#6", type=DependencyType.RELATED),
+            Dependency(task_id="#7", type=DependencyType.VALIDATES),
+            Dependency(task_id="#8", type=DependencyType.WAITS_FOR),
+        ]
+        body = render_task_body(TaskCreate(title="T", dependencies=[*deps]))
+        assert "**Dependencies**: #5, #6 (related), #7 (validates), #8 (waits-for)" in body
+        assert _parse_deps(body) == deps
+
+    def test_plain_string_dependency_renders_as_blocks(self) -> None:
+        body = render_task_body(TaskCreate(title="T", dependencies=["#5"]))
+        assert "**Dependencies**: #5" in body
+        assert _parse_deps(body) == [Dependency(task_id="#5")]
+
+    def test_legacy_plain_list_parses_as_blocks(self) -> None:
+        assert _parse_deps("**Dependencies**: #3, #4\n") == [
+            Dependency(task_id="#3", type=DependencyType.BLOCKS),
+            Dependency(task_id="#4", type=DependencyType.BLOCKS),
+        ]
+
+    def test_unknown_type_suffix_kept_verbatim_as_blocking(self) -> None:
+        assert _parse_deps("**Dependencies**: #3 (bogus)\n") == [Dependency(task_id="#3 (bogus)")]
