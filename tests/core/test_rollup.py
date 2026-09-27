@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ydk.core.rollup import advance_stage_if_complete, rollup_task_done
+from ydk.core.rollup import advance_stage_if_complete, epic_tasks_for_retro, rollup_task_done
 from ydk.models.pm import EpicCreate, StoryCreate, TaskCreate
 from ydk.repositories.github.epics import GitHubEpicRepository
 from ydk.repositories.github.stories import GitHubStoryRepository
@@ -102,6 +102,22 @@ class TestLocalRollup:
 
     def test_unknown_task_is_noop(self, local: _Local) -> None:
         assert rollup_task_done("T-999", local.tasks, local.stories, local.epics) == []
+
+
+class TestEpicTasksForRetro:
+    def test_gathers_only_done_tasks_under_the_epic(self, local: _Local) -> None:
+        local.done(local.t1)
+        local.done(local.t2)
+        # t3 stays open
+        tasks = epic_tasks_for_retro(local.epic, local.tasks, local.stories)
+        assert {t.id for t in tasks} == {local.t1, local.t2}
+
+    def test_empty_when_no_tasks_done_yet(self, local: _Local) -> None:
+        assert epic_tasks_for_retro(local.epic, local.tasks, local.stories) == []
+
+    def test_unknown_epic_is_empty(self, local: _Local) -> None:
+        local.done(local.t1)
+        assert epic_tasks_for_retro("E-999", local.tasks, local.stories) == []
 
 
 class TestAdvanceStageIfComplete:

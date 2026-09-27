@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ydk.models.pm import EpicCreate, EpicDetail, EpicSummary, TaskStatus
 from ydk.repositories.local.frontmatter import (
     append_comment,
+    parse_frontmatter,
     render_frontmatter,
     update_file_status,
 )
@@ -93,3 +94,13 @@ class LocalEpicRepository:
     def add_comment(self, epic_id: str, comment: str) -> None:
         """Append to Activity Log section with timestamp."""
         append_comment(self._epics_dir / f"{epic_id}.md", comment)
+
+    def mark_retro_done(self, epic_id: str, retro_path: str) -> None:
+        """Set the ``retro`` frontmatter field and log it in the Activity Log."""
+        file_path = self._epics_dir / f"{epic_id}.md"
+        content = file_path.read_text(encoding="utf-8")
+        fm, body = parse_frontmatter(content)
+        fm["retro"] = retro_path
+        fm["updated"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        file_path.write_text(render_frontmatter(fm, body), encoding="utf-8")
+        append_comment(file_path, f"Retrospective recorded: {retro_path}")

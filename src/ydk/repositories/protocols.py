@@ -145,6 +145,10 @@ class EpicRepository(Protocol):
         """Create a new epic and return its detail."""
         ...
 
+    def mark_retro_done(self, epic_id: str, retro_path: str) -> None:
+        """Record that a retrospective was completed for this epic, linking *retro_path*."""
+        ...
+
     def list_epics(self, status: str = "open") -> builtins.list:
         """List epics, optionally filtered by status."""
         ...

@@ -96,3 +96,19 @@ def test_epic_refs_survive_create_then_get() -> None:
         fetched = repo.get(created.number)
     assert fetched.release == "v2"
     assert fetched.spec_refs == ["a.md#x", "b.md"]
+
+
+@pytest.mark.parametrize("epic_ref", ["7", "#7", "E-007"])
+def test_mark_retro_done_labels_and_comments_the_epic_issue(epic_ref: str) -> None:
+    repo = GitHubEpicRepository()
+    calls: list[list[str]] = []
+
+    def _record(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        return _ok("")
+
+    with patch("ydk.repositories.github.epics.run_gh", side_effect=_record):
+        repo.mark_retro_done(epic_ref, ".ydk/retros/E-007.md")
+
+    assert ["gh", "issue", "edit", "7", "--add-label", "retro-done"] in calls
+    assert ["gh", "issue", "comment", "7", "--body", "Retrospective recorded: .ydk/retros/E-007.md"] in calls
