@@ -59,23 +59,18 @@ def pre_push() -> None:
             print("Pre-push: skipping verification (ydk task done verified recently)")
             raise typer.Exit(code=0)
 
-    try:
-        verify_run(
-            name=None,
-            trigger="pre-push",
-            auto_fix=False,
-            no_cache=False,
-            retry=None,
-            repair=False,
-            save_proof=False,
-            task_id=None,
-            pr=None,
-            capture=False,
-        )
-    except typer.Exit:
-        raise
-    else:
-        # verify_run always raises typer.Exit(0/1) based on report.all_passed
-        # (see ydk.cli.verify_cmd.run). If it ever returns normally instead,
-        # treat that as a failure rather than silently exiting 0.
-        raise typer.Exit(code=1)
+    # verify_run unconditionally raises typer.Exit(0/1) based on
+    # report.all_passed (see ydk.cli.verify_cmd.run) — that Exit propagates
+    # through this command unchanged, giving the hook the correct exit code.
+    verify_run(
+        name=None,
+        trigger="pre-push",
+        auto_fix=False,
+        no_cache=False,
+        retry=None,
+        repair=False,
+        save_proof=False,
+        task_id=None,
+        pr=None,
+        capture=False,
+    )
