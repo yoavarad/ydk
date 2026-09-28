@@ -23,7 +23,7 @@ Run scripts from the repo root: `python skills/gh-issue-to-tasks/scripts/<script
 3. **File tasks.** One task per independent unit of work. Write a JSON spec (`context`, `design`, `files`, `acceptance`, `test_strategy`), then `render_task_body.py --spec spec.json --issue-url <url> --out body.md`. Create with `ydk task create --title ... --story ... --description-file body.md --depends-on ...` (or `create-batch`). Every task body references the source issue URL.
 4. **Link.** After user confirmation: `link_issue.py <n> <task-ids...> --plan "<plan text>"`. Comments the task list and adds label `ydk-linked`. The hidden marker records task ids for step 5.
 5. **Retire.** Immediately after linking when the user wants the original out of the queue: `retire_issue.py <n> --pointer "<task/PR links>"`. Otherwise leave it open and let step 6 retire it.
-6. **Sync.** `sync_issue_state.py [--dry-run]` finds open `ydk-linked` issues whose tasks (GitHub issues) are all closed and retires them. Run after `ydk task sync` or on a schedule.
+6. **Sync.** `sync_issue_state.py [--dry-run]` finds open `ydk-linked` issues whose tasks (GitHub issues) are all closed and retires them. Runs automatically in CI (`.github/workflows/sync-linked-issues.yml`) after every merge to main; can still be run manually after `ydk task sync` or on demand.
 
 ## Scripts
 
