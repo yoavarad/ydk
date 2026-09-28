@@ -331,7 +331,7 @@ class TestRunAll:
         (config_dir / "config.yaml").write_text("project:\n  name: test\n")
         doc = Doctor(project_root=tmp_path)
         results = doc.run_all()
-        assert len(results) == 16
+        assert len(results) == 17
         assert all(isinstance(r, CheckResult) for r in results)
 
 
@@ -402,6 +402,54 @@ class TestCheckTaskPrDrift:
         drift_result = next(r for r in results if r.name == "Task/PR drift")
         assert drift_result.severity == CheckSeverity.warning
         assert "could not check" in drift_result.message.lower()
+
+
+class TestCheckEpicRetros:
+    def test_no_missing_retros_returns_ok(self, tmp_path: Path) -> None:
+        doc = Doctor(project_root=tmp_path)
+        with patch("ydk.repositories.factory.get_epic_repository") as mock_get_repo:
+            mock_get_repo.return_value.list_epics.return_value = []
+            result = doc._check_epic_retros()
+        assert result.severity == CheckSeverity.ok
+        assert result.name == "Epic retrospectives"
+
+    def test_missing_retro_reports_warning_with_detail(self, tmp_path: Path) -> None:
+        from ydk.core.retro_gate import MissingRetro
+
+        doc = Doctor(project_root=tmp_path)
+        with (
+            patch("ydk.repositories.factory.get_epic_repository"),
+            patch(
+                "ydk.core.retro_gate.find_epics_missing_retro",
+                return_value=[MissingRetro(epic_id="E-001", title="Epic One")],
+            ),
+        ):
+            result = doc._check_epic_retros()
+        assert result.severity == CheckSeverity.warning
+        assert "E-001" in (result.detail or "")
+        assert "ydk memory retrospective --epic E-001" in (result.detail or "")
+
+    def test_repository_error_returns_warning_and_does_not_propagate(self, tmp_path: Path) -> None:
+        doc = Doctor(project_root=tmp_path)
+        with patch("ydk.repositories.factory.get_epic_repository", side_effect=RuntimeError("boom")):
+            result = doc._check_epic_retros()
+        assert result.severity == CheckSeverity.warning
+        assert "could not check" in result.message.lower()
+
+    def test_config_opt_out_skips_check(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".ydk"
+        config_dir.mkdir()
+        (config_dir / "config.yaml").write_text("project:\n  name: test\nlearning:\n  require_epic_retro: false\n")
+        doc = Doctor(project_root=tmp_path)
+        with patch("ydk.core.config.load_config") as mock_load_config:
+            from ydk.models.config import LearningConfig, ProjectConfig, YdkConfig
+
+            mock_load_config.return_value = YdkConfig(
+                project=ProjectConfig(name="test"), learning=LearningConfig(require_epic_retro=False)
+            )
+            result = doc._check_epic_retros()
+        assert result.severity == CheckSeverity.ok
+        assert "skipped" in result.message.lower()
 
 
 class TestHasErrors:

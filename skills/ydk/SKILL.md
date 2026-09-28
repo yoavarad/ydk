@@ -324,6 +324,7 @@ ydk task done <id>                     # Verify + create PR + post proof (prints
 ydk task done <id> --skip-plugin <name>  # Skip a genuinely failing plugin (verified internally)
 ydk task close <id>                    # After PR merge: check merge state via gh, transition status to done (status does NOT auto-update on merge — run this to reconcile, or to recover a task stuck at open/in-review)
 ydk task close <id> --delivered-by <task-id|PR-url|PR#> [--reason "text"]  # Close a task with no PR of its own (duplicate/covered elsewhere): skips PR lookup, records audit comment, sets done; either flag alone works
+# If task close/sync prints "Epic ... complete", run `ydk memory retrospective --epic <id>` before starting the next task
 ydk task add-subtask <id>              # Create discovered subtask linked to parent
 ydk task tdd <id> --stage red|green|refactor  # Set TDD phase on task
 ydk task quick "description"           # Fast path for small changes
@@ -357,6 +358,7 @@ ydk memory search <query> --depth index|summary|full  # Progressive retrieval de
 ydk memory bootstrap <task-id>         # Assemble context for a task
 ydk memory extract <task-id>           # Extract learnings from session transcript
 ydk memory retrospective --sprint X    # Sprint-level aggregation
+ydk memory retrospective --epic E      # Epic-level aggregation (default trigger: run after "Epic ... complete"); saves .ydk/retros/E.md
 ydk memory audit                       # Comprehensive health audit (stale research, duplicates, procedural reports)
 ydk memory record-decision <TOPIC>     # Record topic-keyed decision (append-only, latest-wins)
 ydk memory decision-history <TOPIC>    # Show all versions of a decision for a topic
