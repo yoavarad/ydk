@@ -269,3 +269,29 @@ class TestTaskSyncRollup:
         assert f'Epic {epic} "Big epic" complete (2/2 tasks)' in result.output
         assert f"Next: ydk memory retrospective --epic {epic}" in result.output
         assert next(e.status for e in epics.list_epics(status="all") if e.id == epic) == "done"
+
+    def test_sync_sweeps_stories_and_epics_even_with_no_reconcile_candidates(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Live bug case: GitHub closed every task's issue directly (`Closes #N`), so `sync` sees
+        no open/in-review tasks to reconcile -- but the story/epic sweep must still run and close
+        the now-orphaned story/epic.
+        """
+        root = tmp_path / ".ydk"
+        tasks, stories, epics = LocalTaskRepository(root), LocalStoryRepository(root), LocalEpicRepository(root)
+        epic = epics.create_epic(EpicCreate(title="Big epic")).id
+        story = stories.create_story(StoryCreate(title="S", epic_id=epic)).id
+        t1 = tasks.create_task(TaskCreate(title="a", story_id=story)).id
+        tasks.update_status(t1, "done")  # already done -- not a sync candidate
+        monkeypatch.setattr("ydk.cli.task_cmd._get_repo", lambda: tasks)
+        monkeypatch.setattr("ydk.cli.task_cmd._get_story_repo", lambda: stories)
+        monkeypatch.setattr("ydk.cli.task_cmd._get_epic_repo", lambda: epics)
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.core.task_pr_lookup.list_prs", return_value=[]),
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0, result.output
+        assert f'Story {story} "S" complete (1/1 tasks)' in result.output
+        assert f'Epic {epic} "Big epic" complete (1/1 tasks)' in result.output
+        assert next(e.status for e in epics.list_epics(status="all") if e.id == epic) == "done"
