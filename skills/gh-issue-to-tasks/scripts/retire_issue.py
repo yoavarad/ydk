@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 
-from _gh import fail, gh, gh_obj, post_comment_once
+from _gh import fail, gh, gh_obj
 
-RETIRE_LABEL = "superseded"
+from ydk.core.linked_issues import RETIRE_LABEL as RETIRE_LABEL
+from ydk.core.linked_issues import retire as _retire
+
 DELETE_MUTATION = "mutation($id:ID!){deleteIssue(input:{issueId:$id}){clientMutationId}}"
 
 
@@ -17,14 +19,7 @@ def is_admin() -> bool:
 
 def retire(issue: int, pointer: str = "") -> bool:
     """Comment (once), label and close. Return True if a comment was posted."""
-    text = "Superseded by YDK tasks tracked separately; see the linking comment above."
-    if pointer:
-        text = f"{text}\n\n{pointer}"
-    posted = post_comment_once(issue, "retire", text)
-    gh("issue", "edit", str(issue), "--add-label", RETIRE_LABEL)
-    if gh_obj("issue", "view", str(issue), "--json", "state").get("state") != "CLOSED":
-        gh("issue", "close", str(issue), "--reason", "not planned")
-    return posted
+    return _retire(issue, pointer)
 
 
 def delete(issue: int) -> None:
