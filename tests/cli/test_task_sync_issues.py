@@ -58,6 +58,13 @@ def test_sync_issues_none(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "retired: none" in result.output
 
 
+def test_sync_issues_malformed_gh_output_clean_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(subprocess, "run", lambda argv, **_kw: subprocess.CompletedProcess(argv, 0, "not json", ""))
+    result = runner.invoke(app, ["task", "sync-issues"])
+    assert result.exit_code != 0
+    assert not isinstance(result.exception, json.JSONDecodeError)
+
+
 def test_sync_issues_json(calls: list[tuple[str, ...]]) -> None:
     result = runner.invoke(app, ["--format", "json", "task", "sync-issues", "--dry-run"])
     assert result.exit_code == 0

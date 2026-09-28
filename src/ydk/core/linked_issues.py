@@ -21,8 +21,16 @@ def _gh(*args: str) -> str:
     return result.stdout
 
 
+def _loads(raw: str, *args: str) -> dict | list:
+    """Parse gh JSON output; raise RuntimeError on malformed input."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"gh {' '.join(args)} returned invalid JSON: {exc}") from exc
+
+
 def _gh_obj(*args: str) -> dict:
-    data = json.loads(_gh(*args))
+    data = _loads(_gh(*args), *args)
     if not isinstance(data, dict):
         raise RuntimeError(f"gh {' '.join(args)} did not return a JSON object")
     return data
@@ -70,11 +78,13 @@ def retire(issue: int, pointer: str = "") -> bool:
 
 def sync(dry_run: bool = False) -> list[int]:
     """Retire issues whose tasks are all done. Return the retired (or would-be retired) issue numbers."""
-    listing = _gh(
-        "issue", "list", "--label", LINK_LABEL, "--state", "open", "--json", "number", "--limit", str(GH_LIST_LIMIT)
-    )
+    list_args = ("issue", "list", "--label", LINK_LABEL, "--state", "open", "--json", "number", "--limit")
+    list_args += (str(GH_LIST_LIMIT),)
+    items = _loads(_gh(*list_args), *list_args)
+    if not isinstance(items, list):
+        raise RuntimeError("gh issue list did not return a JSON array")
     retired: list[int] = []
-    for item in json.loads(listing):
+    for item in items:
         number = item["number"]
         tasks = linked_tasks(number)
         if tasks and all(task_done(t) for t in tasks):
