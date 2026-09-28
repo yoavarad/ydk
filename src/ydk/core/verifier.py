@@ -100,7 +100,9 @@ class Verifier:
         enabled_plugins: list[str] | None = None,
         *,
         use_cache: bool = True,
+        skip_plugins: list[str] | None = None,
     ) -> None:
+        self._skip = set(skip_plugins or [])
         self._root = project_root
         self._global = global_verifications or (Path(__file__).resolve().parent.parent / "verifications")
         self._project = project_verifications or (project_root / ".ydk" / "verifications")
@@ -137,6 +139,8 @@ class Verifier:
         if self._enabled is not None:
             enabled_set = set(self._enabled)
             plugins = [p for p in plugins if p.name in enabled_set]
+        if self._skip:
+            plugins = [p for p in plugins if p.name not in self._skip]
 
         return plugins
 

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 from typer.testing import CliRunner
 
 from ydk.cli import app
-from ydk.core.verifier import VerificationPlugin
+from ydk.core.verifier import VerificationPlugin, Verifier
 from ydk.models.verification import CheckResult, VerificationReport
 
 runner = CliRunner()
@@ -252,3 +252,22 @@ class TestVerifyCreate:
         plugin_dir = tmp_path / ".ydk" / "verifications" / "my-check"
         assert (plugin_dir / "manifest.yaml").exists()
         assert (plugin_dir / "check.py").exists()
+
+
+class TestVerifySkipPlugin:
+    def test_skip_plugin_repeatable_excludes_plugins(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+        real_init = Verifier.__init__
+
+        def spy_init(self: Verifier, *args: object, **kwargs: object) -> None:
+            captured["skip"] = kwargs.get("skip_plugins")
+            real_init(self, *args, **kwargs)
+
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.__init__", spy_init)
+        monkeypatch.setattr(
+            "ydk.cli.verify_cmd.Verifier.run_all",
+            AsyncMock(return_value=_ok_report()),
+        )
+        result = runner.invoke(app, ["verify", "run", "--skip-plugin", "a", "--skip-plugin", "b"])
+        assert result.exit_code == 0
+        assert captured["skip"] == ["a", "b"]

@@ -14,11 +14,11 @@ from ydk.output.console import console
 verify_app = typer.Typer(name="verify", help="Run verification checks")
 
 
-def _make_verifier(*, use_cache: bool = True) -> Verifier:
+def _make_verifier(*, use_cache: bool = True, skip_plugins: list[str] | None = None) -> Verifier:
     """Build a Verifier, respecting the enabled plugin list from config."""
     config = load_config()
     enabled = config.verification.enabled or None
-    return Verifier(enabled_plugins=enabled, use_cache=use_cache)
+    return Verifier(enabled_plugins=enabled, use_cache=use_cache, skip_plugins=skip_plugins)
 
 
 @verify_app.command("run")
@@ -33,12 +33,15 @@ def run(
     task_id: str | None = typer.Option(None, "--task-id"),
     pr: str | None = typer.Option(None, "--pr", help="PR URL — post results as a PR comment"),
     capture: bool = typer.Option(False, "--capture", help="Capture verification output to proof files"),
+    skip_plugins: list[str] = typer.Option(  # noqa: B008
+        [], "--skip-plugin", help="Skip a plugin by name (repeatable)"
+    ),
 ) -> None:
     """Run verification plugins."""
     # Resolve retry count: --repair is shorthand for --retry 3
     max_retries = retry if retry is not None else (3 if repair else None)
 
-    v = _make_verifier(use_cache=not no_cache)
+    v = _make_verifier(use_cache=not no_cache, skip_plugins=skip_plugins or None)
     config = load_config()
     context: dict[str, object] = {
         "project_root": str(v._root.resolve()),
