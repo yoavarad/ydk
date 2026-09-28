@@ -551,11 +551,12 @@ class TestPrePushVerifiedFlag:
         assert abs(time.time() - ts) < 10  # Written within last 10 seconds
 
     def test_pre_push_hook_has_verified_check(self, tmp_path: Path, monkeypatch: object) -> None:
-        """Pre-push hook script should check for .ydk/.verified flag."""
+        """Pre-push hook script delegates to `ydk hooks pre-push`, which owns the .verified check."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         from typer.testing import CliRunner
 
         from ydk.cli import app
+        from ydk.cli.hooks_cmd import VERIFIED_FLAG, VERIFIED_TTL_SECONDS
 
         runner = CliRunner()
         runner.invoke(app, ["init", "--name", "testproj"])
@@ -563,8 +564,9 @@ class TestPrePushVerifiedFlag:
         pre_push = tmp_path / ".ydk" / "hooks" / "pre-push"
         assert pre_push.is_file()
         content = pre_push.read_text()
-        assert ".ydk/.verified" in content
-        assert "skipping verification" in content.lower() or "skip" in content.lower()
+        assert "ydk hooks pre-push" in content
+        assert Path(".ydk/.verified") == VERIFIED_FLAG
+        assert VERIFIED_TTL_SECONDS == 300
 
     def test_write_verified_flag(self, tmp_path: Path) -> None:
         """_write_verified_flag creates a timestamp file."""

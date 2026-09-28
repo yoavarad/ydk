@@ -90,7 +90,7 @@ def test_init_hooks_use_verify_run_subcommand(tmp_path: Path, monkeypatch: objec
     pre_push = tmp_path / ".ydk" / "hooks" / "pre-push"
     assert pre_push.is_file()
     content = pre_push.read_text()
-    assert "ydk verify run --trigger pre-push" in content
+    assert "ydk hooks pre-push" in content
     assert "ydk verify --trigger pre-push\n" not in content
 
 
@@ -310,22 +310,26 @@ def test_init_skips_subagent_stop_hook_when_bash_missing(tmp_path: Path, monkeyp
     assert "PreToolUse" in settings["hooks"]
 
 
-def test_install_hooks_resolve_python_dynamically(tmp_path: Path, monkeypatch: object) -> None:
-    """Generated .ydk/hooks/pre-push and commit-msg resolve python at run time, not 'python3'."""
+def test_install_hooks_call_ydk_cli_directly(tmp_path: Path, monkeypatch: object) -> None:
+    """Generated .ydk/hooks/pre-push and commit-msg call `ydk hooks ...` — no python resolution needed.
+
+    Regression test for GitHub issue #264: resolving a `$PY` interpreter at
+    hook-run time silently failed on Windows `uv tool install` setups with
+    no project `.venv`. Hooks now call the already-resolved `ydk` entry
+    point instead.
+    """
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     runner.invoke(app, ["init", "--name", "myproject"])
 
     pre_push = (tmp_path / ".ydk" / "hooks" / "pre-push").read_text()
-    assert ".venv/Scripts/python.exe" in pre_push
-    assert ".venv/bin/python" in pre_push
-    assert "command -v python3" in pre_push
-    assert "command -v python" in pre_push
-    assert '"$PY" -c' in pre_push
+    assert "ydk hooks pre-push" in pre_push
+    assert "$PY" not in pre_push
+    assert "python3" not in pre_push
 
     commit_msg = (tmp_path / ".ydk" / "hooks" / "commit-msg").read_text()
-    assert ".venv/Scripts/python.exe" in commit_msg
-    assert "command -v python3" in commit_msg
-    assert '"$PY" -m ydk.hooks.commit_msg' in commit_msg
+    assert 'ydk hooks commit-msg "$1"' in commit_msg
+    assert "$PY" not in commit_msg
+    assert "python3" not in commit_msg
 
 
 def test_init_confirms_api_key_when_set(tmp_path: Path, monkeypatch: object) -> None:
