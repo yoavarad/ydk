@@ -1,0 +1,2 @@
+282: --skip-plugin added to verify run + Verifier(skip_plugins); tests, ruff, ty pass
+282 fix round: hooks pre-push passed no skip_plugins -> OptionInfo TypeError (unit test fail); fixed with skip_plugins=[]. Spec gap: skipped plugins now listed "(skipped)" in verify run output. Full suite 2560 pass, ruff/ty clean. Reviewer notes (skip-before-trigger ordering, lists all requested names) judged behavior-equivalent, not changed.
