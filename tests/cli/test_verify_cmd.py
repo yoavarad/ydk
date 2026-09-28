@@ -252,3 +252,80 @@ class TestVerifyCreate:
         plugin_dir = tmp_path / ".ydk" / "verifications" / "my-check"
         assert (plugin_dir / "manifest.yaml").exists()
         assert (plugin_dir / "check.py").exists()
+
+
+# --- verify pr-body ---
+
+_GOOD_PR_BODY = "## Summary\n\nDid it.\n\n## Test Plan\n\n```console\n$ pytest\nok\n```\n"
+
+
+def test_pr_body_passes_for_good_body(tmp_path: Path) -> None:
+    body = tmp_path / "body.md"
+    body.write_text(_GOOD_PR_BODY, encoding="utf-8")
+    result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body)])
+    assert result.exit_code == 0, result.output
+
+
+def test_pr_body_fails_without_summary(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    body = tmp_path / "body.md"
+    body.write_text("## Test Plan\n\n```console\nok\n```\n", encoding="utf-8")
+    result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body)])
+    assert result.exit_code == 1
+    assert "summary" in result.output.lower()
+    assert "::error::" not in result.output
+
+
+def test_pr_body_emits_error_annotations_in_github_actions(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    body = tmp_path / "body.md"
+    body.write_text("nothing", encoding="utf-8")
+    result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body)])
+    assert result.exit_code == 1
+    assert "::error::PR body must contain a ## Summary section" in result.output
+
+
+def test_pr_body_base_ref_feeds_changed_files(tmp_path: Path, monkeypatch) -> None:
+    import subprocess
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t.t")
+    git("config", "user.name", "t")
+    (tmp_path / "a.txt").write_text("a")
+    git("add", ".")
+    git("commit", "-q", "-m", "init")
+    git("checkout", "-q", "-b", "feat")
+    (tmp_path / "App.tsx").write_text("x")
+    git("add", ".")
+    git("commit", "-q", "-m", "ui")
+
+    body = tmp_path.parent / "body-ref.md"
+    body.write_text(_GOOD_PR_BODY, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body), "--base-ref", "main"])
+    assert result.exit_code == 1
+    assert "screenshot" in result.output.lower()
+
+
+def test_pr_body_exits_1_when_plugin_missing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("ydk.core.pr_body_check.run_pr_body_validation", lambda *a, **k: None)
+    body = tmp_path / "body.md"
+    body.write_text(_GOOD_PR_BODY, encoding="utf-8")
+    result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body)])
+    assert result.exit_code == 1
+    assert "not found" in result.output.lower()
+
+
+def test_pr_body_exits_1_on_invalid_base_ref(tmp_path: Path, monkeypatch) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True)
+    body = tmp_path / "body.md"
+    body.write_text(_GOOD_PR_BODY, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body), "--base-ref", "nope"])
+    assert result.exit_code == 1
+    assert "base-ref" in result.output.lower()
