@@ -153,6 +153,46 @@ def rollup_task_done(
     return messages
 
 
+def rollup_sweep(task_repo: LifecycleTaskRepository, story_repo: object, epic_repo: object) -> list[str]:
+    """Idempotent state-based sweep: close any story/epic whose children are all done.
+
+    Unlike ``rollup_task_done``, this doesn't need to be told which task just
+    finished -- it re-derives completion from current state, so it also
+    catches tasks a backend (e.g. GitHub via `Closes #N`) closed without going
+    through YDK. Safe to call any time; already-done or childless stories/
+    epics are left untouched.
+    """
+    tasks = _load_tasks(task_repo)
+    stories = _load_stories(story_repo)
+
+    messages: list[str] = []
+    closed_story_ids: set[str] = set()
+    for story in stories:
+        if _is_done(story):
+            continue
+        story_tasks = [t for t in tasks if t.parent == story.id]
+        if not story_tasks or not all(_is_done(t) for t in story_tasks):
+            continue
+        _set_done(story_repo, task_repo, story.id)
+        closed_story_ids.add(story.id)
+        n = len(story_tasks)
+        messages.append(f'Story {story.id} "{story.title}" complete ({n}/{n} tasks)')
+
+    for epic in _load_epics(epic_repo):
+        if _is_done(epic):
+            continue
+        epic_stories = [s for s in stories if s.parent == epic.id]
+        if not epic_stories or not all(_is_done(s) or s.id in closed_story_ids for s in epic_stories):
+            continue
+        epic_tasks = [t for t in tasks if t.parent in {s.id for s in epic_stories}]
+        _set_done(epic_repo, task_repo, epic.id)
+        n = len(epic_tasks)
+        messages.append(f'Epic {epic.id} "{epic.title}" complete ({n}/{n} tasks)')
+        messages.append(f"Next: ydk memory retrospective --epic {epic.id}")
+
+    return messages
+
+
 def epic_tasks_for_retro(epic_id: str, task_repo: LifecycleTaskRepository, story_repo: object) -> list[_Node]:
     """Closed/done tasks belonging to *epic_id* via its stories, across any backend.
 

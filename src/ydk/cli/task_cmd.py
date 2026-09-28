@@ -2193,10 +2193,12 @@ def sync(ctx: typer.Context) -> None:
     This is the bulk version of `ydk task close`. Prefer `ydk task close <id>` to
     reconcile a single task, or to close a task that has no PR of its own. Prefer
     `ydk task sync` to sweep every open/in-review task at once. Like close, it
-    closes stories/epics whose last task it marks done.
+    closes stories/epics whose last task it marks done, and also sweeps for any
+    story/epic left open even though all its children are already done.
     """
     import shutil
 
+    from ydk.core.rollup import rollup_sweep
     from ydk.core.task_pr_lookup import find_task_pr, list_prs
 
     if shutil.which("gh") is None:
@@ -2208,46 +2210,47 @@ def sync(ctx: typer.Context) -> None:
     candidates = [s for s in summaries if s.status in ("open", "in-review")]
     quick_tasks = _open_quick_task_files()
 
-    if not candidates and not quick_tasks:
-        if not format_or_echo(ctx, {"reconciled": [], "skipped": []}):
-            typer.echo("No in-review or open tasks to reconcile.")
-        return
-
     reconciled: list[dict[str, object]] = []
     skipped: list[dict[str, object]] = []
     rollup: list[str] = []
 
-    prs = list_prs()
-    for s in candidates:
-        pr = find_task_pr(s.id, prs=prs)
-        if pr is None:
-            skipped.append({"id": s.id, "reason": "no PR found"})
-            continue
-        if pr.get("state") != "MERGED":
-            skipped.append({"id": s.id, "reason": f"PR #{pr.get('number')} not merged (state: {pr.get('state')})"})
-            continue
-        try:
-            repo.update_status(s.id, "done")
-            reconciled.append({"id": s.id, "pr_number": pr.get("number")})
-        except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
-            skipped.append({"id": s.id, "reason": str(exc)})
-            continue
-        rollup.extend(_rollup(s.id, repo))
+    if candidates or quick_tasks:
+        prs = list_prs()
+        for s in candidates:
+            pr = find_task_pr(s.id, prs=prs)
+            if pr is None:
+                skipped.append({"id": s.id, "reason": "no PR found"})
+                continue
+            if pr.get("state") != "MERGED":
+                skipped.append({"id": s.id, "reason": f"PR #{pr.get('number')} not merged (state: {pr.get('state')})"})
+                continue
+            try:
+                repo.update_status(s.id, "done")
+                reconciled.append({"id": s.id, "pr_number": pr.get("number")})
+            except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
+                skipped.append({"id": s.id, "reason": str(exc)})
+                continue
+            rollup.extend(_rollup(s.id, repo))
 
-    # Quick tasks (QD-*) live only as files, not in the manifest/repo backend.
-    for qid, qpath in quick_tasks:
-        pr = find_task_pr(qid, prs=prs)
-        if pr is None:
-            skipped.append({"id": qid, "reason": "no PR found"})
-            continue
-        if pr.get("state") != "MERGED":
-            skipped.append({"id": qid, "reason": f"PR #{pr.get('number')} not merged (state: {pr.get('state')})"})
-            continue
-        try:
-            _set_quick_task_done(qpath)
-            reconciled.append({"id": qid, "pr_number": pr.get("number")})
-        except (OSError, ValueError) as exc:
-            skipped.append({"id": qid, "reason": str(exc)})
+        # Quick tasks (QD-*) live only as files, not in the manifest/repo backend.
+        for qid, qpath in quick_tasks:
+            pr = find_task_pr(qid, prs=prs)
+            if pr is None:
+                skipped.append({"id": qid, "reason": "no PR found"})
+                continue
+            if pr.get("state") != "MERGED":
+                skipped.append({"id": qid, "reason": f"PR #{pr.get('number')} not merged (state: {pr.get('state')})"})
+                continue
+            try:
+                _set_quick_task_done(qpath)
+                reconciled.append({"id": qid, "pr_number": pr.get("number")})
+            except (OSError, ValueError) as exc:
+                skipped.append({"id": qid, "reason": str(exc)})
+
+    try:
+        rollup.extend(rollup_sweep(repo, _get_story_repo(), _get_epic_repo()))
+    except Exception as exc:  # best-effort, mirrors _rollup: never fail sync over a rollup issue
+        typer.echo(f"Warning: story/epic rollup sweep skipped: {exc}", err=True)
 
     if format_or_echo(ctx, {"reconciled": reconciled, "skipped": skipped, "rollup": rollup}):
         return

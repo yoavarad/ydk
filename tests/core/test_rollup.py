@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ydk.core.rollup import advance_stage_if_complete, epic_tasks_for_retro, rollup_task_done
+from ydk.core.rollup import advance_stage_if_complete, epic_tasks_for_retro, rollup_sweep, rollup_task_done
 from ydk.models.pm import EpicCreate, StoryCreate, TaskCreate
 from ydk.repositories.github.epics import GitHubEpicRepository
 from ydk.repositories.github.stories import GitHubStoryRepository
@@ -102,6 +102,48 @@ class TestLocalRollup:
 
     def test_unknown_task_is_noop(self, local: _Local) -> None:
         assert rollup_task_done("T-999", local.tasks, local.stories, local.epics) == []
+
+
+class TestRollupSweep:
+    """rollup_sweep: idempotent state-based close, independent of which task just finished."""
+
+    def test_closes_story_whose_tasks_were_never_reconciled_by_ydk(self, local: _Local) -> None:
+        # Tasks marked done directly (e.g. GitHub closed them via `Closes #N`), bypassing rollup_task_done.
+        local.tasks.update_status(local.t1, "done")
+        local.tasks.update_status(local.t2, "done")
+        messages = rollup_sweep(local.tasks, local.stories, local.epics)
+        assert local.story_status(local.s1) == "done"
+        assert messages == [f'Story {local.s1} "Story one" complete (2/2 tasks)']
+
+    def test_closes_epic_after_its_stories_close_with_retro_message(self, local: _Local) -> None:
+        local.tasks.update_status(local.t1, "done")
+        local.tasks.update_status(local.t2, "done")
+        local.tasks.update_status(local.t3, "done")
+        messages = rollup_sweep(local.tasks, local.stories, local.epics)
+        assert local.epic_status() == "done"
+        assert f'Epic {local.epic} "Ship it" complete (3/3 tasks)' in messages
+        assert messages[-1] == f"Next: ydk memory retrospective --epic {local.epic}"
+
+    def test_noop_when_a_task_still_open(self, local: _Local) -> None:
+        local.tasks.update_status(local.t1, "done")
+        messages = rollup_sweep(local.tasks, local.stories, local.epics)
+        assert messages == []
+        assert local.story_status(local.s1) == "open"
+        assert local.epic_status() == "open"
+
+    def test_noop_on_already_closed_story_and_epic(self, local: _Local) -> None:
+        for t in (local.t1, local.t2, local.t3):
+            local.tasks.update_status(t, "done")
+        first = rollup_sweep(local.tasks, local.stories, local.epics)
+        assert first != []
+        second = rollup_sweep(local.tasks, local.stories, local.epics)
+        assert second == []
+
+    def test_zero_task_story_left_untouched(self, local: _Local) -> None:
+        lone = local.stories.create_story(StoryCreate(title="Lone", epic_id=local.epic)).id
+        messages = rollup_sweep(local.tasks, local.stories, local.epics)
+        assert local.story_status(lone) == "open"
+        assert not any(lone in m for m in messages)
 
 
 class TestEpicTasksForRetro:
