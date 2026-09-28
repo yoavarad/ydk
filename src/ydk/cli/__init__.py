@@ -9,6 +9,7 @@ from ydk.cli.component_cmd import component_app
 from ydk.cli.config_cmd import config_app
 from ydk.cli.docs_cmd import docs_app
 from ydk.cli.doctor_cmd import doctor_command
+from ydk.cli.hooks_cmd import hooks_app
 from ydk.cli.ignite_cmd import ignite_command
 from ydk.cli.init_cmd import init_command
 from ydk.cli.main import app
@@ -40,6 +41,7 @@ app.add_typer(change_app, name="change")
 app.add_typer(component_app, name="component")
 app.add_typer(config_app, name="config")
 app.add_typer(docs_app, name="docs")
+app.add_typer(hooks_app, name="hooks")
 app.add_typer(memory_app, name="memory")
 app.add_typer(scaffold_app, name="scaffold")
 app.add_typer(spec_app, name="spec")

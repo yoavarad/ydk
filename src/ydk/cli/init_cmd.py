@@ -390,52 +390,21 @@ def _install_hooks() -> None:
     hooks_dir = Path(".ydk/hooks")
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve a python command at hook-run time rather than baking in a
-    # path — the hook script is checked into the repo and may run on a
-    # different machine/PATH than the one that ran `ydk init`. Prefers the
-    # project's own venv first: on Windows, a bare `python3`/`python` on
-    # PATH commonly resolves to the Microsoft Store alias stub (which
-    # errors instead of running) when no system-wide interpreter is
-    # installed, even though the project's real venv is right there.
-    _py_resolve = (
-        "TOPLEVEL=$(git rev-parse --show-toplevel)\n"
-        'if [ -x "$TOPLEVEL/.venv/Scripts/python.exe" ]; then\n'
-        '  PY="$TOPLEVEL/.venv/Scripts/python.exe"\n'
-        'elif [ -x "$TOPLEVEL/.venv/bin/python" ]; then\n'
-        '  PY="$TOPLEVEL/.venv/bin/python"\n'
-        "else\n"
-        "  PY=$(command -v python3 || command -v python || echo python3)\n"
-        "fi\n"
-    )
-
+    # Hooks call the `ydk` entry point directly rather than resolving a
+    # python interpreter and shelling out to `"$PY" -m ...` — that
+    # resolution silently failed on Windows `uv tool install` setups with
+    # no project `.venv` on disk (GitHub issue #264). `ydk` is already the
+    # resolved entry point, so no interpreter lookup is needed here.
     pre_commit = hooks_dir / "pre-commit"
     pre_commit.write_text("#!/bin/sh\nydk verify run --trigger pre-commit\n", encoding="utf-8")
     _make_executable(pre_commit)
 
     pre_push = hooks_dir / "pre-push"
-    pre_push.write_text(
-        "#!/bin/sh\n"
-        "# Skip verification if ydk task done already ran it recently\n"
-        + _py_resolve
-        + 'VERIFIED_FLAG=".ydk/.verified"\n'
-        'if [ -f "$VERIFIED_FLAG" ]; then\n'
-        '  VERIFIED_TS=$(cat "$VERIFIED_FLAG")\n'
-        '  NOW=$("$PY" -c "import time; print(time.time())")\n'
-        "  AGE=$(\"$PY\" -c \"print(float('$NOW') - float('$VERIFIED_TS'))\")\n"
-        '  EXPIRED=$("$PY" -c "print(1 if float(\'$AGE\') > 300 else 0)")\n'
-        '  if [ "$EXPIRED" = "0" ]; then\n'
-        '    echo "Pre-push: skipping verification (ydk task done verified recently)"\n'
-        '    rm -f "$VERIFIED_FLAG"\n'
-        "    exit 0\n"
-        "  fi\n"
-        '  rm -f "$VERIFIED_FLAG"\n'
-        "fi\n"
-        "ydk verify run --trigger pre-push\n"
-    )
+    pre_push.write_text("#!/bin/sh\nydk hooks pre-push\n", encoding="utf-8")
     _make_executable(pre_push)
 
     commit_msg = hooks_dir / "commit-msg"
-    commit_msg.write_text(f'#!/bin/sh\n{_py_resolve}"$PY" -m ydk.hooks.commit_msg "$1"\n', encoding="utf-8")
+    commit_msg.write_text('#!/bin/sh\nydk hooks commit-msg "$1"\n', encoding="utf-8")
     _make_executable(commit_msg)
 
     subprocess.run(
