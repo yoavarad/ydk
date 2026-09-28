@@ -46,7 +46,7 @@ class PRBodyBuilder:
         parts.append("## Summary\n")
         summary_path = proof_dir / "summary.md"
         if summary_path.exists():
-            parts.append(summary_path.read_text().strip())
+            parts.append(summary_path.read_text(encoding="utf-8").strip())
             parts.append("")
         else:
             parts.append(f"Task {task_id}")
@@ -115,7 +115,7 @@ class PRBodyBuilder:
             if total_chars >= _MAX_SECTION_CHARS:
                 omitted.append(plugin_name)
                 continue
-            raw = plugin_file.read_text()
+            raw = plugin_file.read_text(encoding="utf-8")
             status = "PASS" if raw.startswith("PASSED") else "FAIL"
             summary_text = f"{plugin_name} — {status}"
             proof_relpath = f".ydk/proofs/{task_id}/plugins/{plugin_file.name}"
@@ -151,7 +151,7 @@ class PRBodyBuilder:
             if total_chars >= _MAX_SECTION_CHARS:
                 omitted.append(reviewer_name)
                 continue
-            raw = review_file.read_text()
+            raw = review_file.read_text(encoding="utf-8")
             score = _extract_review_score(raw)
             summary_text = f"{reviewer_name} — {score}"
             proof_relpath = f".ydk/proofs/{task_id}/reviews/{review_file.name}"
@@ -211,7 +211,7 @@ class PRBodyBuilder:
         """Extract test plan from summary.md or pytest output."""
         summary_path = proof_dir / "summary.md"
         if summary_path.exists():
-            content = summary_path.read_text()
+            content = summary_path.read_text(encoding="utf-8")
             # Look for a "## Test Plan" section in the summary
             for marker in ("## Test Plan", "### Test Plan", "**Test Plan**"):
                 if marker in content:
@@ -230,7 +230,7 @@ class PRBodyBuilder:
         if report_path.exists():
             from ydk.models.verification import VerificationReport
 
-            report = VerificationReport.model_validate_json(report_path.read_text())
+            report = VerificationReport.model_validate_json(report_path.read_text(encoding="utf-8"))
             passed = sum(1 for c in report.checks if c.passed)
             total = len(report.checks)
             return f"- {passed}/{total} verification checks passed ({report.total_duration_seconds:.1f}s)"
