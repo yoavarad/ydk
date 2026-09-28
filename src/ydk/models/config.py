@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 DEFAULT_MODEL_TIERS: dict[str, str] = {
     "fast": "claude-haiku-4-5",
     "review": "claude-sonnet-5",
-    "deep": "claude-opus-5",
+    "deep": "claude-opus-5-5",
 }
 
 

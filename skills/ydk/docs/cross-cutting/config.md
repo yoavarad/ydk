@@ -61,7 +61,7 @@ ai:
   model_tiers:                    # single source of truth for Claude model IDs
     fast: string                  # default: "claude-haiku-4-5"
     review: string                # default: "claude-sonnet-5"
-    deep: string                  # default: "claude-opus-5"
+    deep: string                  # default: "claude-opus-5-5"
 
 # ─── Spec Reviewers ──────────────────────────────
 # .ydk/spec-reviewers/ — YAML configs for each reviewer (N01-N10),
@@ -203,7 +203,7 @@ All hooks enabled by default after `ydk init`. Pre-push spec/task checks disable
 | `provider` | string | `"anthropic"` | AI provider (first-party Anthropic API). |
 | `model_tiers.fast` | string | `"claude-haiku-4-5"` | Lightweight calls (memory extraction, complexity scoring). |
 | `model_tiers.review` | string | `"claude-sonnet-5"` | Spec reviewers and the ai-code-review / spec-alignment plugins. |
-| `model_tiers.deep` | string | `"claude-opus-5"` | Complex reasoning. |
+| `model_tiers.deep` | string | `"claude-opus-5-5"` | Complex reasoning. |
 
 Every LLM call site resolves its model from a tier; overriding one tier keeps the defaults for the others.
 
@@ -352,7 +352,7 @@ ai:
   model_tiers:
     fast: claude-haiku-4-5
     review: claude-sonnet-5
-    deep: claude-opus-5
+    deep: claude-opus-5-5
 
 spec_check:
   thresholds:

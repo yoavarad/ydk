@@ -63,7 +63,7 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 | `provider` | str | `"anthropic"` | LLM provider (first-party Anthropic API) |
 | `model_tiers.fast` | str | `"claude-haiku-4-5"` | Lightweight calls (memory extraction, complexity scoring) |
 | `model_tiers.review` | str | `"claude-sonnet-5"` | Spec reviewers and the ai-code-review / spec-alignment plugins |
-| `model_tiers.deep` | str | `"claude-opus-5"` | Complex reasoning |
+| `model_tiers.deep` | str | `"claude-opus-5-5"` | Complex reasoning |
 
 `spec_check.model` and `memory.auto_extract` were removed; older configs that still set them load fine (the keys are ignored).
 

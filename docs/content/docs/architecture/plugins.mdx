@@ -88,7 +88,7 @@ Separate from the code verification plugins, YDK also has a **spec reviewer** sy
 - Each reviewer has: id (N01-N10), name, group, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric
 - Reviewers run as **parallel Bedrock Converse API calls** with forced structured output (`toolChoice`)
 - **Prompt caching**: spec content cached after first call, remaining reviewers hit cache (90% cost savings)
-- **Model tiers**: `fast` (`claude-haiku-4-5`), `review` (`claude-sonnet-5`, used by all built-in reviewers), `deep` (`claude-opus-5`) -- configured via `ai.model_tiers` in config
+- **Model tiers**: `fast` (`claude-haiku-4-5`), `review` (`claude-sonnet-5`, used by all built-in reviewers), `deep` (`claude-opus-5-5`) -- configured via `ai.model_tiers` in config
 - **Anti-hallucination rules**: LLM must quote exact text, cannot invent findings
 - **LLM score is authoritative** -- deterministic tools provide evidence but do not override LLM judgment
 - Only **4 high-value tools** remain: `scan_url_paths`, `scan_type_annotations` (N08), `scan_filler_phrases` (N07), `scan_unlinked_mentions` (N09)
