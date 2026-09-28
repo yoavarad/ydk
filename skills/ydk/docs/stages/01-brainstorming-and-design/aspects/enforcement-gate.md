@@ -63,7 +63,7 @@ Each reviewer declares a `model_tier` (not a model ID). The tier maps to a first
 |---|---|---|
 | `fast` | `claude-haiku-4-5` | Lightweight LLM calls |
 | `review` | `claude-sonnet-5` | Spec reviewers, AI verification plugins |
-| `deep` | `claude-opus-5` | Complex reasoning tasks |
+| `deep` | `claude-opus-5-5` | Complex reasoning tasks |
 
 ### Orphaned Components
 
@@ -123,7 +123,7 @@ ai:
   model_tiers:
     fast: claude-haiku-4-5
     review: claude-sonnet-5
-    deep: claude-opus-5
+    deep: claude-opus-5-5
 
 spec_check:
   timeout: 60                                    # seconds per reviewer

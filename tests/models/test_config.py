@@ -19,7 +19,7 @@ class TestModelTierDefaults:
         assert AIConfig().model_tiers == {
             "fast": "claude-haiku-4-5",
             "review": "claude-sonnet-5",
-            "deep": "claude-opus-5",
+            "deep": "claude-opus-5-5",
         }
         assert AIConfig().model_tiers == DEFAULT_MODEL_TIERS
 
@@ -38,7 +38,7 @@ class TestModelFor:
     def test_partial_override_falls_back_to_default_tier(self) -> None:
         cfg = AIConfig(model_tiers={"review": "claude-custom"})
         assert cfg.model_for("fast") == "claude-haiku-4-5"
-        assert cfg.model_for("deep") == "claude-opus-5"
+        assert cfg.model_for("deep") == "claude-opus-5-5"
 
     def test_unknown_tier_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown model tier"):
