@@ -417,15 +417,16 @@ class TaskLifecycle:
         only exists once ``pr_builder.build()`` has run. Returns ``None``
         when the plugin isn't installed, in which case the gate is a no-op.
         """
-        plugins = self._verifier.discover_plugins()
-        matched = self._verifier.filter_by_name(plugins, "pr-body-validation")
-        if not matched:
-            return None
+        from ydk.core.pr_body_check import run_pr_body_validation
 
-        plugin_context = dict(context)
-        plugin_context["pr_body"] = pr_body
-        results = asyncio.run(self._verifier.run_layer(matched, plugin_context))
-        return results[0] if results else None
+        changed = context.get("changed_files")
+        return run_pr_body_validation(
+            pr_body,
+            [str(f) for f in changed] if isinstance(changed, list) else [],
+            self._root,
+            verifier=self._verifier,
+            context=context,
+        )
 
     def _check_todo_resolution(self, task_id: str) -> list[str]:
         """Check if TODOs assigned to this task are resolved.
