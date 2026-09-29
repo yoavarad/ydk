@@ -62,7 +62,11 @@ def task_done(task_id: str) -> bool:
 
 
 def retire(issue: int, pointer: str = "") -> bool:
-    """Comment (once), label and close as not planned. Return True if a comment was posted."""
+    """Comment (once), label and close as not planned. Return True if a comment was posted.
+
+    Steps are idempotent, not atomic: if a later step fails (RuntimeError), earlier ones stay applied,
+    and re-running finishes the remainder without duplicating the comment.
+    """
     text = "Superseded by YDK tasks tracked separately; see the linking comment above."
     if pointer:
         text = f"{text}\n\n{pointer}"
