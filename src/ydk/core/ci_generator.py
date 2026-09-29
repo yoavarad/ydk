@@ -75,6 +75,21 @@ class CiTarget:
 # Registry of generated workflows. Intentionally empty until workflow tasks land.
 CI_TARGETS: list[CiTarget] = []
 
+PYTHON_CI = CiTarget(template="ci-python.yml", output="ci.yml", purpose="stack CI (python)")
+
+# `project.stack` -> stack CI target written as `ci.yml`. Stacks not listed get no `ci.yml`.
+STACK_CI_TARGETS: dict[str, CiTarget] = {
+    "python-fastapi": PYTHON_CI,
+    "python-cli": PYTHON_CI,
+}
+
+UV_LOCK_WARNING = "uv.lock not found at the repo root; ci.yml runs 'uv sync --locked' and fails until it is committed."
+
+
+def select_stack_target(stack: str) -> CiTarget | None:
+    """Return the stack CI target for *stack*, or None when the stack has no template."""
+    return STACK_CI_TARGETS.get(stack)
+
 
 @dataclass(frozen=True)
 class CiFileResult:
@@ -91,6 +106,7 @@ class CiInitResult:
 
     version: str
     files: list[CiFileResult]
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def unpublished(self) -> bool:
@@ -165,12 +181,18 @@ def generate_ci(
         components_path=config.components.components_path,
         schemas_path=config.components.schemas_path,
     )
+    if targets is None:
+        stack_target = select_stack_target(ctx.stack)
+        targets = [*CI_TARGETS, *([stack_target] if stack_target else [])]
     tdir = templates_dir or TEMPLATES_DIR
     files: list[CiFileResult] = []
-    for t in CI_TARGETS if targets is None else targets:
+    warnings: list[str] = []
+    for t in targets:
         if not t.condition(ctx):
             continue
         content = render((tdir / t.template).read_text(encoding="utf-8"), ctx)
         files.append(_write(root, WORKFLOWS_DIR / t.output, content, t.purpose, force=force))
+        if t is PYTHON_CI and not (root / "uv.lock").is_file():
+            warnings.append(UV_LOCK_WARNING)
     files.append(_write(root, PR_TEMPLATE_PATH, PR_TEMPLATE, "Pull request template", force=force))
-    return CiInitResult(version=ctx.version, files=files)
+    return CiInitResult(version=ctx.version, files=files, warnings=warnings)
