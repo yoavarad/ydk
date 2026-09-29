@@ -46,7 +46,7 @@ class TestBuild:
     def test_includes_footer(self, proof_dir: Path) -> None:
         builder = PRBodyBuilder()
         body = builder.build("T-001", proof_dir)
-        assert "Generated with [YDK]" in body
+        assert "Generated with [YDK](https://github.com/yoavarad/ydk)" in body
 
     def test_includes_closes_reference(self, proof_dir: Path) -> None:
         builder = PRBodyBuilder()

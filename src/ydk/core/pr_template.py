@@ -88,7 +88,7 @@ class PRBodyBuilder:
         parts.append("")
 
         # --- Footer ---
-        parts.append("\U0001f916 Generated with [YDK](https://github.com/oaltagar-personal/ydk)")
+        parts.append("\U0001f916 Generated with [YDK](https://github.com/yoavarad/ydk)")
 
         return "\n".join(parts)
 
