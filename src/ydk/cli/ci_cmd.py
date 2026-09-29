@@ -23,6 +23,8 @@ def print_ci_summary(result: CiInitResult) -> None:
             f"[yellow]Warning: ydk {result.version} is not a release; the pinned v{result.version} tag may not exist.",
             soft_wrap=True,
         )
+    for warning in result.warnings:
+        console.print(f"[yellow]Warning: {warning}", soft_wrap=True)
     table = Table(title="CI files")
     table.add_column("Path")
     table.add_column("Action")
