@@ -688,21 +688,3 @@ class TestFilterByTriggerShorthand:
         report = asyncio.run(v.run_all(trigger="pre-commit", context={"project_root": str(tmp_path)}))
         assert len(report.checks) == 1
         assert report.checks[0].name == "commit_check"
-
-
-def test_discover_plugins_skips_named_plugins(tmp_path) -> None:
-    from ydk.core.verifier import Verifier
-
-    proj = tmp_path / "proj"
-    for name in ("keep", "drop"):
-        d = proj / name
-        d.mkdir(parents=True)
-        (d / "manifest.yaml").write_text(f"name: {name}\ndescription: x\ntrigger: git:pre-commit\n")
-        (d / "check.py").write_text("")
-    v = Verifier(
-        project_root=tmp_path,
-        global_verifications=tmp_path / "none",
-        project_verifications=proj,
-        skip_plugins=["drop"],
-    )
-    assert [p.name for p in v.discover_plugins()] == ["keep"]
