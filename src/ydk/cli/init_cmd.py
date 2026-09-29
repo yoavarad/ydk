@@ -11,6 +11,8 @@ from pathlib import Path
 
 import typer
 
+from ydk.cli.ci_cmd import print_ci_summary
+from ydk.core.ci_generator import PR_TEMPLATE, generate_ci
 from ydk.core.config import init_config
 from ydk.core.doctor import CheckSeverity, Doctor
 from ydk.output.console import console
@@ -128,19 +130,7 @@ labels: epic
 
 """
 
-_PR_TEMPLATE = """\
-## Changes
-
-
-## Verification Proof
-
-<!-- YDK fills this in automatically -->
-
-## Spec refs
-
-
-Closes #
-"""
+_PR_TEMPLATE = PR_TEMPLATE
 
 
 def _create_github_labels() -> None:
@@ -471,6 +461,9 @@ def init_command(
     _install_github_templates()
 
     # Create required GitHub labels if remote is github
+    # Generate CI workflows for github remotes; never overwrite, even with `init --force`
+    ci_result = generate_ci(Path("."), force=False) if config.project.remote == "github" else None
+
     if config.project.remote == "github":
         _create_github_labels()
 
@@ -505,6 +498,10 @@ def init_command(
     table.add_row("Schemas", str(schemas_count))
     console.print(table)
     console.print()
+
+    if ci_result is not None:
+        print_ci_summary(ci_result)
+        console.print()
 
     # Run doctor
     console.print("[bold]Running health checks...[/bold]\n")

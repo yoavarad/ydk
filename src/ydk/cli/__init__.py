@@ -5,6 +5,7 @@ import sys
 
 from ydk.cli.catalog_cmd import catalog_app
 from ydk.cli.change_cmd import change_app
+from ydk.cli.ci_cmd import ci_app
 from ydk.cli.component_cmd import component_app
 from ydk.cli.config_cmd import config_app
 from ydk.cli.docs_cmd import docs_app
@@ -38,6 +39,7 @@ _reconfigure_streams_utf8()
 
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(change_app, name="change")
+app.add_typer(ci_app, name="ci")
 app.add_typer(component_app, name="component")
 app.add_typer(config_app, name="config")
 app.add_typer(docs_app, name="docs")
