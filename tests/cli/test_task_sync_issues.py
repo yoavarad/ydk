@@ -63,6 +63,7 @@ def test_sync_issues_malformed_gh_output_clean_error(monkeypatch: pytest.MonkeyP
     result = runner.invoke(app, ["task", "sync-issues"])
     assert result.exit_code != 0
     assert not isinstance(result.exception, json.JSONDecodeError)
+    assert "invalid JSON" in result.output
 
 
 def test_sync_issues_json(calls: list[tuple[str, ...]]) -> None:
