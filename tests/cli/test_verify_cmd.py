@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 from typer.testing import CliRunner
 
 from ydk.cli import app
-from ydk.core.verifier import VerificationPlugin
+from ydk.core.verifier import VerificationPlugin, Verifier
 from ydk.models.verification import CheckResult, VerificationReport
 
 runner = CliRunner()
@@ -252,6 +252,58 @@ class TestVerifyCreate:
         plugin_dir = tmp_path / ".ydk" / "verifications" / "my-check"
         assert (plugin_dir / "manifest.yaml").exists()
         assert (plugin_dir / "check.py").exists()
+
+
+class TestVerifySkipPlugin:
+    def test_skip_plugin_repeatable_excludes_plugins(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+        real_init = Verifier.__init__
+
+        def spy_init(self: Verifier, *args: object, **kwargs: object) -> None:
+            captured["skip"] = kwargs.get("skip_plugins")
+            real_init(self, *args, **kwargs)
+
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.__init__", spy_init)
+        monkeypatch.setattr(
+            "ydk.cli.verify_cmd.Verifier.run_all",
+            AsyncMock(return_value=_ok_report()),
+        )
+        result = runner.invoke(app, ["verify", "run", "--skip-plugin", "a", "--skip-plugin", "b"])
+        assert result.exit_code == 0
+        assert captured["skip"] == ["a", "b"]
+
+    @staticmethod
+    def _patch_verifier(monkeypatch, tmp_path: Path, skip: list[str]) -> None:
+        proj = tmp_path / "proj"
+        for name, trig in (("ai-code-review", "git:pre-push"), ("commit-only", "git:pre-commit")):
+            d = proj / name
+            d.mkdir(parents=True)
+            (d / "manifest.yaml").write_text(f"name: {name}\ndescription: x\ntrigger: {trig}\n")
+            out = {"name": name, "passed": True, "output": "ok", "duration_seconds": 0.0}
+            (d / "check.py").write_text(f"import json, sys\njson.dump({out!r}, sys.stdout)\n")
+        monkeypatch.setattr(
+            "ydk.cli.verify_cmd._make_verifier",
+            lambda **_kw: Verifier(
+                project_root=tmp_path,
+                global_verifications=tmp_path / "none",
+                project_verifications=proj,
+                use_cache=False,
+                skip_plugins=skip,
+            ),
+        )
+
+    def test_triggered_skipped_plugin_reported_as_skipped(self, monkeypatch, tmp_path: Path) -> None:
+        self._patch_verifier(monkeypatch, tmp_path, ["ai-code-review"])
+        result = runner.invoke(app, ["verify", "run", "--trigger", "git:pre-push", "--skip-plugin", "ai-code-review"])
+        assert result.exit_code == 0
+        assert "ai-code-review (skipped)" in result.output
+
+    def test_skip_of_non_triggered_plugin_not_reported(self, monkeypatch, tmp_path: Path) -> None:
+        self._patch_verifier(monkeypatch, tmp_path, ["commit-only"])
+        result = runner.invoke(app, ["verify", "run", "--trigger", "git:pre-push", "--skip-plugin", "commit-only"])
+        assert result.exit_code == 0
+        assert "skipped" not in result.output
+        assert "ai-code-review" in result.output
 
 
 # --- verify pr-body ---

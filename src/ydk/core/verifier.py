@@ -100,7 +100,10 @@ class Verifier:
         enabled_plugins: list[str] | None = None,
         *,
         use_cache: bool = True,
+        skip_plugins: list[str] | None = None,
     ) -> None:
+        self._skip = set(skip_plugins or [])
+        self.skipped: list[str] = []  # plugins dropped by skip_plugins in the last run, in discovery order
         self._root = project_root
         self._global = global_verifications or (Path(__file__).resolve().parent.parent / "verifications")
         self._project = project_verifications or (project_root / ".ydk" / "verifications")
@@ -139,6 +142,14 @@ class Verifier:
             plugins = [p for p in plugins if p.name in enabled_set]
 
         return plugins
+
+    def drop_skipped(self, plugins: list[VerificationPlugin]) -> list[VerificationPlugin]:
+        """Drop plugins named in *skip_plugins*; record which were dropped in ``self.skipped``.
+
+        Call after trigger filtering so only plugins that would have run are reported.
+        """
+        self.skipped = [p.name for p in plugins if p.name in self._skip]
+        return [p for p in plugins if p.name not in self._skip]
 
     def filter_by_trigger(self, plugins: list[VerificationPlugin], trigger: str) -> list[VerificationPlugin]:
         """Get plugins for a specific trigger ID (e.g. ``git:pre-commit``).
@@ -371,6 +382,7 @@ class Verifier:
         normalized_trigger = _normalize_trigger(trigger)
         if normalized_trigger != "manual":
             plugins = self.filter_by_trigger(plugins, normalized_trigger)
+        plugins = self.drop_skipped(plugins)
 
         logger.info("Running %d plugin(s) for trigger %r", len(plugins), trigger)
 
