@@ -152,6 +152,46 @@ def run(
     raise typer.Exit(0 if report.all_passed else 1)
 
 
+@verify_app.command("pr-body")
+def pr_body(
+    body_file: str = typer.Option(..., "--body-file", help="File containing the PR body"),
+    base_ref: str | None = typer.Option(None, "--base-ref", help="Base ref for changed-file detection"),
+) -> None:
+    """Validate a PR body with the pr-body-validation plugin."""
+    import os
+    import subprocess
+    from pathlib import Path
+
+    from ydk.core import pr_body_check
+
+    body = Path(body_file).read_text(encoding="utf-8")
+    changed_files: list[str] = []
+    if base_ref:
+        proc = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if proc.returncode != 0:
+            console.print(f"[red]git diff failed for --base-ref {base_ref}: {proc.stderr.strip()}[/red]")
+            raise typer.Exit(1)
+        changed_files = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+
+    result = pr_body_check.run_pr_body_validation(body, changed_files, Path("."))
+    if result is None:
+        console.print("[red]Plugin not found: pr-body-validation[/red]")
+        raise typer.Exit(1)
+
+    typer.echo(result.output)
+    if not result.passed and os.environ.get("GITHUB_ACTIONS") == "true":
+        for line in result.output.splitlines():
+            if line.startswith("FAIL:"):
+                typer.echo(f"::error::{line.removeprefix('FAIL:').strip()}")
+    raise typer.Exit(0 if result.passed else 1)
+
+
 @verify_app.command("check-guard")
 def check_guard(
     trigger: str = typer.Argument(..., help="Guard trigger ID (guard:edit or guard:command)"),
