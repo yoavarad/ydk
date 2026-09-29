@@ -101,6 +101,34 @@ def test_json_output(repo: Path) -> None:
     assert len(again["skipped"]) == 2
 
 
+@pytest.fixture
+def python_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A tmp repo with a github python-cli config and the real shipped templates."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: demo\n  remote: github\n  stack: python-cli\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(ci_generator.importlib.metadata, "version", lambda name: "1.5.0")
+    return tmp_path
+
+
+def test_python_stack_summary_and_missing_uv_lock_warning(python_repo: Path) -> None:
+    result = runner.invoke(app, ["ci", "init"])
+    assert result.exit_code == 0, result.output
+    assert (python_repo / ".github" / "workflows" / "ci.yml").is_file()
+    assert "stack CI (python)" in result.output
+    assert "uv.lock" in result.output
+
+
+def test_python_stack_with_uv_lock_no_warning(python_repo: Path) -> None:
+    (python_repo / "uv.lock").write_text("", encoding="utf-8")
+    result = runner.invoke(app, ["ci", "init"])
+    assert result.exit_code == 0, result.output
+    assert (python_repo / ".github" / "workflows" / "ci.yml").is_file()
+    assert "uv.lock" not in result.output
+
+
 def test_dev_version_warns(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ci_generator.importlib.metadata, "version", lambda name: "1.5.0.dev3")
     result = runner.invoke(app, ["ci", "init"])
