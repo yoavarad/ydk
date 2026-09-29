@@ -72,8 +72,10 @@ class CiTarget:
     condition: Callable[[CiContext], bool] = field(default=_always)
 
 
-# Registry of generated workflows. Intentionally empty until workflow tasks land.
-CI_TARGETS: list[CiTarget] = []
+# Registry of generated workflows.
+CI_TARGETS: list[CiTarget] = [
+    CiTarget("ydk-pr-body.yml", "ydk-pr-body.yml", "PR body validation"),
+]
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,33 @@
+name: YDK PR Body
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  YDK_VERSION: "{{YDK_VERSION}}"
+
+jobs:
+  pr-body:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - name: Install ydk
+        run: uv tool install --python 3.13 "git+https://github.com/yoavarad/ydk@v${YDK_VERSION}"
+      - name: Check PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          ydk verify pr-body --body-file "$RUNNER_TEMP/pr-body.md" --base-ref "origin/$BASE_REF"
