@@ -85,7 +85,7 @@ def run(
     if name:
         start = time.time()
         plugins = v.discover_plugins()
-        matched = v.filter_by_name(plugins, name)
+        matched = v.drop_skipped(v.filter_by_name(plugins, name))
         if not matched:
             console.print(f"[red]Plugin not found: {name}[/red]")
             raise typer.Exit(1)
@@ -118,7 +118,7 @@ def run(
         if not check.passed:
             for line in check.output.splitlines()[:5]:
                 console.print(f"    {line}")
-    for skipped in skip_plugins:
+    for skipped in v.skipped:
         console.print(f"  [yellow]-[/yellow] {skipped} (skipped)")
 
     if report.all_passed:

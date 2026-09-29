@@ -690,19 +690,35 @@ class TestFilterByTriggerShorthand:
         assert report.checks[0].name == "commit_check"
 
 
-def test_discover_plugins_skips_named_plugins(tmp_path) -> None:
-    from ydk.core.verifier import Verifier
+class TestSkipPlugins:
+    """skip_plugins drops AFTER trigger filtering; only would-have-run plugins are reported."""
 
-    proj = tmp_path / "proj"
-    for name in ("keep", "drop"):
-        d = proj / name
-        d.mkdir(parents=True)
-        (d / "manifest.yaml").write_text(f"name: {name}\ndescription: x\ntrigger: git:pre-commit\n")
-        (d / "check.py").write_text("")
-    v = Verifier(
-        project_root=tmp_path,
-        global_verifications=tmp_path / "none",
-        project_verifications=proj,
-        skip_plugins=["drop"],
-    )
-    assert [p.name for p in v.discover_plugins()] == ["keep"]
+    @staticmethod
+    def _v(tmp_path: Path, monkeypatch, skip: list[str]) -> Verifier:
+        v = _make_verifier(
+            tmp_path,
+            monkeypatch,
+            global_plugins={
+                "keep": {"trigger": "git:pre-push"},
+                "drop": {"trigger": "git:pre-push"},
+                "other": {"trigger": "git:pre-commit"},
+            },
+        )
+        v._skip = set(skip)
+        return v
+
+    def test_skip_name_not_matching_trigger_has_no_effect(self, tmp_path: Path, monkeypatch) -> None:
+        v = self._v(tmp_path, monkeypatch, ["other"])
+        report = asyncio.run(v.run_all(trigger="pre-push", context={"project_root": str(tmp_path)}))
+        assert sorted(c.name for c in report.checks) == ["drop", "keep"]
+        assert v.skipped == []
+
+    def test_skip_triggered_plugin_is_dropped_and_reported(self, tmp_path: Path, monkeypatch) -> None:
+        v = self._v(tmp_path, monkeypatch, ["drop", "other"])
+        report = asyncio.run(v.run_all(trigger="pre-push", context={"project_root": str(tmp_path)}))
+        assert [c.name for c in report.checks] == ["keep"]
+        assert v.skipped == ["drop"]
+
+    def test_discover_plugins_does_not_apply_skip(self, tmp_path: Path, monkeypatch) -> None:
+        v = self._v(tmp_path, monkeypatch, ["drop"])
+        assert "drop" in [p.name for p in v.discover_plugins()]
