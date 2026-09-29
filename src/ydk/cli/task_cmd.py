@@ -1091,7 +1091,7 @@ def sync_issues(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 
-    if format_or_echo(ctx, retired):
+    if format_or_echo(ctx, {"retired": retired}):
         return
     typer.echo("retired: " + (", ".join(f"#{n}" for n in retired) or "none"))
 

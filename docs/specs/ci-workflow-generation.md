@@ -111,7 +111,7 @@ removing the bash copy.
 **Required ydk change (A5).** The retire logic lives only in `skills/gh-issue-to-tasks/scripts/sync_issue_state.py`
 (+ `_gh.py`, `retire_issue.py`), which managed repos do not have. Move it into the package (e.g.
 `src/ydk/core/linked_issues.py`) and expose **`ydk task sync-issues [--dry-run]`**, output
-`retired: #12, #15 | none`, JSON via `--format json`. The skill script becomes a thin wrapper over the package
+`retired: #12, #15 | none`, JSON via `--format json` as `{"retired": [12, 15]}`. The skill script becomes a thin wrapper over the package
 function (or is deleted and the skill calls the CLI). YDK's own `sync-linked-issues.yml` SHOULD switch to the CLI.
 
 ### A6 — `ydk-delete-merged-branch.yml` (Phase 1)

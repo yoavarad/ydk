@@ -69,4 +69,4 @@ def test_sync_issues_malformed_gh_output_clean_error(monkeypatch: pytest.MonkeyP
 def test_sync_issues_json(calls: list[tuple[str, ...]]) -> None:
     result = runner.invoke(app, ["--format", "json", "task", "sync-issues", "--dry-run"])
     assert result.exit_code == 0
-    assert json.loads(result.output) == [3]
+    assert json.loads(result.output) == {"retired": [3]}
