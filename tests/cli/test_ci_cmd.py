@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -40,7 +41,8 @@ def test_ci_help() -> None:
     assert runner.invoke(app, ["ci", "--help"]).exit_code == 0
     result = runner.invoke(app, ["ci", "init", "--help"])
     assert result.exit_code == 0
-    assert "--force" in result.output
+    # Typer forces a rich terminal under GITHUB_ACTIONS, styling "-" and "-force" separately.
+    assert "--force" in re.sub(r"\x1b\[[0-9;]*m", "", result.output)
 
 
 def test_missing_config_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
