@@ -285,6 +285,23 @@ def test_pr_body_emits_error_annotations_in_github_actions(tmp_path: Path, monke
     assert "::error::PR body must contain a ## Summary section" in result.output
 
 
+def test_pr_body_annotates_fail_on_first_output_line(tmp_path: Path, monkeypatch) -> None:
+    from ydk.core import pr_body_check
+    from ydk.models.verification import CheckResult
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    fake = CheckResult(
+        name="pr-body-validation", passed=False, output="FAIL: first line problem\nFAIL: second", duration_seconds=0.0
+    )
+    monkeypatch.setattr(pr_body_check, "run_pr_body_validation", lambda *a, **k: fake)
+    body = tmp_path / "body.md"
+    body.write_text("x", encoding="utf-8")
+    result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body)])
+    assert result.exit_code == 1
+    assert "::error::first line problem" in result.output
+    assert "::error::second" in result.output
+
+
 def test_pr_body_base_ref_feeds_changed_files(tmp_path: Path, monkeypatch) -> None:
     import subprocess
 

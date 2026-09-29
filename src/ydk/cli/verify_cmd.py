@@ -186,8 +186,7 @@ def pr_body(
 
     typer.echo(result.output)
     if not result.passed and os.environ.get("GITHUB_ACTIONS") == "true":
-        # First output line is the "Missing requirements" summary; details follow.
-        for line in result.output.splitlines()[1:]:
+        for line in result.output.splitlines():
             if line.startswith("FAIL:"):
                 typer.echo(f"::error::{line.removeprefix('FAIL:').strip()}")
     raise typer.Exit(0 if result.passed else 1)
