@@ -688,3 +688,37 @@ class TestFilterByTriggerShorthand:
         report = asyncio.run(v.run_all(trigger="pre-commit", context={"project_root": str(tmp_path)}))
         assert len(report.checks) == 1
         assert report.checks[0].name == "commit_check"
+
+
+class TestSkipPlugins:
+    """skip_plugins drops AFTER trigger filtering; only would-have-run plugins are reported."""
+
+    @staticmethod
+    def _v(tmp_path: Path, monkeypatch, skip: list[str]) -> Verifier:
+        v = _make_verifier(
+            tmp_path,
+            monkeypatch,
+            global_plugins={
+                "keep": {"trigger": "git:pre-push"},
+                "drop": {"trigger": "git:pre-push"},
+                "other": {"trigger": "git:pre-commit"},
+            },
+        )
+        v._skip = set(skip)
+        return v
+
+    def test_skip_name_not_matching_trigger_has_no_effect(self, tmp_path: Path, monkeypatch) -> None:
+        v = self._v(tmp_path, monkeypatch, ["other"])
+        report = asyncio.run(v.run_all(trigger="pre-push", context={"project_root": str(tmp_path)}))
+        assert sorted(c.name for c in report.checks) == ["drop", "keep"]
+        assert v.skipped == []
+
+    def test_skip_triggered_plugin_is_dropped_and_reported(self, tmp_path: Path, monkeypatch) -> None:
+        v = self._v(tmp_path, monkeypatch, ["drop", "other"])
+        report = asyncio.run(v.run_all(trigger="pre-push", context={"project_root": str(tmp_path)}))
+        assert [c.name for c in report.checks] == ["keep"]
+        assert v.skipped == ["drop"]
+
+    def test_discover_plugins_does_not_apply_skip(self, tmp_path: Path, monkeypatch) -> None:
+        v = self._v(tmp_path, monkeypatch, ["drop"])
+        assert "drop" in [p.name for p in v.discover_plugins()]
