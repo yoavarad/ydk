@@ -1,2 +1,4 @@
 282: --skip-plugin added to verify run + Verifier(skip_plugins); tests, ruff, ty pass
 282 fix round: hooks pre-push passed no skip_plugins -> OptionInfo TypeError (unit test fail); fixed with skip_plugins=[]. Spec gap: skipped plugins now listed "(skipped)" in verify run output. Full suite 2560 pass, ruff/ty clean. Reviewer notes (skip-before-trigger ordering, lists all requested names) judged behavior-equivalent, not changed.
+- Re-land: new worktree from origin/main (old wt moved to 282-old, old branch renamed task/282-old-v1). Cherry-picked f34fb51, 00e83f8 + uncommitted patch; suite 2577 pass, ruff/ty clean, reviewer: no issues.
+- `ydk task done 282` BLOCKED: spec-alignment 7.8/10 (threshold 8; entity 9, interface 9) - graded against unrelated sync-issues/linked_issues spec. Not skipped; awaiting decision. No PR yet.
