@@ -72,8 +72,14 @@ class CiTarget:
     condition: Callable[[CiContext], bool] = field(default=_always)
 
 
-# Registry of generated workflows. Intentionally empty until workflow tasks land.
-CI_TARGETS: list[CiTarget] = []
+# Registry of generated workflows.
+CI_TARGETS: list[CiTarget] = [
+    CiTarget(
+        template="ydk-delete-merged-branch.yml",
+        output="ydk-delete-merged-branch.yml",
+        purpose="Delete head branch after merge",
+    ),
+]
 
 
 @dataclass(frozen=True)
