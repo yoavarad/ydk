@@ -1077,6 +1077,25 @@ def ready(
     console.print(table)
 
 
+@task_app.command("sync-issues")
+def sync_issues(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(False, "--dry-run", help="List issues that would be retired without changing them."),
+) -> None:
+    """Retire linked external issues whose YDK tasks are all closed."""
+    from ydk.core.linked_issues import sync
+
+    try:
+        retired = sync(dry_run)
+    except RuntimeError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    if format_or_echo(ctx, {"retired": retired}):
+        return
+    typer.echo("retired: " + (", ".join(f"#{n}" for n in retired) or "none"))
+
+
 @task_app.command("list")
 def list_tasks(
     ctx: typer.Context,
