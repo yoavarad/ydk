@@ -73,5 +73,4 @@ def pre_push() -> None:
         task_id=None,
         pr=None,
         capture=False,
-        skip_plugins=[],
     )

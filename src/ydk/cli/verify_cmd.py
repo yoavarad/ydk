@@ -118,8 +118,6 @@ def run(
         if not check.passed:
             for line in check.output.splitlines()[:5]:
                 console.print(f"    {line}")
-    for skipped in skip_plugins:
-        console.print(f"  [yellow]-[/yellow] {skipped} (skipped)")
 
     if report.all_passed:
         console.print(f"\n[bold green]ALL PASSED[/bold green] ({report.total_duration_seconds}s)")

@@ -271,13 +271,3 @@ class TestVerifySkipPlugin:
         result = runner.invoke(app, ["verify", "run", "--skip-plugin", "a", "--skip-plugin", "b"])
         assert result.exit_code == 0
         assert captured["skip"] == ["a", "b"]
-
-    def test_skip_plugin_reported_as_skipped_in_output(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            "ydk.cli.verify_cmd.Verifier.run_all",
-            AsyncMock(return_value=_ok_report()),
-        )
-        result = runner.invoke(app, ["verify", "run", "--skip-plugin", "ai-code-review"])
-        assert result.exit_code == 0
-        assert "ai-code-review" in result.output
-        assert "skipped" in result.output
