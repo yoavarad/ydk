@@ -155,6 +155,23 @@ class TestComponentValidate:
         assert result.exit_code == 1
         assert "FAILED" in result.output
 
+    def test_validate_uses_configured_spec_location(self, monkeypatch, tmp_path):
+        from ydk.core import component_linker
+
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: p\n  spec_location: custom/specs\n")
+        monkeypatch.chdir(tmp_path)
+        seen = {}
+        orig_init = component_linker.ComponentLinker.__init__
+
+        def spy(self, registry, narratives_dir):
+            seen["dir"] = narratives_dir
+            orig_init(self, registry, narratives_dir)
+
+        monkeypatch.setattr(component_linker.ComponentLinker, "__init__", spy)
+        runner.invoke(app, ["component", "validate"])
+        assert str(seen["dir"]).replace("\\", "/") == "custom/specs"
+
 
 class TestComponentListSchemas:
     def test_lists_schemas(self, monkeypatch):
