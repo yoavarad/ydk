@@ -1,0 +1,30 @@
+name: YDK spec integrity
+
+on:
+  pull_request:
+    paths:
+      - "{{SPEC_LOCATION}}/**"
+      - "{{COMPONENTS_PATH}}/**"
+      - "{{SCHEMAS_PATH}}/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  YDK_VERSION: "{{YDK_VERSION}}"
+
+jobs:
+  components:
+    name: Component validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - name: Install ydk
+        run: uv tool install --python 3.13 "git+https://github.com/yoavarad/ydk@v${YDK_VERSION}"
+      - name: Validate components
+        run: ydk component validate

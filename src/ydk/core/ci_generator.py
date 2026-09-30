@@ -76,6 +76,7 @@ class CiTarget:
 CI_TARGETS: list[CiTarget] = [
     CiTarget("ydk-pr-body.yml", "ydk-pr-body.yml", "PR body validation"),
     CiTarget("ydk-pr-checks.yml", "ydk-pr-checks.yml", "Branch name and conventional commit checks"),
+    CiTarget("ydk-spec-integrity.yml", "ydk-spec-integrity.yml", "Spec and component integrity checks"),
     CiTarget(
         template="ydk-delete-merged-branch.yml",
         output="ydk-delete-merged-branch.yml",
@@ -164,9 +165,9 @@ def render(template_text: str, ctx: CiContext, extra: Mapping[str, str] | None =
         **(extra or {}),
         "YDK_VERSION": ctx.version,
         "STACK": ctx.stack,
-        "SPEC_LOCATION": ctx.spec_location,
-        "COMPONENTS_PATH": ctx.components_path,
-        "SCHEMAS_PATH": ctx.schemas_path,
+        "SPEC_LOCATION": ctx.spec_location.rstrip("/"),
+        "COMPONENTS_PATH": ctx.components_path.rstrip("/"),
+        "SCHEMAS_PATH": ctx.schemas_path.rstrip("/"),
     }
     body = re.sub(r"\{\{([A-Z_]+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template_text)
     return HEADER.format(version=ctx.version) + body
