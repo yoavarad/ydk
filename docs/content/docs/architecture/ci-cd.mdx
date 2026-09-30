@@ -1,25 +1,37 @@
 ---
 title: CI/CD Pipeline
-description: GitHub Actions workflows for linting, testing, bumping, and releasing
+description: GitHub Actions workflows for linting, testing, PR checks, releasing, and generated CI for managed repos
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 # CI/CD Pipeline
 
-YDK uses three GitHub Actions workflows that enforce the same quality standards in CI that the local verification plugins enforce on the developer's machine. The philosophy is simple: if code passes local verification, it should pass CI, and vice versa. The CI pipeline is not a separate quality gate -- it is the same gate, running in a controlled environment.
+YDK's own repository uses six GitHub Actions workflows in `.github/workflows/` that enforce the same quality standards in CI that the local verification plugins enforce on the developer's machine. The philosophy is simple: if code passes local verification, it should pass CI, and vice versa. The CI pipeline is not a separate quality gate -- it is the same gate, running in a controlled environment.
 
 ## ci.yml: PR and Push Validation
 
 This workflow runs on every pull request and every push to main. It has four jobs:
 
-**Branch name validation** (PRs only) ensures that branch names follow the convention `^(feat|fix|docs|chore|refactor|test|ci|perf|release)/[a-z0-9-]+$`. This is not cosmetic -- the branch naming convention feeds into the conventional commit system, which drives automatic versioning and changelog generation.
+**Branch name validation** (PRs only) ensures that branch names follow the convention `^(feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+$`. This is not cosmetic -- the branch naming convention feeds into the conventional commit system, which drives automatic versioning and changelog generation.
 
 **Commit message validation** (PRs only) runs `cz check --rev-range origin/main...HEAD` to validate that every commit follows the conventional commit format. Types are `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `perf`, and `release`. This validation catches malformed commits before they are merged, preventing versioning confusion.
 
-**Lint** installs all dependencies with `uv sync --locked --all-extras --dev` and runs `ruff check src/ tests/` followed by `ty check src/ --python-version 3.13`. These are the same checks that YDK's Layer 1 verification plugins run locally.
+**Lint** installs all dependencies with `uv sync --locked --all-extras --dev` and runs `ruff check src/ tests/` followed by `ty check src/ydk/ --python-version 3.13`. These are the same checks that YDK's Layer 1 verification plugins run locally.
 
 **Test** installs all dependencies and runs `pytest tests/ -q --tb=short -x --ignore=tests/fixtures`. The `-x` flag stops on first failure for fast feedback. The `--ignore=tests/fixtures` flag excludes test fixture files that are not actual test files.
+
+## pr-body-check.yml: PR Body Validation
+
+Runs on pull requests when they are opened or edited. It installs dependencies with `uv sync --all-extras --dev`, writes the PR body to a temp file, and runs `ydk verify pr-body --body-file <file> --base-ref origin/<base>`, the same check `ydk task done` runs locally.
+
+## delete-merged-branch.yml: Branch Cleanup
+
+Runs when a pull request is closed (`contents: write`). The `delete-branch` job only proceeds when the PR was merged, its head branch lives in this repository (not a fork), and the head branch is not the default branch. It then deletes the head branch through the GitHub API.
+
+## sync-linked-issues.yml: Issue Sync
+
+Runs on every push to main (and manually via `workflow_dispatch`) with `issues: write` and `contents: read`. It installs with `uv sync --locked` and runs `ydk task sync-issues`.
 
 ## Versioning: manual `cz bump` + tag-sync
 
@@ -35,6 +47,55 @@ The flow:
 4. **`release.yml`** fires independently, on any `v*` tag push — it doesn't wait for the PR to merge. It creates a GitHub Release with the tag name as the title and auto-generates release notes from the commits since the previous tag.
 
 Because `release.yml` triggers on the tag push itself (step 2), the GitHub Release can go live *before* the PR merges. There is no automatic version management on push-to-main — every bump starts with a manually run `cz bump` on a branch.
+
+## Generated CI for managed repos (`ydk ci init`)
+
+The workflows above are YDK's own. For projects that YDK manages, `ydk ci init` generates an equivalent set of workflows from templates shipped in the package (`src/ydk/templates/ci/`). Design: [CI workflow generation spec](https://github.com/yoavarad/ydk/blob/main/docs/specs/ci-workflow-generation.md) and [ADR 0002](https://github.com/yoavarad/ydk/blob/main/docs/adrs/0002-ci-workflow-generation.md).
+
+### Usage
+
+```bash
+ydk ci init          # write missing files, skip existing ones
+ydk ci init --force  # overwrite existing generated files
+```
+
+The command reads `.ydk/config.yaml` from the current directory. It fails (writing nothing, exit code 1) if the config is missing or `project.remote` is not `github`. Output is a table of path, action (`written`, `overwritten`, or `skipped (exists)`) and purpose; with the JSON output format it returns `{"written": [...], "skipped": [...]}`. When files were skipped, a hint suggests `--force`.
+
+`ydk init --remote github` runs the same generation automatically, but never overwrites, even with `ydk init --force`.
+
+### Generated files
+
+| File | Trigger | Permissions | Purpose |
+|------|---------|-------------|---------|
+| `.github/workflows/ydk-pr-body.yml` | `pull_request`: opened, edited, synchronize, reopened | `contents: read` | Installs the pinned ydk and runs `ydk verify pr-body` against the PR body |
+| `.github/workflows/ydk-pr-checks.yml` | `pull_request`: opened, synchronize, reopened | `contents: read` | Branch name regex (same as `ci.yml`) and `cz check` on the PR's commits |
+| `.github/workflows/ydk-delete-merged-branch.yml` | `pull_request`: closed | `contents: write` | Deletes the head branch after a merge (same-repo PRs only, never the default branch) |
+| `.github/workflows/ci.yml` | `pull_request`, push to main, `workflow_dispatch` | `contents: read` | Stack CI, chosen by `project.stack` (see below) |
+| `.github/PULL_REQUEST_TEMPLATE.md` | n/a | n/a | PR template with Changes, Verification Proof, Spec refs and `Closes #` sections |
+
+Each workflow starts with a `# Generated by ydk ci init vX.Y.Z` header. The `ydk-sync.yml` and `ydk-spec-integrity.yml` workflows described in the spec (Phase 2) are not generated yet.
+
+### Stack selection
+
+| `project.stack` | `ci.yml` template | What it runs |
+|-----------------|-------------------|--------------|
+| `python-fastapi`, `python-cli` | `ci-python.yml` | `uv sync --locked --all-extras --dev`, `ruff check .`, `ruff format --check .`, `ty check`, `pytest -q --tb=short` (lint and test jobs) |
+| `dotnet` | `ci-dotnet.yml` | `dotnet restore`, `build` (warnings as errors), `format --verify-no-changes`, `test`, plus a vulnerable-package scan that fails on High/Critical |
+| anything else | `ci-fallback.yml` | Installs ydk and runs `ydk verify run --trigger git:pre-push --skip-plugin ai-code-review --skip-plugin spec-alignment` |
+
+Warnings are printed when the Python template is generated without a root `uv.lock` (its `--locked` sync fails until one is committed), and when the dotnet template cannot find a single `.sln`/`.slnx` (`SOLUTION` is left empty in `ci.yml` and must be set by hand). The dotnet template uses `global.json` for the SDK version when present, otherwise `8.0.x`.
+
+The fallback runs whatever verification plugins the project configures, but its toolchain is limited to what the runner has: the fallback template installs ydk and Python only, so plugins that need other toolchains (compilers, linters for other languages) must be installed by editing `ci.yml`.
+
+### Version pinning and upgrades
+
+Workflows that run ydk (`ydk-pr-body.yml` and the fallback `ci.yml`) pin it with an `YDK_VERSION` env var set to the ydk version that generated them, installed from the matching `v<version>` git tag. To upgrade, update ydk and re-run `ydk ci init --force`. If the running ydk is a dev or local build, the command warns that the pinned tag may not exist.
+
+Because `--force` overwrites, local edits to generated files are lost; commit or copy them first.
+
+### Non-goals
+
+GitLab remotes, release workflows (`release.yml` is YDK-specific) and Dependabot configuration are not generated.
 
 ## Local Git Hooks
 
