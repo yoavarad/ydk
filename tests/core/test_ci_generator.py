@@ -58,6 +58,10 @@ def _ctx(version: str = "1.5.0") -> CiContext:
     )
 
 
+def test_registry_lists_pr_checks() -> None:
+    assert "ydk-pr-checks.yml" in [t.output for t in ci_generator.CI_TARGETS]
+
+
 def test_templates_dir_is_package_data() -> None:
     assert ci_generator.TEMPLATES_DIR.is_dir()
 
