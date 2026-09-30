@@ -370,6 +370,7 @@ def _register_ci_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     (tdir / "demo.yml").write_text("name: demo\n", encoding="utf-8")
     monkeypatch.setattr(ci_generator, "TEMPLATES_DIR", tdir)
     monkeypatch.setattr(ci_generator, "CI_TARGETS", [CiTarget("demo.yml", "demo.yml", "Demo purpose")])
+    monkeypatch.setattr(ci_generator, "select_stack_target", lambda stack: None)
     real_run = subprocess.run
 
     def _fake_run(args: list[str], *a: object, **k: object) -> subprocess.CompletedProcess[str]:
