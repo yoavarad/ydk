@@ -363,3 +363,39 @@ def test_dotnet_solution_undetected_warns(tmp_path: Path, slns: tuple[str, ...])
     assert wf["jobs"]["build-test"]["env"]["SOLUTION"] == ""
     assert len(wf["_result"].warnings) == 1
     assert "SOLUTION" in wf["_result"].warnings[0]
+
+
+def _load_validate_pr_body():
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "src" / "ydk" / "verifications" / "pr-body-validation" / "check.py"
+    spec = importlib.util.spec_from_file_location("pr_body_validation_check", script)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.validate_pr_body
+
+
+def test_pr_template_sections_in_pr_body_builder_order() -> None:
+    idx = [PR_TEMPLATE.index(h) for h in ("## Summary", "## Verification Results", "## Test Plan")]
+    assert idx == sorted(idx)
+    summary_part = PR_TEMPLATE.split("## Verification Results")[0]
+    assert "Spec refs:" in summary_part
+
+
+def test_pr_template_drops_old_headings() -> None:
+    assert "## Changes" not in PR_TEMPLATE
+    assert "## Verification Proof" not in PR_TEMPLATE
+
+
+def test_filled_pr_template_passes_pr_body_validation() -> None:
+    body = PR_TEMPLATE.replace("## Summary\n", "## Summary\n\nDid a thing.\n", 1)
+    body = body.replace(
+        "<!-- Paste command output in a ```console block -->",
+        "```console\n$ pytest\n1 passed\n```",
+    )
+    body = body.replace("## Test Plan\n", "## Test Plan\n\n- ran pytest\n", 1)
+    result = _load_validate_pr_body()(body, [])
+    assert result["passed"], result["details"]
