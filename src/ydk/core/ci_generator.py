@@ -81,6 +81,7 @@ CI_TARGETS: list[CiTarget] = [
         output="ydk-delete-merged-branch.yml",
         purpose="Delete head branch after merge",
     ),
+    CiTarget("ydk-sync.yml", "ydk-sync.yml", "Post-merge task and issue sync"),
 ]
 
 PYTHON_CI = CiTarget(template="ci-python.yml", output="ci.yml", purpose="stack CI (python)")
