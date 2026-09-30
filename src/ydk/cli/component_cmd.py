@@ -10,6 +10,7 @@ import yaml
 
 from ydk.cli._helpers import format_or_echo
 from ydk.core.component_registry import ComponentRegistry, ComponentRegistryError
+from ydk.core.config import load_config
 from ydk.output.console import console
 
 component_app = typer.Typer(name="component", help="Component manifest management")
@@ -105,7 +106,7 @@ def validate_components(ctx: typer.Context) -> None:
     schema_errors = registry.validate_all()
     error_count = sum(len(e) for e in schema_errors.values())
 
-    specs_dir = Path("docs") / "specs"
+    specs_dir = Path(load_config().project.spec_location)
     linker = ComponentLinker(registry=registry, narratives_dir=specs_dir)
     linker_result = linker.validate_references()
 
