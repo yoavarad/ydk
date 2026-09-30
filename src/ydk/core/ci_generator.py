@@ -83,15 +83,14 @@ CI_TARGETS: list[CiTarget] = [
 ]
 
 PYTHON_CI = CiTarget(template="ci-python.yml", output="ci.yml", purpose="stack CI (python)")
+DOTNET_CI = CiTarget(template="ci-dotnet.yml", output="ci.yml", purpose="stack CI (dotnet)")
 
 # `project.stack` -> stack CI target written as `ci.yml`. Stacks not listed get no `ci.yml`.
 STACK_CI_TARGETS: dict[str, CiTarget] = {
     "python-fastapi": PYTHON_CI,
     "python-cli": PYTHON_CI,
+    "dotnet": DOTNET_CI,
 }
-
-DOTNET_CI = CiTarget(template="ci-dotnet.yml", output="ci.yml", purpose="stack CI (dotnet)")
-STACK_CI_TARGETS["dotnet"] = DOTNET_CI
 
 SOLUTION_WARNING = (
     'Could not detect a single .sln/.slnx file; ci.yml has SOLUTION: "". Set the SOLUTION env var in ci.yml.'
