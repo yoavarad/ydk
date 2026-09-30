@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]  # your default branch; edit if it is not main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      SOLUTION: "{{SOLUTION}}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          {{DOTNET_VERSION_LINE}}
+      - name: Restore
+        run: dotnet restore $SOLUTION
+      - name: Build
+        run: dotnet build $SOLUTION -c Release --no-restore -p:TreatWarningsAsErrors=true
+      - name: Format
+        run: dotnet format $SOLUTION --verify-no-changes --no-restore
+      - name: Test
+        run: dotnet test $SOLUTION -c Release --no-build --logger "trx;LogFileName=results.trx" --results-directory TestResults
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+      - name: Vulnerability audit
+        run: |
+          output=$(dotnet list $SOLUTION package --vulnerable --include-transitive 2>&1)
+          echo "$output"
+          if echo "$output" | grep -qP '\b(High|Critical)\b'; then
+            echo "::error::High or Critical vulnerable packages found"
+            exit 1
+          fi

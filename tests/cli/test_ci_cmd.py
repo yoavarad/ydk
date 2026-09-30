@@ -147,3 +147,16 @@ def test_fallback_stack_summary(python_repo: Path) -> None:
     assert (python_repo / ".github" / "workflows" / "ci.yml").is_file()
     assert "stack CI (fallback: verify run)" in result.output
     assert "uv.lock" not in result.output
+
+
+def test_dotnet_stack_summary_and_solution_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: demo\n  remote: github\n  stack: dotnet\n", encoding="utf-8"
+    )
+    result = runner.invoke(app, ["ci", "init"])
+    assert result.exit_code == 0
+    assert (tmp_path / ".github" / "workflows" / "ci.yml").is_file()
+    assert "stack CI (dotnet)" in result.output
+    assert "SOLUTION" in result.output

@@ -186,10 +186,6 @@ def test_select_stack_target_fallback(stack: str) -> None:
     )
 
 
-def test_select_stack_target_dotnet_reserved_for_dotnet_template() -> None:
-    assert select_stack_target("dotnet") is None
-
-
 @pytest.mark.parametrize("stack", PYTHON_STACKS)
 def test_python_stack_writes_ci_yml(tmp_path: Path, stack: str) -> None:
     _write_config(tmp_path, stack=stack)
@@ -261,13 +257,6 @@ def test_fallback_stack_writes_verify_run_ci_yml(tmp_path: Path, stack: str) -> 
     assert result.warnings == []
 
 
-def test_dotnet_stack_writes_no_ci_yml_yet(tmp_path: Path) -> None:
-    _write_config(tmp_path, stack="dotnet")
-    result = generate_ci(tmp_path, force=False, version="1.5.0")
-    assert not (tmp_path / ".github" / "workflows" / "ci.yml").exists()
-    assert result.warnings == []
-
-
 def test_existing_ci_yml_skipped_then_forced(tmp_path: Path) -> None:
     _write_config(tmp_path, stack="python-fastapi")
     (tmp_path / "uv.lock").write_text("", encoding="utf-8")
@@ -291,3 +280,86 @@ def test_version_defaults_to_installed_metadata(tmp_path: Path, monkeypatch: pyt
     assert result.unpublished is True
     text = (tmp_path / ".github" / "workflows" / "demo.yml").read_text(encoding="utf-8")
     assert "# ydk 1.5.0.dev3" in text
+
+
+def _dotnet(root: Path, *, slns: tuple[str, ...] = (), global_json: bool = False) -> dict:
+    _write_config(root, stack="dotnet")
+    for rel in slns:
+        f = root / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("", encoding="utf-8")
+    if global_json:
+        (root / "global.json").write_text("{}", encoding="utf-8")
+    result = generate_ci(root, force=False, version="1.5.0")
+    wf = _load_workflow(root / ".github" / "workflows" / "ci.yml")
+    wf["_result"] = result
+    return wf
+
+
+def test_select_stack_target_dotnet() -> None:
+    target = select_stack_target("dotnet")
+    assert target is not None
+    assert (target.template, target.output, target.purpose) == ("ci-dotnet.yml", "ci.yml", "stack CI (dotnet)")
+
+
+def test_dotnet_workflow_shape(tmp_path: Path) -> None:
+    wf = _dotnet(tmp_path, slns=("App.sln",), global_json=True)
+    assert wf[True]["push"]["branches"] == ["main"]
+    assert "workflow_dispatch" in wf[True]
+    assert wf["permissions"] == {"contents": "read"}
+    assert "concurrency" in wf
+    job = wf["jobs"]["build-test"]
+    assert job["runs-on"] == "ubuntu-latest"
+    assert job["timeout-minutes"] == 30
+    assert job["env"]["DOTNET_NOLOGO"] is True
+    assert job["env"]["DOTNET_CLI_TELEMETRY_OPTOUT"] is True
+    assert job["env"]["SOLUTION"] == "App.sln"
+    runs = [s["run"] for s in job["steps"] if "run" in s]
+    assert runs[0] == "dotnet restore $SOLUTION"
+    assert runs[1].startswith("dotnet build $SOLUTION -c Release --no-restore")
+    assert "-p:TreatWarningsAsErrors=true" in runs[1]
+    assert runs[2] == "dotnet format $SOLUTION --verify-no-changes --no-restore"
+    assert runs[3].startswith("dotnet test $SOLUTION -c Release --no-build")
+    assert "--results-directory TestResults" in runs[3]
+    upload = next(s for s in job["steps"] if s.get("uses") == "actions/upload-artifact@v4")
+    assert upload["if"] == "failure()"
+    assert upload["with"]["path"] == "TestResults"
+    assert "dotnet list $SOLUTION package --vulnerable --include-transitive" in runs[-1]
+    assert "::error::" in runs[-1]
+    assert wf["_result"].warnings == []
+    ci_row = next(f for f in wf["_result"].files if f.path == ".github/workflows/ci.yml")
+    assert ci_row.purpose == "stack CI (dotnet)"
+
+
+def test_dotnet_global_json_present(tmp_path: Path) -> None:
+    wf = _dotnet(tmp_path, slns=("App.sln",), global_json=True)
+    setup = wf["jobs"]["build-test"]["steps"][1]
+    assert setup["uses"] == "actions/setup-dotnet@v4"
+    assert setup["with"] == {"global-json-file": "global.json"}
+
+
+def test_dotnet_global_json_absent(tmp_path: Path) -> None:
+    wf = _dotnet(tmp_path, slns=("App.sln",))
+    assert wf["jobs"]["build-test"]["steps"][1]["with"] == {"dotnet-version": "8.0.x"}
+
+
+@pytest.mark.parametrize(
+    ("slns", "expected"),
+    [
+        (("App.sln",), "App.sln"),
+        (("src/App.slnx",), "src/App.slnx"),
+        (("App.sln", "src/Other.sln"), "App.sln"),
+    ],
+)
+def test_dotnet_solution_detected(tmp_path: Path, slns: tuple[str, ...], expected: str) -> None:
+    wf = _dotnet(tmp_path, slns=slns)
+    assert wf["jobs"]["build-test"]["env"]["SOLUTION"] == expected
+    assert wf["_result"].warnings == []
+
+
+@pytest.mark.parametrize("slns", [(), ("A.sln", "B.slnx"), ("a/A.sln", "b/B.sln")])
+def test_dotnet_solution_undetected_warns(tmp_path: Path, slns: tuple[str, ...]) -> None:
+    wf = _dotnet(tmp_path, slns=slns)
+    assert wf["jobs"]["build-test"]["env"]["SOLUTION"] == ""
+    assert len(wf["_result"].warnings) == 1
+    assert "SOLUTION" in wf["_result"].warnings[0]
