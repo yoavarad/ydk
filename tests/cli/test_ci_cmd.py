@@ -135,3 +135,16 @@ def test_dev_version_warns(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert WARNING in result.output
     assert "v1.5.0.dev3" in result.output
+
+
+def test_dotnet_stack_summary_and_solution_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: demo\n  remote: github\n  stack: dotnet\n", encoding="utf-8"
+    )
+    result = runner.invoke(app, ["ci", "init"])
+    assert result.exit_code == 0
+    assert (tmp_path / ".github" / "workflows" / "ci.yml").is_file()
+    assert "stack CI (dotnet)" in result.output
+    assert "SOLUTION" in result.output

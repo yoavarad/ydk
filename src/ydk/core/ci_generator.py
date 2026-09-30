@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from ydk.core.config import load_config
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates" / "ci"
 WORKFLOWS_DIR = Path(".github") / "workflows"
@@ -84,14 +84,33 @@ CI_TARGETS: list[CiTarget] = [
 ]
 
 PYTHON_CI = CiTarget(template="ci-python.yml", output="ci.yml", purpose="stack CI (python)")
+DOTNET_CI = CiTarget(template="ci-dotnet.yml", output="ci.yml", purpose="stack CI (dotnet)")
 
 # `project.stack` -> stack CI target written as `ci.yml`. Stacks not listed get no `ci.yml`.
 STACK_CI_TARGETS: dict[str, CiTarget] = {
     "python-fastapi": PYTHON_CI,
     "python-cli": PYTHON_CI,
+    "dotnet": DOTNET_CI,
 }
 
+SOLUTION_WARNING = (
+    'Could not detect a single .sln/.slnx file; ci.yml has SOLUTION: "". Set the SOLUTION env var in ci.yml.'
+)
+
 UV_LOCK_WARNING = "uv.lock not found at the repo root; ci.yml runs 'uv sync --locked' and fails until it is committed."
+
+
+def detect_solution(root: Path) -> str:
+    """Return the single `.sln`/`.slnx` at *root*, else the single one one level down; "" if zero or several."""
+
+    def _slns(directory: Path) -> list[Path]:
+        return sorted(p for p in directory.iterdir() if p.is_file() and p.suffix in (".sln", ".slnx"))
+
+    found = _slns(root)
+    if not found:
+        for sub in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")):
+            found.extend(_slns(sub))
+    return found[0].relative_to(root).as_posix() if len(found) == 1 else ""
 
 
 def select_stack_target(stack: str) -> CiTarget | None:
@@ -137,9 +156,10 @@ def is_release_version(version: str) -> bool:
     return "dev" not in version and "+" not in version
 
 
-def render(template_text: str, ctx: CiContext) -> str:
+def render(template_text: str, ctx: CiContext, extra: Mapping[str, str] | None = None) -> str:
     """Prepend the header and substitute `{{PLACEHOLDER}}` tokens. Deterministic."""
     values = {
+        **(extra or {}),
         "YDK_VERSION": ctx.version,
         "STACK": ctx.stack,
         "SPEC_LOCATION": ctx.spec_location,
@@ -198,7 +218,16 @@ def generate_ci(
     for t in targets:
         if not t.condition(ctx):
             continue
-        content = render((tdir / t.template).read_text(encoding="utf-8"), ctx)
+        extra: dict[str, str] | None = None
+        if t is DOTNET_CI:
+            solution = detect_solution(root)
+            if not solution:
+                warnings.append(SOLUTION_WARNING)
+            version_line = (
+                "global-json-file: global.json" if (root / "global.json").is_file() else "dotnet-version: 8.0.x"
+            )
+            extra = {"SOLUTION": solution, "DOTNET_VERSION_LINE": version_line}
+        content = render((tdir / t.template).read_text(encoding="utf-8"), ctx, extra)
         files.append(_write(root, WORKFLOWS_DIR / t.output, content, t.purpose, force=force))
         if t is PYTHON_CI and not (root / "uv.lock").is_file():
             warnings.append(UV_LOCK_WARNING)
