@@ -84,18 +84,25 @@ CI_TARGETS: list[CiTarget] = [
 
 PYTHON_CI = CiTarget(template="ci-python.yml", output="ci.yml", purpose="stack CI (python)")
 
-# `project.stack` -> stack CI target written as `ci.yml`. Stacks not listed get no `ci.yml`.
+FALLBACK_CI = CiTarget(template="ci-fallback.yml", output="ci.yml", purpose="stack CI (fallback: verify run)")
+
+# `project.stack` -> stack CI target written as `ci.yml`. Unlisted stacks get FALLBACK_CI,
+# except those in NO_FALLBACK_STACKS, which are reserved for their own template.
 STACK_CI_TARGETS: dict[str, CiTarget] = {
     "python-fastapi": PYTHON_CI,
     "python-cli": PYTHON_CI,
 }
 
+NO_FALLBACK_STACKS = frozenset({"dotnet"})
+
 UV_LOCK_WARNING = "uv.lock not found at the repo root; ci.yml runs 'uv sync --locked' and fails until it is committed."
 
 
 def select_stack_target(stack: str) -> CiTarget | None:
-    """Return the stack CI target for *stack*, or None when the stack has no template."""
-    return STACK_CI_TARGETS.get(stack)
+    """Return the stack CI target for *stack*: its own template, else the fallback (None if reserved)."""
+    if stack in STACK_CI_TARGETS:
+        return STACK_CI_TARGETS[stack]
+    return None if stack in NO_FALLBACK_STACKS else FALLBACK_CI
 
 
 @dataclass(frozen=True)

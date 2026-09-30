@@ -33,6 +33,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tdir / "demo.yml").write_text("name: demo {{YDK_VERSION}}\n", encoding="utf-8")
     monkeypatch.setattr(ci_generator, "TEMPLATES_DIR", tdir)
     monkeypatch.setattr(ci_generator, "CI_TARGETS", [CiTarget("demo.yml", "demo.yml", "Demo purpose")])
+    monkeypatch.setattr(ci_generator, "select_stack_target", lambda stack: None)
     monkeypatch.setattr(ci_generator.importlib.metadata, "version", lambda name: "1.5.0")
     return tmp_path
 
@@ -135,3 +136,14 @@ def test_dev_version_warns(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert WARNING in result.output
     assert "v1.5.0.dev3" in result.output
+
+
+def test_fallback_stack_summary(python_repo: Path) -> None:
+    (python_repo / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: demo\n  remote: github\n  stack: terraform\n", encoding="utf-8"
+    )
+    result = runner.invoke(app, ["ci", "init"])
+    assert result.exit_code == 0, result.output
+    assert (python_repo / ".github" / "workflows" / "ci.yml").is_file()
+    assert "stack CI (fallback: verify run)" in result.output
+    assert "uv.lock" not in result.output

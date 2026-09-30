@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]  # your default branch; edit if it is not main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  YDK_VERSION: "{{YDK_VERSION}}"
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      # Toolchain limitation: verification plugins shell out to project tools (node, terraform, ...)
+      # that the runner may lack or have at the wrong version. Add the setup steps you need before
+      # the verify step, e.g. actions/setup-node or hashicorp/setup-terraform.
+      - name: Install ydk
+        run: uv tool install --python 3.13 "git+https://github.com/yoavarad/ydk@v${YDK_VERSION}"
+      - name: ydk verify
+        run: ydk verify run --trigger git:pre-push --skip-plugin ai-code-review --skip-plugin spec-alignment
