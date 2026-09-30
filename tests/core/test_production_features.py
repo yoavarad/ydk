@@ -499,7 +499,7 @@ class TestGitTemplatesInit:
         runner.invoke(app, ["init", "--name", "testproj"])
 
         content = (tmp_path / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text()
-        assert "Verification Proof" in content
+        assert "Verification Results" in content
         assert "Closes #" in content
 
 
