@@ -75,6 +75,7 @@ class CiTarget:
 # Registry of generated workflows.
 CI_TARGETS: list[CiTarget] = [
     CiTarget("ydk-pr-body.yml", "ydk-pr-body.yml", "PR body validation"),
+    CiTarget("ydk-pr-checks.yml", "ydk-pr-checks.yml", "Branch name and conventional commit checks"),
     CiTarget(
         template="ydk-delete-merged-branch.yml",
         output="ydk-delete-merged-branch.yml",
