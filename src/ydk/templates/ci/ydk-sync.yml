@@ -1,0 +1,40 @@
+name: YDK Sync
+
+# Post-merge bookkeeping: sync task state and issues after changes land on the default branch.
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+# Serialize syncs; never drop one.
+concurrency:
+  group: ydk-sync
+  cancel-in-progress: false
+
+env:
+  YDK_VERSION: "{{YDK_VERSION}}"
+
+jobs:
+  sync:
+    # `push` filters cannot reference the default branch, so gate here.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - name: Install ydk
+        run: uv tool install --python 3.13 "git+https://github.com/yoavarad/ydk@v${YDK_VERSION}"
+      - name: Sync tasks
+        run: ydk task sync
+      - name: Sync issues
+        run: ydk task sync-issues
