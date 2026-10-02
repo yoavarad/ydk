@@ -278,6 +278,16 @@ class TaskLifecycle:
         if task_for_spec_refs.spec_refs:
             context["spec_refs"] = task_for_spec_refs.spec_refs
 
+        # Task scope lets AI plugins (spec-alignment, ai-code-review) grade
+        # only the requirements this task owns, not the whole epic spec.
+        context["task_scope"] = {
+            "title": task_for_spec_refs.title,
+            "description": task_for_spec_refs.description,
+            "acceptance_criteria": [
+                ac if isinstance(ac, str) else ac.text for ac in task_for_spec_refs.acceptance_criteria
+            ],
+        }
+
         # Run verifications scoped to task files
         report = asyncio.run(self._verifier.run_all(trigger="pre-push", context=context))
 
