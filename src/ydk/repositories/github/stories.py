@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import builtins
-import json
 from typing import TYPE_CHECKING
 
-from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
+from ydk.repositories.github._helpers import (
+    GH_JSON_FIELDS,
+    GH_LIST_LIMIT,
+    check_result,
+    label_names,
+    load_json_stdout,
+    run_gh,
+)
 from ydk.repositories.github.parser import _github_ref, parse_story_detail, render_story_body
 
 if TYPE_CHECKING:
@@ -60,7 +66,7 @@ class GitHubStoryRepository:
         cmd = ["gh", "issue", "view", str(issue_number), "--json", GH_JSON_FIELDS]
         result = run_gh(cmd)
         check_result(result, "issue view (story)")
-        data = json.loads(result.stdout)
+        data = load_json_stdout(result, "issue view (story)")
         return parse_story_detail(
             number=data["number"],
             title=data["title"],
@@ -99,7 +105,7 @@ class GitHubStoryRepository:
         if result.returncode != 0:
             return []
 
-        items: list[dict] = json.loads(result.stdout)
+        items: list[dict] = load_json_stdout(result, "issue list")
         return [
             parse_story_detail(
                 number=item["number"],
