@@ -103,6 +103,7 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | list[str] | `[]` | Plugin whitelist. Empty list means all plugins run. |
+| `pr_body.ui_exclude` | list[str] | `["graphify-out/**"]` | Globs (`**` supported, POSIX paths) for changed files that `pr-body-validation` must not treat as UI, so no screenshots are required. A user-set list replaces the default. Honoured by `ydk task done` and `ydk verify pr-body`. |
 
 ## ComponentConfig
 

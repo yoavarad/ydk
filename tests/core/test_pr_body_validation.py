@@ -254,3 +254,23 @@ def test_build_pr_body_warns_incomplete_proof(mock_subprocess, lifecycle_for_pr_
     # Without a report, there are no console blocks — the body should still have summary/test plan
     assert "## Summary" in body
     assert "## Test Plan" in body
+
+
+class TestUiExclude:
+    def test_excluded_path_needs_no_screenshots(self):
+        mod = _load_check_module()
+        assert mod._needs_screenshots(["graphify-out/graph.html"], ["graphify-out/**"]) is False
+
+    def test_non_excluded_ui_still_needs_screenshots(self):
+        mod = _load_check_module()
+        assert mod._needs_screenshots(["src/app/page.tsx"], ["graphify-out/**"]) is True
+
+    def test_nested_glob_and_backslash_path(self):
+        mod = _load_check_module()
+        assert mod._needs_screenshots(["a\\b\\graphify-out\\x\\y.html"], ["**/graphify-out/**"]) is False
+
+    def test_validate_pr_body_passes_ui_exclude(self):
+        mod = _load_check_module()
+        body = "## Summary\nx\n\n## Test Plan\n```console\nok\n```\n"
+        assert mod.validate_pr_body(body, ["graphify-out/graph.html"], ["graphify-out/**"])["passed"] is True
+        assert mod.validate_pr_body(body, ["graphify-out/graph.html"])["passed"] is False

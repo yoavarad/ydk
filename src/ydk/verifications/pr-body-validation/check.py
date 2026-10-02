@@ -12,6 +12,7 @@ import json
 import re
 import sys
 import time
+from pathlib import PurePosixPath
 
 # File extensions and path patterns that indicate UI changes
 _UI_EXTENSIONS = {".tsx", ".jsx", ".css", ".html"}
@@ -57,17 +58,24 @@ def _is_ui_file(filepath: str) -> bool:
     return False
 
 
-def _needs_screenshots(changed_files: list[str] | None) -> bool:
+def _is_excluded(filepath: str, ui_exclude: list[str]) -> bool:
+    """True if the POSIX-normalized path matches any exclude glob."""
+    path = PurePosixPath(filepath.replace("\\", "/"))
+    return any(path.full_match(glob) for glob in ui_exclude)
+
+
+def _needs_screenshots(changed_files: list[str] | None, ui_exclude: list[str] | None = None) -> bool:
     """Return True if any changed file is a UI file.
 
     ``changed_files`` may be explicitly ``None`` (not just absent) -- callers
     like ``Verifier.run_all()`` use ``None`` as a "scope to everything" signal
     for other plugins, and that same context dict gets reused here.
     """
-    return any(_is_ui_file(f) for f in changed_files or [])
+    excludes = ui_exclude or []
+    return any(_is_ui_file(f) and not _is_excluded(f, excludes) for f in changed_files or [])
 
 
-def validate_pr_body(body: str, changed_files: list[str] | None) -> dict:
+def validate_pr_body(body: str, changed_files: list[str] | None, ui_exclude: list[str] | None = None) -> dict:
     """Validate a PR body and return a structured result.
 
     Returns a dict with:
@@ -105,7 +113,7 @@ def validate_pr_body(body: str, changed_files: list[str] | None) -> dict:
         details.append("FAIL: PR body must contain a ## Test Plan section")
 
     # Check screenshots for UI files
-    if _needs_screenshots(changed_files):
+    if _needs_screenshots(changed_files, ui_exclude):
         if _has_screenshots(body):
             met.append("screenshot_for_ui")
             details.append("PASS: PR body contains screenshots for UI changes")
@@ -132,7 +140,7 @@ def main() -> None:
     changed_files = context.get("changed_files", [])
     start = time.time()
 
-    result = validate_pr_body(pr_body, changed_files)
+    result = validate_pr_body(pr_body, changed_files, context.get("ui_exclude", []))
 
     output_lines = result["details"]
     if result["passed"]:

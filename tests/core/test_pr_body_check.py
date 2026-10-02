@@ -38,3 +38,32 @@ def test_returns_none_when_plugin_missing(tmp_path: Path) -> None:
     empty.mkdir()
     verifier = Verifier(project_root=tmp_path, global_verifications=empty, project_verifications=empty)
     assert run_pr_body_validation(GOOD_BODY, [], tmp_path, verifier=verifier) is None
+
+
+def test_default_config_excludes_graphify_out(tmp_path: Path) -> None:
+    result = run_pr_body_validation(GOOD_BODY, ["graphify-out/graph.html"], tmp_path)
+    assert result is not None
+    assert result.passed is True
+
+
+def test_custom_ui_exclude_from_config_flows_to_plugin(tmp_path: Path) -> None:
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: x\nverification:\n  pr_body:\n    ui_exclude:\n      - 'generated/**'\n",
+        encoding="utf-8",
+    )
+    ok = run_pr_body_validation(GOOD_BODY, ["generated/report.html"], tmp_path)
+    assert ok is not None
+    assert ok.passed is True
+    # user list replaces default
+    bad = run_pr_body_validation(GOOD_BODY, ["graphify-out/graph.html"], tmp_path)
+    assert bad is not None
+    assert bad.passed is False
+
+
+def test_malformed_config_falls_back_to_default(tmp_path: Path) -> None:
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text("", encoding="utf-8")
+    result = run_pr_body_validation(GOOD_BODY, ["graphify-out/graph.html"], tmp_path)
+    assert result is not None
+    assert result.passed is True
