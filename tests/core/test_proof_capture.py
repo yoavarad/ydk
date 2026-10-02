@@ -42,7 +42,7 @@ def _make_report(task_id: str = "T-001", checks: list[CheckResult] | None = None
 class TestCaptureCommand:
     def test_captures_stdout_to_file(self, proof_dir: Path) -> None:
         pc = ProofCapture(proof_dir)
-        path = pc.capture_command("echo-test", ["echo", "hello world"])
+        path = pc.capture_command("echo-test", [sys.executable, "-c", "print('hello world')"])
         assert path.exists()
         assert "hello world" in path.read_text()
 
@@ -56,7 +56,7 @@ class TestCaptureCommand:
 
     def test_returns_correct_path(self, proof_dir: Path) -> None:
         pc = ProofCapture(proof_dir)
-        path = pc.capture_command("my-check", ["echo", "ok"])
+        path = pc.capture_command("my-check", [sys.executable, "-c", "print('ok')"])
         assert path.name == "my-check.txt"
         assert path.parent == proof_dir
 
@@ -74,13 +74,13 @@ class TestCaptureCommand:
         pc = ProofCapture(proof_dir)
         fake_result = MagicMock(stdout="ok", stderr="")
         with patch("subprocess.run", return_value=fake_result) as mock_run:
-            pc.capture_command("my-check", ["echo", "ok"])
+            pc.capture_command("my-check", [sys.executable, "-c", "print('ok')"])
         assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_output_file_written_with_utf8_encoding(self, proof_dir: Path) -> None:
         pc = ProofCapture(proof_dir)
         with patch.object(Path, "write_text", autospec=True) as mock_write_text:
-            pc.capture_command("my-check", ["echo", "ok"])
+            pc.capture_command("my-check", [sys.executable, "-c", "print('ok')"])
         assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
@@ -262,7 +262,7 @@ class TestListVideos:
 class TestCapturePlugin:
     def test_saves_plugin_output_to_plugins_dir(self, proof_dir: Path) -> None:
         pc = ProofCapture(proof_dir)
-        path = pc.capture_plugin("lint-ruff", ["echo", "All checks passed"])
+        path = pc.capture_plugin("lint-ruff", [sys.executable, "-c", "print('All checks passed')"])
         assert path.exists()
         assert path.parent.name == "plugins"
         assert "All checks passed" in path.read_text()
@@ -272,20 +272,20 @@ class TestCapturePlugin:
         pc = ProofCapture(proof_dir)
         plugins_dir = proof_dir / "plugins"
         assert not plugins_dir.exists()
-        pc.capture_plugin("test-plugin", ["echo", "ok"])
+        pc.capture_plugin("test-plugin", [sys.executable, "-c", "print('ok')"])
         assert plugins_dir.is_dir()
 
     def test_subprocess_run_uses_utf8_encoding(self, proof_dir: Path) -> None:
         pc = ProofCapture(proof_dir)
         fake_result = MagicMock(stdout="ok", stderr="")
         with patch("subprocess.run", return_value=fake_result) as mock_run:
-            pc.capture_plugin("lint-ruff", ["echo", "ok"])
+            pc.capture_plugin("lint-ruff", [sys.executable, "-c", "print('ok')"])
         assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
 
     def test_output_file_written_with_utf8_encoding(self, proof_dir: Path) -> None:
         pc = ProofCapture(proof_dir)
         with patch.object(Path, "write_text", autospec=True) as mock_write_text:
-            pc.capture_plugin("lint-ruff", ["echo", "ok"])
+            pc.capture_plugin("lint-ruff", [sys.executable, "-c", "print('ok')"])
         assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
 
 
