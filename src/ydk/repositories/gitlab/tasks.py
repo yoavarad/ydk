@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskDetail
@@ -11,6 +10,7 @@ from ydk.repositories.gitlab._helpers import (
     extract_label_names,
     glab_state,
     list_glab_issues,
+    load_json_stdout,
     map_status,
     run_glab,
 )
@@ -92,7 +92,7 @@ class GitLabTaskRepository:
         result = run_glab(cmd)
         check_result(result, "issue view")
 
-        data = json.loads(result.stdout)
+        data = load_json_stdout(result, "issue view")
         return self._issue_json_to_detail(data)
 
     def list(
