@@ -418,3 +418,102 @@ class TestPluginCrashReportsFailure:
         assert result["detail"]["crashed"] is True
         assert result["detail"]["no_cache"] is True
         assert "agent exploded" in result["detail"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# Task-scope grading (both plugins)
+# ---------------------------------------------------------------------------
+
+_TASK_SCOPE = {
+    "title": "Add greeting endpoint",
+    "description": "Implement only the greet() function; logging is owned by a sibling task.",
+    "acceptance_criteria": ["greet() returns 'Hello <name>'", "greet() rejects empty names"],
+}
+
+_PASSING_EVALUATION = {
+    "dimensions": {
+        dim: {"score": 9, "reasoning": "ok"}
+        for dim in (
+            "entity_accuracy",
+            "interface_compliance",
+            "error_handling",
+            "boundary_respect",
+            "scope_compliance",
+            "cross_cutting_adherence",
+        )
+    },
+    "overall_score": 9,
+    "summary": "Task-owned requirements satisfied.",
+}
+
+_CLEAN_REVIEW = {"findings": [], "summary": "No issues found.", "passed": True}
+
+
+@pytest.mark.parametrize(
+    ("path", "module_name", "tool_response"),
+    [
+        (SPEC_ALIGNMENT_PATH, "spec_alignment_scope", _PASSING_EVALUATION),
+        (AI_CODE_REVIEW_PATH, "ai_code_review_scope", _CLEAN_REVIEW),
+    ],
+)
+class TestTaskScopeGrading:
+    """Plugins grade against the task's scope, not the whole spec, when task_scope is given."""
+
+    def _run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        path: Path,
+        module_name: str,
+        tool_response: dict[str, Any],
+        task_scope: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], str]:
+        mod = _load_check_module(path, module_name)
+        _write_file(tmp_path, "src/main.py", "def greet(name: str) -> str:\n    return f'Hello {name}'")
+        _write_file(tmp_path, "docs/spec.md", "# Greeting API\nMust accept name.\nMust log every call.")
+        ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
+        if task_scope is not None:
+            ctx["task_scope"] = task_scope
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(tool_response)
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            result = mod.run_check(ctx)
+
+        user_message = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        return result, user_message
+
+    def test_prompt_contains_task_scope_and_out_of_scope_instruction(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        path: Path,
+        module_name: str,
+        tool_response: dict[str, Any],
+    ) -> None:
+        result, user_message = self._run(tmp_path, monkeypatch, path, module_name, tool_response, _TASK_SCOPE)
+
+        assert result["passed"] is True
+        assert "=== TASK SCOPE ===" in user_message
+        assert _TASK_SCOPE["title"] in user_message
+        assert _TASK_SCOPE["description"] in user_message
+        for criterion in _TASK_SCOPE["acceptance_criteria"]:
+            assert criterion in user_message
+        lowered = user_message.lower()
+        assert "not applicable" in lowered
+        assert "only" in lowered
+        assert "owned by this task" in lowered
+
+    def test_without_task_scope_prompt_is_unchanged(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        path: Path,
+        module_name: str,
+        tool_response: dict[str, Any],
+    ) -> None:
+        _, user_message = self._run(tmp_path, monkeypatch, path, module_name, tool_response, None)
+
+        assert "TASK SCOPE" not in user_message
+        assert "not applicable" not in user_message.lower()

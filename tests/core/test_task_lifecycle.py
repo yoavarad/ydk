@@ -12,7 +12,7 @@ from ydk.core.events import EventBus
 from ydk.core.task_lifecycle import TaskLifecycle
 from ydk.core.verifier import Verifier
 from ydk.models.config import DEFAULT_MODEL_TIERS
-from ydk.models.pm import DependencyStatus, TaskCreate, TaskDetail
+from ydk.models.pm import AcceptanceCriterion, DependencyStatus, TaskCreate, TaskDetail
 from ydk.models.verification import CheckResult, VerificationReport
 
 
@@ -157,9 +157,51 @@ def test_done_runs_verifications(
                     "thresholds": {"architecture": 8},
                 },
             },
+            "task_scope": {"title": "Test task", "description": "", "acceptance_criteria": []},
         },
     )
     assert result["passed"] is True
+
+
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_passes_task_scope_to_verification_context(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    lifecycle: TaskLifecycle,
+    mock_verifier: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+) -> None:
+    """done() passes task title, body and acceptance criteria as task_scope."""
+    mock_repo.get_task.return_value = TaskDetail(
+        id="T-001",
+        title="Add widget",
+        description="Implement the widget endpoint only.",
+        acceptance_criteria=["Widget endpoint returns 200", AcceptanceCriterion(text="Widget is logged", done=True)],
+        spec_refs=["docs/specs/widgets.md"],
+    )
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_verifier.save_proof.return_value = Path("/tmp/proof.json")
+    mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
+
+    lifecycle.done("T-001")
+
+    context = mock_verifier.run_all.call_args.kwargs["context"]
+    assert context["spec_refs"] == ["docs/specs/widgets.md"]
+    assert context["task_scope"] == {
+        "title": "Add widget",
+        "description": "Implement the widget endpoint only.",
+        "acceptance_criteria": ["Widget endpoint returns 200", "Widget is logged"],
+    }
+    json.dumps(context)  # must stay JSON-serializable for plugin stdin
 
 
 def test_done_fails_when_verification_fails(
