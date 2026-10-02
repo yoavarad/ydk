@@ -138,6 +138,24 @@ def _get_git_diff(root: Path, changed_files: list[str]) -> str:
     return ""
 
 
+def _format_task_scope(task_scope: object) -> str:
+    """Render the task-scope prompt block, or "" when no task scope is given."""
+    if not isinstance(task_scope, dict) or not task_scope:
+        return ""
+    scope = cast("dict[str, Any]", task_scope)
+    criteria = scope.get("acceptance_criteria") or []
+    criteria_text = "\n".join(f"- {c}" for c in criteria) or "(none listed)"
+    return (
+        "\n\n=== TASK SCOPE ===\n\n"
+        f"Title: {scope.get('title', '')}\n\n"
+        f"Description:\n{scope.get('description', '')}\n\n"
+        f"Acceptance criteria:\n{criteria_text}\n\n"
+        "For spec compliance, consider ONLY the spec requirements owned by this task, as defined by "
+        "the task scope above. Spec items outside this task's scope (e.g. work owned by sibling tasks) "
+        "are not applicable: do not raise spec_compliance findings for them."
+    )
+
+
 def run_check(context: dict) -> dict:
     """Core check logic. Separated for testability."""
     from ydk.core.claude_client import (
@@ -201,7 +219,9 @@ def run_check(context: dict) -> dict:
             )
 
     user_message = (
-        "Review the following git diff for spec compliance and code quality:\n\n=== GIT DIFF ===\n\n" + git_diff
+        "Review the following git diff for spec compliance and code quality:\n\n=== GIT DIFF ===\n\n"
+        + git_diff
+        + _format_task_scope(context.get("task_scope"))
     )
 
     try:
