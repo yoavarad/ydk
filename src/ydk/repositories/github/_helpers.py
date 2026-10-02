@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
+from typing import Any
+
+# Parsed gh/glab JSON is untyped (object or array); callers narrow it.
+JsonValue = Any
 
 GH_JSON_FIELDS = "number,title,state,labels,body,url"
 
@@ -20,6 +25,14 @@ def check_result(result: subprocess.CompletedProcess[str], action: str) -> None:
     if result.returncode != 0:
         msg = f"gh {action} failed: {result.stderr.strip()}"
         raise RuntimeError(msg)
+
+
+def load_json_stdout(result: subprocess.CompletedProcess[str], action: str) -> JsonValue:
+    """Parse JSON from a gh result, raising RuntimeError if stdout is None/empty."""
+    if result.stdout is None or not result.stdout.strip():
+        msg = f"gh {action} returned no output: {(result.stderr or '').strip()}"
+        raise RuntimeError(msg)
+    return json.loads(result.stdout)
 
 
 def label_names(raw_labels: list[dict]) -> list[str]:

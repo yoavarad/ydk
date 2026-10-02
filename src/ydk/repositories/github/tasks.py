@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import builtins
-import json
 import logging
 import re
 from typing import TYPE_CHECKING
 
 from ydk.models.pm import Dependency, DependencyStatus, TaskCreate, TaskDetail, TaskStatus, TaskSummary
 from ydk.models.task import is_blocking_dependency
-from ydk.repositories.github._helpers import GH_JSON_FIELDS, GH_LIST_LIMIT, check_result, label_names, run_gh
+from ydk.repositories.github._helpers import (
+    GH_JSON_FIELDS,
+    GH_LIST_LIMIT,
+    check_result,
+    label_names,
+    load_json_stdout,
+    run_gh,
+)
 from ydk.repositories.github.parser import (
     parse_task_detail,
     render_dependency,
@@ -121,7 +127,7 @@ class GitHubTaskRepository:
         ]
         result = run_gh(cmd)
         check_result(result, "issue view")
-        data = json.loads(result.stdout)
+        data = load_json_stdout(result, "issue view")
         return parse_task_detail(
             number=data["number"],
             title=data["title"],
@@ -186,7 +192,7 @@ class GitHubTaskRepository:
         result = run_gh(cmd)
         check_result(result, "issue list")
 
-        items: list[dict] = json.loads(result.stdout)
+        items: list[dict] = load_json_stdout(result, "issue list")
         details = [
             parse_task_detail(
                 number=item["number"],

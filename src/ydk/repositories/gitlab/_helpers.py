@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ydk.models.pm import TaskStatus
 
 if TYPE_CHECKING:
     import builtins
     from collections.abc import Callable
+
+# Parsed gh/glab JSON is untyped (object or array); callers narrow it.
+JsonValue = Any
 
 # glab defaults to 30 results per page for `issue list`; 100 is the API maximum.
 GLAB_PAGE_SIZE = 100
@@ -27,6 +30,14 @@ def check_result(result: subprocess.CompletedProcess[str], action: str) -> None:
     if result.returncode != 0:
         msg = f"glab {action} failed: {result.stderr.strip()}"
         raise RuntimeError(msg)
+
+
+def load_json_stdout(result: subprocess.CompletedProcess[str], action: str) -> JsonValue:
+    """Parse JSON from a glab result, raising RuntimeError if stdout is None/empty."""
+    if result.stdout is None or not result.stdout.strip():
+        msg = f"glab {action} returned no output: {(result.stderr or '').strip()}"
+        raise RuntimeError(msg)
+    return json.loads(result.stdout)
 
 
 def issue_ref(raw_id: str) -> str:
@@ -76,8 +87,8 @@ def list_glab_issues(
         if result.returncode != 0:
             return []
         try:
-            batch = json.loads(result.stdout)
-        except json.JSONDecodeError:
+            batch = load_json_stdout(result, "issue list")
+        except (json.JSONDecodeError, RuntimeError):
             return []
         issues.extend(batch)
         if len(batch) < GLAB_PAGE_SIZE:
