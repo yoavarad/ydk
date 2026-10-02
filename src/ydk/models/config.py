@@ -166,12 +166,21 @@ class LearningConfig(BaseModel):
     require_epic_retro: bool = True
 
 
+class PrBodyConfig(BaseModel):
+    """Settings for the ``pr-body-validation`` plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ui_exclude: list[str] = Field(default_factory=lambda: ["graphify-out/**"])
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: list[str] = Field(default_factory=list)
+    pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
 
 
 class ComponentConfig(BaseModel):

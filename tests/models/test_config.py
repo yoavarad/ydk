@@ -80,3 +80,19 @@ class TestSingleSourceOfTruth:
         assert "us.anthropic." not in text
         raw = yaml.safe_load(text)
         assert "model" not in raw.get("spec_check", {})
+
+
+class TestPrBodyConfig:
+    def test_default_ui_exclude_is_graphify_out(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        assert cfg.verification.pr_body.ui_exclude == ["graphify-out/**"]
+
+    def test_user_list_replaces_default(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {"project": {"name": "x"}, "verification": {"pr_body": {"ui_exclude": ["docs/**"]}}}
+        )
+        assert cfg.verification.pr_body.ui_exclude == ["docs/**"]
+
+    def test_unknown_pr_body_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="bogus"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"pr_body": {"bogus": 1}}})

@@ -5,7 +5,12 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+import yaml
+from pydantic import ValidationError
+
+from ydk.core.config import load_config
 from ydk.core.verifier import Verifier
+from ydk.models.config import PrBodyConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,6 +39,11 @@ def run_pr_body_validation(
 
     plugin_context: dict[str, object] = dict(context) if context else {"project_root": str(project_root.resolve())}
     plugin_context["pr_body"] = pr_body
+    try:
+        ui_exclude = load_config(project_root / ".ydk" / "config.yaml").verification.pr_body.ui_exclude
+    except (ValidationError, yaml.YAMLError):
+        ui_exclude = PrBodyConfig().ui_exclude
+    plugin_context["ui_exclude"] = list(ui_exclude)
     if changed_files or "changed_files" not in plugin_context:
         plugin_context["changed_files"] = changed_files
     results = asyncio.run(v.run_layer(matched, plugin_context))
