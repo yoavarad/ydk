@@ -89,6 +89,8 @@ class Doctor:
                     ["git", "--version"],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     check=False,
                 )
                 version = out.stdout.strip()
@@ -104,6 +106,8 @@ class Doctor:
                 ["git", "rev-parse", "--git-dir"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
                 cwd=self._root,
             )
@@ -273,6 +277,8 @@ class Doctor:
             ["gh", "auth", "status"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             cwd=self._root,
         )
@@ -294,6 +300,8 @@ class Doctor:
             ["gh", "repo", "view", "--json", "nameWithOwner,hasIssuesEnabled"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             cwd=self._root,
         )
@@ -325,6 +333,8 @@ class Doctor:
             ["gh", "label", "list", "--json", "name"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             cwd=self._root,
         )

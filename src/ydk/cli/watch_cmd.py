@@ -27,6 +27,8 @@ def install() -> None:
         ["launchctl", "load", str(plist_path)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         typer.echo(f"Warning: launchctl load failed: {result.stderr.strip()}", err=True)
@@ -50,6 +52,8 @@ def uninstall() -> None:
         ["launchctl", "unload", str(plist_path)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     plist_path.unlink()

@@ -20,7 +20,7 @@ class GitHubRemoteService:
         if milestone:
             cmd.extend(["--milestone", milestone])
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode != 0:
             msg = f"Failed to create issue: {result.stderr.strip()}"
             raise RuntimeError(msg)
@@ -47,7 +47,7 @@ class GitHubRemoteService:
             for label in labels:
                 cmd.extend(["--label", label])
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode != 0:
             return []
         try:
@@ -58,7 +58,7 @@ class GitHubRemoteService:
     def add_label(self, issue_number: int, label: str) -> None:
         """Add a label to an issue."""
         cmd = ["gh", "issue", "edit", str(issue_number), "--add-label", label]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode != 0:
             msg = f"Failed to add label: {result.stderr.strip()}"
             raise RuntimeError(msg)
@@ -66,7 +66,7 @@ class GitHubRemoteService:
     def add_comment(self, issue_number: int, comment: str) -> None:
         """Add a comment to an issue."""
         cmd = ["gh", "issue", "comment", str(issue_number), "--body", comment]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode != 0:
             msg = f"Failed to add comment: {result.stderr.strip()}"
             raise RuntimeError(msg)
@@ -83,7 +83,7 @@ class GitLabRemoteService:
         if milestone:
             cmd.extend(["--milestone", milestone])
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode != 0:
             msg = f"Failed to create issue: {result.stderr.strip()}"
             raise RuntimeError(msg)
@@ -101,12 +101,14 @@ class GitLabRemoteService:
         if labels:
             cmd.extend(["--label", ",".join(labels)])
 
-        return list_glab_issues(lambda c: subprocess.run(c, capture_output=True, text=True), cmd)
+        return list_glab_issues(
+            lambda c: subprocess.run(c, capture_output=True, text=True, encoding="utf-8", errors="replace"), cmd
+        )
 
     def add_label(self, issue_number: int, label: str) -> None:
         """Add a label to an issue."""
         cmd = ["glab", "issue", "update", str(issue_number), "--label", label]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode != 0:
             msg = f"Failed to add label: {result.stderr.strip()}"
             raise RuntimeError(msg)
@@ -114,7 +116,7 @@ class GitLabRemoteService:
     def add_comment(self, issue_number: int, comment: str) -> None:
         """Add a comment to an issue."""
         cmd = ["glab", "issue", "note", str(issue_number), "--message", comment]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode != 0:
             msg = f"Failed to add comment: {result.stderr.strip()}"
             raise RuntimeError(msg)

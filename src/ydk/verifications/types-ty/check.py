@@ -108,6 +108,8 @@ def main() -> None:
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
     output = result.stdout

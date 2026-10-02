@@ -110,6 +110,8 @@ def _get_git_diff(root: Path, changed_files: list[str]) -> str:
             cwd=str(root),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -124,6 +126,8 @@ def _get_git_diff(root: Path, changed_files: list[str]) -> str:
             cwd=str(root),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():

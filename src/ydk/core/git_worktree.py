@@ -73,6 +73,8 @@ class WorktreeManager:
             cwd=str(self._root),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         for branch in result.stdout.strip().splitlines():
             branch = branch.strip().lstrip("* ")

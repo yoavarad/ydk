@@ -12,7 +12,7 @@ GH_LIST_LIMIT = 1000
 
 def run_gh(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     """Run a gh CLI command and return the result."""
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def check_result(result: subprocess.CompletedProcess[str], action: str) -> None:

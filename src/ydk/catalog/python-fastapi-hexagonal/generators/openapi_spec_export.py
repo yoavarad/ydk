@@ -42,6 +42,8 @@ if venv_python.exists():
         [str(venv_python), "-c", export_script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
         env=env,
     )
