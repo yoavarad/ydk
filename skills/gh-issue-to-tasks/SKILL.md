@@ -17,8 +17,8 @@ Convert an externally filed GitHub issue into YDK tasks, link the issue to them,
 Run scripts from the target repo (the one that owns the issue), addressing them by the skill's base directory (e.g. `~/.claude/skills/gh-issue-to-tasks`), shown as `$SKILL`:
 
 - Stdlib-only scripts: `python $SKILL/scripts/<script>.py ...`
-- ydk-dependent scripts (`retire_issue.py`, `sync_issue_state.py`): run with ydk's interpreter via the uv tool env: `uv tool run --from ydk python $SKILL/scripts/retire_issue.py ...`. Plain `python` fails with `ModuleNotFoundError: No module named 'ydk'` outside ydk's venv.
-- The ydk CLI must be recent enough to include `ydk task sync-issues` (missing from ydk 1.4.2 installs); upgrade with `uv tool upgrade ydk`. There is no `ydk task retire-issue` command; retire goes through `retire_issue.py` as above.
+- ydk-dependent scripts (`retire_issue.py`, `sync_issue_state.py`): run with ydk's interpreter via the uv tool env. Prerequisite: install ydk as a uv tool first, `uv tool install git+https://github.com/yoavarad/ydk` (ydk is not on PyPI; `--from ydk` otherwise pulls the unrelated PyPI package `ydk`): `uv tool run --from ydk python $SKILL/scripts/retire_issue.py ...`. Plain `python` fails with `ModuleNotFoundError: No module named 'ydk'` outside ydk's venv.
+- The ydk CLI must be recent enough to include `ydk task sync-issues` (missing from ydk 1.4.2 installs); upgrade with `uv tool upgrade ydk` (works only after the install above). There is no `ydk task retire-issue` command; retire goes through `retire_issue.py` as above.
 
 ## Workflow
 
