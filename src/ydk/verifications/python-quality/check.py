@@ -86,12 +86,16 @@ def main() -> None:
             [ruff_cmd, "format", *check_dirs],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=project_root,
         )
     fmt_result = subprocess.run(
         [ruff_cmd, "format", "--check", *check_dirs],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
     if fmt_result.returncode != 0:
@@ -105,12 +109,16 @@ def main() -> None:
             [ruff_cmd, "check", *check_dirs, "--select", RUFF_SELECT, "--fix"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=project_root,
         )
     lint_result = subprocess.run(
         [ruff_cmd, "check", *check_dirs, "--select", RUFF_SELECT],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
     if lint_result.returncode != 0:
@@ -124,6 +132,8 @@ def main() -> None:
             _build_ty_cmd(ty_cmd, project_root, src_dirs),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=project_root,
         )
         ty_output = ty_result.stdout + (("\n" + ty_result.stderr) if ty_result.stderr else "")

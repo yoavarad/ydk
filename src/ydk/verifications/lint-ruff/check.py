@@ -70,6 +70,8 @@ def _run_auto_fix(ruff_bin: str, project_root: str, check_dirs: list[str]) -> tu
         [ruff_bin, "check", *check_dirs],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
     before_count = _count_violations(before.stdout + before.stderr)
@@ -79,6 +81,8 @@ def _run_auto_fix(ruff_bin: str, project_root: str, check_dirs: list[str]) -> tu
         [ruff_bin, "check", "--fix", *check_dirs],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
 
@@ -87,6 +91,8 @@ def _run_auto_fix(ruff_bin: str, project_root: str, check_dirs: list[str]) -> tu
         [ruff_bin, "format", *check_dirs],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
 
@@ -95,6 +101,8 @@ def _run_auto_fix(ruff_bin: str, project_root: str, check_dirs: list[str]) -> tu
         [ruff_bin, "check", *check_dirs],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
     after_count = _count_violations(after.stdout + after.stderr)
@@ -156,6 +164,8 @@ def main() -> None:
         [ruff_bin, "format", "--check", *check_dirs],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
     # Run lint check
@@ -163,6 +173,8 @@ def main() -> None:
         [ruff_bin, "check", *check_dirs],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
 

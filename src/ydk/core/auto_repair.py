@@ -90,6 +90,8 @@ class RepairLoop:
                     ["ruff", "check", "--fix", "."],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=str(self._root),
                     timeout=60,
                 )
@@ -103,6 +105,8 @@ class RepairLoop:
                     ["ruff", "format", "."],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=str(self._root),
                     timeout=60,
                 )

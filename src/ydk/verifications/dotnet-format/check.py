@@ -30,6 +30,8 @@ def _has_sdk(dotnet_bin: str) -> bool:
             [dotnet_bin, "--list-sdks"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
             check=False,
         )
@@ -105,6 +107,8 @@ def main() -> None:
         [dotnet_bin, "format", target, "--verify-no-changes"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
         timeout=110,
         check=False,

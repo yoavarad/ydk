@@ -775,7 +775,7 @@ def start(
             import subprocess as _sp
 
             find_cmd = ["gh", "pr", "list", "--head", f"task/{task_id}", "--json", "number", "--state", "all"]
-            pr_result = _sp.run(find_cmd, capture_output=True, text=True)
+            pr_result = _sp.run(find_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
             pr_num = "?"
             if pr_result.returncode == 0:
                 try:
@@ -2432,7 +2432,14 @@ def install_merge_driver(
         (f"merge.{_MERGE_DRIVER_NAME}.name", "YDK bookkeeping merge"),
         (f"merge.{_MERGE_DRIVER_NAME}.driver", driver),
     ):
-        result = subprocess.run(["git", "config", key, value], capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            ["git", "config", key, value],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         if result.returncode != 0:
             typer.echo(f"Error: git config failed: {result.stderr.strip()}", err=True)
             raise typer.Exit(1)

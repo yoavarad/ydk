@@ -31,6 +31,8 @@ def main() -> None:
         ["bunx", "eslint", "--max-warnings", "0", "src/**/*.{ts,tsx}"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=project_root,
     )
 

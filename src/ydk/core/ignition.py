@@ -145,6 +145,8 @@ class IgnitionEngine:
             cwd=str(self._root),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode == 0:
             logger.info("Dependencies installed successfully")
@@ -374,6 +376,8 @@ class IgnitionEngine:
                     [sys.executable, str(script_path)],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=_GENERATOR_TIMEOUT,
                     env={**dict(os.environ), **env_vars},
                 )
@@ -565,6 +569,8 @@ class IgnitionEngine:
                     [sys.executable, "-m", "py_compile", str(f)],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                 )
                 if result.returncode != 0:
                     errors.append(f"Syntax error in {f.name}: {result.stderr.strip()}")
@@ -581,6 +587,8 @@ class IgnitionEngine:
                 ["ruff", "format", *py_files],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
 
         return errors

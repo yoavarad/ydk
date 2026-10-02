@@ -104,7 +104,7 @@ class WatchManager:
 
         # 1. Pull request review comments (inline code comments)
         cmd = ["gh", "api", f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments", "--jq", "."]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode == 0 and result.stdout.strip():
             try:
                 for c in json.loads(result.stdout):
@@ -130,7 +130,7 @@ class WatchManager:
 
         # 2. Issue comments (top-level PR comments from gh pr comment)
         issue_cmd = ["gh", "api", f"repos/{{owner}}/{{repo}}/issues/{pr_number}/comments", "--jq", "."]
-        result = subprocess.run(issue_cmd, capture_output=True, text=True)
+        result = subprocess.run(issue_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode == 0 and result.stdout.strip():
             try:
                 for c in json.loads(result.stdout):
@@ -158,7 +158,7 @@ class WatchManager:
 
         # 3. Top-level review bodies (approve/request-changes/comment reviews)
         reviews_cmd = ["gh", "api", f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews", "--jq", "."]
-        result = subprocess.run(reviews_cmd, capture_output=True, text=True)
+        result = subprocess.run(reviews_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if result.returncode == 0 and result.stdout.strip():
             try:
                 for r in json.loads(result.stdout):
@@ -205,6 +205,8 @@ class WatchManager:
                 ["gh", "api", "-X", "POST", endpoint, "-f", "content=eyes"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             logger.info("Reacted 👀 to %s #%d on PR #%d", comment_type, comment_id, pr_number)
         except Exception:

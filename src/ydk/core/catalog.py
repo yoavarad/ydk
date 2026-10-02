@@ -319,6 +319,8 @@ class LocalCatalogBackend:
                     shell=True,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     cwd=item_path,
                 )
                 if result.returncode != 0:

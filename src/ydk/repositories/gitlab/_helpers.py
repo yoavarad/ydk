@@ -19,7 +19,7 @@ GLAB_MAX_PAGES = 100
 
 def run_glab(cmd: builtins.list[str]) -> subprocess.CompletedProcess[str]:
     """Execute a glab CLI command. Extracted for easy mocking."""
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def check_result(result: subprocess.CompletedProcess[str], action: str) -> None:
