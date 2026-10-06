@@ -156,6 +156,11 @@ def _format_task_scope(task_scope: object) -> str:
     )
 
 
+def _valid_findings(findings: object) -> bool:
+    """True when findings is a list of dicts."""
+    return isinstance(findings, list) and all(isinstance(f, dict) for f in findings)
+
+
 def run_check(context: dict) -> dict:
     """Core check logic. Separated for testability."""
     from ydk.core.claude_client import (
@@ -253,7 +258,15 @@ def run_check(context: dict) -> dict:
             "detail": {"error": True, "no_cache": True},
         }
 
-    review = cast("dict[str, Any]", cast("Any", tool_use_block).input)
+    review = cast("Any", tool_use_block).input
+    if not isinstance(review, dict) or not _valid_findings(review.get("findings", [])):
+        return {
+            "name": "ai-code-review",
+            "passed": False,
+            "output": "ERROR: malformed review from model (unexpected submit_review shape)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"error": True, "malformed": True, "no_cache": True},
+        }
     findings = review.get("findings", [])
     summary = review.get("summary", "")
 

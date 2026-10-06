@@ -517,3 +517,79 @@ class TestTaskScopeGrading:
 
         assert "TASK SCOPE" not in user_message
         assert "not applicable" not in user_message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Malformed tool output (task 297)
+# ---------------------------------------------------------------------------
+
+_GOOD_DIMS = {
+    d: {"score": 9, "reasoning": "ok"}
+    for d in (
+        "entity_accuracy",
+        "interface_compliance",
+        "error_handling",
+        "boundary_respect",
+        "scope_compliance",
+        "cross_cutting_adherence",
+    )
+}
+
+
+def _run_with_tool_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: Path, name: str, tool_input: Any, with_spec: bool
+) -> dict[str, Any]:
+    mod = _load_check_module(path, name)
+    _write_file(tmp_path, "src/main.py", "x = 1")
+    _write_file(tmp_path, "docs/spec.md", "# Spec")
+    ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"] if with_spec else [])
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_tool_use_response(tool_input)
+    with patch("anthropic.Anthropic", return_value=mock_client):
+        return mod.run_check(ctx)
+
+
+class TestMalformedSpecAlignmentOutput:
+    @pytest.mark.parametrize(
+        "tool_input",
+        [
+            "not a dict",
+            {"dimensions": "all good", "overall_score": 9, "summary": "s"},
+            {"dimensions": {**_GOOD_DIMS, "entity_accuracy": "9/10 fine"}, "overall_score": 9, "summary": "s"},
+            {"dimensions": _GOOD_DIMS, "overall_score": "high", "summary": "s"},
+        ],
+    )
+    def test_malformed_evaluation_fails_cleanly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool_input: Any
+    ) -> None:
+        result = _run_with_tool_input(
+            tmp_path, monkeypatch, SPEC_ALIGNMENT_PATH, "spec_alignment_check", tool_input, True
+        )
+        assert result["passed"] is False
+        assert "malformed evaluation from model" in result["output"]
+        assert "plugin error" not in result["output"]
+        assert result["detail"]["no_cache"] is True
+        assert not result["detail"].get("crashed")
+
+
+class TestMalformedAiCodeReviewOutput:
+    @pytest.mark.parametrize(
+        "tool_input",
+        [
+            "not a dict",
+            {"findings": "none", "summary": "s"},
+            {"findings": ["looks bad"], "summary": "s"},
+        ],
+    )
+    def test_malformed_review_fails_cleanly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool_input: Any
+    ) -> None:
+        result = _run_with_tool_input(
+            tmp_path, monkeypatch, AI_CODE_REVIEW_PATH, "ai_code_review_check", tool_input, False
+        )
+        assert result["passed"] is False
+        assert "malformed review from model" in result["output"]
+        assert "plugin error" not in result["output"]
+        assert result["detail"]["no_cache"] is True
+        assert not result["detail"].get("crashed")
