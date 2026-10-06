@@ -149,10 +149,11 @@ def _is_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _is_valid_evaluation(evaluation: Any) -> bool:
+def _is_valid_evaluation(raw: object) -> bool:
     """True when the model's submit_evaluation input has the expected dict shape."""
-    if not isinstance(evaluation, dict):
+    if not isinstance(raw, dict):
         return False
+    evaluation = cast("dict[str, Any]", raw)
     dims = evaluation.get("dimensions", {})
     if not isinstance(dims, dict) or not _is_number(evaluation.get("overall_score", 0)):
         return False
