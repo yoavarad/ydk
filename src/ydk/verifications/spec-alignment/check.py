@@ -145,6 +145,20 @@ def _format_task_scope(task_scope: object) -> str:
     )
 
 
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_valid_evaluation(evaluation: Any) -> bool:
+    """True when the model's submit_evaluation input has the expected dict shape."""
+    if not isinstance(evaluation, dict):
+        return False
+    dims = evaluation.get("dimensions", {})
+    if not isinstance(dims, dict) or not _is_number(evaluation.get("overall_score", 0)):
+        return False
+    return all(isinstance(d, dict) for d in dims.values())
+
+
 def run_check(context: dict) -> dict:
     """Core check logic. Separated for testability."""
     from ydk.core.claude_client import (
@@ -253,7 +267,15 @@ def run_check(context: dict) -> dict:
             "detail": {"error": True, "no_cache": True},
         }
 
-    evaluation = cast("dict[str, Any]", cast("Any", tool_use_block).input)
+    evaluation = cast("Any", tool_use_block).input
+    if not _is_valid_evaluation(evaluation):
+        return {
+            "name": "spec-alignment",
+            "passed": False,
+            "output": "ERROR: malformed evaluation from model (unexpected submit_evaluation shape)",
+            "duration_seconds": round(time.time() - start, 1),
+            "detail": {"error": True, "malformed": True, "no_cache": True},
+        }
     overall_score = evaluation.get("overall_score", 0)
     threshold = spec_check_config.get("thresholds", {}).get("architecture", 8)
     passed = overall_score >= threshold
