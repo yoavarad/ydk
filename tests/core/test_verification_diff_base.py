@@ -68,13 +68,25 @@ def test_diff_excludes_base_branch_advances(name: str, repo: Path) -> None:
 
 
 @pytest.mark.parametrize("name", list(_CHECKS))
-def test_prefers_origin_base_over_stale_local_main(name: str, repo: Path) -> None:
-    # local main is far ahead of the branch point; origin/main sits at the branch point.
-    _git(repo, "update-ref", "refs/remotes/origin/main", _git(repo, "merge-base", "main", "feat"))
+def test_prefers_origin_base_over_stale_local_main(name: str, tmp_path: Path) -> None:
+    """Local main is stale (at A); origin/main is at B; branch forks from B. Merge-bases differ (A vs B)."""
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _commit(tmp_path, "shared.py", "v1\n", "A")
+    _commit(tmp_path, "feature.py", "old\n", "A2")
+    stale = _git(tmp_path, "rev-parse", "HEAD")
+    _commit(tmp_path, "shared.py", "v2-from-origin\n", "B")
+    newer = _git(tmp_path, "rev-parse", "HEAD")
+    _git(tmp_path, "update-ref", "refs/remotes/origin/main", newer)
+    _git(tmp_path, "checkout", "-q", "-b", "feat")
+    _git(tmp_path, "branch", "-f", "main", stale)
+    _commit(tmp_path, "feature.py", "new\n", "feature work")
+    assert _git(tmp_path, "merge-base", "main", "HEAD") == stale
+    assert _git(tmp_path, "merge-base", "origin/main", "HEAD") == newer
+
     mod = _load(name)
-    out = mod._get_git_diff(repo, ["feature.py", "shared.py"])
+    out = mod._get_git_diff(tmp_path, ["feature.py", "shared.py"])
     assert "+new" in out
-    assert "v2-from-main" not in out
+    assert "v2-from-origin" not in out
 
 
 @pytest.mark.parametrize("name", list(_CHECKS))
