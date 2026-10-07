@@ -544,13 +544,13 @@ class TestExtractIssueNumber:
 # ---------------------------------------------------------------------------
 
 
-def _issue(number: int, deps: str = "", state: str = "OPEN") -> dict[str, object]:
+def _issue(number: int, deps: str = "", state: str = "OPEN", extra_labels: tuple[str, ...] = ()) -> dict[str, object]:
     body = f"**Dependencies**: {deps}\n\n### Description\nx" if deps else "### Description\nx"
     return {
         "number": number,
         "title": f"T{number}",
         "state": state,
-        "labels": [{"name": "task"}],
+        "labels": [{"name": "task"}, *({"name": lbl} for lbl in extra_labels)],
         "body": body,
         "url": "",
     }
@@ -606,6 +606,32 @@ class TestListReadyDependencyTypes:
         with caplog.at_level(logging.WARNING, logger="ydk.repositories.github.tasks"):
             assert _ready_ids(fake) == []
         assert any("#2" in r.getMessage() and "T-5e9dbd18" in r.getMessage() for r in caplog.records)
+
+
+class TestListReadyExcludesClaimed:
+    @pytest.mark.parametrize("label", ["in-progress", "in-review", "blocked-by-code", "blocked-by-decision"])
+    def test_claimed_or_blocked_label_excluded(self, label: str) -> None:
+        fake = _FakeGhList([_issue(1), _issue(2, extra_labels=(label,))], [])
+        assert _ready_ids(fake) == ["1"]
+
+    def test_mixed_issues_only_plain_open_listed(self) -> None:
+        fake = _FakeGhList(
+            [
+                _issue(1),
+                _issue(2, extra_labels=("in-progress",)),
+                _issue(3, extra_labels=("in-review",)),
+                _issue(4, extra_labels=("blocked-by-code",)),
+                _issue(5),
+            ],
+            [],
+        )
+        assert _ready_ids(fake) == ["1", "5"]
+
+    def test_dependents_count_includes_in_progress_dependent(self) -> None:
+        fake = _FakeGhList([_issue(1), _issue(2, "#1", extra_labels=("in-progress",))], [])
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+            counts = {t.id: t.dependents_count for t in GitHubTaskRepository().list_ready()}
+        assert counts == {"1": 1}
 
 
 class TestListTasksDependencyTypes:
