@@ -90,22 +90,48 @@ def _read_files(root: Path, file_paths: list[str]) -> str:
     return "\n\n".join(parts)
 
 
+def _resolve_diff_base(root: Path) -> str | None:
+    """Return the merge-base SHA of HEAD and the base branch, or None if no base exists.
+
+    Prefers ``origin/main`` (up to date after fetch) over a possibly stale local ``main``.
+    """
+    for ref in ("origin/main", "main"):
+        try:
+            result = subprocess.run(
+                ["git", "merge-base", ref, "HEAD"],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            continue
+        sha = result.stdout.strip()
+        if result.returncode == 0 and sha:
+            return sha
+    return None
+
+
 def _get_git_diff(root: Path, changed_files: list[str]) -> str:
-    """Get git diff of changed files against main branch."""
-    try:
-        result = subprocess.run(
-            ["git", "diff", "main", "--", *changed_files],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+    """Get git diff of changed files against the merge-base with the base branch."""
+    base = _resolve_diff_base(root)
+    if base is not None:
+        try:
+            result = subprocess.run(
+                ["git", "diff", base, "--", *changed_files],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
 
     # Fallback: diff against HEAD (for cases where main doesn't exist)
     try:
