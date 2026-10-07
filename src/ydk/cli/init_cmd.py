@@ -288,12 +288,19 @@ def _install_claude_hooks() -> None:
         "\n"
         'ACTIVE_TASK=".ydk/active-task.json"\n'
         "\n"
+        "# From a linked worktree, active-task.json lives in the main checkout.\n"
+        "WT_GIT_DIR=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)\n"
+        "WT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)\n"
+        'if [ -n "$WT_COMMON_DIR" ] && [ "$WT_GIT_DIR" != "$WT_COMMON_DIR" ]; then\n'
+        '    ACTIVE_TASK="$(dirname "$WT_COMMON_DIR")/.ydk/active-task.json"\n'
+        "fi\n"
+        "\n"
         'if [ ! -f "$ACTIVE_TASK" ]; then\n'
         "    exit 0\n"
         "fi\n"
         "\n"
-        "TASK_IDS=$(python3 -c \"import json; d=json.load(open('$ACTIVE_TASK')); "
-        "print(','.join(d.get('tasks', {})))\" 2>/dev/null)\n"
+        'TASK_IDS=$(python3 -c "import json, sys; d=json.load(open(sys.argv[1])); '
+        "print(','.join(d.get('tasks', {})))\" \"$ACTIVE_TASK\" 2>/dev/null)\n"
         "\n"
         'if [ -z "$TASK_IDS" ]; then\n'
         "    exit 0\n"

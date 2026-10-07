@@ -1283,3 +1283,123 @@ def test_done_scopes_verification_to_worktree_not_cwd(
     check = result["report"].checks[0]
     assert check.name == "python-file-length"
     assert "big.py" in check.output
+
+
+def _git(cwd: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+@pytest.fixture
+def main_and_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    """A real git repo (main checkout) plus a real linked task worktree."""
+    main = tmp_path / "main"
+    main.mkdir()
+    _git(main, "init", "-q")
+    _git(main, "config", "user.email", "test@example.com")
+    _git(main, "config", "user.name", "Test")
+    (main / "README.md").write_text("hello\n")
+    _git(main, "add", ".")
+    _git(main, "commit", "-q", "-m", "feat: initial")
+    worktree = main / ".ydk" / "worktrees" / "T-001"
+    _git(main, "worktree", "add", "-q", "-b", "task/T-001", str(worktree))
+    return main, worktree
+
+
+def _lc(root: Path, repo: MagicMock, worktree_mgr: MagicMock, verifier: MagicMock) -> TaskLifecycle:
+    return TaskLifecycle(repo=repo, events=EventBus(), worktree_mgr=worktree_mgr, verifier=verifier, project_root=root)
+
+
+def _passing_report() -> VerificationReport:
+    return VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+
+
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_from_worktree_removes_entry_from_main_checkout(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    main_and_worktree: tuple[Path, Path],
+) -> None:
+    """start from main writes main's active-task.json; done from the worktree
+    removes that entry and deletes the file once empty (issue #325)."""
+    main, worktree = main_and_worktree
+    mock_worktree.create.return_value = worktree
+    mock_worktree.get_worktree_path.return_value = None
+
+    _lc(main, mock_repo, mock_worktree, mock_verifier).start("T-001", base_branch="origin/main")
+    main_file = main / ".ydk" / "active-task.json"
+    assert json.loads(main_file.read_text(encoding="utf-8"))["tasks"] == {"T-001": {"base_branch": "origin/main"}}
+
+    mock_verifier.run_all = AsyncMock(return_value=_passing_report())
+    mock_subprocess.run.return_value.returncode = 0
+    result = _lc(worktree, mock_repo, mock_worktree, mock_verifier).done("T-001")
+
+    assert result["passed"] is True
+    assert not main_file.exists(), "main checkout's active-task.json should be removed once empty"
+    assert not (worktree / ".ydk" / "active-task.json").exists()
+
+
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_from_worktree_keeps_other_tasks_in_main_checkout(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    main_and_worktree: tuple[Path, Path],
+) -> None:
+    main, worktree = main_and_worktree
+    main_file = main / ".ydk" / "active-task.json"
+    main_file.write_text(
+        json.dumps({"tasks": {"T-001": {"base_branch": "main"}, "T-002": {"base_branch": "dev"}}}), encoding="utf-8"
+    )
+    mock_worktree.get_worktree_path.return_value = None
+    mock_verifier.run_all = AsyncMock(return_value=_passing_report())
+    mock_subprocess.run.return_value.returncode = 0
+
+    _lc(worktree, mock_repo, mock_worktree, mock_verifier).done("T-001")
+
+    assert json.loads(main_file.read_text(encoding="utf-8"))["tasks"] == {"T-002": {"base_branch": "dev"}}
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_from_worktree_reads_base_branch_from_main_checkout(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    main_and_worktree: tuple[Path, Path],
+) -> None:
+    main, worktree = main_and_worktree
+    (main / ".ydk" / "active-task.json").write_text(
+        json.dumps({"tasks": {"T-001": {"base_branch": "release-x"}}}), encoding="utf-8"
+    )
+    mock_worktree.get_worktree_path.return_value = None
+
+    def _run_side_effect(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(returncode=0, stdout="https://github.com/org/repo/pull/1\n")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/T-001\n")
+        return MagicMock(returncode=0)
+
+    mock_subprocess.run.side_effect = _run_side_effect
+
+    _lc(worktree, mock_repo, mock_worktree, mock_verifier)._create_pr("T-001", pr_body_override="body")
+
+    create_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"])
+    argv = create_call.args[0]
+    assert argv[argv.index("--base") + 1] == "release-x"
