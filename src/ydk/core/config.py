@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import ValidationError
 
 from ydk.models.config import YdkConfig
 
@@ -118,34 +118,25 @@ def get_config_value(
 
 
 def set_config_value(config: dict[str, Any], key_path: str, value: str) -> dict[str, Any]:
-    """Set nested value via dot notation. Coerces types (JSON, bool, int, float, str). Validates result."""
+    """Set nested value via dot notation. Coerces types (JSON, bool, int, float, str). Validates result.
+
+    Returns an updated deep copy; the input (often sharing nested dicts with DEFAULT_CONFIG) is never mutated.
+    """
     coerced = _coerce_value(value)
+    updated = copy.deepcopy(config)
 
     keys = key_path.split(".")
-    current = config
+    current = updated
     for key in keys[:-1]:
         if key not in current:
             current[key] = {}
         current = current[key]
-
-    # Save old value for rollback
-    last_key = keys[-1]
-    had_old = last_key in current
-    old_value = current.get(last_key)
-    current[last_key] = coerced
+    current[keys[-1]] = coerced
 
     # Validate the full config to ensure the change is legal
-    try:
-        YdkConfig.model_validate(config)
-    except ValidationError:
-        # Roll back the change
-        if had_old:
-            current[last_key] = old_value
-        else:
-            del current[last_key]
-        raise
+    YdkConfig.model_validate(updated)
 
-    return config
+    return updated
 
 
 def _coerce_value(value: str) -> str | int | float | bool | list[Any] | dict[str, Any]:

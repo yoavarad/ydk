@@ -120,3 +120,11 @@ class TestSetConfigValue:
         config["project"]["name"] = "x"
         with pytest.raises(ValidationError):
             set_config_value(config, "spec_check.thresholds.completeness", "15")
+
+    def test_does_not_mutate_input_or_default_config(self) -> None:
+        """Shallow copies of DEFAULT_CONFIG share nested dicts; set must not leak into them (#330)."""
+        config = {**DEFAULT_CONFIG, "project": {**DEFAULT_CONFIG["project"], "name": "x"}}
+        result = set_config_value(config, "spec_check.timeout", "90")
+        assert result["spec_check"]["timeout"] == 90
+        assert config["spec_check"]["timeout"] == 60
+        assert DEFAULT_CONFIG["spec_check"]["timeout"] == 60
