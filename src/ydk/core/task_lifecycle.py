@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ydk.core.active_task import resolve_active_task_file
+from ydk.core.active_task import resolve_active_task_file, update_active_tasks
 from ydk.core.events import (
     EventBus,
     TaskBlockedEvent,
@@ -118,11 +118,7 @@ class TaskLifecycle:
         # orchestrators, separate worktrees against the same checkout), so
         # this is a per-task map rather than a single global slot -- writing
         # our own entry must not clobber any other task's.
-        active_task_file = resolve_active_task_file(self._root)
-        active_task_file.parent.mkdir(parents=True, exist_ok=True)
-        active_tasks = self._read_active_tasks(active_task_file)
-        active_tasks[task_id] = {"base_branch": base_branch or "main"}
-        active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
+        update_active_tasks(self._root, lambda tasks: {**tasks, task_id: {"base_branch": base_branch or "main"}})
 
         # Update status
         self._repo.update_status(task_id, "in-progress")
@@ -388,20 +384,13 @@ class TaskLifecycle:
         # the PR-creation call so this task's own entry is guaranteed to be
         # removed even if _create_pr() raises -- otherwise the stale entry
         # survives indefinitely and can break a later done() call.
-        active_task_file = resolve_active_task_file(self._root)
         try:
             pr_url = self._create_pr(task_id, task=task, report=report, pr_body_override=pr_body)
         finally:
             # Remove this task's entry from active-task.json (not any other
             # in-flight task's). Only delete the file once no tasks remain, so
             # the SubagentStop hook keeps blocking session end for the others.
-            if active_task_file.exists():
-                active_tasks = self._read_active_tasks(active_task_file)
-                active_tasks.pop(task_id, None)
-                if active_tasks:
-                    active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
-                else:
-                    active_task_file.unlink()
+            update_active_tasks(self._root, lambda tasks: {k: v for k, v in tasks.items() if k != task_id})
 
         # Post proof to issue
         proof_summary = "\n".join(f"OK {c.name} ({c.duration_seconds}s)" for c in report.checks)

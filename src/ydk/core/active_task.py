@@ -8,14 +8,26 @@ the same file, so it lives in the main checkout, found via
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
+import tempfile
+import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 ACTIVE_TASK_RELPATH = Path(".ydk") / "active-task.json"
 _GIT_LOCATION_VARS = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"})
 _GIT_TIMEOUT_SECONDS = 10
+LOCK_TIMEOUT_SECONDS = 10.0
+_LOCK_POLL_SECONDS = 0.01
+_REPLACE_RETRIES = 50  # Windows: a reader holding the file blocks os.replace/unlink briefly
+
+ActiveTasks = dict[str, dict[str, str]]
 
 
 def resolve_active_task_file(project_root: Path) -> Path:
@@ -52,6 +64,105 @@ def resolve_active_task_file(project_root: Path) -> Path:
     return common_dir.parent / ACTIVE_TASK_RELPATH
 
 
+def _read_tasks(active_task_file: Path) -> ActiveTasks:
+    """Per-task map from *active_task_file*; ``{}`` when missing or malformed.
+
+    Migrates the legacy single-slot ``{"task_id": ..., "base_branch": ...}``.
+    """
+    try:
+        data = json.loads(active_task_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    if isinstance(data.get("tasks"), dict):
+        return dict(data["tasks"])
+    if "task_id" in data:
+        return {data["task_id"]: {"base_branch": data.get("base_branch", "main")}}
+    return {}
+
+
+@contextlib.contextmanager
+def _exclusive_lock(lock_file: Path, timeout: float) -> Iterator[None]:
+    """Hold *lock_file* (created with O_EXCL) for the duration of the block.
+
+    A lock older than *timeout* is a leftover from a crashed process and is
+    broken. Gives up with ``TimeoutError`` after ``2 * timeout``.
+    """
+    deadline = time.monotonic() + 2 * timeout
+    while True:
+        try:
+            os.close(os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except (FileExistsError, PermissionError):  # Windows: lock pending delete -> PermissionError
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"could not acquire {lock_file} within {2 * timeout:.1f}s") from None
+            try:
+                stale = time.time() - lock_file.stat().st_mtime > timeout
+            except OSError:
+                continue  # released between open and stat: retry now
+            if stale:
+                with contextlib.suppress(OSError):
+                    lock_file.unlink()
+                continue
+            time.sleep(_LOCK_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            lock_file.unlink()
+
+
+def _retry_on_permission_error(op: Callable[[], None]) -> None:
+    """Run *op*, retrying briefly while Windows reports the file as in use."""
+    for _ in range(_REPLACE_RETRIES - 1):
+        try:
+            op()
+            return
+        except PermissionError:
+            time.sleep(_LOCK_POLL_SECONDS)
+    op()
+
+
+def _write_atomically(active_task_file: Path, tasks: ActiveTasks) -> None:
+    fd, tmp = tempfile.mkstemp(dir=active_task_file.parent, prefix=".active-task.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"tasks": tasks}, f)
+        _retry_on_permission_error(lambda: os.replace(tmp, active_task_file))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def update_active_tasks(
+    project_root: Path,
+    mutate: Callable[[ActiveTasks], ActiveTasks],
+    *,
+    timeout: float = LOCK_TIMEOUT_SECONDS,
+) -> None:
+    """Apply *mutate* to the main checkout's active-task.json under a lock.
+
+    The single writer path for active-task.json: parallel ``start``/``done``/
+    ``close``/``sync`` runs serialize on a sibling ``.lock`` file, and the new
+    map is written to a temp file and ``os.replace``d in, so readers never see
+    a half-written file. An empty result deletes the file; an unchanged
+    result writes nothing. A missing or malformed file reads as ``{}``.
+    """
+    active_task_file = resolve_active_task_file(project_root)
+    active_task_file.parent.mkdir(parents=True, exist_ok=True)
+    with _exclusive_lock(active_task_file.with_name(active_task_file.name + ".lock"), timeout):
+        tasks = _read_tasks(active_task_file)
+        updated = mutate(dict(tasks))
+        if updated == tasks:
+            return
+        if updated:
+            _write_atomically(active_task_file, updated)
+        elif active_task_file.exists():
+            _retry_on_permission_error(active_task_file.unlink)
+
+
 def prune_active_tasks(project_root: Path, task_ids: set[str]) -> None:
     """Remove *task_ids* from the main checkout's active-task.json.
 
@@ -61,26 +172,7 @@ def prune_active_tasks(project_root: Path, task_ids: set[str]) -> None:
     """
     if not task_ids:
         return
-    active_task_file = resolve_active_task_file(project_root)
     try:
-        data = json.loads(active_task_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(data, dict):
-        return
-    if isinstance(data.get("tasks"), dict):
-        tasks = data["tasks"]
-    elif "task_id" in data:  # legacy single-slot format
-        tasks = {data["task_id"]: {"base_branch": data.get("base_branch", "main")}}
-    else:
-        return
-    remaining = {k: v for k, v in tasks.items() if k not in task_ids}
-    if len(remaining) == len(tasks):
-        return
-    try:
-        if remaining:
-            active_task_file.write_text(json.dumps({"tasks": remaining}), encoding="utf-8")
-        else:
-            active_task_file.unlink()
+        update_active_tasks(project_root, lambda tasks: {k: v for k, v in tasks.items() if k not in task_ids})
     except OSError:
         return  # best-effort: never fail close/sync over stale-entry cleanup

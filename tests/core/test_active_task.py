@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
-from ydk.core.active_task import prune_active_tasks, resolve_active_task_file
+from ydk.core.active_task import prune_active_tasks, resolve_active_task_file, update_active_tasks
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -134,3 +137,103 @@ class TestPruneActiveTasks:
         f.write_text(json.dumps({"task_id": "1", "base_branch": "main"}), encoding="utf-8")
         prune_active_tasks(tmp_path, {"1"})
         assert not f.exists()
+
+
+# Child process: wait for the shared "go" file, then apply its edits one
+# locked update at a time so the processes genuinely interleave.
+_WORKER = """
+import sys, time
+from pathlib import Path
+from ydk.core.active_task import update_active_tasks
+
+root, go, op, ids = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], sys.argv[4:]
+deadline = time.monotonic() + 20
+while not go.exists() and time.monotonic() < deadline:
+    time.sleep(0.005)
+for task_id in ids:
+    if op == "add":
+        update_active_tasks(root, lambda t, i=task_id: {**t, i: {"base_branch": "main"}})
+    else:
+        update_active_tasks(root, lambda t, i=task_id: {k: v for k, v in t.items() if k != i})
+"""
+
+
+def _run_concurrently(root: Path, jobs: list[tuple[str, list[str]]]) -> None:
+    go = root / "go"
+    procs = [
+        subprocess.Popen([sys.executable, "-c", _WORKER, str(root), str(go), op, *ids], stderr=subprocess.PIPE)
+        for op, ids in jobs
+    ]
+    go.touch()
+    for proc in procs:
+        _, err = proc.communicate(timeout=60)
+        assert proc.returncode == 0, err.decode(errors="replace")
+
+
+def _tasks(root: Path) -> dict:
+    return json.loads((root / ".ydk" / "active-task.json").read_text(encoding="utf-8"))["tasks"]
+
+
+class TestUpdateActiveTasks:
+    def test_adds_entry_and_creates_file(self, tmp_path: Path) -> None:
+        update_active_tasks(tmp_path, lambda t: {**t, "1": {"base_branch": "dev"}})
+        assert _tasks(tmp_path) == {"1": {"base_branch": "dev"}}
+
+    def test_empty_result_deletes_file(self, tmp_path: Path) -> None:
+        f = _write_entries(tmp_path, ["1"])
+        update_active_tasks(tmp_path, lambda t: {})
+        assert not f.exists()
+
+    def test_releases_lock(self, tmp_path: Path) -> None:
+        update_active_tasks(tmp_path, lambda t: {**t, "1": {}})
+        assert sorted(p.name for p in (tmp_path / ".ydk").iterdir()) == ["active-task.json"]
+
+    def test_releases_lock_when_mutate_raises(self, tmp_path: Path) -> None:
+        def boom(tasks: dict) -> dict:
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            update_active_tasks(tmp_path, boom)
+        update_active_tasks(tmp_path, lambda t: {**t, "1": {}}, timeout=0.5)
+        assert _tasks(tmp_path) == {"1": {}}
+
+    def test_migrates_legacy_single_slot_format(self, tmp_path: Path) -> None:
+        f = tmp_path / ".ydk" / "active-task.json"
+        f.parent.mkdir(parents=True)
+        f.write_text(json.dumps({"task_id": "1", "base_branch": "dev"}), encoding="utf-8")
+        update_active_tasks(tmp_path, lambda t: {**t, "2": {"base_branch": "main"}})
+        assert _tasks(tmp_path) == {"1": {"base_branch": "dev"}, "2": {"base_branch": "main"}}
+
+    def test_breaks_stale_lock(self, tmp_path: Path) -> None:
+        lock = tmp_path / ".ydk" / "active-task.json.lock"
+        lock.parent.mkdir(parents=True)
+        lock.touch()
+        old = time.time() - 60
+        os.utime(lock, (old, old))
+        started = time.monotonic()
+        update_active_tasks(tmp_path, lambda t: {**t, "1": {}}, timeout=5)
+        assert time.monotonic() - started < 5
+        assert _tasks(tmp_path) == {"1": {}}
+        assert not lock.exists()
+
+    def test_waits_for_fresh_lock_then_breaks_it_once_stale(self, tmp_path: Path) -> None:
+        lock = tmp_path / ".ydk" / "active-task.json.lock"
+        lock.parent.mkdir(parents=True)
+        lock.touch()
+        started = time.monotonic()
+        update_active_tasks(tmp_path, lambda t: {**t, "1": {}}, timeout=0.3)
+        assert time.monotonic() - started >= 0.25
+        assert _tasks(tmp_path) == {"1": {}}
+
+    def test_concurrent_adds_keep_every_entry(self, tmp_path: Path) -> None:
+        jobs = [("add", [f"p{p}-{i}" for i in range(5)]) for p in range(4)]
+        _run_concurrently(tmp_path, jobs)
+        assert set(_tasks(tmp_path)) == {f"p{p}-{i}" for p in range(4) for i in range(5)}
+        assert not (tmp_path / ".ydk" / "active-task.json.lock").exists()
+
+    def test_concurrent_add_and_remove_keep_unrelated_entry(self, tmp_path: Path) -> None:
+        removed = [f"r{i}" for i in range(8)]
+        _write_entries(tmp_path, ["keep", *removed])
+        added = [f"a{i}" for i in range(8)]
+        _run_concurrently(tmp_path, [("add", added), ("remove", removed)])
+        assert set(_tasks(tmp_path)) == {"keep", *added}

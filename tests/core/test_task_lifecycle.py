@@ -500,9 +500,9 @@ def test_start_writes_active_task_file_with_utf8_encoding(
         verifier=mock_verifier,
         project_root=tmp_path,
     )
-    with patch.object(Path, "write_text", autospec=True) as mock_write_text:
-        lc.start("T-001")
-    assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
+    lc.start("T-001", base_branch="feat/ünïcode")
+    data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
+    assert data["tasks"]["T-001"] == {"base_branch": "feat/ünïcode"}
 
 
 def test_start_migrates_legacy_active_task_file(
