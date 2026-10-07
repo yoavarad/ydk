@@ -79,3 +79,16 @@ def test_config_validate_missing(tmp_path: Path, monkeypatch: object) -> None:
     result = runner.invoke(app, ["config", "validate"])
     assert result.exit_code != 0
     assert "no config found" in result.output.lower()
+
+
+def test_config_get_after_core_set_config_value(tmp_path: Path, monkeypatch: object) -> None:
+    """Regression #330: a prior set_config_value on a shallow DEFAULT_CONFIG copy must not change defaults."""
+    from ydk.core.config import set_config_value
+
+    shallow = {**DEFAULT_CONFIG, "project": {**DEFAULT_CONFIG["project"], "name": "x"}}
+    set_config_value(shallow, "spec_check.timeout", "90")
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    _write_config(tmp_path)
+    result = runner.invoke(app, ["config", "get", "spec_check.timeout"])
+    assert result.exit_code == 0
+    assert "60" in result.output
