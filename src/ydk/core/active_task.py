@@ -87,7 +87,9 @@ def _exclusive_lock(lock_file: Path, timeout: float) -> Iterator[None]:
     """Hold *lock_file* (created with O_EXCL) for the duration of the block.
 
     A lock older than *timeout* is a leftover from a crashed process and is
-    broken. Gives up with ``TimeoutError`` after ``2 * timeout``.
+    broken. Gives up with ``TimeoutError`` after ``2 * timeout``. Known limit:
+    two waiters that both observe the same stale lock in the same instant can
+    both proceed; that needs a crashed holder plus a ~10ms collision.
     """
     deadline = time.monotonic() + 2 * timeout
     while True:
@@ -100,7 +102,8 @@ def _exclusive_lock(lock_file: Path, timeout: float) -> Iterator[None]:
             try:
                 stale = time.time() - lock_file.stat().st_mtime > timeout
             except OSError:
-                continue  # released between open and stat: retry now
+                time.sleep(_LOCK_POLL_SECONDS)  # released meanwhile, or dir unwritable: retry
+                continue
             if stale:
                 with contextlib.suppress(OSError):
                     lock_file.unlink()
@@ -129,6 +132,7 @@ def _write_atomically(active_task_file: Path, tasks: ActiveTasks) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump({"tasks": tasks}, f)
+        os.chmod(tmp, 0o644)  # mkstemp creates 0600; keep the old write_text mode
         _retry_on_permission_error(lambda: os.replace(tmp, active_task_file))
     except BaseException:
         with contextlib.suppress(OSError):
@@ -151,6 +155,8 @@ def update_active_tasks(
     result writes nothing. A missing or malformed file reads as ``{}``.
     """
     active_task_file = resolve_active_task_file(project_root)
+    if not active_task_file.exists() and not mutate({}):
+        return  # nothing to remove and nothing to add: skip the lock entirely
     active_task_file.parent.mkdir(parents=True, exist_ok=True)
     with _exclusive_lock(active_task_file.with_name(active_task_file.name + ".lock"), timeout):
         tasks = _read_tasks(active_task_file)
@@ -159,8 +165,8 @@ def update_active_tasks(
             return
         if updated:
             _write_atomically(active_task_file, updated)
-        elif active_task_file.exists():
-            _retry_on_permission_error(active_task_file.unlink)
+        else:
+            _retry_on_permission_error(lambda: active_task_file.unlink(missing_ok=True))
 
 
 def prune_active_tasks(project_root: Path, task_ids: set[str]) -> None:

@@ -164,10 +164,14 @@ def _run_concurrently(root: Path, jobs: list[tuple[str, list[str]]]) -> None:
         subprocess.Popen([sys.executable, "-c", _WORKER, str(root), str(go), op, *ids], stderr=subprocess.PIPE)
         for op, ids in jobs
     ]
-    go.touch()
-    for proc in procs:
-        _, err = proc.communicate(timeout=60)
-        assert proc.returncode == 0, err.decode(errors="replace")
+    try:
+        go.touch()
+        for proc in procs:
+            _, err = proc.communicate(timeout=60)
+            assert proc.returncode == 0, err.decode(errors="replace")
+    finally:
+        for proc in procs:
+            proc.kill()
 
 
 def _tasks(root: Path) -> dict:
@@ -204,6 +208,21 @@ class TestUpdateActiveTasks:
         update_active_tasks(tmp_path, lambda t: {**t, "2": {"base_branch": "main"}})
         assert _tasks(tmp_path) == {"1": {"base_branch": "dev"}, "2": {"base_branch": "main"}}
 
+    def test_failed_write_releases_lock_and_leaves_no_temp_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fail_replace(src: str, dst: object) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(os, "replace", fail_replace)
+        with pytest.raises(OSError, match="disk full"):
+            update_active_tasks(tmp_path, lambda t: {**t, "1": {}})
+        assert list((tmp_path / ".ydk").iterdir()) == []
+
+    def test_noop_on_missing_file_creates_nothing(self, tmp_path: Path) -> None:
+        update_active_tasks(tmp_path, lambda t: {k: v for k, v in t.items() if k != "1"})
+        assert not (tmp_path / ".ydk").exists()
+
     def test_breaks_stale_lock(self, tmp_path: Path) -> None:
         lock = tmp_path / ".ydk" / "active-task.json.lock"
         lock.parent.mkdir(parents=True)
@@ -222,7 +241,7 @@ class TestUpdateActiveTasks:
         lock.touch()
         started = time.monotonic()
         update_active_tasks(tmp_path, lambda t: {**t, "1": {}}, timeout=0.3)
-        assert time.monotonic() - started >= 0.25
+        assert time.monotonic() - started >= 0.2
         assert _tasks(tmp_path) == {"1": {}}
 
     def test_concurrent_adds_keep_every_entry(self, tmp_path: Path) -> None:

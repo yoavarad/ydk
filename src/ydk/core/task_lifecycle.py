@@ -390,7 +390,11 @@ class TaskLifecycle:
             # Remove this task's entry from active-task.json (not any other
             # in-flight task's). Only delete the file once no tasks remain, so
             # the SubagentStop hook keeps blocking session end for the others.
-            update_active_tasks(self._root, lambda tasks: {k: v for k, v in tasks.items() if k != task_id})
+            # Best-effort: a lock timeout here must not mask a _create_pr error.
+            try:
+                update_active_tasks(self._root, lambda tasks: {k: v for k, v in tasks.items() if k != task_id})
+            except OSError as exc:
+                logger.warning("Could not remove %s from active-task.json: %s", task_id, exc)
 
         # Post proof to issue
         proof_summary = "\n".join(f"OK {c.name} ({c.duration_seconds}s)" for c in report.checks)
