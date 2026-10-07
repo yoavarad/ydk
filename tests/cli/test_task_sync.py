@@ -295,3 +295,44 @@ class TestTaskSyncRollup:
         assert f'Story {story} "S" complete (1/1 tasks)' in result.output
         assert f'Epic {epic} "Big epic" complete (1/1 tasks)' in result.output
         assert next(e.status for e in epics.list_epics(status="all") if e.id == epic) == "done"
+
+
+class TestSyncActiveTaskPrune:
+    @staticmethod
+    def _write_active(ids: list[str]) -> Path:
+        f = Path(".ydk") / "active-task.json"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"tasks": {i: {"base_branch": "main"} for i in ids}}), encoding="utf-8")
+        return f
+
+    def test_prunes_reconciled_and_already_done_keeps_in_progress(self) -> None:
+        f = self._write_active(["T-merged", "T-done", "T-closed", "T-wip", "T-gone"])
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = [
+            _summary("T-merged", "in-review"),
+            _summary("T-done", "done"),
+            _summary("T-closed", "closed"),
+            _summary("T-wip", "in-progress"),
+        ]
+        pr = {"number": 42, "state": "MERGED", "createdAt": "2026-01-01T00:00:00Z"}
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+            patch("ydk.core.task_pr_lookup.list_prs", return_value=[pr]),
+            patch("ydk.core.task_pr_lookup.find_task_pr", return_value=pr),
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0
+        assert set(json.loads(f.read_text(encoding="utf-8"))["tasks"]) == {"T-wip", "T-gone"}
+
+    def test_deletes_file_when_all_pruned(self) -> None:
+        f = self._write_active(["T-done"])
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = [_summary("T-done", "done")]
+        with (
+            patch("shutil.which", return_value="/usr/bin/gh"),
+            patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
+        ):
+            result = runner.invoke(task_app, ["sync"])
+        assert result.exit_code == 0
+        assert not f.exists()

@@ -8,6 +8,7 @@ the same file, so it lives in the main checkout, found via
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -49,3 +50,37 @@ def resolve_active_task_file(project_root: Path) -> Path:
     if git_dir == common_dir or common_dir.name != ".git":
         return fallback
     return common_dir.parent / ACTIVE_TASK_RELPATH
+
+
+def prune_active_tasks(project_root: Path, task_ids: set[str]) -> None:
+    """Remove *task_ids* from the main checkout's active-task.json.
+
+    Other entries are untouched; the file is deleted once no entries remain
+    (matching ``ydk task done``). No-op when nothing matches or the file is
+    missing, unreadable, malformed or unwritable (best-effort).
+    """
+    if not task_ids:
+        return
+    active_task_file = resolve_active_task_file(project_root)
+    try:
+        data = json.loads(active_task_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    if isinstance(data.get("tasks"), dict):
+        tasks = data["tasks"]
+    elif "task_id" in data:  # legacy single-slot format
+        tasks = {data["task_id"]: {"base_branch": data.get("base_branch", "main")}}
+    else:
+        return
+    remaining = {k: v for k, v in tasks.items() if k not in task_ids}
+    if len(remaining) == len(tasks):
+        return
+    try:
+        if remaining:
+            active_task_file.write_text(json.dumps({"tasks": remaining}), encoding="utf-8")
+        else:
+            active_task_file.unlink()
+    except OSError:
+        return  # best-effort: never fail close/sync over stale-entry cleanup

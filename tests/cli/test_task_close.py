@@ -24,6 +24,18 @@ runner = CliRunner()
 _ANSI = re.compile(r"\[[0-9;]*m")
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+
+def _write_active(tmp_path: Path, ids: list[str]) -> Path:
+    f = tmp_path / ".ydk" / "active-task.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"tasks": {i: {"base_branch": "main"} for i in ids}}), encoding="utf-8")
+    return f
+
+
 class TestFindTaskPr:
     def test_returns_none_when_pr_list_empty(self) -> None:
         fake_result = MagicMock(returncode=0, stdout="[]")
@@ -490,3 +502,42 @@ class TestCloseHelp:
     def test_help_includes_usage_example(self) -> None:
         out = self._help()
         assert "ydk task close T-a1b2c3d4" in out
+
+
+class TestCloseActiveTaskPrune:
+    def test_merged_close_removes_entry_keeps_others(self, tmp_path: Path) -> None:
+        f = _write_active(tmp_path, ["T-001", "T-002"])
+        with (
+            patch("ydk.cli.task_cmd._find_task_pr", return_value={"number": 1, "state": "MERGED"}),
+            patch("ydk.cli.task_cmd._get_repo", return_value=MagicMock()),
+        ):
+            result = runner.invoke(task_app, ["close", "T-001"])
+        assert result.exit_code == 0
+        assert list(json.loads(f.read_text(encoding="utf-8"))["tasks"]) == ["T-002"]
+
+    def test_merged_close_deletes_file_when_empty(self, tmp_path: Path) -> None:
+        f = _write_active(tmp_path, ["T-001"])
+        with (
+            patch("ydk.cli.task_cmd._find_task_pr", return_value={"number": 1, "state": "MERGED"}),
+            patch("ydk.cli.task_cmd._get_repo", return_value=MagicMock()),
+        ):
+            result = runner.invoke(task_app, ["close", "T-001"])
+        assert result.exit_code == 0
+        assert not f.exists()
+
+    def test_close_without_pr_removes_entry(self, tmp_path: Path) -> None:
+        f = _write_active(tmp_path, ["T-001"])
+        with patch("ydk.cli.task_cmd._get_repo", return_value=MagicMock()):
+            result = runner.invoke(task_app, ["close", "T-001", "--reason", "dup"])
+        assert result.exit_code == 0
+        assert not f.exists()
+
+    def test_unmerged_pr_keeps_entry(self, tmp_path: Path) -> None:
+        f = _write_active(tmp_path, ["T-001"])
+        with (
+            patch("ydk.cli.task_cmd._find_task_pr", return_value={"number": 1, "state": "OPEN"}),
+            patch("ydk.cli.task_cmd._get_repo", return_value=MagicMock()),
+        ):
+            result = runner.invoke(task_app, ["close", "T-001"])
+        assert result.exit_code == 0
+        assert f.exists()
