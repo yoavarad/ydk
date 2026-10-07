@@ -196,6 +196,7 @@ class TestRunPlugin:
 
     def test_subprocess_run_uses_utf8_encoding(self, tmp_path: Path, monkeypatch) -> None:
         v = _make_verifier(tmp_path, monkeypatch, global_plugins={"ok_check": {}})
+        v._use_cache = False  # cache key would also call (patched) subprocess.run for git
         plugins = v.discover_plugins()
         fake_result = MagicMock(
             returncode=0,
@@ -722,3 +723,120 @@ class TestSkipPlugins:
     def test_discover_plugins_does_not_apply_skip(self, tmp_path: Path, monkeypatch) -> None:
         v = self._v(tmp_path, monkeypatch, ["drop"])
         assert "drop" in [p.name for p in v.discover_plugins()]
+
+
+# ---------------------------------------------------------------------------
+# Cache key reflects actual plugin input (#311)
+# ---------------------------------------------------------------------------
+
+
+def _git(repo: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+
+class TestCacheKey:
+    """The cache key must change whenever the plugin's real input changes."""
+
+    @staticmethod
+    def _setup(tmp_path: Path, *, git: bool) -> tuple[Verifier, Path, Path]:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "Program.cs").write_text("class Program {}\n")
+        (repo / ".gitignore").write_text(".ydk/\n")
+        if git:
+            _git(repo, "init", "-q")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-q", "-m", "init")
+        runs = tmp_path / "runs.txt"
+        check_code = (
+            "import json, sys\n"
+            "json.loads(sys.stdin.read())\n"
+            f"open({str(runs)!r}, 'a').write('x')\n"
+            'json.dump({"name": "counter", "passed": True, "output": "ok", "duration_seconds": 0.0}, sys.stdout)\n'
+        )
+        plugins = tmp_path / "plugins"
+        _write_plugin(plugins, "counter", check_code=check_code)
+        v = Verifier(project_root=repo, global_verifications=plugins, project_verifications=tmp_path / "none")
+        return v, repo, runs
+
+    @staticmethod
+    def _run(v: Verifier, repo: Path, **extra: object) -> None:
+        plugin = v.filter_by_name(v.discover_plugins(), "counter")[0]
+        asyncio.run(v.run_plugin(plugin, {"project_root": str(repo), **extra}))
+
+    @staticmethod
+    def _count(runs: Path) -> int:
+        return len(runs.read_text()) if runs.exists() else 0
+
+    def test_identical_inputs_hit_cache(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=True)
+        self._run(v, repo, pr_body="a")
+        self._run(v, repo, pr_body="a")
+        assert self._count(runs) == 1
+
+    def test_committed_non_py_change_invalidates(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=True)
+        self._run(v, repo)
+        (repo / "Program.cs").write_text("class Program { int x; }\n")
+        _git(repo, "commit", "-q", "-am", "edit")
+        self._run(v, repo)
+        assert self._count(runs) == 2
+
+    def test_uncommitted_edit_invalidates(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=True)
+        self._run(v, repo)
+        (repo / "Program.cs").write_text("class Program { int y; }\n")
+        self._run(v, repo)
+        assert self._count(runs) == 2
+
+    def test_untracked_file_invalidates(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=True)
+        self._run(v, repo)
+        (repo / "New.cs").write_text("class New {}\n")
+        self._run(v, repo)
+        assert self._count(runs) == 2
+
+    def test_plugin_context_change_invalidates(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=True)
+        self._run(v, repo, pr_body="first")
+        self._run(v, repo, pr_body="second")
+        assert self._count(runs) == 2
+
+    def test_works_outside_git_repo(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=False)
+        self._run(v, repo)
+        self._run(v, repo)
+        assert self._count(runs) == 1
+        (repo / "Program.cs").write_text("class Program { int z; }\n")
+        self._run(v, repo)
+        assert self._count(runs) == 2
+
+    def test_ydk_state_change_does_not_invalidate(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=True)
+        (repo / ".gitignore").write_text("")
+        (repo / ".ydk").mkdir()
+        (repo / ".ydk" / "tracked.md").write_text("a\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "track ydk")
+        self._run(v, repo)
+        (repo / ".ydk" / "tracked.md").write_text("b\n")
+        (repo / ".ydk" / "untracked.md").write_text("c\n")
+        self._run(v, repo)
+        assert self._count(runs) == 1
+
+    def test_git_repo_without_commits_falls_back_to_disk(self, tmp_path: Path) -> None:
+        v, repo, runs = self._setup(tmp_path, git=False)
+        _git(repo, "init", "-q")
+        self._run(v, repo)
+        self._run(v, repo)
+        assert self._count(runs) == 1
+        (repo / "Program.cs").write_text("class Program { int w; }\n")
+        self._run(v, repo)
+        assert self._count(runs) == 2

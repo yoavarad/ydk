@@ -7,6 +7,7 @@ and runs them by piping JSON context to stdin, reading JSON results from stdout.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -23,6 +24,9 @@ import yaml
 
 from ydk.core.verification_cache import VerificationCache
 from ydk.models.verification import CheckResult, VerificationReport
+
+_CACHE_EXCLUDED_DIRS = frozenset({".git", ".ydk"})
+_GIT_PATHSPEC = (".", ":(exclude).ydk")
 
 logger = logging.getLogger("ydk.verifier")
 
@@ -196,11 +200,10 @@ class Verifier:
         else:
             plugin_context.pop("auto_fix", None)
 
-        # Cache lookup - hash all Python files under the project root
+        # Cache lookup - key on the plugin's real input: workspace + context
         file_hashes: dict[str, str] = {}
         if self._use_cache:
-            py_files = sorted(self._root.rglob("*.py"))
-            file_hashes = VerificationCache.compute_hash(py_files)
+            file_hashes = self._cache_key(plugin_context)
             cached = self._cache.get_cached(plugin.name, file_hashes)
             if cached is not None:
                 return cached
@@ -254,6 +257,48 @@ class Verifier:
                 output=f"Check script not found: {plugin.check_script}",
                 duration_seconds=round(time.time() - start, 1),
             )
+
+    def _cache_key(self, plugin_context: dict[str, Any]) -> dict[str, str]:
+        """Build the cache key from the workspace contents plus the plugin context."""
+        key = self._workspace_hashes()
+        context_json = json.dumps(plugin_context, sort_keys=True, default=str)
+        key["__plugin_context__"] = hashlib.sha256(context_json.encode()).hexdigest()
+        return key
+
+    def _workspace_hashes(self) -> dict[str, str]:
+        """Hash git-tracked + uncommitted + untracked content; fall back to files on disk."""
+        git_hash = self._git_workspace_hash()
+        if git_hash is not None:
+            return {"__git_workspace__": git_hash}
+        files = [
+            f
+            for f in self._root.rglob("*")
+            if f.is_file() and not _CACHE_EXCLUDED_DIRS.intersection(f.relative_to(self._root).parts)
+        ]
+        return VerificationCache.compute_hash(files)
+
+    def _git_workspace_hash(self) -> str | None:
+        """Single SHA256 over index blobs, diff vs HEAD and untracked files, or ``None`` if not git."""
+
+        def git(*args: str) -> bytes:
+            return subprocess.run(
+                ["git", *args], cwd=str(self._root), capture_output=True, check=True, timeout=60
+            ).stdout
+
+        try:
+            h = hashlib.sha256()
+            h.update(git("ls-files", "-s", "-z", "--", *_GIT_PATHSPEC))
+            h.update(git("diff", "HEAD", "--binary", "--", *_GIT_PATHSPEC))
+            for rel in sorted(git("ls-files", "--others", "--exclude-standard", "-z").split(b"\0")):
+                rel_path = Path(rel.decode("utf-8", errors="replace"))
+                if not rel or _CACHE_EXCLUDED_DIRS.intersection(rel_path.parts):
+                    continue
+                path = self._root / rel_path
+                if path.is_file():
+                    h.update(rel + b"\0" + hashlib.sha256(path.read_bytes()).digest())
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return h.hexdigest()
 
     def run_guard(self, trigger: str, context: dict[str, Any]) -> tuple[bool, str]:
         """Run guard plugins synchronously. Returns (all_passed, first_failure_message)."""
