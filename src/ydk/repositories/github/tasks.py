@@ -355,6 +355,8 @@ class GitHubTaskRepository:
     def list_ready(self) -> _list[TaskSummary]:
         """Return open tasks whose blocking dependencies are all satisfied.
 
+        Tasks already claimed (in-progress, in-review) or blocked are excluded.
+
         Ranked by number of dependents (descending), then by issue number.
         """
         open_tasks = self.list(status="open")
@@ -371,6 +373,8 @@ class GitHubTaskRepository:
 
         results: _list[TaskSummary] = []
         for d in open_tasks:
+            if d.status != TaskStatus.OPEN:
+                continue
             dep_nums, unresolved = blocking[d.number]
             if unresolved or any(n not in closed_numbers for n in dep_nums):
                 continue
