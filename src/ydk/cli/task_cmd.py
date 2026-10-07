@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import typer
 
 from ydk.cli._helpers import format_or_echo
+from ydk.core.active_task import prune_active_tasks
 from ydk.core.task_ref import resolve_task_ref
 from ydk.core.task_validator import validate_dag
 from ydk.models.task import Task
@@ -2150,6 +2151,7 @@ def close(
         except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from None
+        prune_active_tasks(Path("."), {task_id})
         typer.echo(f"Task {task_id} closed without PR -> status done ({'; '.join(audit_parts)})")
         for line in _rollup(task_id, repo):
             typer.echo(line)
@@ -2171,6 +2173,7 @@ def close(
     repo = _get_repo()
     try:
         repo.update_status(task_id, "done")
+        prune_active_tasks(Path("."), {task_id})
         typer.echo(f"Task {task_id} closed: PR #{pr.get('number')} merged -> status done")
     except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -2232,6 +2235,8 @@ def sync(ctx: typer.Context) -> None:
     reconciled: list[dict[str, object]] = []
     skipped: list[dict[str, object]] = []
     rollup: list[str] = []
+    # Tasks already done/closed plus those reconciled below: drop from active-task.json.
+    finished: set[str] = {s.id for s in summaries if s.status in ("done", "closed")}
 
     if candidates or quick_tasks:
         prs = list_prs()
@@ -2246,6 +2251,7 @@ def sync(ctx: typer.Context) -> None:
             try:
                 repo.update_status(s.id, "done")
                 reconciled.append({"id": s.id, "pr_number": pr.get("number")})
+                finished.add(s.id)
             except (ValueError, FileNotFoundError, KeyError, RuntimeError) as exc:
                 skipped.append({"id": s.id, "reason": str(exc)})
                 continue
@@ -2263,8 +2269,11 @@ def sync(ctx: typer.Context) -> None:
             try:
                 _set_quick_task_done(qpath)
                 reconciled.append({"id": qid, "pr_number": pr.get("number")})
+                finished.add(qid)
             except (OSError, ValueError) as exc:
                 skipped.append({"id": qid, "reason": str(exc)})
+
+    prune_active_tasks(Path("."), finished)
 
     try:
         rollup.extend(rollup_sweep(repo, _get_story_repo(), _get_epic_repo()))

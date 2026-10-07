@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from ydk.core.active_task import resolve_active_task_file
+from ydk.core.active_task import prune_active_tasks, resolve_active_task_file
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -80,3 +81,56 @@ def test_resolves_relative_root_from_linked_worktree(
     monkeypatch.chdir(worktree)
     resolved = resolve_active_task_file(Path("."))
     assert resolved.resolve() == (main / ".ydk" / "active-task.json").resolve()
+
+
+def _write_entries(root: Path, ids: list[str]) -> Path:
+    f = root / ".ydk" / "active-task.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"tasks": {i: {"base_branch": "main"} for i in ids}}), encoding="utf-8")
+    return f
+
+
+class TestPruneActiveTasks:
+    def test_removes_only_named_ids(self, tmp_path: Path) -> None:
+        f = _write_entries(tmp_path, ["1", "2", "3"])
+        prune_active_tasks(tmp_path, {"1", "3"})
+        assert list(json.loads(f.read_text(encoding="utf-8"))["tasks"]) == ["2"]
+
+    def test_deletes_file_when_empty(self, tmp_path: Path) -> None:
+        f = _write_entries(tmp_path, ["1"])
+        prune_active_tasks(tmp_path, {"1"})
+        assert not f.exists()
+
+    def test_missing_file_is_noop(self, tmp_path: Path) -> None:
+        prune_active_tasks(tmp_path, {"1"})
+        assert not (tmp_path / ".ydk" / "active-task.json").exists()
+
+    def test_unmatched_ids_leave_file_untouched(self, tmp_path: Path) -> None:
+        f = _write_entries(tmp_path, ["2"])
+        before = f.read_text(encoding="utf-8")
+        prune_active_tasks(tmp_path, {"9"})
+        assert f.read_text(encoding="utf-8") == before
+
+    def test_targets_main_checkout_from_worktree(
+        self, main_and_worktree: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        main, worktree = main_and_worktree
+        f = _write_entries(main, ["1", "2"])
+        monkeypatch.chdir(worktree)
+        prune_active_tasks(Path("."), {"1"})
+        assert list(json.loads(f.read_text(encoding="utf-8"))["tasks"]) == ["2"]
+
+    @pytest.mark.parametrize("content", ["not json", "null", "[]", '{"tasks": []}'])
+    def test_malformed_file_is_left_alone(self, tmp_path: Path, content: str) -> None:
+        f = tmp_path / ".ydk" / "active-task.json"
+        f.parent.mkdir(parents=True)
+        f.write_text(content, encoding="utf-8")
+        prune_active_tasks(tmp_path, {"1"})
+        assert f.read_text(encoding="utf-8") == content
+
+    def test_legacy_single_slot_format(self, tmp_path: Path) -> None:
+        f = tmp_path / ".ydk" / "active-task.json"
+        f.parent.mkdir(parents=True)
+        f.write_text(json.dumps({"task_id": "1", "base_branch": "main"}), encoding="utf-8")
+        prune_active_tasks(tmp_path, {"1"})
+        assert not f.exists()
