@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ydk.core.active_task import resolve_active_task_file
 from ydk.core.events import (
     EventBus,
     TaskBlockedEvent,
@@ -117,7 +118,7 @@ class TaskLifecycle:
         # orchestrators, separate worktrees against the same checkout), so
         # this is a per-task map rather than a single global slot -- writing
         # our own entry must not clobber any other task's.
-        active_task_file = self._root / ".ydk" / "active-task.json"
+        active_task_file = resolve_active_task_file(self._root)
         active_task_file.parent.mkdir(parents=True, exist_ok=True)
         active_tasks = self._read_active_tasks(active_task_file)
         active_tasks[task_id] = {"base_branch": base_branch or "main"}
@@ -387,7 +388,7 @@ class TaskLifecycle:
         # the PR-creation call so this task's own entry is guaranteed to be
         # removed even if _create_pr() raises -- otherwise the stale entry
         # survives indefinitely and can break a later done() call.
-        active_task_file = self._root / ".ydk" / "active-task.json"
+        active_task_file = resolve_active_task_file(self._root)
         try:
             pr_url = self._create_pr(task_id, task=task, report=report, pr_body_override=pr_body)
         finally:
@@ -743,7 +744,7 @@ class TaskLifecycle:
             # no entry of its own (e.g. a quickdev task, which never calls
             # start()) must default to "main", not borrow another task's
             # base branch.
-            active_task_file = self._root / ".ydk" / "active-task.json"
+            active_task_file = resolve_active_task_file(self._root)
             active_tasks = self._read_active_tasks(active_task_file)
             raw_base_branch = active_tasks.get(task_id, {}).get("base_branch", "main")
             base_branch = self._normalize_base_branch(raw_base_branch, self._list_remotes(cwd))

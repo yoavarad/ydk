@@ -7,6 +7,7 @@ import json
 import subprocess
 from typing import TYPE_CHECKING
 
+from ydk.core.active_task import resolve_active_task_file
 from ydk.core.config import load_config
 from ydk.models.pm import TaskCreate
 from ydk.models.quickdev import QuickDevContext
@@ -51,7 +52,7 @@ def _write_active_task(project_root: Path, task_id: str, base_branch: str = "mai
     Merges into the existing per-task map rather than clobbering it, matching
     the format used by ``TaskLifecycle.start``.
     """
-    active_task_file = project_root / ".ydk" / "active-task.json"
+    active_task_file = resolve_active_task_file(project_root)
     active_task_file.parent.mkdir(parents=True, exist_ok=True)
 
     active_tasks: dict[str, dict[str, str]] = {}

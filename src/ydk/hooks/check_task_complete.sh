@@ -5,6 +5,18 @@
 
 ACTIVE_TASK=".ydk/active-task.json"
 
+# From a linked worktree (.ydk/worktrees/<id>) active-task.json lives in the
+# main checkout: the parent of the shared (common) .git dir. In the main
+# checkout or outside git, keep the cwd-relative path. Inherited GIT_DIR etc.
+# are dropped so git reports the cwd's own worktree.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
+WT_GIT_DIR=$(cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+WT_COMMON_DIR=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+if [ -n "$WT_GIT_DIR" ] && [ -n "$WT_COMMON_DIR" ] && [ "$WT_GIT_DIR" != "$WT_COMMON_DIR" ] \
+    && [ "$(basename "$WT_COMMON_DIR")" = ".git" ]; then
+    ACTIVE_TASK="$(dirname "$WT_COMMON_DIR")/.ydk/active-task.json"
+fi
+
 if [ ! -f "$ACTIVE_TASK" ]; then
     # No active task — session can end normally
     exit 0
@@ -12,7 +24,7 @@ fi
 
 # active-task.json is keyed by task_id (multiple tasks can be in flight at
 # once), so list every task still recorded there rather than a single slot.
-TASK_IDS=$(python3 -c "import json; print(','.join(json.load(open('$ACTIVE_TASK')).get('tasks', {})))" 2>/dev/null)
+TASK_IDS=$(python3 -c "import json, sys; print(','.join(json.load(open(sys.argv[1])).get('tasks', {})))" "$ACTIVE_TASK" 2>/dev/null)
 
 if [ -z "$TASK_IDS" ]; then
     exit 0

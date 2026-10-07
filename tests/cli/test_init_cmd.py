@@ -191,6 +191,9 @@ def test_init_installs_subagent_stop_hook(tmp_path: Path, monkeypatch: object) -
         assert hook_script.stat().st_mode & 0o100  # executable
     content = hook_script.read_text()
     assert "active-task.json" in content
+    assert "git rev-parse --git-common-dir" in content, (
+        "installed hook must resolve the main checkout from a worktree (#325)"
+    )
     assert "exit 2" in content
 
     # Verify settings.json includes SubagentStop
