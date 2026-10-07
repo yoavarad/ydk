@@ -289,9 +289,11 @@ def _install_claude_hooks() -> None:
         'ACTIVE_TASK=".ydk/active-task.json"\n'
         "\n"
         "# From a linked worktree, active-task.json lives in the main checkout.\n"
-        "WT_GIT_DIR=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)\n"
-        "WT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)\n"
-        'if [ -n "$WT_COMMON_DIR" ] && [ "$WT_GIT_DIR" != "$WT_COMMON_DIR" ]; then\n'
+        "unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR\n"
+        'WT_GIT_DIR=$(cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)\n'
+        'WT_COMMON_DIR=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)\n'
+        'if [ -n "$WT_GIT_DIR" ] && [ -n "$WT_COMMON_DIR" ] && [ "$WT_GIT_DIR" != "$WT_COMMON_DIR" ] \\\n'
+        '    && [ "$(basename "$WT_COMMON_DIR")" = ".git" ]; then\n'
         '    ACTIVE_TASK="$(dirname "$WT_COMMON_DIR")/.ydk/active-task.json"\n'
         "fi\n"
         "\n"

@@ -7,10 +7,13 @@ ACTIVE_TASK=".ydk/active-task.json"
 
 # From a linked worktree (.ydk/worktrees/<id>) active-task.json lives in the
 # main checkout: the parent of the shared (common) .git dir. In the main
-# checkout or outside git, keep the cwd-relative path.
-WT_GIT_DIR=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)
-WT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-if [ -n "$WT_COMMON_DIR" ] && [ "$WT_GIT_DIR" != "$WT_COMMON_DIR" ]; then
+# checkout or outside git, keep the cwd-relative path. Inherited GIT_DIR etc.
+# are dropped so git reports the cwd's own worktree.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
+WT_GIT_DIR=$(cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+WT_COMMON_DIR=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+if [ -n "$WT_GIT_DIR" ] && [ -n "$WT_COMMON_DIR" ] && [ "$WT_GIT_DIR" != "$WT_COMMON_DIR" ] \
+    && [ "$(basename "$WT_COMMON_DIR")" = ".git" ]; then
     ACTIVE_TASK="$(dirname "$WT_COMMON_DIR")/.ydk/active-task.json"
 fi
 
