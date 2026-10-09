@@ -14,6 +14,7 @@ import os
 import subprocess
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -82,38 +83,95 @@ def _read_tasks(active_task_file: Path) -> ActiveTasks:
     return {}
 
 
-@contextlib.contextmanager
-def _exclusive_lock(lock_file: Path, timeout: float) -> Iterator[None]:
-    """Hold *lock_file* (created with O_EXCL) for the duration of the block.
+def _create_exclusive(path: Path, token: str = "") -> bool:
+    """Create *path* holding *token* only if absent; False if it already exists."""
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except (FileExistsError, PermissionError):  # Windows: file pending delete -> PermissionError
+        return False
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(token)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            path.unlink()
+        raise
+    return True
 
-    A lock older than *timeout* is a leftover from a crashed process and is
-    broken. Gives up with ``TimeoutError`` after ``2 * timeout``. Known limit:
-    two waiters that both observe the same stale lock in the same instant can
-    both proceed; that needs a crashed holder plus a ~10ms collision.
+
+def _is_stale(path: Path, timeout: float) -> bool:
+    try:
+        return time.time() - path.stat().st_mtime > timeout
+    except OSError:
+        return False  # gone (or unreadable): nothing to break
+
+
+@contextlib.contextmanager
+def _deletion_guard(lock_file: Path, timeout: float) -> Iterator[None]:
+    """Serialize every deletion of *lock_file* (stale break and owner release).
+
+    Under the guard the lock cannot vanish or be replaced behind our back --
+    only guard holders delete it, and O_EXCL cannot create it while it exists
+    -- so check-then-unlink is safe. The guard is held for microseconds; one
+    older than *timeout* means its holder crashed and is removed.
     """
+    guard = lock_file.with_name(lock_file.name + ".guard")
     deadline = time.monotonic() + 2 * timeout
-    while True:
-        try:
-            os.close(os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
-            break
-        except (FileExistsError, PermissionError):  # Windows: lock pending delete -> PermissionError
-            if time.monotonic() > deadline:
-                raise TimeoutError(f"could not acquire {lock_file} within {2 * timeout:.1f}s") from None
-            try:
-                stale = time.time() - lock_file.stat().st_mtime > timeout
-            except OSError:
-                time.sleep(_LOCK_POLL_SECONDS)  # released meanwhile, or dir unwritable: retry
-                continue
-            if stale:
-                with contextlib.suppress(OSError):
-                    lock_file.unlink()
-                continue
+    while not _create_exclusive(guard):
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"could not acquire {guard} within {2 * timeout:.1f}s")
+        if _is_stale(guard, timeout):
+            with contextlib.suppress(OSError):
+                guard.unlink()
+        else:
             time.sleep(_LOCK_POLL_SECONDS)
     try:
         yield
     finally:
         with contextlib.suppress(OSError):
+            _retry_on_permission_error(guard.unlink)
+
+
+def _break_if_stale(lock_file: Path, timeout: float) -> bool:
+    """Break a lock the caller has seen as stale; True if this call deleted it.
+
+    Staleness is re-checked under the deletion guard, so a breaker acting on a
+    stale lock that another breaker already replaced leaves the new one alone.
+    """
+    with _deletion_guard(lock_file, timeout):
+        if not _is_stale(lock_file, timeout):  # gone, or replaced by a new owner
+            return False
+        try:
             lock_file.unlink()
+        except OSError:  # still in use: the caller's loop retries
+            return False
+    return True
+
+
+@contextlib.contextmanager
+def _exclusive_lock(lock_file: Path, timeout: float) -> Iterator[None]:
+    """Hold *lock_file* (created with O_EXCL) for the duration of the block.
+
+    The lock file holds a unique owner token. A lock older than *timeout* is a
+    leftover from a crashed process and is broken under a deletion guard, so
+    two breakers cannot both win; release deletes the lock only if it still
+    holds our token. Gives up with ``TimeoutError`` after ``2 * timeout``.
+    Residual limit: a process crashing inside the microsecond guard window
+    leaves a stale guard whose removal is itself unguarded.
+    """
+    token = f"{os.getpid()}-{uuid.uuid4().hex}"
+    deadline = time.monotonic() + 2 * timeout
+    while not _create_exclusive(lock_file, token):
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"could not acquire {lock_file} within {2 * timeout:.1f}s")
+        if not (_is_stale(lock_file, timeout) and _break_if_stale(lock_file, timeout)):
+            time.sleep(_LOCK_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError, ValueError), _deletion_guard(lock_file, timeout):
+            if lock_file.read_text(encoding="utf-8") == token:
+                _retry_on_permission_error(lambda: lock_file.unlink(missing_ok=True))
 
 
 def _retry_on_permission_error(op: Callable[[], None]) -> None:

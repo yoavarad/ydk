@@ -11,7 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from ydk.core.active_task import prune_active_tasks, resolve_active_task_file, update_active_tasks
+from ydk.core.active_task import (
+    _break_if_stale,
+    _create_exclusive,
+    prune_active_tasks,
+    resolve_active_task_file,
+    update_active_tasks,
+)
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -256,3 +262,57 @@ class TestUpdateActiveTasks:
         added = [f"a{i}" for i in range(8)]
         _run_concurrently(tmp_path, [("add", added), ("remove", removed)])
         assert set(_tasks(tmp_path)) == {"keep", *added}
+
+
+class TestLockOwnership:
+    def test_release_keeps_lock_taken_over_by_another_owner(self, tmp_path: Path) -> None:
+        lock = tmp_path / ".ydk" / "active-task.json.lock"
+
+        def broken_and_retaken(tasks: dict) -> dict:
+            # Our lock was broken as stale and another process now owns it.
+            lock.unlink()
+            lock.write_text("other-owner", encoding="utf-8")
+            return {**tasks, "1": {}}
+
+        _write_entries(tmp_path, ["0"])  # existing file: mutate runs only under the lock
+        update_active_tasks(tmp_path, broken_and_retaken)
+        assert lock.read_text(encoding="utf-8") == "other-owner"
+
+    @staticmethod
+    def _stale_lock(tmp_path: Path) -> Path:
+        lock = tmp_path / ".ydk" / "active-task.json.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("crashed-owner", encoding="utf-8")
+        old = time.time() - 60
+        os.utime(lock, (old, old))
+        return lock
+
+    def test_breaker_removes_stale_lock_and_takes_ownership(self, tmp_path: Path) -> None:
+        lock = self._stale_lock(tmp_path)
+        assert _break_if_stale(lock, timeout=10) is True
+        assert _create_exclusive(lock, "A") is True
+        assert lock.read_text(encoding="utf-8") == "A"
+
+    def test_second_breaker_of_same_stale_lock_leaves_new_owner_alone(self, tmp_path: Path) -> None:
+        lock = self._stale_lock(tmp_path)
+        # A and B both saw the stale lock; A breaks it first and takes ownership.
+        assert _break_if_stale(lock, timeout=10) is True
+        assert _create_exclusive(lock, "A") is True
+        # B saw the same stale lock earlier and now acts on it: the re-check
+        # under the guard finds A's fresh lock instead.
+        assert _break_if_stale(lock, timeout=10) is False
+        assert _create_exclusive(lock, "B") is False
+        assert lock.read_text(encoding="utf-8") == "A"
+
+    def test_second_breaker_after_stale_lock_gone_does_nothing(self, tmp_path: Path) -> None:
+        lock = self._stale_lock(tmp_path)
+        assert _break_if_stale(lock, timeout=10) is True
+        assert _break_if_stale(lock, timeout=10) is False
+        assert not lock.exists()
+
+    def test_fresh_lock_is_not_broken(self, tmp_path: Path) -> None:
+        lock = tmp_path / ".ydk" / "active-task.json.lock"
+        lock.parent.mkdir(parents=True)
+        assert _create_exclusive(lock, "A") is True
+        assert _break_if_stale(lock, timeout=10) is False
+        assert lock.read_text(encoding="utf-8") == "A"
