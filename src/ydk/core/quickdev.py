@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import subprocess
 from typing import TYPE_CHECKING
 
-from ydk.core.active_task import resolve_active_task_file
+from ydk.core.active_task import update_active_tasks
 from ydk.core.config import load_config
 from ydk.models.pm import TaskCreate
 from ydk.models.quickdev import QuickDevContext
@@ -52,19 +51,7 @@ def _write_active_task(project_root: Path, task_id: str, base_branch: str = "mai
     Merges into the existing per-task map rather than clobbering it, matching
     the format used by ``TaskLifecycle.start``.
     """
-    active_task_file = resolve_active_task_file(project_root)
-    active_task_file.parent.mkdir(parents=True, exist_ok=True)
-
-    active_tasks: dict[str, dict[str, str]] = {}
-    if active_task_file.exists():
-        try:
-            data = json.loads(active_task_file.read_text(encoding="utf-8"))
-            active_tasks = dict(data.get("tasks", {}))
-        except (json.JSONDecodeError, OSError):
-            active_tasks = {}
-
-    active_tasks[task_id] = {"base_branch": base_branch}
-    active_task_file.write_text(json.dumps({"tasks": active_tasks}), encoding="utf-8")
+    update_active_tasks(project_root, lambda tasks: {**tasks, task_id: {"base_branch": base_branch}})
 
 
 def _find_relevant_components(project_root: Path, description: str) -> list[str]:
