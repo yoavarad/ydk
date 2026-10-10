@@ -209,7 +209,10 @@ def test_python_stack_writes_ci_yml(tmp_path: Path, stack: str) -> None:
     for job in wf["jobs"].values():
         steps = job["steps"]
         assert steps[0]["uses"] == "actions/checkout@v4"
-        assert steps[1] == {"uses": "astral-sh/setup-uv@v7", "with": {"enable-cache": True}}
+        assert steps[1] == {
+            "uses": "astral-sh/setup-uv@v7",
+            "with": {"enable-cache": True, "python-version": "3.13"},
+        }
         assert steps[2]["run"] == "uv sync --locked --all-extras --dev"
     lint_runs = [s["run"] for s in wf["jobs"]["lint"]["steps"][3:]]
     assert lint_runs == ["uv run ruff check .", "uv run ruff format --check .", "uv run ty check"]
@@ -218,6 +221,61 @@ def test_python_stack_writes_ci_yml(tmp_path: Path, stack: str) -> None:
     ci_row = next(f for f in result.files if f.path == ".github/workflows/ci.yml")
     assert (ci_row.action, ci_row.purpose) == ("written", "stack CI (python)")
     assert result.warnings == []
+
+
+def _setup_uv_versions(root: Path) -> list[str]:
+    wf = _load_workflow(root / ".github" / "workflows" / "ci.yml")
+    return [
+        step["with"]["python-version"]
+        for job in wf["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("python_version", "pyproject", "expected"),
+    [
+        ("3.12\n", ">=3.10", "3.12"),
+        ("3.11.4\n", None, "3.11.4"),
+        ("cpython-3.12.1\n", None, "3.13"),
+        ("cpython-3.12.1\n", ">=3.11", "3.11"),
+        ("\ufeff3.12\n", ">=3.10", "3.12"),
+        ("", ">=3.11", "3.11"),
+        (None, ">=3.11", "3.11"),
+        (None, ">=3.10.2,<4", "3.10.2"),
+        (None, "~=3.12", "3.12"),
+        (None, "==3.12.*", "3.12"),
+        (None, None, "3.13"),
+        (None, "<4", "3.13"),
+    ],
+)
+def test_python_stack_pins_every_setup_uv_step(
+    tmp_path: Path, python_version: str | None, pyproject: str | None, expected: str
+) -> None:
+    _write_config(tmp_path, stack="python-cli")
+    if python_version is not None:
+        (tmp_path / ".python-version").write_text(python_version, encoding="utf-8")
+    if pyproject is not None:
+        (tmp_path / "pyproject.toml").write_text(
+            f'[project]\nname = "demo"\nrequires-python = "{pyproject}"\n', encoding="utf-8"
+        )
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    assert _setup_uv_versions(tmp_path) == [expected, expected]
+
+
+def test_python_pin_ignores_non_table_project(tmp_path: Path) -> None:
+    _write_config(tmp_path, stack="python-cli")
+    (tmp_path / "pyproject.toml").write_text("project = 1\n", encoding="utf-8")
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    assert _setup_uv_versions(tmp_path) == ["3.13", "3.13"]
+
+
+def test_python_pin_ignores_malformed_pyproject(tmp_path: Path) -> None:
+    _write_config(tmp_path, stack="python-cli")
+    (tmp_path / "pyproject.toml").write_text("not [valid toml", encoding="utf-8")
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    assert _setup_uv_versions(tmp_path) == ["3.13", "3.13"]
 
 
 def test_python_stack_missing_uv_lock_warns_and_still_writes(tmp_path: Path) -> None:

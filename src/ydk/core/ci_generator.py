@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import re
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -100,6 +101,34 @@ SOLUTION_WARNING = (
 )
 
 UV_LOCK_WARNING = "uv.lock not found at the repo root; ci.yml runs 'uv sync --locked' and fails until it is committed."
+
+
+DEFAULT_PYTHON_VERSION = "3.13"
+_PY_VERSION_RE = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
+_REQUIRES_LOWER_RE = re.compile(r"(?:>=|~=|==)\s*(\d+\.\d+(?:\.\d+)?)")
+
+
+def detect_python_version(root: Path) -> str:
+    """Python version to pin: `.python-version`, else `requires-python` lower bound, else 3.13."""
+    pin = root / ".python-version"
+    if pin.is_file():
+        try:
+            lines = pin.read_text(encoding="utf-8-sig").strip().splitlines()
+        except (OSError, ValueError):
+            lines = []
+        if lines and _PY_VERSION_RE.match(lines[0].strip()):
+            return lines[0].strip()
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project")
+        except (OSError, ValueError):
+            project = None
+        spec = project.get("requires-python") if isinstance(project, dict) else None
+        match = _REQUIRES_LOWER_RE.search(spec) if isinstance(spec, str) else None
+        if match:
+            return match.group(1)
+    return DEFAULT_PYTHON_VERSION
 
 
 def detect_solution(root: Path) -> str:
@@ -229,6 +258,8 @@ def generate_ci(
                 "global-json-file: global.json" if (root / "global.json").is_file() else "dotnet-version: 8.0.x"
             )
             extra = {"SOLUTION": solution, "DOTNET_VERSION_LINE": version_line}
+        if t is PYTHON_CI:
+            extra = {"PYTHON_VERSION": detect_python_version(root)}
         content = render((tdir / t.template).read_text(encoding="utf-8"), ctx, extra)
         files.append(_write(root, WORKFLOWS_DIR / t.output, content, t.purpose, force=force))
         if t is PYTHON_CI and not (root / "uv.lock").is_file():
