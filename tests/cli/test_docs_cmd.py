@@ -9,6 +9,15 @@ from ydk.cli import app
 runner = CliRunner()
 
 
+def _live_command_names() -> list[str]:
+    import click
+    import typer.main
+
+    cmd = typer.main.get_command(app)
+    assert isinstance(cmd, click.Group)
+    return sorted(n for n, c in cmd.commands.items() if not c.hidden)
+
+
 def test_docs_generate_creates_expected_files(tmp_path) -> None:
     """ydk docs generate produces CLI reference and schema MDX files."""
     output_dir = tmp_path / "_generated"
@@ -17,21 +26,9 @@ def test_docs_generate_creates_expected_files(tmp_path) -> None:
 
     assert result.exit_code == 0, result.output
 
-    # CLI reference pages
-    expected_cli_pages = [
-        "init",
-        "component",
-        "task",
-        "spec",
-        "verify",
-        "memory",
-        "change",
-        "scaffold",
-        "visual",
-        "checkpoint",
-        "quickdev",
-        "status",
-    ]
+    # CLI reference pages: one per live top-level command (except docs itself)
+    expected_cli_pages = [name for name in _live_command_names() if name != "docs"]
+    assert "catalog" in expected_cli_pages
     for page in expected_cli_pages:
         mdx = output_dir / "cli" / f"{page}.mdx"
         assert mdx.exists(), f"Missing CLI page: {mdx}"
@@ -92,4 +89,36 @@ def test_docs_generate_output_count(tmp_path) -> None:
     """Generate reports the correct number of files."""
     output_dir = tmp_path / "_generated"
     result = runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
-    assert "13 files generated" in result.output
+    expected = len([n for n in _live_command_names() if n != "docs"]) + 1
+    assert f"{expected} files generated" in result.output
+
+
+def test_docs_generate_has_no_stale_pages(tmp_path) -> None:
+    """Pages exist only for commands that are registered in the live app."""
+    output_dir = tmp_path / "_generated"
+    runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
+    pages = {p.stem for p in (output_dir / "cli").glob("*.mdx")}
+    assert pages == {n for n in _live_command_names() if n != "docs"}
+    assert not pages & {"checkpoint", "quickdev", "status"}
+
+
+def test_discover_cli_pages_kinds() -> None:
+    """Page kinds and exclusions are pinned explicitly."""
+    from ydk.cli.docs_cmd import _discover_cli_pages
+
+    pages = _discover_cli_pages()
+    assert pages["task"] == {"kind": "group"}
+    assert pages["ci"] == {"kind": "group"}
+    assert pages["init"] == {"kind": "standalone"}
+    assert "docs" not in pages
+    assert "quickdev" not in pages
+
+
+def test_docs_generate_writes_meta_json(tmp_path) -> None:
+    """cli/meta.json lists exactly the generated pages."""
+    import json
+
+    output_dir = tmp_path / "_generated"
+    runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
+    meta = json.loads((output_dir / "cli" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["pages"] == sorted(p.stem for p in (output_dir / "cli").glob("*.mdx"))

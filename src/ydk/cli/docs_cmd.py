@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -12,22 +13,25 @@ docs_app = typer.Typer(name="docs", help="Documentation generation")
 
 _SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas"
 
-# CLI subcommands to document.  Keys are page slugs, values describe what to capture.
-# "group" means a Typer sub-app with subcommands; "standalone" means a single command.
-_CLI_PAGES: dict[str, dict[str, str]] = {
-    "init": {"kind": "standalone"},
-    "component": {"kind": "group"},
-    "task": {"kind": "group"},
-    "spec": {"kind": "group"},
-    "verify": {"kind": "group"},
-    "memory": {"kind": "group"},
-    "change": {"kind": "group"},
-    "scaffold": {"kind": "group"},
-    "visual": {"kind": "group"},
-    "checkpoint": {"kind": "standalone"},
-    "quickdev": {"kind": "standalone"},
-    "status": {"kind": "group"},
-}
+
+def _discover_cli_pages() -> dict[str, dict[str, str]]:
+    """Derive the CLI page list from the live Typer app.
+
+    Every visible top-level command except ``docs`` gets a page. Click groups
+    are ``group`` pages (with per-subcommand sections); others are ``standalone``.
+    """
+    import click
+    import typer.main
+
+    from ydk.cli import app
+
+    root = typer.main.get_command(app)
+    commands = root.commands if isinstance(root, click.Group) else {}
+    return {
+        name: {"kind": "group" if isinstance(cmd, click.Group) else "standalone"}
+        for name, cmd in sorted(commands.items())
+        if not cmd.hidden and name != "docs"
+    }
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -198,10 +202,18 @@ def generate(
     generated: list[str] = []
 
     # CLI reference pages
-    for slug, info in _CLI_PAGES.items():
+    pages = _discover_cli_pages()
+    for slug, info in pages.items():
         path = _generate_cli_page(slug, info, output)
         generated.append(str(path))
         typer.echo(f"  Generated: {path}")
+
+    # Navigation for CLI pages, derived from the same live list
+    meta = output / "cli" / "meta.json"
+    meta.write_text(
+        json.dumps({"title": "CLI Commands", "pages": sorted(pages)}, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     # Schemas page
     path = _generate_schemas_page(output)
