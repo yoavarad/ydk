@@ -93,3 +93,28 @@ def test_docs_generate_output_count(tmp_path) -> None:
     output_dir = tmp_path / "_generated"
     result = runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
     assert "13 files generated" in result.output
+
+
+def test_docs_generate_writes_lf_line_endings(tmp_path) -> None:
+    """Generated files use LF endings on every platform."""
+    output_dir = tmp_path / "_generated"
+    result = runner.invoke(app, ["docs", "generate", "--output", str(output_dir)])
+    assert result.exit_code == 0, result.output
+
+    for mdx in output_dir.rglob("*.mdx"):
+        assert b"\r\n" not in mdx.read_bytes(), f"CRLF in {mdx}"
+
+
+def test_docs_generate_normalizes_box_corners(tmp_path) -> None:
+    """Square (legacy console) Rich corners are normalized to rounded ones."""
+    from ydk.cli.docs_cmd import _normalize_help
+
+    assert _normalize_help("┌─ Options ─┐\n│ x │\n└───────────┘") == ("╭─ Options ─╮\n│ x │\n╰───────────╯")
+
+
+def test_docs_generate_pins_help_width(tmp_path, monkeypatch) -> None:
+    """Help width does not depend on the caller's COLUMNS environment."""
+    from ydk.cli.docs_cmd import _run_help
+
+    monkeypatch.setenv("COLUMNS", "200")
+    assert max(len(line) for line in _run_help(["init"]).splitlines()) <= 80

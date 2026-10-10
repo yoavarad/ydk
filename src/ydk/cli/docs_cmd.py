@@ -32,6 +32,17 @@ _CLI_PAGES: dict[str, dict[str, str]] = {
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+# Rich falls back to square corners in some terminal modes (e.g. legacy
+# Windows consoles); normalize to the rounded style so output is identical.
+_CORNERS = str.maketrans("┌┐└┘", "╭╮╰╯")
+
+_HELP_WIDTH = "80"
+
+
+def _normalize_help(text: str) -> str:
+    """Strip ANSI codes and normalize Rich box corners."""
+    return _ANSI_RE.sub("", text).translate(_CORNERS)
+
 
 def _run_help(args: list[str]) -> str:
     """Run ``ydk <args> --help`` in-process via Typer and return the output.
@@ -44,9 +55,14 @@ def _run_help(args: list[str]) -> str:
 
     from ydk.cli import app
 
-    runner = CliRunner()
+    runner = CliRunner(env={"COLUMNS": _HELP_WIDTH, "TERMINAL_WIDTH": _HELP_WIDTH, "NO_COLOR": "1"})
     result = runner.invoke(app, [*args, "--help"])
-    return _ANSI_RE.sub("", result.output)
+    return _normalize_help(result.output)
+
+
+def _write_lf(dest: Path, text: str) -> None:
+    """Write text with LF endings regardless of platform."""
+    dest.write_bytes(text.encode("utf-8"))
 
 
 def _generate_cli_page(slug: str, info: dict[str, str], output_dir: Path) -> Path:
@@ -92,7 +108,7 @@ def _generate_cli_page(slug: str, info: dict[str, str], output_dir: Path) -> Pat
                 ]
             )
 
-    dest.write_text("\n".join(lines), encoding="utf-8")
+    _write_lf(dest, "\n".join(lines))
     return dest
 
 
@@ -154,7 +170,7 @@ def _generate_schemas_page(output_dir: Path) -> Path:
 
     if not _SCHEMAS_DIR.is_dir():
         lines.append("No schemas directory found.")
-        dest.write_text("\n".join(lines), encoding="utf-8")
+        _write_lf(dest, "\n".join(lines))
         return dest
 
     for schema_file in sorted(_SCHEMAS_DIR.glob("*.yaml")):
@@ -179,7 +195,7 @@ def _generate_schemas_page(output_dir: Path) -> Path:
             ]
         )
 
-    dest.write_text("\n".join(lines), encoding="utf-8")
+    _write_lf(dest, "\n".join(lines))
     return dest
 
 
