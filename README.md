@@ -2,7 +2,7 @@
 
 > **Fork notice:** YDK is a personal fork of [ODK — Oz Development Kit](https://github.com/oaltagar-personal/odk), created by [Oz Altagar](https://www.linkedin.com/in/oz-altagar-0a50861b3/). All credit for the original design and workflow goes to him; this fork adapts it for my own use.
 
-YDK is my coding workflow, packaged as an installable agent skill. I am [Oz Altagar](https://www.linkedin.com/in/oz-altagar-0a50861b3/), and this repository exists to share the way I structure AI-assisted software work: how I parallelize implementation across many coding agents, keep the work coordinated, and still trust the output.
+YDK is my coding workflow, packaged as an installable agent skill. I am Yoav, and this repository exists to share the way I structure AI-assisted software work: how I parallelize implementation across many coding agents, keep the work coordinated, and still trust the output.
 
 It is intentionally opinionated. It is not meant to be a generic tool, a universal framework, or a neutral abstraction over every possible development style. YDK captures one specific way of working: specs first, agent-operated execution, deterministic enforcement where possible, and proof before trust.
 
