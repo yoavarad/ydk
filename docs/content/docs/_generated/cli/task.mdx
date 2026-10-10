@@ -11,40 +11,63 @@ description: "CLI reference for ydk task"
                                                                                 
  Task management and validation                                                 
                                                                                 
+ Lifecycle: start -> done -> (merge) -> close. `start` opens a worktree, `done` 
+ opens the PR, and `close` reconciles one task to done once its PR is merged.   
+ Use `sync` to reconcile all open/in-review tasks in bulk.                      
+                                                                                
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --help          Show this message and exit.                                  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Commands ───────────────────────────────────────────────────────────────────╮
-│ create              Create a new task.                                       │
-│ create-batch        Create epics, stories, and tasks from a YAML file using  │
-│                     two-pass dependency resolution.                          │
-│ start               Start a task: create worktree, claim, explore.           │
-│ comment             Post comment to task issue (replaces plan and progress). │
-│ block               Mark task as blocked.                                    │
-│ unblock             Resume a blocked task.                                   │
-│ done                Complete task: verify, create PR, post proof.            │
-│ add-gate            Add an external event gate to a task.                    │
-│ check-gates         Check all gates on a task.                               │
-│ resolve-gate        Manually resolve a human gate.                           │
-│ add-subtask         Create discovered subtask linked to parent.              │
-│ ready               List all actionable tasks with satisfied dependencies,   │
-│                     ranked by priority.                                      │
-│ list                List tasks with optional filters, grouped by status.     │
-│ validate-dag        Validate task dependency graph (DAG) -- reads tasks from │
-│                     repository.                                              │
-│ component-coverage  Check that every component manifest is referenced by at  │
-│                     least one task.                                          │
-│ plan-waves          Display resource-constrained schedule as a table --      │
-│                     reads tasks from repository.                             │
-│ coverage            Check spec-to-story coverage.                            │
-│ analyze-complexity  Score task complexity (1-10) using LLM analysis.         │
-│ archive-done        Archive completed tasks into context-efficient           │
-│                     summaries.                                               │
-│ create-epic         Create a new epic.                                       │
-│ create-story        Create a new story.                                      │
-│ quick               Set up a lightweight workspace for a small change.       │
-│ tdd                 Set TDD phase on task (stored in frontmatter).           │
-│ review-comments     Fetch unresolved PR review comments for a task.          │
+│ create                Create a new task.                                     │
+│ create-batch          Create epics, stories, and tasks from a YAML file      │
+│                       using two-pass dependency resolution.                  │
+│ migrate               Migrate local epics, stories and tasks to GitHub       │
+│                       issues.                                                │
+│ start                 Start a task: create worktree, claim, explore.         │
+│ comment               Post comment to task issue (replaces plan and          │
+│                       progress).                                             │
+│ block                 Mark task as blocked.                                  │
+│ unblock               Resume a blocked task.                                 │
+│ done                  Complete task: verify, create PR, post proof.          │
+│ add-gate              Add an external event gate to a task.                  │
+│ check-gates           Check all gates on a task.                             │
+│ resolve-gate          Manually resolve a human gate.                         │
+│ add-subtask           Create discovered subtask linked to parent.            │
+│ ready                 List all actionable tasks with satisfied dependencies, │
+│                       ranked by priority.                                    │
+│ sync-issues           Retire linked external issues whose YDK tasks are all  │
+│                       closed.                                                │
+│ list                  List tasks with optional filters, grouped by status.   │
+│ epics                 List epics with status and progress (done/total        │
+│                       tasks).                                                │
+│ stories               List stories with status and progress (done/total      │
+│                       tasks), optionally filtered by epic.                   │
+│ validate-dag          Validate task dependency graph (DAG) -- reads tasks    │
+│                       from repository.                                       │
+│ component-coverage    Check that every component manifest is referenced by   │
+│                       at least one task.                                     │
+│ plan-waves            Display resource-constrained schedule as a table --    │
+│                       reads tasks from repository.                           │
+│ coverage              Check spec-to-story coverage.                          │
+│ analyze-complexity    Score task complexity (1-10) using LLM analysis.       │
+│ archive-done          Archive completed tasks into context-efficient         │
+│                       summaries.                                             │
+│ create-epic           Create a new epic.                                     │
+│ create-story          Create a new story.                                    │
+│ quick                 Set up a lightweight workspace for a small change.     │
+│ tdd                   Set TDD phase on task (stored in frontmatter).         │
+│ review-comments       Fetch unresolved PR review comments for a task.        │
+│ close                 Reconcile a task's status to done based on its PR's    │
+│                       merge state.                                           │
+│ sync                  Bulk-reconcile open/in-review tasks' status against    │
+│                       their PRs' merge state.                                │
+│ scaffold-batch        Generate a batch YAML template from existing TODOs,    │
+│                       grouped by service.                                    │
+│ merge-driver          Git merge driver: deterministically merge YDK          │
+│                       bookkeeping files.                                     │
+│ install-merge-driver  Register the bookkeeping merge driver in git config    │
+│                       and .gitattributes.                                    │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -103,13 +126,44 @@ description: "CLI reference for ydk task"
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk task two-pass`
+## `ydk task using`
 
 ```text
 Usage: ydk task [OPTIONS] COMMAND [ARGS]...
 Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
-│ No such command 'two-pass'.                                                  │
+│ No such command 'using'.                                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task migrate`
+
+```text
+                                                                                
+ Usage: ydk task migrate [OPTIONS]                                              
+                                                                                
+ Migrate local epics, stories and tasks to GitHub issues.                       
+                                                                                
+ Re-runnable: IDs already in ``.ydk/batch-mapping.json`` are skipped, and the   
+ mapping (``T-xxxx -> #N``) is updated after each created issue. Items whose    
+ follow-up calls failed are tracked in ``.ydk/migrate-pending.json`` and        
+ finalized on the next run.                                                     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ *  --to             TEXT  Target backend (only 'github' is supported)        │
+│                           [required]                                         │
+│    --dry-run              Print the migration plan without creating anything │
+│    --help                 Show this message and exit.                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task issues.`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'issues.'. Did you mean 'sync-issues'?                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -125,11 +179,16 @@ Try 'ydk task --help' for help.
 │ *    task_id      TEXT  Task ID to start [required]                          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --base              TEXT  Base branch to create worktree from                │
-│                           [default: main]                                    │
-│ --force                   Remove existing worktree and restart fresh         │
-│ --session-id        TEXT  Claude Code session ID                             │
-│ --help                    Show this message and exit.                        │
+│ --session-id                TEXT  Claude Code session ID                     │
+│ --base              -b      TEXT  Base branch to create worktree from        │
+│                                   (default: current branch). Both 'main' and │
+│                                   'origin/main' are accepted; a remote       │
+│                                   prefix is stripped for the PR base.        │
+│ --force                           Force restart even if task shows           │
+│                                   in-progress                                │
+│ --skip-retro-check                Bypass the finished-epic-needs-a-retro     │
+│                                   gate                                       │
+│ --help                            Show this message and exit.                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -147,6 +206,16 @@ Try 'ydk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task progress).`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'progress).'.                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -192,12 +261,16 @@ Try 'ydk task --help' for help.
                                                                                 
  Complete task: verify, create PR, post proof.                                  
                                                                                 
+ After the PR is merged, run `ydk task close <id>` to move the task status to   
+ done.                                                                          
+                                                                                
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │ *    task_id      TEXT  Task ID to complete [required]                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --summary        TEXT  Agent narrative summary for the PR body               │
-│ --help                 Show this message and exit.                           │
+│ --summary            TEXT  Agent narrative summary for the PR body           │
+│ --skip-plugin        TEXT  Skip a plugin (only if it demonstrably fails)     │
+│ --help                     Show this message and exit.                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -294,6 +367,30 @@ Try 'ydk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
+## `ydk task sync-issues`
+
+```text
+                                                                                
+ Usage: ydk task sync-issues [OPTIONS]                                          
+                                                                                
+ Retire linked external issues whose YDK tasks are all closed.                  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --dry-run          List issues that would be retired without changing them.  │
+│ --help             Show this message and exit.                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task closed.`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'closed.'. Did you mean 'close'?                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
 ## `ydk task list`
 
 ```text
@@ -306,8 +403,58 @@ Try 'ydk task --help' for help.
 │ --sprint        TEXT  Filter by sprint/milestone                             │
 │ --epic          TEXT  Filter by epic ID                                      │
 │ --story         TEXT  Filter by story ID                                     │
-│ --status        TEXT  Filter by status: open|done|in-progress|all            │
+│ --status        TEXT  Filter by status:                                      │
+│                       open|done|in-progress|in-review|blocked|all            │
 │ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task epics`
+
+```text
+                                                                                
+ Usage: ydk task epics [OPTIONS]                                                
+                                                                                
+ List epics with status and progress (done/total tasks).                        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --status        TEXT  Filter by status: open|closed|all [default: all]       │
+│ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task tasks).`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'tasks).'.                                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task stories`
+
+```text
+                                                                                
+ Usage: ydk task stories [OPTIONS]                                              
+                                                                                
+ List stories with status and progress (done/total tasks), optionally filtered  
+ by epic.                                                                       
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --epic        TEXT  Filter by epic ID                                        │
+│ --help              Show this message and exit.                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task tasks),`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'tasks),'.                                                   │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -320,17 +467,18 @@ Try 'ydk task --help' for help.
  Validate task dependency graph (DAG) -- reads tasks from repository.           
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --help          Show this message and exit.                                  │
+│ --label  -l      TEXT  Only validate tasks with this label                   │
+│ --help                 Show this message and exit.                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk task repository.`
+## `ydk task from`
 
 ```text
 Usage: ydk task [OPTIONS] COMMAND [ARGS]...
 Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
-│ No such command 'repository.'. Did you mean 'create-story'?                  │
+│ No such command 'from'.                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -349,13 +497,13 @@ Try 'ydk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk task least`
+## `ydk task at`
 
 ```text
 Usage: ydk task [OPTIONS] COMMAND [ARGS]...
 Try 'ydk task --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
-│ No such command 'least'. Did you mean 'list'?                                │
+│ No such command 'at'.                                                        │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -393,8 +541,10 @@ Try 'ydk task --help' for help.
  Check spec-to-story coverage.                                                  
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --spec-dir         TEXT  Spec directory [default: docs/specs]                │
+│ --spec-dir         TEXT  Spec directory (default: from config)               │
 │ --milestone        TEXT  Filter by milestone                                 │
+│ --from             TEXT  Validate coverage from batch YAML instead of live   │
+│                          issues                                              │
 │ --help                   Show this message and exit.                         │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
@@ -525,5 +675,172 @@ Try 'ydk task --help' for help.
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task close`
+
+```text
+                                                                                
+ Usage: ydk task close [OPTIONS] TASK_ID                                        
+                                                                                
+ Reconcile a task's status to done based on its PR's merge state.               
+                                                                                
+ Run this AFTER the task's PR is merged. Status does NOT auto-update on         
+ merge: `ydk task done` only sets in-review, so this command is what moves      
+ a task to done and unblocks its dependents. It is also the recovery path       
+ for a task stuck at open or in-review (e.g. a session died before              
+ `ydk task done` finished).                                                     
+                                                                                
+ It looks up the task's PR by branch via `gh`. If the PR is merged, the         
+ task becomes done. If the PR is open or closed-unmerged, it reports the        
+ state and changes nothing (exit 0). If no PR is found, it errors (exit 1).     
+                                                                                
+ For a task with no PR of its own (duplicate, or covered by another task        
+ or PR), pass --delivered-by and/or --reason (either alone is enough). The      
+ PR lookup is skipped, an audit comment is recorded on the task, and the        
+ task is marked done. An unknown --delivered-by task id errors before any       
+ change.                                                                        
+                                                                                
+ When the closed task was the last open one in its story, the story is          
+ closed too; when it was the last in its epic, the epic is closed and           
+ "Epic ... complete" is printed with the retrospective next step.               
+                                                                                
+ To reconcile many tasks at once, use `ydk task sync`.                          
+                                                                                
+                                                                                
+ Examples:                                                                      
+   ydk task close T-a1b2c3d4                                                    
+   ydk task close T-a1b2c3d4 --delivered-by T-e5f6a7b8 --reason "dup"           
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID to close; set to done only if its PR is      │
+│                         merged (or a no-PR flag is given)                    │
+│                         [required]                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --delivered-by        TEXT  Task id, PR URL, or PR number that delivered     │
+│                             this work (closes a task with no PR of its own)  │
+│ --reason              TEXT  Why the task is closed without its own PR (e.g.  │
+│                             'dup of T-012'); recorded in the audit comment   │
+│ --help                      Show this message and exit.                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task merge`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'merge'. Did you mean 'coverage'?                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task sync`
+
+```text
+                                                                                
+ Usage: ydk task sync [OPTIONS]                                                 
+                                                                                
+ Bulk-reconcile open/in-review tasks' status against their PRs' merge state.    
+                                                                                
+ This is the bulk version of `ydk task close`. Prefer `ydk task close <id>` to  
+ reconcile a single task, or to close a task that has no PR of its own. Prefer  
+ `ydk task sync` to sweep every open/in-review task at once. Like close, it     
+ closes stories/epics whose last task it marks done, and also sweeps for any    
+ story/epic left open even though all its children are already done.            
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task their`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'their'.                                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task scaffold-batch`
+
+```text
+                                                                                
+ Usage: ydk task scaffold-batch [OPTIONS]                                       
+                                                                                
+ Generate a batch YAML template from existing TODOs, grouped by service.        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --output  -o      TEXT  Output file path [default: batch-tasks.yaml]         │
+│ --help                  Show this message and exit.                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task grouped`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'grouped'.                                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task merge-driver`
+
+```text
+                                                                                
+ Usage: ydk task merge-driver [OPTIONS] BASE OURS THEIRS PATH                   
+                                                                                
+ Git merge driver: deterministically merge YDK bookkeeping files.               
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    base        TEXT  Ancestor version (%O) [required]                      │
+│ *    ours        TEXT  Current version (%A); merged result is written here   │
+│                        [required]                                            │
+│ *    theirs      TEXT  Other branch version (%B) [required]                  │
+│ *    path        TEXT  Repository path of the file (%P) [required]           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task bookkeeping`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'bookkeeping'.                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task install-merge-driver`
+
+```text
+                                                                                
+ Usage: ydk task install-merge-driver [OPTIONS]                                 
+                                                                                
+ Register the bookkeeping merge driver in git config and .gitattributes.        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --command        TEXT  Command prefix used to invoke ydk (e.g. 'uv run ydk') │
+│                        [default: ydk]                                        │
+│ --help                 Show this message and exit.                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task and`
+
+```text
+Usage: ydk task [OPTIONS] COMMAND [ARGS]...
+Try 'ydk task --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'and'.                                                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```

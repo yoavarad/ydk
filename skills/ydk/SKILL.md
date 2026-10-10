@@ -268,7 +268,7 @@ ydk task component-coverage            # Check every component manifest is refer
 ydk task component-coverage --exclude 'ydk:page:*' --strict  # With exclusion patterns and strict exit code
 ydk task analyze-complexity            # LLM scores tasks 1-10, flags tasks needing splits
 ydk task add-gate <id> --type <type>   # Add external gate (pr-merged, ci-passed, timer, human)
-ydk task ready                         # List all actionable tasks ranked by priority
+ydk task ready                         # List actionable tasks ranked by priority (excludes in-progress, in-review, blocked)
 ydk task list --epic E --story S --status open  # Filter tasks by epic, story, status; grouped by status
 ydk task archive-done [--all-done]     # Archive completed tasks for context efficiency
 ydk task scaffold-batch                # Generate batch YAML from existing TODOs
@@ -336,6 +336,8 @@ ydk verify run --retry N               # Auto-repair loop: retry N times with st
 ydk verify run --repair                # Auto-repair: fix issues automatically between retries
 ydk verify run --pr <URL>              # Post verification results as PR comment
 ydk verify run --no-cache              # Bypass verification cache
+ydk verify run --skip-plugin NAME      # Skip a plugin by name (repeatable)
+ydk verify pr-body --body-file F [--base-ref REF]  # Validate a PR body (pr-body-validation plugin)
 ydk verify list                        # List available plugins
 ydk verify clear-cache                 # Clear the verification content-hash cache
 ydk test generate --from <COMPONENT_ID>  # Generate tests from a component manifest

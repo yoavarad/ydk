@@ -23,8 +23,8 @@ description: "CLI reference for ydk memory"
 │ record-decision   Show the current (latest) decision for a topic.            │
 │ decision-history  Show all versions of a decision for a topic (newest        │
 │                   first).                                                    │
-│ retrospective     Sprint retrospective — aggregate learnings across tasks    │
-│                   using LLM analysis.                                        │
+│ retrospective     Sprint or epic retrospective — aggregate learnings across  │
+│                   tasks using LLM analysis.                                  │
 │ audit             Comprehensive memory health audit -- stale research,       │
 │                   duplicates, and procedural reports.                        │
 │ consolidate       Find and merge duplicate memories.                         │
@@ -158,21 +158,23 @@ Try 'ydk memory --help' for help.
                                                                                 
  Usage: ydk memory retrospective [OPTIONS]                                      
                                                                                 
- Sprint retrospective — aggregate learnings across tasks using LLM analysis.    
+ Sprint or epic retrospective — aggregate learnings across tasks using LLM      
+ analysis.                                                                      
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --sprint        TEXT  Sprint/milestone to review                             │
+│ --epic          TEXT  Epic ID to review instead of a sprint                  │
 │ --help                Show this message and exit.                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk memory using`
+## `ydk memory tasks`
 
 ```text
 Usage: ydk memory [OPTIONS] COMMAND [ARGS]...
 Try 'ydk memory --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
-│ No such command 'using'.                                                     │
+│ No such command 'tasks'.                                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
