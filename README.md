@@ -36,6 +36,13 @@ cp skills/orchestrate-ready-tasks/agents/*.md ~/.claude/agents/
 
 Use the skills directory for the agent you actually run. The installed folder must contain `SKILL.md`.
 
+Install the `ydk` CLI the skills drive. It is not on PyPI (the PyPI package named `ydk` is unrelated), so install it from git:
+
+```bash
+uv tool install git+https://github.com/yoavarad/ydk
+# later: uv tool upgrade ydk
+```
+
 3. Start a new agent session in your project and say:
 
 ```text

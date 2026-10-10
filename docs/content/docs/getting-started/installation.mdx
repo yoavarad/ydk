@@ -28,15 +28,17 @@ The recommended way to install YDK is with `uv`, the fast Python package manager
 <Tabs items={['uv (recommended)', 'pip']}>
 <Tab value="uv (recommended)">
 ```bash
-uv add ydk
+uv tool install git+https://github.com/yoavarad/ydk
 ```
 </Tab>
 <Tab value="pip">
 ```bash
-pip install ydk
+pip install git+https://github.com/yoavarad/ydk
 ```
 </Tab>
 </Tabs>
+
+YDK is not published on PyPI; the unrelated PyPI package named `ydk` is a different project, so always install from git. Upgrade an existing uv tool install with `uv tool upgrade ydk`.
 
 Once installed, verify that the CLI is available:
 
