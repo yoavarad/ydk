@@ -1,90 +1,158 @@
 ---
 title: "ydk todo"
-description: "CLI reference for TODO tracking commands"
+description: "CLI reference for ydk todo"
 ---
 
 # `ydk todo`
 
-The todo commands manage tracked `NotImplementedError` placeholders created during ignition. Each TODO has a unique `YDK-TODO-NNN` identifier and a lifecycle from registration through resolution.
-
-## `ydk todo list [--status open|in-progress|done]`
-
-List tracked TODOs, optionally filtered by status.
-
-```bash
-$ ydk todo list
-YDK-TODO-001  open         src/domain/services/user_service.py:24    create_user business logic
-YDK-TODO-002  open         src/domain/services/user_service.py:38    update_user business logic
-YDK-TODO-003  in-progress  src/domain/services/order_service.py:15   place_order validation
-YDK-TODO-004  done         src/adapters/api/routes/health.py:10      health check response
-
-$ ydk todo list --status open
-YDK-TODO-001  open  src/domain/services/user_service.py:24    create_user business logic
-YDK-TODO-002  open  src/domain/services/user_service.py:38    update_user business logic
+```text
+                                                                                
+ Usage: ydk todo [OPTIONS] COMMAND [ARGS]...                                    
+                                                                                
+ Manage ignition TODOs                                                          
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ list          List all TODOs with status.                                    │
+│ show          Show details of a specific TODO.                               │
+│ assign        Link a TODO to a task.                                         │
+│ done          Mark TODO as done. Verifies NotImplementedError is removed.    │
+│ assign-batch  Bulk assign TODOs to tasks. Accepts                            │
+│               'YDK-TODO-001:T-001,YDK-TODO-002:T-001' or a YAML file.        │
+│ auto-assign   Auto-assign TODOs to tasks by matching file paths to task      │
+│               component_refs.                                                │
+│ coverage      Show TODO completion coverage.                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk todo show <id>`
+## `ydk todo list`
 
-Show full details of a specific TODO including file location, line window, and assignment status.
-
-```bash
-$ ydk todo show YDK-TODO-001
-ID:          YDK-TODO-001
-Status:      open
-File:        src/domain/services/user_service.py
-Line:        24
-Function:    create_user
-Description: create_user business logic
-Assigned to: (unassigned)
-Registered:  2026-04-28T14:30:00Z
-
-Context (lines 22-26):
-  22 |     def create_user(self, data: CreateUserRequest) -> User:
-  23 |         """Create a new user with validation."""
-  24 |         raise NotImplementedError  # YDK-TODO-001
-  25 |
-  26 |     def update_user(self, user_id: str, data: UpdateUserRequest) -> User:
+```text
+                                                                                
+ Usage: ydk todo list [OPTIONS]                                                 
+                                                                                
+ List all TODOs with status.                                                    
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --status        TEXT  Filter by status (open, in-progress, done)             │
+│ --help                Show this message and exit.                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk todo assign <todo-id> <task-id>`
+## `ydk todo show`
 
-Link a TODO to a task. When `ydk task done` runs for that task, it verifies all assigned TODOs have been resolved.
-
-```bash
-$ ydk todo assign YDK-TODO-001 T-003
-Assigned YDK-TODO-001 to task T-003
+```text
+                                                                                
+ Usage: ydk todo show [OPTIONS] TODO_ID                                         
+                                                                                
+ Show details of a specific TODO.                                               
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    todo_id      TEXT  TODO ID (e.g., YDK-TODO-001) [required]              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk todo done <todo-id>`
+## `ydk todo assign`
 
-Mark a TODO as resolved. This command performs AST-based verification that the `NotImplementedError` has been removed from the line window before marking it done.
+```text
+                                                                                
+ Usage: ydk todo assign [OPTIONS] TODO_ID TASK_ID                               
+                                                                                
+ Link a TODO to a task.                                                         
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    todo_id      TEXT  TODO ID [required]                                   │
+│ *    task_id      TEXT  Task ID to link [required]                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
 
-```bash
-$ ydk todo done YDK-TODO-001
-Checking src/domain/services/user_service.py line 24...
-  NotImplementedError: not found (resolved)
-Marked YDK-TODO-001 as done
+## `ydk todo done`
 
-$ ydk todo done YDK-TODO-002
-Checking src/domain/services/user_service.py line 38...
-  NotImplementedError: still present on line 38
-ERROR: Cannot mark YDK-TODO-002 as done -- NotImplementedError still exists
+```text
+                                                                                
+ Usage: ydk todo done [OPTIONS] TODO_ID                                         
+                                                                                
+ Mark TODO as done. Verifies NotImplementedError is removed.                    
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    todo_id      TEXT  TODO ID to mark as done [required]                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk todo assign-batch`
+
+```text
+                                                                                
+ Usage: ydk todo assign-batch [OPTIONS] MAPPING                                 
+                                                                                
+ Bulk assign TODOs to tasks. Accepts 'YDK-TODO-001:T-001,YDK-TODO-002:T-001' or 
+ a YAML file.                                                                   
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    mapping      TEXT  Comma-separated TODO_ID:TASK_ID pairs, or path to    │
+│                         YAML file                                            │
+│                         [required]                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk todo 'YDK-TODO-001:T-001,YDK-TODO-002:T-001'`
+
+```text
+Usage: ydk todo [OPTIONS] COMMAND [ARGS]...
+Try 'ydk todo --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command "'YDK-TODO-001:T-001,YDK-TODO-002:T-001'".                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk todo auto-assign`
+
+```text
+                                                                                
+ Usage: ydk todo auto-assign [OPTIONS]                                          
+                                                                                
+ Auto-assign TODOs to tasks by matching file paths to task component_refs.      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --dry-run    --apply      Preview assignments without applying               │
+│                           [default: dry-run]                                 │
+│ --help                    Show this message and exit.                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk todo component_refs.`
+
+```text
+Usage: ydk todo [OPTIONS] COMMAND [ARGS]...
+Try 'ydk todo --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'component_refs.'.                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## `ydk todo coverage`
 
-Show resolution statistics with a progress summary.
-
-```bash
-$ ydk todo coverage
-TODO Coverage:
-  Total:       12
-  Done:         8 (66.7%)
-  In Progress:  2 (16.7%)
-  Open:         2 (16.7%)
-
-By component:
-  user_service.py:     3/4 resolved
-  order_service.py:    2/4 resolved
-  payment_service.py:  3/4 resolved
+```text
+                                                                                
+ Usage: ydk todo coverage [OPTIONS]                                             
+                                                                                
+ Show TODO completion coverage.                                                 
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```

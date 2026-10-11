@@ -1,59 +1,75 @@
 ---
 title: "ydk watch"
-description: "CLI reference for PR review watch daemon"
+description: "CLI reference for ydk watch"
 ---
 
 # `ydk watch`
 
-The watch commands manage a polling daemon that monitors PRs for new review comments, reacts with an eyes emoji, and triggers an agent to address the feedback.
+```text
+                                                                                
+ Usage: ydk watch [OPTIONS] COMMAND [ARGS]...                                   
+                                                                                
+ GitHub PR comment watcher                                                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ install    Install macOS launchd plist for 30-second polling.                │
+│ uninstall  Remove the launchd plist and stop the watcher.                    │
+│ poll       Check for new PR review comments and trigger agent sessions.      │
+│ status     Show watcher status: installed?, last poll, active sessions.      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
 
 ## `ydk watch install`
 
-Install the macOS launchd plist for automatic polling every 30 seconds.
-
-```bash
-$ ydk watch install
-Installing com.ydk.watch plist...
-Plist written to ~/Library/LaunchAgents/com.ydk.watch.plist
-Loaded com.ydk.watch
-Watch daemon is now running (30s polling interval)
-```
-
-## `ydk watch poll`
-
-Manually trigger a single poll cycle. Checks all open PRs for new review comments, reacts with an eyes emoji to acknowledge, and triggers an agent session to address the feedback.
-
-```bash
-$ ydk watch poll
-Polling PRs for new review comments...
-  PR #42: 2 new comments found
-    -> Reacted with eyes emoji
-    -> Triggered agent session (session: ws-abc123)
-  PR #38: no new comments
-Poll complete.
+```text
+                                                                                
+ Usage: ydk watch install [OPTIONS]                                             
+                                                                                
+ Install macOS launchd plist for 30-second polling.                             
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## `ydk watch uninstall`
 
-Remove the launchd plist and stop the polling daemon.
+```text
+                                                                                
+ Usage: ydk watch uninstall [OPTIONS]                                           
+                                                                                
+ Remove the launchd plist and stop the watcher.                                 
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
 
-```bash
-$ ydk watch uninstall
-Unloading com.ydk.watch...
-Removed ~/Library/LaunchAgents/com.ydk.watch.plist
-Watch daemon stopped.
+## `ydk watch poll`
+
+```text
+                                                                                
+ Usage: ydk watch poll [OPTIONS]                                                
+                                                                                
+ Check for new PR review comments and trigger agent sessions.                   
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## `ydk watch status`
 
-Show the current state of the watch daemon including whether it is installed, when it last polled, and any active agent sessions.
-
-```bash
-$ ydk watch status
-Watch daemon: installed (running)
-Plist: ~/Library/LaunchAgents/com.ydk.watch.plist
-Polling interval: 30s
-Last poll: 2026-05-03T10:42:15Z
-Active sessions: 1
-  - ws-abc123 (PR #42, started 2m ago)
+```text
+                                                                                
+ Usage: ydk watch status [OPTIONS]                                              
+                                                                                
+ Show watcher status: installed?, last poll, active sessions.                   
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
