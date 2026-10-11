@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ydk pre-push hook — branch rules, unit tests."""
+"""ydk pre-push hook — mirrors GitHub CI (ci.yml, pr-body-check.yml) locally."""
 
 import shutil, subprocess, sys, time
 from pathlib import Path
@@ -61,9 +61,9 @@ branch = result.stdout.strip()
 if branch == "main":
     step_fail(t0, "Direct push to main is not allowed. Open a PR instead.")
     finish_fail()
-pattern = r"^(feat|fix|docs|chore|refactor|test|ci|perf|release)/[a-z0-9-]+$|^(main|rewrite/.*)$"
+pattern = r"^(feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+$|^(main|rewrite/.*)$"
 if not re.match(pattern, branch):
-    step_fail(t0, f"Branch '{branch}' does not follow convention: type/description\nValid: feat fix docs chore refactor test ci perf release")
+    step_fail(t0, f"Branch '{branch}' does not follow convention: type/description\nValid: feat fix docs chore refactor test ci perf release task")
     finish_fail()
 step_pass(t0)
 
@@ -115,23 +115,41 @@ else:
             ))
             failed = True
 
-# 3. Unit tests
-t0 = step("unit tests")
-if shutil.which("uv") is None:
-    step_skip("uv not found on PATH")
-elif not Path("pyproject.toml").exists() or not Path("tests").is_dir():
-    step_skip("no Python project detected (missing pyproject.toml or tests/)")
-else:
-    result = run(["uv", "run", "pytest", "tests/", "-q", "--tb=short"])
+# 3+. CI mirror (ci.yml) — each step independent
+def uv_check(name, cmd):
+    global failed
+    t0 = step(name)
+    if shutil.which("uv") is None:
+        step_skip("uv not found on PATH")
+        return
+    if not Path("pyproject.toml").exists():
+        step_skip("no Python project detected (missing pyproject.toml)")
+        return
+    result = run(cmd)
     if result.returncode != 0:
         lines = (result.stdout + result.stderr).strip().splitlines()
         step_fail(t0, "\n".join(lines[-10:]))
         failed = True
     else:
-        last_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
         step_pass(t0)
-        if "passed" in last_line:
-            print(f"    {FG_GRAY}{last_line}{RESET}", flush=True)
+
+uv_check("lockfile + sync", ["uv", "sync", "--locked", "--all-extras", "--dev"])
+if run(["git", "rev-parse", "--verify", "--quiet", "origin/main"]).returncode != 0:
+    step("commit messages")
+    step_skip("origin/main ref missing")
+elif run(["git", "rev-list", "--count", "origin/main..HEAD"]).stdout.strip() == "0":
+    step("commit messages")
+    step_skip("no commits ahead of origin/main")
+else:
+    uv_check("commit messages", ["uv", "run", "cz", "check", "--rev-range", "origin/main...HEAD"])
+uv_check("ruff format", ["uv", "run", "ruff", "format", "--check", "src/", "tests/"])
+uv_check("ruff lint", ["uv", "run", "ruff", "check", "src/", "tests/"])
+uv_check("ty", ["uv", "run", "ty", "check", "src/ydk/", "--python-version", "3.13"])
+if not Path("pyproject.toml").exists() or not Path("tests").is_dir():
+    step("unit tests")
+    step_skip("no Python project detected (missing pyproject.toml or tests/)")
+else:
+    uv_check("unit tests", ["uv", "run", "pytest", "tests/", "-q", "--tb=short", "-x", "--ignore=tests/fixtures"])
 
 if failed:
     finish_fail()
