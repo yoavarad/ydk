@@ -1,0 +1,67 @@
+---
+title: "ydk hooks"
+description: "CLI reference for ydk hooks"
+---
+
+# `ydk hooks`
+
+```text
+                                                                                
+ Usage: ydk hooks [OPTIONS] COMMAND [ARGS]...                                   
+                                                                                
+ Commands invoked by git hooks                                                  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ commit-msg  Validate a commit message file against conventional-commit       │
+│             format (git commit-msg hook).                                    │
+│ pre-push    Run pre-push verification (git pre-push hook).                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk hooks commit-msg`
+
+```text
+                                                                                
+ Usage: ydk hooks commit-msg [OPTIONS] FILE                                     
+                                                                                
+ Validate a commit message file against conventional-commit format (git         
+ commit-msg hook).                                                              
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    file      TEXT  Path to the commit message file [required]              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk hooks format`
+
+```text
+Usage: ydk hooks [OPTIONS] COMMAND [ARGS]...
+Try 'ydk hooks --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'format'.                                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk hooks pre-push`
+
+```text
+                                                                                
+ Usage: ydk hooks pre-push [OPTIONS]                                            
+                                                                                
+ Run pre-push verification (git pre-push hook).                                 
+                                                                                
+ Honors the `.ydk/.verified` flag written by `ydk task done`: if it was         
+ written within the last `VERIFIED_TTL_SECONDS`, verification already ran       
+ recently and is skipped. Otherwise the flag (if present and stale) is          
+ removed and verification runs, propagating its exit code.                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```

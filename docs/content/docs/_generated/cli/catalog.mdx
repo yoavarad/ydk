@@ -1,96 +1,121 @@
 ---
 title: "ydk catalog"
-description: "CLI reference for catalog management commands"
+description: "CLI reference for ydk catalog"
 ---
 
 # `ydk catalog`
 
-The catalog commands manage the local registry of reusable YDK components -- ignition packs, schemas, verification plugins, and reviewer configurations.
-
-## `ydk catalog search <query>`
-
-Semantic search across all catalog items using ChromaDB embeddings.
-
-```bash
-$ ydk catalog search "python web API"
-Results for "python web API":
-  1. python-fastapi-hexagonal (ignition pack) - FastAPI + SQLAlchemy hexagonal layout
-  2. python-quality (plugins) - Ruff, ty, pytest verification plugins
-  3. python-typer-cli (ignition pack) - Typer CLI application skeleton
+```text
+                                                                                
+ Usage: ydk catalog [OPTIONS] COMMAND [ARGS]...                                 
+                                                                                
+ Browse and manage the YDK catalog                                              
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ search     Search the catalog for items.                                     │
+│ install    Install a catalog item into the current project.                  │
+│ list       List items installed in the current project.                      │
+│ info       Show details about a catalog item.                                │
+│ publish    Publish a catalog item (validate + copy to local catalog).        │
+│ uninstall  Remove a catalog item from the current project.                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-The query is embedded and matched against item descriptions, tags, and metadata. You do not need to know exact names.
+## `ydk catalog search`
 
-## `ydk catalog install <name>`
+```text
+                                                                                
+ Usage: ydk catalog search [OPTIONS] QUERY                                      
+                                                                                
+ Search the catalog for items.                                                  
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    query      TEXT  Search query [required]                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --tag       -t      TEXT  Filter by tag                                      │
+│ --semantic  -s            Use semantic search (requires ChromaDB)            │
+│ --help                    Show this message and exit.                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
 
-Install a catalog item into the current project. Checks dependencies and prompts for confirmation if the item requires other items to be installed first.
+## `ydk catalog install`
 
-```bash
-$ ydk catalog install python-fastapi-hexagonal
-Installing python-fastapi-hexagonal...
-  Requires: ydk-core-schemas (already installed)
-  Requires: python-quality (already installed)
-Installed python-fastapi-hexagonal into .ydk/pack/
+```text
+                                                                                
+ Usage: ydk catalog install [OPTIONS] NAME                                      
+                                                                                
+ Install a catalog item into the current project.                               
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Catalog item name [required]                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --version  -v      TEXT  Pin to a specific version                           │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## `ydk catalog list`
 
-List all currently installed catalog items in the project.
-
-```bash
-$ ydk catalog list
-Installed items:
-  ydk-core-schemas       schemas         13 component schemas
-  ydk-default-reviewers  reviewers       10 spec reviewers (N01-N10)
-  python-quality         plugins         Ruff, ty, pytest plugins
-  python-fastapi-hexagonal  ignition pack  FastAPI hexagonal generators
+```text
+                                                                                
+ Usage: ydk catalog list [OPTIONS]                                              
+                                                                                
+ List items installed in the current project.                                   
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk catalog info <name>`
+## `ydk catalog info`
 
-Show detailed information about a catalog item including its manifest, consumed component types, and generated file patterns.
-
-```bash
-$ ydk catalog info python-fastapi-hexagonal
-Name: python-fastapi-hexagonal
-Type: ignition pack
-Version: 1.0.0
-Description: FastAPI + SQLAlchemy hexagonal layout generators
-
-Consumes:
-  - entity -> domain models, repositories, migrations
-  - route -> API route handlers
-  - error -> exception classes
-  - contract -> request/response schemas
-
-Generates:
-  src/domain/models/*.py
-  src/domain/repositories/*.py
-  src/adapters/api/routes/*.py
-  src/adapters/api/schemas/*.py
-  tests/unit/**/*.py
-  tests/integration/**/*.py
-  alembic/versions/*.py
+```text
+                                                                                
+ Usage: ydk catalog info [OPTIONS] NAME                                         
+                                                                                
+ Show details about a catalog item.                                             
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Catalog item name [required]                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk catalog publish <path>`
+## `ydk catalog publish`
 
-Validate and publish a local item to the catalog registry.
-
-```bash
-$ ydk catalog publish ./my-custom-pack/
-Validating my-custom-pack...
-  Manifest: OK
-  Generators: 4 found
-  Schema compliance: OK
-Published my-custom-pack to ~/.ydk/catalog/
+```text
+                                                                                
+ Usage: ydk catalog publish [OPTIONS] PATH                                      
+                                                                                
+ Publish a catalog item (validate + copy to local catalog).                     
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    path      PATH  Path to the catalog item directory [required]           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-## `ydk catalog uninstall <name>`
+## `ydk catalog uninstall`
 
-Remove an installed catalog item from the project.
-
-```bash
-$ ydk catalog uninstall python-fastapi-hexagonal
-Uninstalled python-fastapi-hexagonal from .ydk/pack/
+```text
+                                                                                
+ Usage: ydk catalog uninstall [OPTIONS] NAME                                    
+                                                                                
+ Remove a catalog item from the current project.                                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    name      TEXT  Catalog item name to remove [required]                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```

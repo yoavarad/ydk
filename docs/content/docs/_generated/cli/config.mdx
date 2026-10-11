@@ -1,0 +1,82 @@
+---
+title: "ydk config"
+description: "CLI reference for ydk config"
+---
+
+# `ydk config`
+
+```text
+                                                                                
+ Usage: ydk config [OPTIONS] COMMAND [ARGS]...                                  
+                                                                                
+ Manage YDK configuration                                                       
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ show      Show current config.                                               │
+│ get       Get a config value.                                                │
+│ set       Set a config value.                                                │
+│ validate  Validate config.                                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk config show`
+
+```text
+                                                                                
+ Usage: ydk config show [OPTIONS]                                               
+                                                                                
+ Show current config.                                                           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk config get`
+
+```text
+                                                                                
+ Usage: ydk config get [OPTIONS] KEY                                            
+                                                                                
+ Get a config value.                                                            
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    key      TEXT  Dot-separated config key [required]                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk config set`
+
+```text
+                                                                                
+ Usage: ydk config set [OPTIONS] KEY VALUE                                      
+                                                                                
+ Set a config value.                                                            
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    key        TEXT  Dot-separated config key [required]                    │
+│ *    value      TEXT  Value to set [required]                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk config validate`
+
+```text
+                                                                                
+ Usage: ydk config validate [OPTIONS]                                           
+                                                                                
+ Validate config.                                                               
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
