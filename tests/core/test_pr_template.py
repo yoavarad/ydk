@@ -432,3 +432,18 @@ class TestSkippedPluginRendering:
         assert "flaky e2e \u2014 FAIL" not in body
         assert "pytest \u2014 FAIL" in body
         assert "ruff \u2014 PASS" in body
+
+    def test_test_plan_counts_label_skipped_checks(self, proof_dir: Path) -> None:
+        from ydk.core.proof_capture import ProofCapture
+        from ydk.models.verification import CheckResult, VerificationReport
+
+        checks = [
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+            CheckResult(name="flaky-e2e", passed=False, output="boom", duration_seconds=2.0),
+        ]
+        report = VerificationReport(
+            task_id="T-001", timestamp="t", checks=checks, all_passed=False, total_duration_seconds=3.0
+        )
+        ProofCapture(proof_dir).save_report(report, skipped_plugins=["flaky-e2e"])
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "1/2 verification checks passed, 1 skipped" in body

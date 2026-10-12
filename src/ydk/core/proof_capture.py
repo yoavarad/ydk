@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from ydk.models.verification import VerificationReport
 
 
+SKIP_REASON = "skipped via --skip-plugin"
+
+
 class ProofCapture:
     """Capture verification command output to proof files."""
 
@@ -64,7 +67,7 @@ class ProofCapture:
             safe_name = check.name.replace("/", "_").replace(" ", "_")
             out_path = plugins_dir / f"{safe_name}.txt"
             if check.name in (skipped_plugins or []):
-                content = f"SKIPPED ({check.duration_seconds}s)\n\nskipped via --skip-plugin"
+                content = f"SKIPPED ({check.duration_seconds}s)\n\n{SKIP_REASON}"
             else:
                 status_line = f"{'PASSED' if check.passed else 'FAILED'} ({check.duration_seconds}s)"
                 content = f"{status_line}\n\n{check.output}"
@@ -73,7 +76,23 @@ class ProofCapture:
 
         # Save the full report as JSON
         report_path = self._proof_dir / "verification-report.json"
-        report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        skipped = set(skipped_plugins or [])
+        recorded = report.model_copy(
+            update={
+                "checks": [
+                    c.model_copy(
+                        update={
+                            "output": SKIP_REASON,
+                            "detail": {"status": "SKIPPED", "skip_reason": SKIP_REASON},
+                        }
+                    )
+                    if c.name in skipped
+                    else c
+                    for c in report.checks
+                ]
+            }
+        )
+        report_path.write_text(recorded.model_dump_json(indent=2), encoding="utf-8")
 
         task_id = report.task_id or self._proof_dir.name
 

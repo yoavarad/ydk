@@ -583,6 +583,7 @@ class TaskLifecycle:
         task_id: str,
         task: object | None = None,
         report: object | None = None,
+        skipped_plugins: list[str] | None = None,
     ) -> str:
         """Build a full PR body with verification proof and command outputs.
 
@@ -631,10 +632,11 @@ class TaskLifecycle:
             lines.append("## Verification Proof")
             lines.append("")
             for check in report.checks:
-                status = "PASSED" if check.passed else "FAILED"
+                is_skipped = check.name in (skipped_plugins or [])
+                status = "SKIPPED" if is_skipped else ("PASSED" if check.passed else "FAILED")
                 lines.append(f"### {check.name} ({status})")
                 lines.append("```console")
-                lines.append(check.output)
+                lines.append("skipped via --skip-plugin" if is_skipped else check.output)
                 lines.append("```")
                 lines.append("")
 
@@ -651,9 +653,11 @@ class TaskLifecycle:
         lines.append("")
         if isinstance(report, VerificationReport) and report.checks:
             lines.append("Automated verification proof included above.")
-            passed_count = sum(1 for c in report.checks if c.passed)
+            skipped_count = sum(1 for c in report.checks if c.name in (skipped_plugins or []))
+            passed_count = sum(1 for c in report.checks if c.passed and c.name not in (skipped_plugins or []))
             total_count = len(report.checks)
-            lines.append(f"- {passed_count}/{total_count} checks passed")
+            skip_note = f", {skipped_count} skipped" if skipped_count else ""
+            lines.append(f"- {passed_count}/{total_count} checks passed{skip_note}")
         else:
             lines.append("- [ ] Verification pending")
         lines.append("")

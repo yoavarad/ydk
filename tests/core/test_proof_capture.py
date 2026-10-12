@@ -326,3 +326,18 @@ class TestSkippedPlugins:
         assert "skipped via --skip-plugin" in skipped
         assert "timeout traceback" not in skipped
         assert (proof_dir / "plugins" / "lint.txt").read_text().startswith("PASSED")
+
+    def test_json_report_records_skipped_with_reason(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="timeout traceback", duration_seconds=5.0),
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        data = json.loads((proof_dir / "verification-report.json").read_text())
+        by_name = {c["name"]: c for c in data["checks"]}
+        assert by_name["flaky-e2e"]["detail"]["status"] == "SKIPPED"
+        assert by_name["flaky-e2e"]["detail"]["skip_reason"] == "skipped via --skip-plugin"
+        assert "timeout traceback" not in by_name["flaky-e2e"]["output"]
+        assert by_name["lint"]["detail"] is None
