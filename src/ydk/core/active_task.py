@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ydk.services.git import default_branch
+from ydk.services.git import default_branch, merge_base
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -84,6 +84,38 @@ def _read_tasks(active_task_file: Path) -> ActiveTasks:
         base = data.get("base_branch") or default_branch(active_task_file.parent.parent)
         return {data["task_id"]: {"base_branch": base}}
     return {}
+
+
+def diff_base(project_root: Path, cwd: Path | str | None = None) -> str | None:
+    """Merge-base SHA that changed-file diffs should start from, or ``None``.
+
+    Base branch: the active task owning the branch checked out in *cwd*
+    (``task/<id>...``) if recorded in active-task.json, else the repo default
+    branch. ``None`` means no base resolved: callers check the whole project.
+    """
+    cwd = cwd or project_root
+    branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+    tasks = _read_tasks(resolve_active_task_file(project_root))
+    task_id = next((tid for tid in tasks if branch == f"task/{tid}" or branch.startswith(f"task/{tid}-")), None)
+    recorded = tasks[task_id].get("base_branch") if task_id else None
+    default = default_branch(project_root)
+    return (merge_base(recorded, cwd) if recorded else None) or merge_base(default, cwd)
+
+
+def _run_git(args: list[str], cwd: Path | str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def _create_exclusive(path: Path, token: str = "") -> bool:

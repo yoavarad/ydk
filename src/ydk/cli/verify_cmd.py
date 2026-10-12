@@ -59,9 +59,13 @@ def run(
 
     effective_trigger = trigger or "manual"
     if effective_trigger == "pre-push":
+        from ydk.core.active_task import diff_base
         from ydk.services.git import LocalGitService
 
-        changed_files = LocalGitService(cwd=str(v._root)).changed_files(".", base_ref="main", extension="")
+        base = diff_base(v._root)
+        changed_files = (
+            LocalGitService(cwd=str(v._root)).changed_files(".", base_ref=base, extension="") if base else []
+        )
         if changed_files:
             context["changed_files"] = changed_files
 

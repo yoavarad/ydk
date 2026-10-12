@@ -1577,3 +1577,37 @@ def test_done_with_skipped_plugin_overall_passed_and_issue_comment_labeled(
     assert "OK lint" in comment
     assert "SKIPPED flaky-e2e (skipped via --skip-plugin)" in comment
     assert "OK flaky-e2e" not in comment
+
+
+def test_build_pr_body_files_changed_uses_default_branch_merge_base(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
+) -> None:
+    """Files Changed diffs vs the repo default branch (develop here), not hardcoded main."""
+    import subprocess
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q", "-b", "develop")
+    (tmp_path / "a.txt").write_text("a\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "init")
+    git("checkout", "-q", "-b", "task/T-001-x")
+    (tmp_path / "b.txt").write_text("b\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "add b")
+    git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+    mock_worktree.get_worktree_path.return_value = tmp_path
+    lc = TaskLifecycle(
+        repo=mock_repo, events=EventBus(), worktree_mgr=mock_worktree, verifier=mock_verifier, project_root=tmp_path
+    )
+
+    body = lc._build_pr_body("T-001")
+
+    assert "- `b.txt`" in body
+    assert "- `a.txt`" not in body

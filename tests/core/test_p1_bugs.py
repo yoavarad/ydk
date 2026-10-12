@@ -364,20 +364,28 @@ class TestTyCheckScoping:
         assert output["passed"] is True
         assert "skipped" in output["output"].lower()
 
-    def test_verifier_injects_changed_files(self) -> None:
+    def test_verifier_injects_changed_files(self, tmp_path: Path) -> None:
         """Verifier._get_changed_files is called and injected into context."""
+        import subprocess
+
         from ydk.core.verifier import Verifier
 
-        v = Verifier(project_root=Path("/fake"))
-        with patch("subprocess.run") as mock_run:
-            from subprocess import CompletedProcess
-
-            mock_run.return_value = CompletedProcess(
-                args=["git", "diff"],
-                returncode=0,
-                stdout="src/app/main.py\nsrc/app/views.py\n",
-                stderr="",
+        def git(*args: str) -> None:
+            subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+                cwd=tmp_path,
+                check=True,
+                capture_output=True,
             )
-            changed = v._get_changed_files()
+
+        git("init", "-q", "-b", "main")
+        git("commit", "-q", "--allow-empty", "-m", "init")
+        git("checkout", "-q", "-b", "feature")
+        (tmp_path / "src" / "app").mkdir(parents=True)
+        (tmp_path / "src" / "app" / "main.py").write_text("x\n")
+        (tmp_path / "src" / "app" / "views.py").write_text("y\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "add")
+        changed = Verifier(project_root=tmp_path)._get_changed_files()
 
         assert changed == ["src/app/main.py", "src/app/views.py"]
