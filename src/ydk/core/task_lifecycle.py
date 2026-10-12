@@ -26,6 +26,7 @@ from ydk.core.events import (
 )
 from ydk.models.gate import GateStatus
 from ydk.models.pm import TaskCreate
+from ydk.services.git import default_branch
 
 if TYPE_CHECKING:
     from ydk.core.git_worktree import WorktreeManager
@@ -118,7 +119,9 @@ class TaskLifecycle:
         # orchestrators, separate worktrees against the same checkout), so
         # this is a per-task map rather than a single global slot -- writing
         # our own entry must not clobber any other task's.
-        update_active_tasks(self._root, lambda tasks: {**tasks, task_id: {"base_branch": base_branch or "main"}})
+        update_active_tasks(
+            self._root, lambda tasks: {**tasks, task_id: {"base_branch": base_branch or default_branch(self._root)}}
+        )
 
         # Update status
         self._repo.update_status(task_id, "in-progress")
@@ -158,7 +161,8 @@ class TaskLifecycle:
         if "tasks" in data:
             return dict(data["tasks"])
         if "task_id" in data:
-            return {data["task_id"]: {"base_branch": data.get("base_branch", "main")}}
+            base = data.get("base_branch") or default_branch(active_task_file.parent.parent)
+            return {data["task_id"]: {"base_branch": base}}
         return {}
 
     @staticmethod
@@ -617,7 +621,7 @@ class TaskLifecycle:
         worktree = self._worktree.get_worktree_path(task_id)
         cwd = str(worktree) if worktree else str(self._root)
         diff_result = subprocess.run(
-            ["git", "diff", "--name-only", "main"],
+            ["git", "diff", "--name-only", default_branch(self._root)],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -744,7 +748,7 @@ class TaskLifecycle:
             # base branch.
             active_task_file = resolve_active_task_file(self._root)
             active_tasks = self._read_active_tasks(active_task_file)
-            raw_base_branch = active_tasks.get(task_id, {}).get("base_branch", "main")
+            raw_base_branch = active_tasks.get(task_id, {}).get("base_branch") or default_branch(self._root)
             base_branch = self._normalize_base_branch(raw_base_branch, self._list_remotes(cwd))
 
             # Pass the body via --body-file rather than inline: proof-rich

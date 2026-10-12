@@ -1897,12 +1897,13 @@ def create_story(
 def quick(
     ctx: typer.Context,
     description: str = typer.Argument(..., help="Short description of the change"),
+    base: str | None = typer.Option(None, "--base", "-b", help="Base branch for the PR (default: repo default branch)"),
 ) -> None:
     """Set up a lightweight workspace for a small change."""
     from ydk.core.quickdev import QuickDevSetup
 
     setup = QuickDevSetup()
-    result = setup.setup(description, Path.cwd())
+    result = setup.setup(description, Path.cwd(), base_branch=base)
 
     if format_or_echo(ctx, result.model_dump()):
         return
