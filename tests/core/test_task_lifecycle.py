@@ -1440,7 +1440,7 @@ def test_done_skip_plugin_proof_file_marked_skipped(
 
 @patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
-def test_done_with_skipped_plugin_overall_passed_and_labeled(
+def test_done_with_skipped_plugin_overall_passed_and_issue_comment_labeled(
     mock_subprocess: MagicMock,
     mock_which: MagicMock,
     lifecycle: TaskLifecycle,
@@ -1465,7 +1465,7 @@ def test_done_with_skipped_plugin_overall_passed_and_labeled(
     result = lifecycle.done("T-001", skip_plugins=["flaky-e2e"])
 
     assert result["passed"] is True
-    fallback = lifecycle._build_pr_body("T-001", report=report, skipped_plugins=["flaky-e2e"])
-    assert "### flaky-e2e (SKIPPED)" in fallback
-    assert "1/2 checks passed, 1 skipped" in fallback
-    assert "timeout" not in fallback
+    comment = mock_repo.add_comment.call_args_list[-1][0][1]
+    assert "OK lint" in comment
+    assert "SKIPPED flaky-e2e (skipped via --skip-plugin)" in comment
+    assert "OK flaky-e2e" not in comment

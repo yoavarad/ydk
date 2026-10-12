@@ -341,3 +341,27 @@ class TestSkippedPlugins:
         assert by_name["flaky-e2e"]["detail"]["skip_reason"] == "skipped via --skip-plugin"
         assert "timeout traceback" not in by_name["flaky-e2e"]["output"]
         assert by_name["lint"]["detail"] is None
+
+    def test_check_status_ignores_skipped_checks(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="boom", duration_seconds=5.0),
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        status = ProofCapture.check_status(proof_dir)
+        assert status.all_passed is True
+        assert status.failed_checks == []
+
+    def test_check_status_still_fails_for_non_skipped_failure(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="boom", duration_seconds=5.0),
+            CheckResult(name="lint", passed=False, output="bad", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        status = ProofCapture.check_status(proof_dir)
+        assert status.all_passed is False
+        assert status.failed_checks == ["lint"]

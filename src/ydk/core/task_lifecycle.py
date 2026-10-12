@@ -225,7 +225,7 @@ class TaskLifecycle:
         Returns {"passed": bool, "pr_url": str, "report": VerificationReport}
         """
         from ydk.core.pr_template import PRBodyBuilder
-        from ydk.core.proof_capture import ProofCapture
+        from ydk.core.proof_capture import SKIP_REASON, ProofCapture
 
         done_start = time.monotonic()
         logger.info("Completing task %s — running verifications", task_id)
@@ -397,7 +397,12 @@ class TaskLifecycle:
                 logger.warning("Could not remove %s from active-task.json: %s", task_id, exc)
 
         # Post proof to issue
-        proof_summary = "\n".join(f"OK {c.name} ({c.duration_seconds}s)" for c in report.checks)
+        proof_summary = "\n".join(
+            f"SKIPPED {c.name} ({SKIP_REASON})"
+            if c.name in (skip_plugins or [])
+            else f"OK {c.name} ({c.duration_seconds}s)"
+            for c in report.checks
+        )
         self._repo.add_comment(task_id, f"## Verification Proof\n\n{proof_summary}\n\nPR: {pr_url}")
         self._repo.update_status(task_id, "in-review")
         self._repo.remove_label(task_id, "in-progress")
@@ -583,7 +588,6 @@ class TaskLifecycle:
         task_id: str,
         task: object | None = None,
         report: object | None = None,
-        skipped_plugins: list[str] | None = None,
     ) -> str:
         """Build a full PR body with verification proof and command outputs.
 
@@ -632,11 +636,10 @@ class TaskLifecycle:
             lines.append("## Verification Proof")
             lines.append("")
             for check in report.checks:
-                is_skipped = check.name in (skipped_plugins or [])
-                status = "SKIPPED" if is_skipped else ("PASSED" if check.passed else "FAILED")
+                status = "PASSED" if check.passed else "FAILED"
                 lines.append(f"### {check.name} ({status})")
                 lines.append("```console")
-                lines.append("skipped via --skip-plugin" if is_skipped else check.output)
+                lines.append(check.output)
                 lines.append("```")
                 lines.append("")
 
@@ -653,11 +656,9 @@ class TaskLifecycle:
         lines.append("")
         if isinstance(report, VerificationReport) and report.checks:
             lines.append("Automated verification proof included above.")
-            skipped_count = sum(1 for c in report.checks if c.name in (skipped_plugins or []))
-            passed_count = sum(1 for c in report.checks if c.passed and c.name not in (skipped_plugins or []))
+            passed_count = sum(1 for c in report.checks if c.passed)
             total_count = len(report.checks)
-            skip_note = f", {skipped_count} skipped" if skipped_count else ""
-            lines.append(f"- {passed_count}/{total_count} checks passed{skip_note}")
+            lines.append(f"- {passed_count}/{total_count} checks passed")
         else:
             lines.append("- [ ] Verification pending")
         lines.append("")
