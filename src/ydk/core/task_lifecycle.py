@@ -616,7 +616,7 @@ class TaskLifecycle:
         worktree = self._worktree.get_worktree_path(task_id)
         cwd = str(worktree) if worktree else str(self._root)
         diff_result = subprocess.run(
-            ["git", "diff", "--name-only", "main"],
+            ["git", "diff", "--name-only", default_branch(self._root)],
             cwd=cwd,
             capture_output=True,
             text=True,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import subprocess
 from pathlib import Path
 
@@ -18,7 +19,16 @@ def _run_text(cmd: list[str], cwd: str | Path | None, timeout: int) -> str:
 
 
 def default_branch(repo_root: str | Path | None = None) -> str:
-    """Resolve the repo default branch: origin/HEAD, then ``gh``, then ``main``."""
+    """Resolve the repo default branch: origin/HEAD, then ``gh``, then ``main``.
+
+    Cached per resolved repo root for the life of the process so the ``gh``
+    network fallback runs at most once per repo.
+    """
+    return _default_branch_cached(str(Path(repo_root or ".").resolve()))
+
+
+@functools.cache
+def _default_branch_cached(repo_root: str) -> str:
     out = _run_text(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], repo_root, 10)
     if out:
         return out.removeprefix("origin/")
