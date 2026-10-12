@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from ydk.models.verification import VerificationReport
 
 
+SKIP_REASON = "skipped via --skip-plugin"
+
+
 class ProofCapture:
     """Capture verification command output to proof files."""
 
@@ -50,7 +53,7 @@ class ProofCapture:
     # High-level: save a full verification report
     # ------------------------------------------------------------------
 
-    def save_report(self, report: VerificationReport) -> ProofArtifacts:
+    def save_report(self, report: VerificationReport, skipped_plugins: list[str] | None = None) -> ProofArtifacts:
         """Save the full verification report as proof files.
 
         Each plugin's output becomes a separate file in plugins/.
@@ -59,18 +62,40 @@ class ProofCapture:
         plugins_dir = self._proof_dir / "plugins"
         plugins_dir.mkdir(parents=True, exist_ok=True)
 
+        skipped = set(skipped_plugins or [])
         plugin_outputs: dict[str, Path] = {}
         for check in report.checks:
             safe_name = check.name.replace("/", "_").replace(" ", "_")
             out_path = plugins_dir / f"{safe_name}.txt"
-            status_line = f"{'PASSED' if check.passed else 'FAILED'} ({check.duration_seconds}s)"
-            content = f"{status_line}\n\n{check.output}"
+            if check.name in skipped:
+                content = f"SKIPPED ({check.duration_seconds}s)\n\n{SKIP_REASON}"
+            else:
+                status_line = f"{'PASSED' if check.passed else 'FAILED'} ({check.duration_seconds}s)"
+                content = f"{status_line}\n\n{check.output}"
             out_path.write_text(content, encoding="utf-8")
             plugin_outputs[check.name] = out_path
 
         # Save the full report as JSON
         report_path = self._proof_dir / "verification-report.json"
-        report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        recorded = report.model_copy(
+            update={
+                "all_passed": all(c.passed for c in report.checks if c.name not in skipped)
+                if skipped
+                else report.all_passed,
+                "checks": [
+                    c.model_copy(
+                        update={
+                            "output": SKIP_REASON,
+                            "detail": {"status": "SKIPPED", "skip_reason": SKIP_REASON},
+                        }
+                    )
+                    if c.name in skipped
+                    else c
+                    for c in report.checks
+                ],
+            }
+        )
+        report_path.write_text(recorded.model_dump_json(indent=2), encoding="utf-8")
 
         task_id = report.task_id or self._proof_dir.name
 
@@ -160,5 +185,5 @@ class ProofCapture:
         from ydk.models.verification import VerificationReport
 
         report = VerificationReport.model_validate_json(report_path.read_text(encoding="utf-8"))
-        failed = [c.name for c in report.checks if not c.passed]
+        failed = [c.name for c in report.checks if not c.passed and (c.detail or {}).get("status") != "SKIPPED"]
         return ProofStatus(all_passed=report.all_passed, failed_checks=failed)

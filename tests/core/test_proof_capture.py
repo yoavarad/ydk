@@ -310,3 +310,58 @@ class TestSaveReview:
         with patch.object(Path, "write_text", autospec=True) as mock_write_text:
             pc.save_review("reviewer-x", "content")
         assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
+
+
+class TestSkippedPlugins:
+    def test_skipped_check_written_as_skipped_with_reason(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="timeout traceback", duration_seconds=5.0),
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        skipped = (proof_dir / "plugins" / "flaky-e2e.txt").read_text()
+        assert skipped.startswith("SKIPPED (5.0s)")
+        assert "skipped via --skip-plugin" in skipped
+        assert "timeout traceback" not in skipped
+        assert (proof_dir / "plugins" / "lint.txt").read_text().startswith("PASSED")
+
+    def test_json_report_records_skipped_with_reason(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="timeout traceback", duration_seconds=5.0),
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        data = json.loads((proof_dir / "verification-report.json").read_text())
+        by_name = {c["name"]: c for c in data["checks"]}
+        assert by_name["flaky-e2e"]["detail"]["status"] == "SKIPPED"
+        assert by_name["flaky-e2e"]["detail"]["skip_reason"] == "skipped via --skip-plugin"
+        assert "timeout traceback" not in by_name["flaky-e2e"]["output"]
+        assert by_name["lint"]["detail"] is None
+
+    def test_check_status_ignores_skipped_checks(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="boom", duration_seconds=5.0),
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        status = ProofCapture.check_status(proof_dir)
+        assert status.all_passed is True
+        assert status.failed_checks == []
+
+    def test_check_status_still_fails_for_non_skipped_failure(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="boom", duration_seconds=5.0),
+            CheckResult(name="lint", passed=False, output="bad", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        status = ProofCapture.check_status(proof_dir)
+        assert status.all_passed is False
+        assert status.failed_checks == ["lint"]
