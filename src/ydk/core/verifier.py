@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 import yaml
 
+from ydk.core.active_task import diff_base
 from ydk.core.verification_cache import VerificationCache
 from ydk.models.verification import CheckResult, VerificationReport
 
@@ -384,9 +385,12 @@ class Verifier:
         return results
 
     def _get_changed_files(self) -> list[str] | None:
-        """Get files changed on the current branch vs base (main)."""
+        """Get files changed on the current branch vs the task base merge-base."""
+        base = diff_base(self._root)
+        if base is None:
+            return None
         result = subprocess.run(
-            ["git", "diff", "--name-only", "main...HEAD"],
+            ["git", "diff", "--name-only", base, "HEAD"],
             cwd=str(self._root),
             capture_output=True,
             text=True,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -12,6 +13,15 @@ from ydk.core.verifier import VerificationPlugin, Verifier
 from ydk.models.verification import CheckResult, VerificationReport
 
 runner = CliRunner()
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
 
 
 def _ok_check(name: str = "lint") -> CheckResult:
@@ -174,34 +184,42 @@ class TestVerifyRetry:
 
 
 class TestVerifyRunChangedFiles:
-    def test_pre_push_trigger_injects_changed_files(self, monkeypatch) -> None:
+    @staticmethod
+    def _develop_repo(tmp_path: Path, monkeypatch) -> None:
+        """Repo whose only branch is ``develop``; a task branch adds b.txt."""
+        _git(tmp_path, "init", "-q", "-b", "develop")
+        (tmp_path / "a.txt").write_text("a\n")
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "init")
+        _git(tmp_path, "checkout", "-q", "-b", "task/9-x")
+        (tmp_path / "b.txt").write_text("b\n")
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "add b")
+        _git(tmp_path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+        monkeypatch.chdir(tmp_path)
+
+    def test_pre_push_trigger_diffs_against_default_branch_not_main(self, tmp_path: Path, monkeypatch) -> None:
+        self._develop_repo(tmp_path, monkeypatch)
         mock_run_all = AsyncMock(return_value=_ok_report())
         monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
-        monkeypatch.setattr(
-            "ydk.services.git.LocalGitService.changed_files",
-            lambda self, directory, base_ref="main", extension="": ["src/foo.py", "README.md"],
-        )
         result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push"])
         assert result.exit_code == 0
-        assert mock_run_all.call_args.kwargs["context"]["changed_files"] == ["src/foo.py", "README.md"]
+        assert mock_run_all.call_args.kwargs["context"]["changed_files"] == ["b.txt"]
 
-    def test_pre_push_retry_path_injects_changed_files(self, monkeypatch) -> None:
+    def test_pre_push_retry_path_diffs_against_default_branch(self, tmp_path: Path, monkeypatch) -> None:
+        self._develop_repo(tmp_path, monkeypatch)
         mock_run_all = AsyncMock(return_value=_ok_report())
         monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
-        monkeypatch.setattr(
-            "ydk.services.git.LocalGitService.changed_files",
-            lambda self, directory, base_ref="main", extension="": ["src/foo.py"],
-        )
         result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push", "--retry", "3"])
         assert result.exit_code == 0
-        assert mock_run_all.call_args.kwargs["context"]["changed_files"] == ["src/foo.py"]
+        assert mock_run_all.call_args.kwargs["context"]["changed_files"] == ["b.txt"]
 
     def test_pre_push_empty_changed_files_not_injected(self, monkeypatch) -> None:
         mock_run_all = AsyncMock(return_value=_ok_report())
         monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
         monkeypatch.setattr(
             "ydk.services.git.LocalGitService.changed_files",
-            lambda self, directory, base_ref="main", extension="": [],
+            lambda self, directory, base_ref=None, extension="": [],
         )
         result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push"])
         assert result.exit_code == 0

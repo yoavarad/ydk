@@ -11,7 +11,7 @@ from typing import Protocol
 class GitService(Protocol):
     """Git operations."""
 
-    def changed_files(self, directory: str, base_ref: str = "main", extension: str = ".md") -> list[str]:
+    def changed_files(self, directory: str, base_ref: str | None = None, extension: str = ".md") -> list[str]:
         """Return files changed relative to base_ref."""
         ...
 

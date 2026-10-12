@@ -242,6 +242,31 @@ class TestRunLayer:
         assert len(results) == 2
 
 
+def _git(repo: Path, *args: str) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _develop_repo(repo: Path, branch: str = "task/9-x") -> None:
+    """Repo whose only branch is ``develop`` (origin/HEAD -> develop); *branch* adds b.txt."""
+    _git(repo, "init", "-q", "-b", "develop")
+    (repo / "a.txt").write_text("a\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "init")
+    _git(repo, "checkout", "-q", "-b", branch)
+    (repo / "b.txt").write_text("b\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add b")
+    _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+
+
 # ---------------------------------------------------------------------------
 # _get_changed_files
 # ---------------------------------------------------------------------------
@@ -249,12 +274,25 @@ class TestRunLayer:
 
 class TestGetChangedFiles:
     def test_subprocess_run_uses_utf8_encoding(self, tmp_path: Path) -> None:
+        import subprocess
+
+        _develop_repo(tmp_path)
         v = Verifier(project_root=tmp_path)
-        fake_result = MagicMock(returncode=0, stdout="file1.py\nfile2.py\n")
-        with patch("subprocess.run", return_value=fake_result) as mock_run:
+        with patch("subprocess.run", wraps=subprocess.run) as spy:
             result = v._get_changed_files()
-        assert mock_run.call_args.kwargs.get("encoding") == "utf-8"
-        assert result == ["file1.py", "file2.py"]
+        assert spy.call_args.kwargs.get("encoding") == "utf-8"
+        assert result == ["b.txt"]
+
+    def test_diffs_against_default_branch_when_no_main(self, tmp_path: Path) -> None:
+        _develop_repo(tmp_path)
+        assert Verifier(project_root=tmp_path)._get_changed_files() == ["b.txt"]
+
+    def test_none_when_no_base_resolves(self, tmp_path: Path) -> None:
+        _git(tmp_path, "init", "-q", "-b", "other")
+        (tmp_path / "a.txt").write_text("a\n")
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "init")
+        assert Verifier(project_root=tmp_path)._get_changed_files() is None
 
 
 # ---------------------------------------------------------------------------
@@ -728,17 +766,6 @@ class TestSkipPlugins:
 # ---------------------------------------------------------------------------
 # Cache key reflects actual plugin input (#311)
 # ---------------------------------------------------------------------------
-
-
-def _git(repo: Path, *args: str) -> None:
-    import subprocess
-
-    subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-    )
 
 
 class TestCacheKey:

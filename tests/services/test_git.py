@@ -236,3 +236,61 @@ class TestDefaultBranchEdges:
             assert default_branch(tmp_path) == "develop"
             assert default_branch(tmp_path) == "develop"
         assert mock_run.call_count == 1
+
+
+class TestMergeBase:
+    """merge_base: origin/<base> merge-base first, local <base> second, else None."""
+
+    @staticmethod
+    def _git(repo: Path, *args: str) -> str:
+        return subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    def _commit(self, repo: Path, name: str) -> str:
+        (repo / name).write_text(name)
+        self._git(repo, "add", "-A")
+        self._git(repo, "commit", "-q", "-m", name)
+        return self._git(repo, "rev-parse", "HEAD")
+
+    def test_local_base_when_no_remote(self, tmp_path: Path) -> None:
+        from ydk.services.git import merge_base
+
+        self._git(tmp_path, "init", "-q", "-b", "develop")
+        base = self._commit(tmp_path, "a")
+        self._git(tmp_path, "checkout", "-q", "-b", "feature")
+        self._commit(tmp_path, "b")
+        assert merge_base("develop", tmp_path) == base
+
+    def test_prefers_origin_ref_when_ahead_of_local(self, tmp_path: Path) -> None:
+        from ydk.services.git import merge_base
+
+        self._git(tmp_path, "init", "-q", "-b", "develop")
+        self._commit(tmp_path, "a")
+        self._git(tmp_path, "checkout", "-q", "-b", "feature")
+        ahead = self._commit(tmp_path, "b")
+        # origin/develop sits at the feature commit; local develop stays behind
+        self._git(tmp_path, "update-ref", "refs/remotes/origin/develop", ahead)
+        self._commit(tmp_path, "c")
+        assert merge_base("develop", tmp_path) == ahead
+
+    def test_strips_origin_prefix(self, tmp_path: Path) -> None:
+        from ydk.services.git import merge_base
+
+        self._git(tmp_path, "init", "-q", "-b", "develop")
+        base = self._commit(tmp_path, "a")
+        self._git(tmp_path, "update-ref", "refs/remotes/origin/develop", base)
+        self._git(tmp_path, "checkout", "-q", "-b", "feature")
+        self._commit(tmp_path, "b")
+        assert merge_base("origin/develop", tmp_path) == base
+
+    def test_none_when_no_ref_resolves(self, tmp_path: Path) -> None:
+        from ydk.services.git import merge_base
+
+        self._git(tmp_path, "init", "-q", "-b", "develop")
+        self._commit(tmp_path, "a")
+        assert merge_base("nope", tmp_path) is None

@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ydk.core.active_task import resolve_active_task_file, update_active_tasks
+from ydk.core.active_task import diff_base, resolve_active_task_file, update_active_tasks
 from ydk.core.events import (
     EventBus,
     TaskBlockedEvent,
@@ -621,7 +621,7 @@ class TaskLifecycle:
         worktree = self._worktree.get_worktree_path(task_id)
         cwd = str(worktree) if worktree else str(self._root)
         diff_result = subprocess.run(
-            ["git", "diff", "--name-only", default_branch(self._root)],
+            ["git", "diff", "--name-only", diff_base(self._root, cwd) or default_branch(self._root)],
             cwd=cwd,
             capture_output=True,
             text=True,

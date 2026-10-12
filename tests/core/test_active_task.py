@@ -14,6 +14,7 @@ import pytest
 from ydk.core.active_task import (
     _break_if_stale,
     _create_exclusive,
+    diff_base,
     prune_active_tasks,
     resolve_active_task_file,
     update_active_tasks,
@@ -338,3 +339,62 @@ def test_read_tasks_legacy_explicit_base_wins(tmp_path: Path) -> None:
     f.parent.mkdir()
     f.write_text('{"task_id": "T-1", "base_branch": "develop"}', encoding="utf-8")
     assert _read_tasks(f) == {"T-1": {"base_branch": "develop"}}
+
+
+def _gitc(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _develop_repo(repo: Path, branch: str = "task/9-x") -> None:
+    """Repo whose only branch is ``develop`` (origin/HEAD -> develop); *branch* adds b.txt."""
+    _gitc(repo, "init", "-q", "-b", "develop")
+    (repo / "a.txt").write_text("a\n")
+    _gitc(repo, "add", "-A")
+    _gitc(repo, "commit", "-q", "-m", "init")
+    _gitc(repo, "checkout", "-q", "-b", branch)
+    (repo / "b.txt").write_text("b\n")
+    _gitc(repo, "add", "-A")
+    _gitc(repo, "commit", "-q", "-m", "add b")
+    _gitc(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+
+
+class TestDiffBase:
+    def test_default_branch_develop_without_main(self, tmp_path: Path) -> None:
+        _develop_repo(tmp_path)
+        assert diff_base(tmp_path) == _gitc(tmp_path, "rev-parse", "develop")
+
+    def test_task_base_branch_prefers_origin_ref(self, tmp_path: Path) -> None:
+        _develop_repo(tmp_path)  # on task/9-x, one commit past develop
+        _gitc(tmp_path, "branch", "release/x", "develop")
+        # origin/release/x is one commit ahead of local release/x: the task's merge-base
+        origin_tip = _gitc(tmp_path, "rev-parse", "HEAD")
+        _gitc(tmp_path, "update-ref", "refs/remotes/origin/release/x", origin_tip)
+        (tmp_path / "c.txt").write_text("c\n")
+        _gitc(tmp_path, "add", "-A")
+        _gitc(tmp_path, "commit", "-q", "-m", "add c")
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "active-task.json").write_text(
+            json.dumps({"tasks": {"9": {"base_branch": "release/x"}}}), encoding="utf-8"
+        )
+        assert diff_base(tmp_path) == origin_tip
+
+    def test_none_when_no_base_resolves(self, tmp_path: Path) -> None:
+        _gitc(tmp_path, "init", "-q", "-b", "other")
+        (tmp_path / "a.txt").write_text("a\n")
+        _gitc(tmp_path, "add", "-A")
+        _gitc(tmp_path, "commit", "-q", "-m", "init")
+        assert diff_base(tmp_path) is None
+
+    def test_hyphenated_task_id_and_unresolvable_recorded_base_falls_back_to_default(self, tmp_path: Path) -> None:
+        _develop_repo(tmp_path, branch="task/T-001-x")
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "active-task.json").write_text(
+            json.dumps({"tasks": {"T-001": {"base_branch": "main"}}}), encoding="utf-8"
+        )
+        assert diff_base(tmp_path) == _gitc(tmp_path, "rev-parse", "develop")

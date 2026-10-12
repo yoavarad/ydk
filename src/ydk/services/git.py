@@ -36,17 +36,31 @@ def _default_branch_cached(repo_root: str) -> str:
     return out or "main"
 
 
+def merge_base(base: str, cwd: str | Path | None = None) -> str | None:
+    """Merge-base SHA of *base* and HEAD, preferring ``origin/<base>`` over local ``<base>``.
+
+    ``None`` when neither ref resolves (callers fall back to the whole project).
+    """
+    base = base.removeprefix("origin/")
+    for ref in (f"origin/{base}", base):
+        sha = _run_text(["git", "merge-base", ref, "HEAD"], cwd, 10)
+        if sha:
+            return sha
+    return None
+
+
 class LocalGitService:
     """Git operations via subprocess."""
 
     def __init__(self, cwd: str | None = None) -> None:
         self._cwd = cwd
 
-    def changed_files(self, directory: str, base_ref: str = "main", extension: str = ".md") -> list[str]:
+    def changed_files(self, directory: str, base_ref: str | None = None, extension: str = ".md") -> list[str]:
         """Return files changed vs base_ref, filtered by extension.
 
         Falls back to git ls-files if diff fails (e.g. base ref doesn't exist).
         """
+        base_ref = base_ref or default_branch(self._cwd)
         result = subprocess.run(
             ["git", "diff", base_ref, "--name-only", "--", directory],
             capture_output=True,
