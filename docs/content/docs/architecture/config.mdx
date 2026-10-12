@@ -103,7 +103,7 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | list[str] | `[]` | Plugin whitelist. Empty list means all plugins run. |
-| `dotnet.target` | str \| null | `null` | Path (relative to project root) to the `.sln`/`.csproj` that `dotnet-build`, `dotnet-format` and `dotnet-test` run against, instead of the alphabetically-first solution. A path that does not exist fails the check. Unset keeps auto-discovery. |
+| `dotnet.target` | str \| null | `null` | Path (relative to project root) to the `.sln`/`.csproj` that `dotnet-build`, `dotnet-format` and `dotnet-test` run against, instead of the alphabetically-first solution. When the check actually runs (dotnet SDK present and .NET files changed), a path that does not exist or is not a `.sln`/`.csproj` file fails the check. Must not be blank. Unset keeps auto-discovery. |
 | `pr_body.ui_exclude` | list[str] | `["graphify-out/**"]` | Globs (`**` supported, POSIX paths) for changed files that `pr-body-validation` must not treat as UI, so no screenshots are required. A user-set list replaces the default. Honoured by `ydk task done` and `ydk verify pr-body`. |
 
 ## ComponentConfig

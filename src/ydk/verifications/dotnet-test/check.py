@@ -49,11 +49,21 @@ def _configured_target(context: dict) -> str | None:
     return str((Path(context["project_root"]) / target).resolve()) if not Path(target).is_absolute() else target
 
 
-def _missing_target_result(name: str, target: str, start: float) -> dict:
+def _target_problem(target: str) -> str | None:
+    """Explain why a configured target is unusable, or None when it is a .sln/.csproj file."""
+    path = Path(target)
+    if not path.exists():
+        return f"verification.dotnet.target does not exist: {target}"
+    if not path.is_file() or path.suffix.lower() not in (".sln", ".csproj"):
+        return f"verification.dotnet.target must be a .sln or .csproj file: {target}"
+    return None
+
+
+def _invalid_target_result(name: str, target: str, problem: str, start: float) -> dict:
     return {
         "name": name,
         "passed": False,
-        "output": f"verification.dotnet.target does not exist: {target}",
+        "output": problem,
         "duration_seconds": round(time.time() - start, 1),
         "detail": {"target": target},
     }
@@ -112,8 +122,9 @@ def main() -> None:
         return
 
     configured = _configured_target(context)
-    if configured is not None and not Path(configured).exists():
-        json.dump(_missing_target_result("dotnet-test", configured, start), sys.stdout)
+    problem = _target_problem(configured) if configured is not None else None
+    if configured is not None and problem is not None:
+        json.dump(_invalid_target_result("dotnet-test", configured, problem, start), sys.stdout)
         sys.exit(1)
         return
     target = configured or _find_test_target(project_root)

@@ -277,9 +277,9 @@ class TestConfiguredTarget:
         (tmp_path / "z.sln").write_text("")
         data, calls = self._run(monkeypatch, tmp_path, "z.sln")
         assert data["passed"] is True
-        assert data["detail"]["target"] == str(tmp_path / "z.sln")
-        assert str(tmp_path / "z.sln") in calls[-1]
-        assert str(tmp_path / "a.sln") not in calls[-1]
+        assert data["detail"]["target"] == str((tmp_path / "z.sln").resolve())
+        assert str((tmp_path / "z.sln").resolve()) in calls[-1]
+        assert str((tmp_path / "a.sln").resolve()) not in calls[-1]
 
     def test_missing_configured_target_fails_clearly(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         (tmp_path / "a.sln").write_text("")
@@ -287,4 +287,18 @@ class TestConfiguredTarget:
         assert data["passed"] is False
         assert "verification.dotnet.target" in data["output"]
         assert "nope.sln" in data["output"]
+        assert all("--list-sdks" in c for c in calls)
+
+    @pytest.mark.parametrize("kind", ["dir", "cs"])
+    def test_non_project_target_fails_clearly(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str) -> None:
+        (tmp_path / "a.sln").write_text("")
+        if kind == "dir":
+            (tmp_path / "sub").mkdir()
+            name = "sub"
+        else:
+            (tmp_path / "Foo.cs").write_text("")
+            name = "Foo.cs"
+        data, calls = self._run(monkeypatch, tmp_path, name)
+        assert data["passed"] is False
+        assert ".sln or .csproj" in data["output"]
         assert all("--list-sdks" in c for c in calls)
