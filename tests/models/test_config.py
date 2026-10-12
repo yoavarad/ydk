@@ -96,3 +96,24 @@ class TestPrBodyConfig:
     def test_unknown_pr_body_key_rejected(self) -> None:
         with pytest.raises(ValueError, match="bogus"):
             YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"pr_body": {"bogus": 1}}})
+
+
+class TestDotnetTargetConfig:
+    @pytest.mark.parametrize("blank", ["", "   "])
+    def test_blank_target_rejected(self, blank: str) -> None:
+        with pytest.raises(ValueError, match="must not be empty"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"dotnet": {"target": blank}}})
+
+    def test_unknown_dotnet_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="bogus"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"dotnet": {"bogus": 1}}})
+
+    def test_default_target_is_none(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        assert cfg.verification.dotnet.target is None
+
+    def test_target_set(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {"project": {"name": "x"}, "verification": {"dotnet": {"target": "src/App.sln"}}}
+        )
+        assert cfg.verification.dotnet.target == "src/App.sln"

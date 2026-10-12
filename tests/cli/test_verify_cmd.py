@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -416,3 +417,47 @@ def test_pr_body_exits_1_on_invalid_base_ref(tmp_path: Path, monkeypatch) -> Non
     result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body), "--base-ref", "nope"])
     assert result.exit_code == 1
     assert "base-ref" in result.output.lower()
+
+
+class TestDotnetTargetContext:
+    @staticmethod
+    def _run_with_dump_plugin(monkeypatch, tmp_path: Path, config_yaml: str) -> dict:
+        """Run `verify run` with a stub plugin that dumps the stdin context it receives."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(config_yaml)
+        proj = tmp_path / "proj"
+        d = proj / "dump-ctx"
+        d.mkdir(parents=True)
+        (d / "manifest.yaml").write_text("name: dump-ctx\ndescription: x\ntrigger: manual\n")
+        dump = tmp_path / "ctx.json"
+        (d / "check.py").write_text(
+            "import json, sys\n"
+            "ctx = sys.stdin.read()\n"
+            f"open({str(dump)!r}, 'w').write(ctx)\n"
+            "json.dump({'name': 'dump-ctx', 'passed': True, 'output': 'ok', 'duration_seconds': 0.0}, sys.stdout)\n"
+        )
+        monkeypatch.setattr(
+            "ydk.cli.verify_cmd._make_verifier",
+            lambda **_kw: Verifier(
+                project_root=tmp_path,
+                global_verifications=tmp_path / "none",
+                project_verifications=proj,
+                use_cache=False,
+            ),
+        )
+        result = runner.invoke(app, ["verify", "run", "--trigger", "manual"])
+        assert result.exit_code == 0, result.output
+        return json.loads(dump.read_text())
+
+    def test_dotnet_target_reaches_context_config(self, monkeypatch, tmp_path: Path) -> None:
+        ctx = self._run_with_dump_plugin(
+            monkeypatch,
+            tmp_path,
+            "project:\n  name: x\nverification:\n  dotnet:\n    target: src/App.sln\n",
+        )
+        assert ctx["config"]["dotnet"] == {"target": "src/App.sln"}
+
+    def test_no_dotnet_key_when_unset(self, monkeypatch, tmp_path: Path) -> None:
+        ctx = self._run_with_dump_plugin(monkeypatch, tmp_path, "project:\n  name: x\n")
+        assert "dotnet" not in ctx["config"]

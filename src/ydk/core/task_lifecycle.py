@@ -272,6 +272,8 @@ class TaskLifecycle:
                 },
             },
         }
+        if config.verification.dotnet.target:
+            context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
         if task_files:
             context["changed_files"] = task_files
 
