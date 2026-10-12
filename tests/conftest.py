@@ -10,6 +10,7 @@ pytest before test modules are collected/imported).
 """
 
 import os
+from pathlib import Path
 
 os.environ.pop("FORCE_COLOR", None)
 os.environ["NO_COLOR"] = "1"
@@ -28,8 +29,8 @@ def _hermetic_default_branch(monkeypatch: pytest.MonkeyPatch):
 
     real = git_service._run_text
 
-    def _no_gh(cmd: list[str], cwd: object, timeout: int) -> str:
-        return "" if cmd[0] == "gh" else real(cmd, cwd, timeout)  # type: ignore[arg-type]
+    def _no_gh(cmd: list[str], cwd: str | Path | None, timeout: int) -> str:
+        return "" if cmd[0] == "gh" else real(cmd, cwd, timeout)
 
     monkeypatch.setattr(git_service, "_run_text", _no_gh)
     git_service._default_branch_cached.cache_clear()
