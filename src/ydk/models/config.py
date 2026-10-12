@@ -174,6 +174,14 @@ class PrBodyConfig(BaseModel):
     ui_exclude: list[str] = Field(default_factory=lambda: ["graphify-out/**"])
 
 
+class DotnetVerificationConfig(BaseModel):
+    """Settings for the stock dotnet-build/format/test verification plugins."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: str | None = None
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -181,6 +189,7 @@ class VerificationFilterConfig(BaseModel):
 
     enabled: list[str] = Field(default_factory=list)
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
+    dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
 
 
 class ComponentConfig(BaseModel):

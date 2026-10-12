@@ -398,3 +398,23 @@ def test_pr_body_exits_1_on_invalid_base_ref(tmp_path: Path, monkeypatch) -> Non
     result = runner.invoke(app, ["verify", "pr-body", "--body-file", str(body), "--base-ref", "nope"])
     assert result.exit_code == 1
     assert "base-ref" in result.output.lower()
+
+
+class TestDotnetTargetContext:
+    def test_dotnet_target_reaches_context_config(self, monkeypatch, tmp_path: Path) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            "project:\n  name: x\nverification:\n  dotnet:\n    target: src/App.sln\n"
+        )
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+        result = runner.invoke(app, ["verify", "run"])
+        assert result.exit_code == 0
+        assert mock_run_all.call_args.kwargs["context"]["config"]["dotnet"] == {"target": "src/App.sln"}
+
+    def test_no_dotnet_key_when_unset(self, monkeypatch) -> None:
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+        runner.invoke(app, ["verify", "run"])
+        assert "dotnet" not in mock_run_all.call_args.kwargs["context"]["config"]

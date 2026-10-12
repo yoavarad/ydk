@@ -40,6 +40,24 @@ def _has_sdk(dotnet_bin: str) -> bool:
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
+def _configured_target(context: dict) -> str | None:
+    """Return ``verification.dotnet.target`` from the plugin context, resolved against project_root."""
+    target = ((context.get("config") or {}).get("dotnet") or {}).get("target")
+    if not target:
+        return None
+    return str((Path(context["project_root"]) / target).resolve()) if not Path(target).is_absolute() else target
+
+
+def _missing_target_result(name: str, target: str, start: float) -> dict:
+    return {
+        "name": name,
+        "passed": False,
+        "output": f"verification.dotnet.target does not exist: {target}",
+        "duration_seconds": round(time.time() - start, 1),
+        "detail": {"target": target},
+    }
+
+
 def _find_format_target(project_root: str) -> str | None:
     """Find a .sln first, else the first .csproj, skipping build-output dirs.
 
@@ -90,7 +108,12 @@ def main() -> None:
         sys.exit(0)
         return
 
-    target = _find_format_target(project_root)
+    configured = _configured_target(context)
+    if configured is not None and not Path(configured).exists():
+        json.dump(_missing_target_result("dotnet-format", configured, start), sys.stdout)
+        sys.exit(1)
+        return
+    target = configured or _find_format_target(project_root)
     if target is None:
         result = {
             "name": "dotnet-format",
