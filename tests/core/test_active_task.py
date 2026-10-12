@@ -316,3 +316,25 @@ class TestLockOwnership:
         assert _create_exclusive(lock, "A") is True
         assert _break_if_stale(lock, timeout=10) is False
         assert lock.read_text(encoding="utf-8") == "A"
+
+
+def test_read_tasks_legacy_without_base_uses_repo_default_branch(tmp_path: Path) -> None:
+    from ydk.core.active_task import _read_tasks
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+    f = tmp_path / ".ydk" / "active-task.json"
+    f.parent.mkdir()
+    f.write_text('{"task_id": "T-1"}', encoding="utf-8")
+    assert _read_tasks(f) == {"T-1": {"base_branch": "trunk"}}
+
+
+def test_read_tasks_legacy_explicit_base_wins(tmp_path: Path) -> None:
+    from ydk.core.active_task import _read_tasks
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+    f = tmp_path / ".ydk" / "active-task.json"
+    f.parent.mkdir()
+    f.write_text('{"task_id": "T-1", "base_branch": "develop"}', encoding="utf-8")
+    assert _read_tasks(f) == {"T-1": {"base_branch": "develop"}}

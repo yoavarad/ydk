@@ -12,6 +12,7 @@ from ydk.models.pm import TaskCreate
 from ydk.models.quickdev import QuickDevContext
 from ydk.repositories.factory import get_task_repository
 from ydk.repositories.local.frontmatter import render_frontmatter
+from ydk.services.git import default_branch
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -45,7 +46,7 @@ def _slugify(text: str, max_len: int = 40) -> str:
     return slug.strip("-")[:max_len]
 
 
-def _write_active_task(project_root: Path, task_id: str, base_branch: str = "main") -> None:
+def _write_active_task(project_root: Path, task_id: str, base_branch: str) -> None:
     """Record *task_id* in active-task.json so PR creation can find it.
 
     Merges into the existing per-task map rather than clobbering it, matching
@@ -77,7 +78,7 @@ class QuickDevSetup:
     Does NOT implement the change — just creates the task, branch, and context.
     """
 
-    def setup(self, description: str, project_root: Path) -> QuickDevContext:
+    def setup(self, description: str, project_root: Path, base_branch: str | None = None) -> QuickDevContext:
         """Create a lightweight task, branch, and output context.
 
         Returns a QuickDevContext with everything a coding agent needs.
@@ -118,7 +119,8 @@ class QuickDevSetup:
             repo = get_task_repository()
             detail = repo.create_task(TaskCreate(title=description, labels=["in-progress"]))
             task_id = str(detail.number)
-            _write_active_task(project_root, task_id)
+
+        _write_active_task(project_root, task_id, base_branch or default_branch(project_root))
 
         branch = f"{branch_type}/{task_id.lower()}-{_slugify(description)}"
 

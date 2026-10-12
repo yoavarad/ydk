@@ -2,8 +2,38 @@
 
 from __future__ import annotations
 
+import functools
 import subprocess
 from pathlib import Path
+
+
+def _run_text(cmd: list[str], cwd: str | Path | None, timeout: int) -> str:
+    """Stdout of *cmd* stripped; empty string on any failure."""
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd, timeout=timeout
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def default_branch(repo_root: str | Path | None = None) -> str:
+    """Resolve the repo default branch: origin/HEAD, then ``gh``, then ``main``.
+
+    Cached per resolved repo root for the life of the process so the ``gh``
+    network fallback runs at most once per repo.
+    """
+    return _default_branch_cached(str(Path(repo_root or ".").resolve()))
+
+
+@functools.cache
+def _default_branch_cached(repo_root: str) -> str:
+    out = _run_text(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], repo_root, 10)
+    if out:
+        return out.removeprefix("origin/")
+    out = _run_text(["gh", "repo", "view", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"], repo_root, 20)
+    return out or "main"
 
 
 class LocalGitService:
