@@ -1403,3 +1403,69 @@ def test_create_pr_from_worktree_reads_base_branch_from_main_checkout(
     create_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"])
     argv = create_call.args[0]
     assert argv[argv.index("--base") + 1] == "release-x"
+
+
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_skip_plugin_proof_file_marked_skipped(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    lifecycle: TaskLifecycle,
+    mock_verifier: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+) -> None:
+    """A skipped failing plugin is written as SKIPPED, not FAILED, in its proof file."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+            CheckResult(name="flaky-e2e", passed=False, output="timeout", duration_seconds=5.0),
+        ],
+        all_passed=False,
+        total_duration_seconds=6.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
+
+    result = lifecycle.done("T-001", skip_plugins=["flaky-e2e"])
+
+    assert result["passed"] is True
+    proof = result["artifacts"].plugin_outputs["flaky-e2e"].read_text(encoding="utf-8")
+    assert proof.startswith("SKIPPED")
+    assert "skipped via --skip-plugin" in proof
+    assert "timeout" not in proof
+
+
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_with_skipped_plugin_overall_passed_and_issue_comment_labeled(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    lifecycle: TaskLifecycle,
+    mock_verifier: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+) -> None:
+    """Skipped plugin is not a failure, and is not counted as a pass in the PR body."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+            CheckResult(name="flaky-e2e", passed=False, output="timeout", duration_seconds=5.0),
+        ],
+        all_passed=False,
+        total_duration_seconds=6.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value.returncode = 0
+
+    result = lifecycle.done("T-001", skip_plugins=["flaky-e2e"])
+
+    assert result["passed"] is True
+    comment = mock_repo.add_comment.call_args_list[-1][0][1]
+    assert "OK lint" in comment
+    assert "SKIPPED flaky-e2e (skipped via --skip-plugin)" in comment
+    assert "OK flaky-e2e" not in comment

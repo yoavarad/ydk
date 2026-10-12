@@ -225,7 +225,7 @@ class TaskLifecycle:
         Returns {"passed": bool, "pr_url": str, "report": VerificationReport}
         """
         from ydk.core.pr_template import PRBodyBuilder
-        from ydk.core.proof_capture import ProofCapture
+        from ydk.core.proof_capture import SKIP_REASON, ProofCapture
 
         done_start = time.monotonic()
         logger.info("Completing task %s — running verifications", task_id)
@@ -345,7 +345,7 @@ class TaskLifecycle:
         if summary:
             pc.write_summary(task_id, summary)
 
-        artifacts = pc.save_report(report)
+        artifacts = pc.save_report(report, skipped_plugins=skip_plugins)
 
         # The JSON report is already saved by save_report; keep proof_path for event
         proof_path = artifacts.verification_report_path
@@ -397,7 +397,12 @@ class TaskLifecycle:
                 logger.warning("Could not remove %s from active-task.json: %s", task_id, exc)
 
         # Post proof to issue
-        proof_summary = "\n".join(f"OK {c.name} ({c.duration_seconds}s)" for c in report.checks)
+        proof_summary = "\n".join(
+            f"SKIPPED {c.name} ({SKIP_REASON})"
+            if c.name in (skip_plugins or [])
+            else f"OK {c.name} ({c.duration_seconds}s)"
+            for c in report.checks
+        )
         self._repo.add_comment(task_id, f"## Verification Proof\n\n{proof_summary}\n\nPR: {pr_url}")
         self._repo.update_status(task_id, "in-review")
         self._repo.remove_label(task_id, "in-progress")

@@ -116,7 +116,12 @@ class PRBodyBuilder:
                 omitted.append(plugin_name)
                 continue
             raw = plugin_file.read_text(encoding="utf-8")
-            status = "PASS" if raw.startswith("PASSED") else "FAIL"
+            if raw.startswith("PASSED"):
+                status = "PASS"
+            elif raw.startswith("SKIPPED"):
+                status = "SKIP"
+            else:
+                status = "FAIL"
             summary_text = f"{plugin_name} — {status}"
             proof_relpath = f".ydk/proofs/{task_id}/plugins/{plugin_file.name}"
             content = _truncate_raw(raw, proof_relpath)
@@ -231,9 +236,11 @@ class PRBodyBuilder:
             from ydk.models.verification import VerificationReport
 
             report = VerificationReport.model_validate_json(report_path.read_text(encoding="utf-8"))
+            skipped = sum(1 for c in report.checks if (c.detail or {}).get("status") == "SKIPPED")
             passed = sum(1 for c in report.checks if c.passed)
             total = len(report.checks)
-            return f"- {passed}/{total} verification checks passed ({report.total_duration_seconds:.1f}s)"
+            skip_note = f", {skipped} skipped" if skipped else ""
+            return f"- {passed}/{total} verification checks passed{skip_note} ({report.total_duration_seconds:.1f}s)"
         return ""
 
     @staticmethod
