@@ -1,4 +1,4 @@
-"""Tests for ydk.core.task_lifecycle — TaskLifecycle orchestration."""
+"""Tests for ydk.core.task_lifecycle â€” TaskLifecycle orchestration."""
 
 from __future__ import annotations
 
@@ -500,9 +500,9 @@ def test_start_writes_active_task_file_with_utf8_encoding(
         verifier=mock_verifier,
         project_root=tmp_path,
     )
-    lc.start("T-001", base_branch="feat/ünïcode")
+    lc.start("T-001", base_branch="feat/Ã¼nÃ¯code")
     data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
-    assert data["tasks"]["T-001"] == {"base_branch": "feat/ünïcode"}
+    assert data["tasks"]["T-001"] == {"base_branch": "feat/Ã¼nÃ¯code"}
 
 
 def test_start_migrates_legacy_active_task_file(
@@ -1243,8 +1243,8 @@ def test_done_scopes_verification_to_worktree_not_cwd(
     Simulates ``ydk task done`` invoked from the main checkout (cwd) while the
     task's actual files live in a separate worktree. Runs the real
     ``python-file-length`` plugin (a real content-scanning verification
-    plugin, not a mock) and asserts it scans the worktree — not the cwd-bound
-    project_root — by placing an over-limit file only inside the worktree.
+    plugin, not a mock) and asserts it scans the worktree â€” not the cwd-bound
+    project_root â€” by placing an over-limit file only inside the worktree.
     """
     main_root = tmp_path / "main"
     worktree_root = tmp_path / "worktree"
@@ -1403,6 +1403,82 @@ def test_create_pr_from_worktree_reads_base_branch_from_main_checkout(
     create_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"])
     argv = create_call.args[0]
     assert argv[argv.index("--base") + 1] == "release-x"
+
+
+def _repo_with_default_branch(root: Path, branch: str) -> None:
+    import subprocess as sp
+
+    sp.run(["git", "init", "-q"], cwd=root, check=True)
+    sp.run(["git", "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{branch}"], cwd=root, check=True)
+
+
+def _lc_at(root: Path, mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock) -> TaskLifecycle:
+    return TaskLifecycle(
+        repo=mock_repo, events=EventBus(), worktree_mgr=mock_worktree, verifier=mock_verifier, project_root=root
+    )
+
+
+def test_start_without_base_records_repo_default_branch(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
+) -> None:
+    _repo_with_default_branch(tmp_path, "trunk")
+    _lc_at(tmp_path, mock_repo, mock_worktree, mock_verifier).start("T-001")
+    data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
+    assert data["tasks"]["T-001"]["base_branch"] == "trunk"
+
+
+def test_start_legacy_migration_without_base_uses_repo_default_branch(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
+) -> None:
+    _repo_with_default_branch(tmp_path, "trunk")
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "active-task.json").write_text('{"task_id": "T-000"}', encoding="utf-8")
+    _lc_at(tmp_path, mock_repo, mock_worktree, mock_verifier).start("T-001", base_branch="feat/x")
+    data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
+    assert data["tasks"]["T-000"]["base_branch"] == "trunk"
+    assert data["tasks"]["T-001"]["base_branch"] == "feat/x"
+
+
+@patch("shutil.which", return_value="/usr/bin/gh")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_without_entry_uses_repo_default_branch(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    _repo_with_default_branch(tmp_path, "trunk")
+    mock_worktree.get_worktree_path.return_value = None
+
+    def _run(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:3] == ["gh", "pr", "create"]:
+            return MagicMock(returncode=0, stdout="https://github.com/org/repo/pull/1\n")
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/branch\n")
+        return MagicMock(returncode=0)
+
+    mock_subprocess.run.side_effect = _run
+    _lc_at(tmp_path, mock_repo, mock_worktree, mock_verifier)._create_pr("QD-abc", pr_body_override="body")
+    argv = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:3] == ["gh", "pr", "create"]).args[0]
+    assert argv[argv.index("--base") + 1] == "trunk"
+
+
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_build_pr_body_diffs_against_repo_default_branch(
+    mock_subprocess: MagicMock,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    mock_verifier: MagicMock,
+    tmp_path: Path,
+) -> None:
+    _repo_with_default_branch(tmp_path, "trunk")
+    mock_worktree.get_worktree_path.return_value = None
+    mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="")
+    _lc_at(tmp_path, mock_repo, mock_worktree, mock_verifier)._build_pr_body("T-001")
+    diff_call = next(c for c in mock_subprocess.run.call_args_list if c.args[0][:2] == ["git", "diff"])
+    assert diff_call.args[0][-1] == "trunk"
 
 
 @patch("shutil.which", return_value=None)

@@ -222,3 +222,26 @@ class TestQuickDevGithubRemote:
 
         assert result.branch.startswith("docs/")
         assert result.branch == "docs/7-docs-update-the-readme"
+
+
+def _git_repo_with_origin_head(root: Path, branch: str) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{branch}"],
+        cwd=root,
+        check=True,
+    )
+
+
+class TestQuickDevBase:
+    def test_explicit_base_recorded(self, tmp_path: Path) -> None:
+        _git_repo_with_origin_head(tmp_path, "trunk")
+        ctx = QuickDevSetup().setup("fix: thing", tmp_path, base_branch="develop")
+        data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
+        assert data["tasks"][ctx.task_id]["base_branch"] == "develop"
+
+    def test_default_base_is_repo_default_branch(self, tmp_path: Path) -> None:
+        _git_repo_with_origin_head(tmp_path, "trunk")
+        ctx = QuickDevSetup().setup("fix: thing", tmp_path)
+        data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
+        assert data["tasks"][ctx.task_id]["base_branch"] == "trunk"

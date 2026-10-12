@@ -154,3 +154,85 @@ class TestCurrentBranchIntegration:
     def test_returns_current_branch(self, git_repo: Path) -> None:
         svc = LocalGitService(cwd=str(git_repo))
         assert svc.current_branch() == "feature"
+
+
+# ---------------------------------------------------------------------------
+# default_branch resolver
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultBranch:
+    """default_branch: origin/HEAD, then gh, then 'main'."""
+
+    def test_returns_origin_head_branch(self) -> None:
+        from ydk.services.git import default_branch
+
+        ok = MagicMock(returncode=0, stdout="origin/develop\n")
+        with patch("subprocess.run", return_value=ok) as mock_run:
+            assert default_branch(".") == "develop"
+        assert mock_run.call_count == 1
+
+    def test_slash_named_branch_keeps_path(self) -> None:
+        from ydk.services.git import default_branch
+
+        ok = MagicMock(returncode=0, stdout="origin/release/1.x\n")
+        with patch("subprocess.run", return_value=ok):
+            assert default_branch(".") == "release/1.x"
+
+    def test_falls_back_to_gh(self) -> None:
+        from ydk.services.git import default_branch
+
+        fail = MagicMock(returncode=128, stdout="")
+        gh = MagicMock(returncode=0, stdout="trunk\n")
+        with patch("subprocess.run", side_effect=[fail, gh]) as mock_run:
+            assert default_branch(".") == "trunk"
+        assert mock_run.call_args_list[1].args[0][0] == "gh"
+
+    def test_falls_back_to_main_when_both_fail(self) -> None:
+        from ydk.services.git import default_branch
+
+        fail = MagicMock(returncode=1, stdout="")
+        with patch("subprocess.run", return_value=fail):
+            assert default_branch(".") == "main"
+
+    def test_falls_back_to_main_when_gh_missing(self) -> None:
+        from ydk.services.git import default_branch
+
+        fail = MagicMock(returncode=128, stdout="")
+        with patch("subprocess.run", side_effect=[fail, FileNotFoundError()]):
+            assert default_branch(".") == "main"
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_default_branch() -> None:
+    """Override the conftest stub: these tests mock subprocess.run themselves."""
+    from ydk.services import git as git_service
+
+    git_service._default_branch_cached.cache_clear()
+    yield
+    git_service._default_branch_cached.cache_clear()
+
+
+class TestDefaultBranchEdges:
+    def test_blank_origin_head_output_falls_through_to_gh(self) -> None:
+        from ydk.services.git import default_branch
+
+        blank = MagicMock(returncode=0, stdout="  \n")
+        gh = MagicMock(returncode=0, stdout="trunk\n")
+        with patch("subprocess.run", side_effect=[blank, gh]):
+            assert default_branch(".") == "trunk"
+
+    def test_timeout_falls_back_to_main(self) -> None:
+        from ydk.services.git import default_branch
+
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=1)):
+            assert default_branch(".") == "main"
+
+    def test_result_cached_per_repo_root(self, tmp_path: Path) -> None:
+        from ydk.services.git import default_branch
+
+        ok = MagicMock(returncode=0, stdout="origin/develop\n")
+        with patch("subprocess.run", return_value=ok) as mock_run:
+            assert default_branch(tmp_path) == "develop"
+            assert default_branch(tmp_path) == "develop"
+        assert mock_run.call_count == 1
