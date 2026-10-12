@@ -41,6 +41,34 @@ def _has_sdk(dotnet_bin: str) -> bool:
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
+def _configured_target(context: dict) -> str | None:
+    """Return ``verification.dotnet.target`` from the plugin context, resolved against project_root."""
+    target = ((context.get("config") or {}).get("dotnet") or {}).get("target")
+    if not target:
+        return None
+    return str((Path(context["project_root"]) / target).resolve()) if not Path(target).is_absolute() else target
+
+
+def _target_problem(target: str) -> str | None:
+    """Explain why a configured target is unusable, or None when it is a .sln/.csproj file."""
+    path = Path(target)
+    if not path.exists():
+        return f"verification.dotnet.target does not exist: {target}"
+    if not path.is_file() or path.suffix.lower() not in (".sln", ".csproj"):
+        return f"verification.dotnet.target must be a .sln or .csproj file: {target}"
+    return None
+
+
+def _invalid_target_result(name: str, target: str, problem: str, start: float) -> dict:
+    return {
+        "name": name,
+        "passed": False,
+        "output": problem,
+        "duration_seconds": round(time.time() - start, 1),
+        "detail": {"target": target},
+    }
+
+
 def _find_test_target(project_root: str) -> str | None:
     """Prefer a .sln (dotnet test filters to test projects automatically);
     else the first .csproj whose name looks like a test project.
@@ -93,7 +121,13 @@ def main() -> None:
         sys.exit(0)
         return
 
-    target = _find_test_target(project_root)
+    configured = _configured_target(context)
+    problem = _target_problem(configured) if configured is not None else None
+    if configured is not None and problem is not None:
+        json.dump(_invalid_target_result("dotnet-test", configured, problem, start), sys.stdout)
+        sys.exit(1)
+        return
+    target = configured or _find_test_target(project_root)
     if target is None:
         result = {
             "name": "dotnet-test",

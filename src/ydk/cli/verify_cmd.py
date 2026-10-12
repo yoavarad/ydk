@@ -54,6 +54,9 @@ def run(
         },
     }
 
+    if config.verification.dotnet.target:
+        context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
+
     effective_trigger = trigger or "manual"
     if effective_trigger == "pre-push":
         from ydk.services.git import LocalGitService

@@ -267,3 +267,59 @@ class TestChangedFilesScoping:
             data = _run_main(mod, tmp_path, monkeypatch, capsys, changed_files=["src/Main.CS"])
         assert data["passed"] is True
         assert "No test project" in data["output"]
+
+
+class TestConfiguredTarget:
+    """verification.dotnet.target overrides auto-discovery in context["config"]."""
+
+    def _run(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target: str) -> tuple[dict, list[list[str]]]:
+        import io
+        import sys
+
+        mod = _load_check_module()
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            calls.append(cmd)
+            return type("R", (), {"returncode": 0, "stdout": "8.0.100\n", "stderr": ""})()
+
+        monkeypatch.setattr(mod.shutil, "which", lambda name: "dotnet")
+        monkeypatch.setattr(mod.subprocess, "run", fake_run)
+        context = {"project_root": str(tmp_path), "config": {"dotnet": {"target": target}}}
+        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(context)))
+        out = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", out)
+        with pytest.raises(SystemExit):
+            mod.main()
+        return json.loads(out.getvalue()), calls
+
+    def test_configured_target_used_over_first_sln(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        (tmp_path / "a.sln").write_text("")
+        (tmp_path / "z.sln").write_text("")
+        data, calls = self._run(monkeypatch, tmp_path, "z.sln")
+        assert data["passed"] is True
+        assert data["detail"]["target"] == str((tmp_path / "z.sln").resolve())
+        assert str((tmp_path / "z.sln").resolve()) in calls[-1]
+        assert str((tmp_path / "a.sln").resolve()) not in calls[-1]
+
+    def test_missing_configured_target_fails_clearly(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        (tmp_path / "a.sln").write_text("")
+        data, calls = self._run(monkeypatch, tmp_path, "nope.sln")
+        assert data["passed"] is False
+        assert "verification.dotnet.target" in data["output"]
+        assert "nope.sln" in data["output"]
+        assert all("--list-sdks" in c for c in calls)
+
+    @pytest.mark.parametrize("kind", ["dir", "cs"])
+    def test_non_project_target_fails_clearly(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str) -> None:
+        (tmp_path / "a.sln").write_text("")
+        if kind == "dir":
+            (tmp_path / "sub").mkdir()
+            name = "sub"
+        else:
+            (tmp_path / "Foo.cs").write_text("")
+            name = "Foo.cs"
+        data, calls = self._run(monkeypatch, tmp_path, name)
+        assert data["passed"] is False
+        assert ".sln or .csproj" in data["output"]
+        assert all("--list-sdks" in c for c in calls)

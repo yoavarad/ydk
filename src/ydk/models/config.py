@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Single source of truth for Claude model IDs. Every LLM call site resolves its
 # model through ``AIConfig.model_for(tier)``; upgrading a model is a one-line change here
@@ -174,6 +174,22 @@ class PrBodyConfig(BaseModel):
     ui_exclude: list[str] = Field(default_factory=lambda: ["graphify-out/**"])
 
 
+class DotnetVerificationConfig(BaseModel):
+    """Settings for the stock dotnet-build/format/test verification plugins."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: str | None = None
+
+    @field_validator("target")
+    @classmethod
+    def _target_not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            msg = "verification.dotnet.target must not be empty"
+            raise ValueError(msg)
+        return v
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -181,6 +197,7 @@ class VerificationFilterConfig(BaseModel):
 
     enabled: list[str] = Field(default_factory=list)
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
+    dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
 
 
 class ComponentConfig(BaseModel):
