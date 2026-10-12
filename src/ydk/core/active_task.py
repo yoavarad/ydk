@@ -18,6 +18,8 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ydk.services.git import default_branch
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
@@ -79,7 +81,8 @@ def _read_tasks(active_task_file: Path) -> ActiveTasks:
     if isinstance(data.get("tasks"), dict):
         return dict(data["tasks"])
     if "task_id" in data:
-        return {data["task_id"]: {"base_branch": data.get("base_branch", "main")}}
+        base = data.get("base_branch") or default_branch(active_task_file.parent.parent)
+        return {data["task_id"]: {"base_branch": base}}
     return {}
 
 
