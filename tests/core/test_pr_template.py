@@ -417,3 +417,18 @@ class TestSectionBudget:
 
         assert "omitted" not in body.lower()
         assert "claude review" in body
+
+
+class TestSkippedPluginRendering:
+    def test_skipped_plugin_rendered_as_skip_with_reason(self, proof_dir: Path) -> None:
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "flaky-e2e.txt").write_text("SKIPPED (5.0s)\n\nskipped via --skip-plugin")
+        (plugins_dir / "pytest.txt").write_text("FAILED (3.0s)\n\n1 failed")
+        (plugins_dir / "ruff.txt").write_text("PASSED (0.5s)\n\nok")
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "flaky e2e \u2014 SKIP" in body
+        assert "skipped via --skip-plugin" in body
+        assert "flaky e2e \u2014 FAIL" not in body
+        assert "pytest \u2014 FAIL" in body
+        assert "ruff \u2014 PASS" in body

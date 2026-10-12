@@ -116,7 +116,12 @@ class PRBodyBuilder:
                 omitted.append(plugin_name)
                 continue
             raw = plugin_file.read_text(encoding="utf-8")
-            status = "PASS" if raw.startswith("PASSED") else "FAIL"
+            if raw.startswith("PASSED"):
+                status = "PASS"
+            elif raw.startswith("SKIPPED"):
+                status = "SKIP"
+            else:
+                status = "FAIL"
             summary_text = f"{plugin_name} — {status}"
             proof_relpath = f".ydk/proofs/{task_id}/plugins/{plugin_file.name}"
             content = _truncate_raw(raw, proof_relpath)

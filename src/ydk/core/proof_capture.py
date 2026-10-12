@@ -50,7 +50,7 @@ class ProofCapture:
     # High-level: save a full verification report
     # ------------------------------------------------------------------
 
-    def save_report(self, report: VerificationReport) -> ProofArtifacts:
+    def save_report(self, report: VerificationReport, skipped_plugins: list[str] | None = None) -> ProofArtifacts:
         """Save the full verification report as proof files.
 
         Each plugin's output becomes a separate file in plugins/.
@@ -63,8 +63,11 @@ class ProofCapture:
         for check in report.checks:
             safe_name = check.name.replace("/", "_").replace(" ", "_")
             out_path = plugins_dir / f"{safe_name}.txt"
-            status_line = f"{'PASSED' if check.passed else 'FAILED'} ({check.duration_seconds}s)"
-            content = f"{status_line}\n\n{check.output}"
+            if check.name in (skipped_plugins or []):
+                content = f"SKIPPED ({check.duration_seconds}s)\n\nskipped via --skip-plugin"
+            else:
+                status_line = f"{'PASSED' if check.passed else 'FAILED'} ({check.duration_seconds}s)"
+                content = f"{status_line}\n\n{check.output}"
             out_path.write_text(content, encoding="utf-8")
             plugin_outputs[check.name] = out_path
 

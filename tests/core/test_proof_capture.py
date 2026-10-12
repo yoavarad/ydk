@@ -310,3 +310,19 @@ class TestSaveReview:
         with patch.object(Path, "write_text", autospec=True) as mock_write_text:
             pc.save_review("reviewer-x", "content")
         assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
+
+
+class TestSkippedPlugins:
+    def test_skipped_check_written_as_skipped_with_reason(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="flaky-e2e", passed=False, output="timeout traceback", duration_seconds=5.0),
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+        ]
+        pc.save_report(_make_report(checks=checks), skipped_plugins=["flaky-e2e"])
+
+        skipped = (proof_dir / "plugins" / "flaky-e2e.txt").read_text()
+        assert skipped.startswith("SKIPPED (5.0s)")
+        assert "skipped via --skip-plugin" in skipped
+        assert "timeout traceback" not in skipped
+        assert (proof_dir / "plugins" / "lint.txt").read_text().startswith("PASSED")

@@ -345,7 +345,7 @@ class TaskLifecycle:
         if summary:
             pc.write_summary(task_id, summary)
 
-        artifacts = pc.save_report(report)
+        artifacts = pc.save_report(report, skipped_plugins=skip_plugins)
 
         # The JSON report is already saved by save_report; keep proof_path for event
         proof_path = artifacts.verification_report_path
