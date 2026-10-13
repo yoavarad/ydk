@@ -117,3 +117,15 @@ class TestDotnetTargetConfig:
             {"project": {"name": "x"}, "verification": {"dotnet": {"target": "src/App.sln"}}}
         )
         assert cfg.verification.dotnet.target == "src/App.sln"
+
+
+class TestProofConfig:
+    def test_default_screenshot_patterns_unchanged(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        assert cfg.proof.screenshot_ref_patterns == ["ydk:page:*", "ydk:route:*"]
+
+    def test_custom_screenshot_patterns(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {"project": {"name": "x"}, "proof": {"screenshot_ref_patterns": ["ydk:page:*", "ydk:component:*"]}}
+        )
+        assert cfg.proof.screenshot_ref_patterns == ["ydk:page:*", "ydk:component:*"]

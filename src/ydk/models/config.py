@@ -200,6 +200,14 @@ class VerificationFilterConfig(BaseModel):
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
 
 
+class ProofConfig(BaseModel):
+    """Settings for proof capture requirements."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    screenshot_ref_patterns: list[str] = Field(default_factory=lambda: ["ydk:page:*", "ydk:route:*"])
+
+
 class ComponentConfig(BaseModel):
     """Component manifest system paths."""
 
@@ -225,3 +233,4 @@ class YdkConfig(BaseModel):
     learning: LearningConfig = LearningConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()
+    proof: ProofConfig = ProofConfig()

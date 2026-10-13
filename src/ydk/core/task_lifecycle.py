@@ -333,7 +333,7 @@ class TaskLifecycle:
 
         # Check UI screenshot requirement before proof capture
         task = self._repo.get_task(task_id)
-        if self._task_has_ui_components(task):
+        if self._task_has_ui_components(task, self._screenshot_ref_patterns()):
             screenshots_dir = self._root / ".ydk" / "proofs" / task_id / "screenshots"
             if not screenshots_dir.is_dir() or not list(screenshots_dir.iterdir()):
                 msg = (
@@ -552,15 +552,24 @@ class TaskLifecycle:
 
         return test_files
 
+    def _screenshot_ref_patterns(self) -> list[str]:
+        """Load ``proof.screenshot_ref_patterns`` from project config."""
+        from ydk.core.config import load_config
+
+        return load_config(self._root / ".ydk" / "config.yaml").proof.screenshot_ref_patterns
+
     @staticmethod
-    def _task_has_ui_components(task: object) -> bool:
-        """Check if the task references UI-related components (routes, pages)."""
+    def _task_has_ui_components(task: object, patterns: list[str] | None = None) -> bool:
+        """Check if any task component ref matches a screenshot-requiring glob pattern."""
+        from fnmatch import fnmatchcase
+
         from ydk.models.pm import TaskDetail
 
         if not isinstance(task, TaskDetail):
             return False
-        ui_prefixes = ("ydk:page:", "ydk:route:")
-        return any(ref.startswith(ui_prefixes) for ref in task.component_refs)
+        if patterns is None:
+            patterns = ["ydk:page:*", "ydk:route:*"]
+        return any(fnmatchcase(ref, pat) for ref in task.component_refs for pat in patterns)
 
     def discover(self, task_id: str, new_title: str, new_body: str) -> str:
         """Create a new task discovered during implementation."""
