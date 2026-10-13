@@ -1038,3 +1038,151 @@ class TestFlatManifestBackwardCompat:
         assert result.files_written == 1
         assert not result.errors
         assert (tmp_path / "app" / "models" / "strategy.py").exists()
+
+
+def _fake_run(returncode: int = 0, stderr: str = "", stdout: str = ""):
+    return type("R", (), {"returncode": returncode, "stderr": stderr, "stdout": stdout})()
+
+
+class TestGoPostGenerate:
+    def test_gofmt_then_build_and_vet(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("package main\n")
+        other = tmp_path / "README.md"
+        other.write_text("x\n")
+        engine = IgnitionEngine(tmp_path)
+
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run()) as mock_run:
+            errors = engine._post_generate_go([go_file, other])
+
+        assert errors == []
+        cmds = [c.args[0] for c in mock_run.call_args_list]
+        assert cmds[0] == ["gofmt", "-w", str(go_file)]
+        assert ["go", "build", "./..."] in cmds
+        assert ["go", "vet", "./..."] in cmds
+        assert not any(c[0] in ("ruff", "uv") for c in cmds)
+
+    def test_build_failure_reports_output(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("package main\n")
+        engine = IgnitionEngine(tmp_path)
+
+        def run(cmd, **_kw):
+            if cmd[:2] == ["go", "build"]:
+                return _fake_run(1, stderr="import cycle not allowed")
+            return _fake_run()
+
+        with patch("ydk.core.ignition.subprocess.run", side_effect=run):
+            errors = engine._post_generate_go([go_file])
+
+        assert len(errors) == 1
+        assert "go build" in errors[0]
+        assert "import cycle not allowed" in errors[0]
+
+    def test_no_go_files_runs_nothing(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        engine = IgnitionEngine(tmp_path)
+        with patch("ydk.core.ignition.subprocess.run") as mock_run:
+            assert engine._post_generate_go([]) == []
+        mock_run.assert_not_called()
+
+
+class TestGoRuntimeDeps:
+    def test_get_tidy_vendor(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n")
+        engine = IgnitionEngine(tmp_path)
+        pack = {"runtime_dependencies": {"go": ["github.com/twmb/franz-go@v1.22.1"]}}
+        warnings: list[str] = []
+
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run()) as mock_run:
+            installed = engine._install_go_deps(pack, warnings)
+
+        assert installed == ["github.com/twmb/franz-go@v1.22.1"]
+        cmds = [c.args[0] for c in mock_run.call_args_list]
+        assert cmds == [
+            ["go", "get", "github.com/twmb/franz-go@v1.22.1"],
+            ["go", "mod", "tidy"],
+            ["go", "mod", "vendor"],
+        ]
+        assert warnings == []
+
+    def test_no_deps_noop(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        engine = IgnitionEngine(tmp_path)
+        with patch("ydk.core.ignition.subprocess.run") as mock_run:
+            assert engine._install_go_deps({}, []) == []
+        mock_run.assert_not_called()
+
+    def test_missing_go_mod_warns(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run") as mock_run:
+            out = engine._install_go_deps({"runtime_dependencies": {"go": ["a/b@v1.0.0"]}}, warnings)
+        assert out == []
+        assert warnings
+        mock_run.assert_not_called()
+
+    def test_failure_warns(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n")
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run(1, stderr="boom")):
+            out = engine._install_go_deps({"runtime_dependencies": {"go": ["a/b@v1.0.0"]}}, warnings)
+        assert out == []
+        assert "boom" in warnings[0]
+
+
+class TestGoIgniteDispatch:
+    def test_go_pack_skips_python_steps(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        engine = IgnitionEngine(tmp_path)
+        with (
+            patch.object(engine, "_post_generate_go", return_value=["go build failed"]) as go_post,
+            patch.object(engine, "_post_generate") as py_post,
+            patch.object(engine, "_install_go_deps", return_value=[]) as go_deps,
+            patch.object(engine, "_install_runtime_deps") as py_deps,
+        ):
+            errors, installed = engine._run_post_steps({"stack": {"language": "go"}}, [tmp_path / "a.go"], [])
+        assert errors == ["go build failed"]
+        assert installed == []
+        go_post.assert_called_once()
+        go_deps.assert_called_once()
+        py_post.assert_not_called()
+        py_deps.assert_not_called()
+
+
+class TestGoMissingToolchain:
+    def test_post_generate_missing_go_reports_error(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("package main\n")
+        engine = IgnitionEngine(tmp_path)
+        with patch("ydk.core.ignition.subprocess.run", side_effect=FileNotFoundError("go")):
+            errors = engine._post_generate_go([go_file])
+        assert errors
+        assert all("not runnable" in e for e in errors)
+
+    def test_install_deps_missing_go_warns(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n")
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run", side_effect=FileNotFoundError("go")):
+            out = engine._install_go_deps({"runtime_dependencies": {"go": ["a/b@v1.0.0"]}}, warnings)
+        assert out == []
+        assert warnings
