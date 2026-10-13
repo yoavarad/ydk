@@ -190,6 +190,17 @@ class DotnetVerificationConfig(BaseModel):
         return v
 
 
+class GoVerificationConfig(BaseModel):
+    """Settings for the stock go-fmt/vet/test/vendor verification plugins."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_min: float = Field(default=0.0, ge=0.0, le=100.0)
+    coverage_packages: list[str] = Field(default_factory=list)
+    test_tags: list[str] = Field(default_factory=list)
+    race: bool = True
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -198,6 +209,7 @@ class VerificationFilterConfig(BaseModel):
     enabled: list[str] = Field(default_factory=list)
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
+    go: GoVerificationConfig = Field(default_factory=GoVerificationConfig)
 
 
 class ComponentConfig(BaseModel):

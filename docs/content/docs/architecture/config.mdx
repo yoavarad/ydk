@@ -104,6 +104,10 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 |-------|------|---------|-------------|
 | `enabled` | list[str] | `[]` | Plugin whitelist. Empty list means all plugins run. |
 | `dotnet.target` | str \| null | `null` | Path (relative to project root) to the `.sln`/`.csproj` that `dotnet-build`, `dotnet-format` and `dotnet-test` run against, instead of the alphabetically-first solution. When the check actually runs (dotnet SDK present and .NET files changed), a path that does not exist or is not a `.sln`/`.csproj` file fails the check. Must not be blank. Unset keeps auto-discovery. |
+| `go.coverage_min` | float | `0.0` | Minimum per-package statement coverage (0-100) that `go-test` enforces. `0` disables the gate. |
+| `go.coverage_packages` | list[str] | `[]` | Globs over module-relative (`internal/censor`, `internal/*`) or full import paths that the coverage gate applies to. Empty means every package in the module (Go 1.22+ reports packages without tests as 0%, so they fail a non-zero gate). `*` also matches across `/`. |
+| `go.test_tags` | list[str] | `[]` | Build tags passed as `-tags` to `go vet` and `go test`. Tagged files (e.g. `integration`) are excluded unless listed. |
+| `go.race` | bool | `true` | Run `go test` with `-race` (requires cgo). |
 | `pr_body.ui_exclude` | list[str] | `["graphify-out/**"]` | Globs (`**` supported, POSIX paths) for changed files that `pr-body-validation` must not treat as UI, so no screenshots are required. A user-set list replaces the default. Honoured by `ydk task done` and `ydk verify pr-body`. |
 
 ## ComponentConfig

@@ -1,0 +1,8 @@
+name: go-vendor
+description: Verify vendor/ is fresh (go mod vendor) and go build -mod=vendor succeeds
+trigger: git:pre-push
+parallel: false
+timeout: 300
+requires:
+- go
+supports_auto_fix: false

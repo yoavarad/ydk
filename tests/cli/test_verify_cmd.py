@@ -461,3 +461,17 @@ class TestDotnetTargetContext:
     def test_no_dotnet_key_when_unset(self, monkeypatch, tmp_path: Path) -> None:
         ctx = self._run_with_dump_plugin(monkeypatch, tmp_path, "project:\n  name: x\n")
         assert "dotnet" not in ctx["config"]
+
+    def test_go_config_reaches_context_config(self, monkeypatch, tmp_path: Path) -> None:
+        ctx = self._run_with_dump_plugin(
+            monkeypatch,
+            tmp_path,
+            "project:\n  name: x\nverification:\n  go:\n"
+            "    coverage_min: 80\n    coverage_packages: [internal/censor]\n",
+        )
+        assert ctx["config"]["go"] == {
+            "coverage_min": 80.0,
+            "coverage_packages": ["internal/censor"],
+            "test_tags": [],
+            "race": True,
+        }

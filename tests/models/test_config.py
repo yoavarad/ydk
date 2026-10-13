@@ -98,6 +98,44 @@ class TestPrBodyConfig:
             YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"pr_body": {"bogus": 1}}})
 
 
+class TestGoVerificationConfig:
+    def test_defaults(self) -> None:
+        go = YdkConfig.model_validate({"project": {"name": "x"}}).verification.go
+        assert go.coverage_min == 0.0
+        assert go.coverage_packages == []
+        assert go.test_tags == []
+        assert go.race is True
+
+    def test_values_set(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {
+                "project": {"name": "x"},
+                "verification": {
+                    "go": {
+                        "coverage_min": 80,
+                        "coverage_packages": ["internal/censor", "internal/store"],
+                        "test_tags": ["integration"],
+                        "race": False,
+                    }
+                },
+            }
+        )
+        go = cfg.verification.go
+        assert go.coverage_min == 80.0
+        assert go.coverage_packages == ["internal/censor", "internal/store"]
+        assert go.test_tags == ["integration"]
+        assert go.race is False
+
+    @pytest.mark.parametrize("bad", [-1, 100.5])
+    def test_coverage_min_out_of_range_rejected(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="coverage_min"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"go": {"coverage_min": bad}}})
+
+    def test_unknown_go_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="bogus"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"go": {"bogus": 1}}})
+
+
 class TestDotnetTargetConfig:
     @pytest.mark.parametrize("blank", ["", "   "])
     def test_blank_target_rejected(self, blank: str) -> None:
