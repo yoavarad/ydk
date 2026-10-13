@@ -190,6 +190,21 @@ class DotnetVerificationConfig(BaseModel):
         return v
 
 
+class TddVerificationConfig(BaseModel):
+    """Settings for the tdd-guard / python-tdd-guard plugins.
+
+    ``None`` globs keep the legacy Python behaviour (src/ + app/ prefixes, test_*.py / *_test.py).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_globs: list[str] | None = None
+    test_globs: list[str] | None = None
+    exempt_globs: list[str] = Field(default_factory=list)
+    test_for: Literal["python-tests-dir", "same-dir-suffix"] = "python-tests-dir"
+    test_suffix: str = "_test.go"
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -198,6 +213,7 @@ class VerificationFilterConfig(BaseModel):
     enabled: list[str] = Field(default_factory=list)
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
+    tdd: TddVerificationConfig = Field(default_factory=TddVerificationConfig)
 
 
 class ComponentConfig(BaseModel):

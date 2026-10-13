@@ -117,3 +117,31 @@ class TestDotnetTargetConfig:
             {"project": {"name": "x"}, "verification": {"dotnet": {"target": "src/App.sln"}}}
         )
         assert cfg.verification.dotnet.target == "src/App.sln"
+
+
+class TestTddConfig:
+    def test_defaults_are_legacy(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        tdd = cfg.verification.tdd
+        assert tdd.source_globs is None
+        assert tdd.test_globs is None
+        assert tdd.exempt_globs == []
+        assert tdd.test_for == "python-tests-dir"
+        assert tdd.test_suffix == "_test.go"
+
+    def test_go_config(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {
+                "project": {"name": "x"},
+                "verification": {"tdd": {"source_globs": ["**/*.go"], "test_for": "same-dir-suffix"}},
+            }
+        )
+        assert cfg.verification.tdd.test_for == "same-dir-suffix"
+
+    def test_unknown_strategy_rejected(self) -> None:
+        with pytest.raises(ValueError, match="test_for"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"tdd": {"test_for": "bogus"}}})
+
+    def test_unknown_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="bogus"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"tdd": {"bogus": 1}}})

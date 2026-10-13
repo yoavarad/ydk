@@ -56,6 +56,8 @@ def run(
 
     if config.verification.dotnet.target:
         context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
+    if config.verification.tdd.model_fields_set:
+        context["config"]["tdd"] = config.verification.tdd.model_dump()
 
     effective_trigger = trigger or "manual"
     if effective_trigger == "pre-push":
@@ -232,6 +234,15 @@ def check_guard(
 
     project_root = Path(context.get("project_root", "."))
     v = Verifier(project_root=project_root, use_cache=False)
+
+    # Hand tdd settings to guard plugins; fail open (plugins fall back to legacy defaults)
+    try:
+        from ydk.core.config import load_config
+
+        tdd_cfg = load_config(project_root / ".ydk" / "config.yaml").verification.tdd
+        context.setdefault("config", {})["tdd"] = tdd_cfg.model_dump()
+    except Exception:
+        pass
 
     passed, message = v.run_guard(trigger, context)
 
