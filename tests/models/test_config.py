@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from ydk.models.config import DEFAULT_MODEL_TIERS, AIConfig, SpecCheckConfig, YdkConfig
 
@@ -98,6 +99,44 @@ class TestPrBodyConfig:
             YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"pr_body": {"bogus": 1}}})
 
 
+class TestGoVerificationConfig:
+    def test_defaults(self) -> None:
+        go = YdkConfig.model_validate({"project": {"name": "x"}}).verification.go
+        assert go.coverage_min == 0.0
+        assert go.coverage_packages == []
+        assert go.test_tags == []
+        assert go.race is True
+
+    def test_values_set(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {
+                "project": {"name": "x"},
+                "verification": {
+                    "go": {
+                        "coverage_min": 80,
+                        "coverage_packages": ["internal/censor", "internal/store"],
+                        "test_tags": ["integration"],
+                        "race": False,
+                    }
+                },
+            }
+        )
+        go = cfg.verification.go
+        assert go.coverage_min == 80.0
+        assert go.coverage_packages == ["internal/censor", "internal/store"]
+        assert go.test_tags == ["integration"]
+        assert go.race is False
+
+    @pytest.mark.parametrize("bad", [-1, 100.5])
+    def test_coverage_min_out_of_range_rejected(self, bad: float) -> None:
+        with pytest.raises(ValueError, match="coverage_min"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"go": {"coverage_min": bad}}})
+
+    def test_unknown_go_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="bogus"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"go": {"bogus": 1}}})
+
+
 class TestDotnetTargetConfig:
     @pytest.mark.parametrize("blank", ["", "   "])
     def test_blank_target_rejected(self, blank: str) -> None:
@@ -145,3 +184,15 @@ class TestTddConfig:
     def test_unknown_key_rejected(self) -> None:
         with pytest.raises(ValueError, match="bogus"):
             YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"tdd": {"bogus": 1}}})
+
+    def test_default_test_commands(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        assert cfg.tdd.test_commands == [r"\bpytest\b"]
+
+    def test_custom_test_commands(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}, "tdd": {"test_commands": [r"\bgo test\b"]}})
+        assert cfg.tdd.test_commands == [r"\bgo test\b"]
+
+    def test_invalid_regex_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            YdkConfig.model_validate({"project": {"name": "x"}, "tdd": {"test_commands": ["(unclosed"]}})

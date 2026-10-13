@@ -79,8 +79,11 @@ def coverage(ctx: typer.Context) -> None:
     components_dir = Path.cwd() / ".ydk" / "components"
     tests_dir = Path.cwd() / "tests"
 
+    from ydk.core.config import load_config
+
+    globs = load_config().testing.test_globs
     checker = TestCoverageChecker()
-    report = checker.check_coverage(components_dir, tests_dir)
+    report = checker.check_coverage(components_dir, tests_dir, test_globs=globs, root=Path.cwd())
 
     data = report.model_dump()
     if format_or_echo(ctx, data):
@@ -116,3 +119,12 @@ def coverage(ctx: typer.Context) -> None:
         console.print(f"\n[yellow]Uncovered ({report.uncovered}):[/yellow]")
         for uid in report.uncovered_ids:
             console.print(f"  • {uid}")
+
+    for m in report.manifests:
+        console.print(f"\n[cyan]{m.manifest_id}[/cyan]: {len(m.implemented)} implemented, {len(m.missing)} missing")
+        for name in m.missing:
+            console.print(f"  • missing: {name}")
+    if report.reqs_without_cases:
+        console.print(f"\n[yellow]Requirements with no citing cases ({len(report.reqs_without_cases)}):[/yellow]")
+        for rid in report.reqs_without_cases:
+            console.print(f"  • {rid}")

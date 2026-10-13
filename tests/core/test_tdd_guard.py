@@ -594,3 +594,59 @@ class TestTddGuardConfigurable:
     def test_custom_source_globs_non_match_allowed(self, tmp_path: Path) -> None:
         passed, _ = _guard(tmp_path, "other/b.py", {"source_globs": ["lib/**/*.py"]})
         assert passed is True
+
+
+class TestTddGuardCmdConfigurableCommands:
+    """tdd.test_commands config (passed via context) controls which commands advance the phase."""
+
+    def _setup(self, tmp_path: Path) -> Verifier:
+        _install_tdd_guard_cmd(tmp_path)
+        _write_state(
+            tmp_path,
+            {
+                "phase": "red",
+                "test_files_written": ["internal/foo_test.go"],
+                "test_run_after_write": False,
+                "active_task": None,
+            },
+        )
+        return Verifier(project_root=tmp_path, use_cache=False)
+
+    def _run(self, v: Verifier, tmp_path: Path, command: str, test_commands: list[str] | None) -> None:
+        context: dict = {
+            "project_root": str(tmp_path),
+            "trigger": "guard:command",
+            "command": command,
+            "tool_name": "Bash",
+        }
+        if test_commands is not None:
+            context["config"] = {"tdd": {"test_commands": test_commands}}
+        passed, _ = v.run_guard("guard:command", context)
+        assert passed is True
+
+    def test_go_test_advances_phase_under_go_config(self, tmp_path: Path) -> None:
+        v = self._setup(tmp_path)
+        self._run(v, tmp_path, "go test -race ./internal/...", [r"\bgo test\b", r"\bmake (unit-)?test\b"])
+        state = _read_state(tmp_path)
+        assert state["test_run_after_write"] is True
+        assert state["phase"] == "green"
+
+    def test_make_test_advances_phase_under_go_config(self, tmp_path: Path) -> None:
+        v = self._setup(tmp_path)
+        self._run(v, tmp_path, "make unit-test", [r"\bgo test\b", r"\bmake (unit-)?test\b"])
+        assert _read_state(tmp_path)["phase"] == "green"
+
+    def test_go_test_ignored_with_default_config(self, tmp_path: Path) -> None:
+        v = self._setup(tmp_path)
+        self._run(v, tmp_path, "go test ./...", None)
+        assert _read_state(tmp_path)["phase"] == "red"
+
+    def test_pytest_still_advances_with_default_config(self, tmp_path: Path) -> None:
+        v = self._setup(tmp_path)
+        self._run(v, tmp_path, "uv run pytest -q", None)
+        assert _read_state(tmp_path)["phase"] == "green"
+
+    def test_invalid_regex_fails_open_to_default(self, tmp_path: Path) -> None:
+        v = self._setup(tmp_path)
+        self._run(v, tmp_path, "pytest", ["(unclosed"])
+        assert _read_state(tmp_path)["phase"] == "green"

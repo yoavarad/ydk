@@ -867,3 +867,114 @@ class TestCacheKey:
         (repo / "Program.cs").write_text("class Program { int w; }\n")
         self._run(v, repo)
         assert self._count(runs) == 2
+
+
+# ---------------------------------------------------------------------------
+# command-only plugins
+# ---------------------------------------------------------------------------
+
+
+def _write_command_plugin(project_dir: Path, name: str, **manifest: Any) -> None:
+    import yaml
+
+    folder = project_dir / name
+    folder.mkdir(parents=True, exist_ok=True)
+    data = {"name": name, "description": "cmd", "trigger": "manual", **manifest}
+    (folder / "manifest.yaml").write_text(yaml.dump(data), encoding="utf-8")
+
+
+def _cmd_verifier(tmp_path: Path) -> Verifier:
+    return Verifier(
+        project_root=tmp_path,
+        global_verifications=tmp_path / "g",
+        project_verifications=tmp_path / "p",
+        use_cache=False,
+    )
+
+
+class TestCommandPlugin:
+    def test_command_only_plugin_discovered(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "p", "lint", command="exit 0")
+        plugins = _cmd_verifier(tmp_path).discover_plugins()
+        assert [p.name for p in plugins] == ["lint"]
+        assert plugins[0].command == "exit 0"
+
+    def test_manifest_without_command_or_check_ignored(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "p", "nothing")
+        assert _cmd_verifier(tmp_path).discover_plugins() == []
+
+    def test_exit_zero_passes_and_captures_output(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "p", "ok", command="python -c \"print('hello')\"")
+        v = _cmd_verifier(tmp_path)
+        result = asyncio.run(v.run_plugin(v.discover_plugins()[0], {"project_root": str(tmp_path)}))
+        assert result.passed is True
+        assert "hello" in result.output
+
+    def test_nonzero_fails_and_captures_stderr(self, tmp_path: Path) -> None:
+        cmd = "python -c \"import sys; sys.stderr.write('boom'); sys.exit(1)\""
+        _write_command_plugin(tmp_path / "p", "bad", command=cmd)
+        v = _cmd_verifier(tmp_path)
+        result = asyncio.run(v.run_plugin(v.discover_plugins()[0], {"project_root": str(tmp_path)}))
+        assert result.passed is False
+        assert "boom" in result.output
+
+    def test_pass_on_exit_custom_codes(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "p", "three", command='python -c "import sys; sys.exit(3)"', pass_on_exit=[3])
+        v = _cmd_verifier(tmp_path)
+        result = asyncio.run(v.run_plugin(v.discover_plugins()[0], {"project_root": str(tmp_path)}))
+        assert result.passed is True
+
+    def test_cwd_and_env(self, tmp_path: Path) -> None:
+        (tmp_path / "sub").mkdir()
+        cmd = "python -c \"import os; print(os.getcwd()); print(os.environ['YDK_X'])\""
+        _write_command_plugin(tmp_path / "p", "ce", command=cmd, cwd="sub", env={"YDK_X": "val42"})
+        v = _cmd_verifier(tmp_path)
+        result = asyncio.run(v.run_plugin(v.discover_plugins()[0], {"project_root": str(tmp_path)}))
+        assert result.passed is True
+        assert "sub" in result.output
+        assert "val42" in result.output
+
+    def test_timeout_fails(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "p", "slow", command='python -c "import time; time.sleep(5)"', timeout=1)
+        v = _cmd_verifier(tmp_path)
+        result = asyncio.run(v.run_plugin(v.discover_plugins()[0], {"project_root": str(tmp_path)}))
+        assert result.passed is False
+        assert "timed out" in result.output
+
+    def test_missing_requires_binary_fails_naming_it(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "p", "req", command="exit 0", requires=["no-such-binary-xyz"])
+        v = _cmd_verifier(tmp_path)
+        result = asyncio.run(v.run_plugin(v.discover_plugins()[0], {"project_root": str(tmp_path)}))
+        assert result.passed is False
+        assert "no-such-binary-xyz" in result.output
+
+    def test_check_py_takes_precedence_over_command(self, tmp_path: Path) -> None:
+        _write_plugin(tmp_path / "p", "both")
+        import yaml
+
+        mpath = tmp_path / "p" / "both" / "manifest.yaml"
+        data = yaml.safe_load(mpath.read_text(encoding="utf-8"))
+        data["command"] = "exit 1"
+        mpath.write_text(yaml.dump(data), encoding="utf-8")
+        v = _cmd_verifier(tmp_path)
+        result = asyncio.run(v.run_plugin(v.discover_plugins()[0], {"project_root": str(tmp_path)}))
+        assert result.passed is True
+
+    def test_guard_runs_command_plugin(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "p", "g", trigger="git:pre-commit", command="exit 1")
+        ok, _msg = _cmd_verifier(tmp_path).run_guard("git:pre-commit", {"project_root": str(tmp_path)})
+        assert ok is False
+
+    def test_save_proof_writes_plugin_output_txt(self, tmp_path: Path) -> None:
+        from ydk.models.verification import CheckResult
+
+        v = Verifier(project_root=tmp_path)
+        report = VerificationReport(
+            timestamp="2026-04-26T00:00:00Z",
+            checks=[CheckResult(name="lint", passed=True, output="all good", duration_seconds=0.1)],
+            all_passed=True,
+            total_duration_seconds=0.1,
+        )
+        v.save_proof(report, task_id="T-1")
+        txt = tmp_path / ".ydk" / "proofs" / "T-1" / "plugins" / "lint.txt"
+        assert txt.read_text(encoding="utf-8") == "all good"

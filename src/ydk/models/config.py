@@ -1,5 +1,6 @@
 """Pydantic models for .ydk/config.yaml."""
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -205,6 +206,27 @@ class TddVerificationConfig(BaseModel):
     test_suffix: str = "_test.go"
 
 
+class GoVerificationConfig(BaseModel):
+    """Settings for the stock go-fmt/vet/test/vendor verification plugins."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_min: float = Field(default=0.0, ge=0.0, le=100.0)
+    coverage_packages: list[str] = Field(default_factory=list)
+    test_tags: list[str] = Field(default_factory=list)
+    race: bool = True
+
+
+class HelmVerificationConfig(BaseModel):
+    """Settings for the ``helm-lint`` verification plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    charts: list[str] = Field(default_factory=list)
+    values_files: list[str] = Field(default_factory=list)
+    require_schema: bool = False
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -214,6 +236,27 @@ class VerificationFilterConfig(BaseModel):
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
     tdd: TddVerificationConfig = Field(default_factory=TddVerificationConfig)
+    go: GoVerificationConfig = Field(default_factory=GoVerificationConfig)
+    helm: HelmVerificationConfig = Field(default_factory=HelmVerificationConfig)
+
+
+class TddConfig(BaseModel):
+    """Settings for the ``tdd-guard-cmd`` plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_commands: list[str] = Field(default_factory=lambda: [r"\bpytest\b"])
+
+    @field_validator("test_commands")
+    @classmethod
+    def _valid_regexes(cls, v: list[str]) -> list[str]:
+        for pattern in v:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                msg = f"tdd.test_commands: invalid regex {pattern!r}: {exc}"
+                raise ValueError(msg) from exc
+        return v
 
 
 class ComponentConfig(BaseModel):
@@ -223,6 +266,14 @@ class ComponentConfig(BaseModel):
 
     schemas_path: str = ".ydk/schemas"
     components_path: str = ".ydk/components"
+
+
+class TestingConfig(BaseModel):
+    """Test discovery settings for ``ydk test coverage``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_globs: list[str] = Field(default_factory=lambda: ["tests/**/test_*.py"])
 
 
 class YdkConfig(BaseModel):
@@ -241,3 +292,5 @@ class YdkConfig(BaseModel):
     learning: LearningConfig = LearningConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()
+    testing: TestingConfig = TestingConfig()
+    tdd: TddConfig = TddConfig()

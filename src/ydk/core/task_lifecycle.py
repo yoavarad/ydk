@@ -276,6 +276,7 @@ class TaskLifecycle:
             context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
         if config.verification.tdd.model_fields_set:
             context["config"]["tdd"] = config.verification.tdd.model_dump()
+        context["config"]["go"] = config.verification.go.model_dump()
         if task_files:
             context["changed_files"] = task_files
 
