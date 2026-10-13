@@ -252,6 +252,14 @@ class ComponentConfig(BaseModel):
     components_path: str = ".ydk/components"
 
 
+class TestingConfig(BaseModel):
+    """Test discovery settings for ``ydk test coverage``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_globs: list[str] = Field(default_factory=lambda: ["tests/**/test_*.py"])
+
+
 class YdkConfig(BaseModel):
     """Top-level YDK configuration aggregating all sub-configs."""
 
@@ -268,4 +276,5 @@ class YdkConfig(BaseModel):
     learning: LearningConfig = LearningConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()
+    testing: TestingConfig = TestingConfig()
     tdd: TddConfig = TddConfig()

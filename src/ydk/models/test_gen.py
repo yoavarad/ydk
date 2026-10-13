@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GeneratedTest(BaseModel):
@@ -27,6 +27,17 @@ class CoverageByType(BaseModel):
     pct: float
 
 
+class ManifestCoverage(BaseModel):
+    """Implemented vs missing cases for one ydk:test manifest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    manifest_id: str
+    level: str = ""
+    implemented: list[str] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)
+
+
 class CoverageReport(BaseModel):
     """Aggregate test coverage report across all component types."""
 
@@ -38,3 +49,6 @@ class CoverageReport(BaseModel):
     coverage_pct: float
     uncovered_ids: list[str]
     by_type: list[CoverageByType]
+    manifests: list[ManifestCoverage] = Field(default_factory=list)
+    req_cases: dict[str, list[str]] = Field(default_factory=dict)
+    reqs_without_cases: list[str] = Field(default_factory=list)
