@@ -1,0 +1,8 @@
+name: helm-lint
+description: Lint Helm charts (helm lint --strict) and validate values files against values.schema.json
+trigger: git:pre-push
+parallel: true
+timeout: 120
+requires:
+- helm
+supports_auto_fix: false

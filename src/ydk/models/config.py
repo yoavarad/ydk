@@ -190,6 +190,16 @@ class DotnetVerificationConfig(BaseModel):
         return v
 
 
+class HelmVerificationConfig(BaseModel):
+    """Settings for the ``helm-lint`` verification plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    charts: list[str] = Field(default_factory=list)
+    values_files: list[str] = Field(default_factory=list)
+    require_schema: bool = False
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -198,6 +208,7 @@ class VerificationFilterConfig(BaseModel):
     enabled: list[str] = Field(default_factory=list)
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
+    helm: HelmVerificationConfig = Field(default_factory=HelmVerificationConfig)
 
 
 class ComponentConfig(BaseModel):
