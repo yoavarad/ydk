@@ -1,5 +1,7 @@
 """Tests for the configurable screenshot-proof requirement."""
 
+from pathlib import Path
+
 from ydk.core.task_lifecycle import TaskLifecycle
 from ydk.models.pm import TaskDetail
 
@@ -32,3 +34,17 @@ def test_component_required_with_ui_patterns() -> None:
 
 def test_no_refs() -> None:
     assert TaskLifecycle._task_has_ui_components(_task([])) is False
+
+
+def test_patterns_read_from_config_file(tmp_path: Path) -> None:
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: x\nproof:\n  screenshot_ref_patterns:\n    - 'ydk:page:*'\n", encoding="utf-8"
+    )
+    lc = TaskLifecycle(None, None, None, None, project_root=tmp_path)  # ty: ignore[invalid-argument-type]
+    assert lc._screenshot_ref_patterns() == ["ydk:page:*"]
+
+
+def test_patterns_default_without_config(tmp_path: Path) -> None:
+    lc = TaskLifecycle(None, None, None, None, project_root=tmp_path)  # ty: ignore[invalid-argument-type]
+    assert lc._screenshot_ref_patterns() == ["ydk:page:*", "ydk:route:*"]
