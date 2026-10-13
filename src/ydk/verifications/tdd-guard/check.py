@@ -80,7 +80,7 @@ def _is_test_file(file_path: str, tdd: dict | None = None) -> bool:
 def _is_source_file(file_path: str, tdd: dict | None = None) -> bool:
     """Check if a file path is a source file that should be guarded."""
     tdd = tdd or {}
-    if (tdd and _is_vendor(file_path)) or _matches(file_path, tdd.get("exempt_globs") or []):
+    if _is_vendor(file_path) or _matches(file_path, tdd.get("exempt_globs") or []):
         return False
     # If it's in an always-allowed prefix, it's not a guarded source file
     for prefix in _ALWAYS_ALLOWED_PREFIXES:

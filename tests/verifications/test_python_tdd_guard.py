@@ -58,6 +58,10 @@ def test_go_test_files_vendor_and_exempt_skipped(tmp_path: Path) -> None:
     assert _run(tmp_path, staged, tdd)["passed"] is True
 
 
+def test_vendor_skipped_without_tdd_config(tmp_path: Path) -> None:
+    assert _run(tmp_path, ["vendor/x/y.py", "pkg/vendor/z.py"], {})["passed"] is True
+
+
 def test_source_globs_without_test_globs_still_skips_tests_and_init(tmp_path: Path) -> None:
     tdd = {"source_globs": ["**/*.py"]}
     staged = ["tests/test_x.py", "pkg/conftest.py", "pkg/__init__.py"]

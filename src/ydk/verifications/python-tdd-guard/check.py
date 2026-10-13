@@ -14,7 +14,7 @@ def _matches(filepath: str, globs: list[str]) -> bool:
 def _is_guarded(filepath: str, tdd: dict) -> bool:
     """True if filepath is a source file this plugin should check."""
     is_vendor = filepath.startswith("vendor/") or "/vendor/" in filepath
-    if (tdd and is_vendor) or _matches(filepath, tdd.get("exempt_globs") or []):
+    if is_vendor or _matches(filepath, tdd.get("exempt_globs") or []):
         return False
     same_dir = tdd.get("test_for") == "same-dir-suffix"
     if same_dir and filepath.endswith(tdd.get("test_suffix") or "_test.go"):

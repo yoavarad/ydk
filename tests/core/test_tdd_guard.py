@@ -569,6 +569,14 @@ class TestTddGuardConfigurable:
         passed, _ = _guard(tmp_path, "vendor/lib/x.py", {"source_globs": ["**/*.py"]})
         assert passed is True
 
+    def test_vendor_exempt_without_tdd_config(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "vendor/lib/x.py", None)
+        assert passed is True
+
+    def test_nested_vendor_exempt_without_tdd_config(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "pkg/vendor/lib/x.py", {})
+        assert passed is True
+
     def test_exempt_globs(self, tmp_path: Path) -> None:
         tdd = {**GO_TDD, "exempt_globs": ["internal/gen/**"]}
         passed, _ = _guard(tmp_path, "internal/gen/api.go", tdd)
