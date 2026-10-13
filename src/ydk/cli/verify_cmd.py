@@ -57,6 +57,8 @@ def run(
     if config.verification.dotnet.target:
         context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
 
+    context["config"]["helm"] = config.verification.helm.model_dump()
+
     effective_trigger = trigger or "manual"
     if effective_trigger == "pre-push":
         from ydk.core.active_task import diff_base
