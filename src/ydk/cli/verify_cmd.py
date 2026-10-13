@@ -233,6 +233,11 @@ def check_guard(
     from pathlib import Path
 
     project_root = Path(context.get("project_root", "."))
+    try:
+        tdd_cfg = load_config(project_root / ".ydk" / "config.yaml").tdd
+        context.setdefault("config", {})["tdd"] = {"test_commands": tdd_cfg.test_commands}
+    except Exception as exc:  # fail open: guard must never break on bad config
+        sys.stderr.write(f"warning: tdd config not loaded, using defaults: {exc}\n")
     v = Verifier(project_root=project_root, use_cache=False)
 
     passed, message = v.run_guard(trigger, context)
