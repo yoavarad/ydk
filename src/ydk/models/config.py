@@ -1,5 +1,6 @@
 """Pydantic models for .ydk/config.yaml."""
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -190,6 +191,16 @@ class DotnetVerificationConfig(BaseModel):
         return v
 
 
+class HelmVerificationConfig(BaseModel):
+    """Settings for the ``helm-lint`` verification plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    charts: list[str] = Field(default_factory=list)
+    values_files: list[str] = Field(default_factory=list)
+    require_schema: bool = False
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -198,6 +209,26 @@ class VerificationFilterConfig(BaseModel):
     enabled: list[str] = Field(default_factory=list)
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
+    helm: HelmVerificationConfig = Field(default_factory=HelmVerificationConfig)
+
+
+class TddConfig(BaseModel):
+    """Settings for the ``tdd-guard-cmd`` plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_commands: list[str] = Field(default_factory=lambda: [r"\bpytest\b"])
+
+    @field_validator("test_commands")
+    @classmethod
+    def _valid_regexes(cls, v: list[str]) -> list[str]:
+        for pattern in v:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                msg = f"tdd.test_commands: invalid regex {pattern!r}: {exc}"
+                raise ValueError(msg) from exc
+        return v
 
 
 class ProofConfig(BaseModel):
@@ -234,3 +265,4 @@ class YdkConfig(BaseModel):
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()
     proof: ProofConfig = ProofConfig()
+    tdd: TddConfig = TddConfig()

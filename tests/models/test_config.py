@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from ydk.models.config import DEFAULT_MODEL_TIERS, AIConfig, SpecCheckConfig, YdkConfig
 
@@ -129,3 +130,17 @@ class TestProofConfig:
             {"project": {"name": "x"}, "proof": {"screenshot_ref_patterns": ["ydk:page:*", "ydk:component:*"]}}
         )
         assert cfg.proof.screenshot_ref_patterns == ["ydk:page:*", "ydk:component:*"]
+
+
+class TestTddConfig:
+    def test_default_test_commands(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        assert cfg.tdd.test_commands == [r"\bpytest\b"]
+
+    def test_custom_test_commands(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}, "tdd": {"test_commands": [r"\bgo test\b"]}})
+        assert cfg.tdd.test_commands == [r"\bgo test\b"]
+
+    def test_invalid_regex_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            YdkConfig.model_validate({"project": {"name": "x"}, "tdd": {"test_commands": ["(unclosed"]}})
