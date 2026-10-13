@@ -56,6 +56,7 @@ def run(
 
     if config.verification.dotnet.target:
         context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
+    context["config"]["go"] = config.verification.go.model_dump()
 
     context["config"]["helm"] = config.verification.helm.model_dump()
 

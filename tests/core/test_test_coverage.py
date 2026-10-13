@@ -131,3 +131,93 @@ class TestCoverageReportCalculation:
         checker = TestCoverageChecker()
         report = checker.check_coverage(components_dir, tests_dir)
         assert report.covered == 1
+
+
+def _write_manifest(components_dir: Path, comp_type: str, cid: str, extra: dict) -> None:
+    ns_name = cid.split(":", 2)[2]
+    ns = ns_name.split("/")[0]
+    type_dir = components_dir / comp_type / ns
+    type_dir.mkdir(parents=True, exist_ok=True)
+    data = {"id": cid, "description": "x", **extra}
+    (type_dir / (ns_name.split("/")[1] + ".yaml")).write_text(yaml.dump(data))
+
+
+def _manifest_project(tmp_path: Path) -> tuple[Path, Path]:
+    root = tmp_path
+    components = root / ".ydk" / "components"
+    _write_manifest(
+        components,
+        "test",
+        "ydk:test:messaging/store.unit",
+        {
+            "level": "unit",
+            "target": "ydk:entity:messaging/Store",
+            "cases": [
+                {"name": "fifo-101", "req": "ydk:req:messaging/fifo"},
+                {"name": "missing-1", "req": "ydk:req:messaging/fifo"},
+            ],
+        },
+    )
+    _write_manifest(
+        components,
+        "test",
+        "ydk:test:messaging/send.e2e",
+        {
+            "level": "e2e",
+            "target": "ydk:route:messaging/send",
+            "cases": [{"name": "send-ok", "req": "ydk:req:messaging/send"}],
+        },
+    )
+    _write_manifest(components, "req", "ydk:req:messaging/fifo", {})
+    _write_manifest(components, "req", "ydk:req:messaging/send", {})
+    _write_manifest(components, "req", "ydk:req:messaging/orphan", {})
+    (root / "internal").mkdir()
+    (root / "internal" / "store_test.go").write_text(
+        'package x\nfunc TestStore(t *testing.T) {\n\tt.Run("fifo-101", func(t *testing.T) {})\n}\n'
+        'func TestOther(t *testing.T) {\n\tt.Run("missing-1", func(t *testing.T) {})\n}\n'
+    )
+    (root / "test" / "e2e").mkdir(parents=True)
+    (root / "test" / "e2e" / "send.sh").write_text("#!/bin/sh\n# ydk:test:messaging/send.e2e#send-ok\n")
+    return components, root
+
+
+class TestManifestCoverage:
+    GLOBS = ("**/*_test.go", "test/e2e/**/*.sh")
+
+    def test_go_t_run_marks_case_implemented(self, tmp_path):
+        components, root = _manifest_project(tmp_path)
+        report = TestCoverageChecker().check_coverage(
+            components, root / "tests", test_globs=list(self.GLOBS), root=root
+        )
+        store = next(m for m in report.manifests if m.manifest_id == "ydk:test:messaging/store.unit")
+        assert store.implemented == ["fifo-101"]
+        assert store.missing == ["missing-1"]
+
+    def test_shell_marker_marks_e2e_case_implemented(self, tmp_path):
+        components, root = _manifest_project(tmp_path)
+        report = TestCoverageChecker().check_coverage(
+            components, root / "tests", test_globs=list(self.GLOBS), root=root
+        )
+        e2e = next(m for m in report.manifests if m.manifest_id == "ydk:test:messaging/send.e2e")
+        assert e2e.implemented == ["send-ok"]
+        assert e2e.missing == []
+
+    def test_reqs_with_no_cases_listed(self, tmp_path):
+        components, root = _manifest_project(tmp_path)
+        report = TestCoverageChecker().check_coverage(
+            components, root / "tests", test_globs=list(self.GLOBS), root=root
+        )
+        assert report.reqs_without_cases == ["ydk:req:messaging/orphan"]
+        assert report.req_cases["ydk:req:messaging/fifo"] == [
+            "ydk:test:messaging/store.unit#fifo-101",
+            "ydk:test:messaging/store.unit#missing-1",
+        ]
+
+    def test_marker_prefix_not_confused(self, tmp_path):
+        components, root = _manifest_project(tmp_path)
+        (root / "test" / "e2e" / "send.sh").write_text("# ydk:test:messaging/send.e2e#send-ok-extra\n")
+        report = TestCoverageChecker().check_coverage(
+            components, root / "tests", test_globs=list(self.GLOBS), root=root
+        )
+        e2e = next(m for m in report.manifests if m.manifest_id == "ydk:test:messaging/send.e2e")
+        assert e2e.missing == ["send-ok"]
