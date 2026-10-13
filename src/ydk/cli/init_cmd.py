@@ -207,7 +207,7 @@ if _cwd_n and file_path.lower().startswith(_cwd_n.lower() + "/"):
 elif file_path.startswith("./"):
     file_path = file_path[2:]
 
-root = Path(cwd)
+root = Path(_cwd_n or ".")
 
 # Optional .ydk/config.yaml overrides (fail open on any read/parse error).
 _code_dirs = ["src/", "app/", "tests/"]
