@@ -21,7 +21,22 @@ from ydk.models.todo import TodoItem, TodoRegistry, TodoStatus
 
 logger = logging.getLogger("ydk.todo_manager")
 
-_TODO_COMMENT_RE = re.compile(r"#\s*YDK-TODO-(\d+):\s*(.*)")
+_TODO_COMMENT_RE = re.compile(r"(?:#|//)\s*YDK-TODO-(\d+):\s*(.*)")
+
+# Per-extension TODO markers: (statement prefixes, comment prefix). Shared with ignition.
+TODO_MARKERS: dict[str, tuple[tuple[str, ...], str]] = {
+    ".py": (("raise NotImplementedError",), "#"),
+    ".cs": (("throw new NotImplementedException",), "//"),
+    ".go": (('panic("not implemented")', 'panic("YDK-TODO-'), "//"),
+}
+
+
+def markers_for(path: str) -> tuple[tuple[str, ...], str] | None:
+    """Return (statement prefixes, comment prefix) for a file path, or None if unsupported."""
+    for ext, markers in TODO_MARKERS.items():
+        if path.endswith(ext):
+            return markers
+    return None
 
 
 class TodoError(Exception):
@@ -141,16 +156,18 @@ class TodoManager:
             return True
         content = file_path.read_text()
         lines = content.splitlines()
+        found = markers_for(todo.file)
+        stmts = found[0] if found else TODO_MARKERS[".py"][0]
         # Check a window around the original line (methods may shift)
         start = max(0, todo.line - 5)
         end = min(len(lines), todo.line + 5)
         window = "\n".join(lines[start:end])
         # Check for the specific TODO marker or generic NotImplementedError near the line
-        if f"YDK-TODO-{int(todo_id.split('-')[-1]):03d}" in window and "raise NotImplementedError" in window:
+        if f"YDK-TODO-{int(todo_id.split('-')[-1]):03d}" in window and any(m in window for m in stmts):
             return False
         # Also check if there's a bare NotImplementedError at the exact line (0-indexed)
         line_idx = todo.line - 1
-        return not (0 <= line_idx < len(lines) and "raise NotImplementedError" in lines[line_idx])
+        return not (0 <= line_idx < len(lines) and any(m in lines[line_idx] for m in stmts))
 
     def scan_file(self, file_path: str) -> list[dict]:
         """Scan a Python file for raise NotImplementedError lines.

@@ -11,6 +11,8 @@ import hashlib
 import json
 import logging
 import os
+import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -85,6 +87,10 @@ class VerificationPlugin:
     requires: list[str]
     check_script: Path
     supports_auto_fix: bool = False
+    command: str | None = None
+    cwd: str | None = None
+    env: dict[str, str] | None = None
+    pass_on_exit: tuple[int, ...] = (0,)
 
 
 class Verifier:
@@ -135,8 +141,12 @@ class Verifier:
             for child in sorted(search_dir.iterdir()):
                 manifest_path = child / "manifest.yaml"
                 check_path = child / "check.py"
-                if child.is_dir() and manifest_path.exists() and check_path.exists():
+                if child.is_dir() and manifest_path.exists():
+                    if not check_path.exists() and "command" not in manifest_path.read_text(encoding="utf-8"):
+                        continue
                     plugin = self._load_plugin(manifest_path, check_path)
+                    if not check_path.exists() and not plugin.command:
+                        continue
                     if plugin.name not in seen:
                         seen.add(plugin.name)
                         plugins.append(plugin)
@@ -317,8 +327,11 @@ class Verifier:
         return True, ""
 
     def _run_check_script(self, plugin: VerificationPlugin, context: dict[str, Any]) -> CheckResult:
-        """Execute check.py subprocess with JSON stdin/stdout protocol."""
+        """Execute check.py subprocess with JSON stdin/stdout protocol (or the manifest command)."""
         import sys as _sys
+
+        if plugin.command and not plugin.check_script.exists():
+            return self._run_command(plugin)
 
         input_json = json.dumps(context)
         dotenv_vars = _load_dotenv(self._root / ".env")
@@ -357,6 +370,38 @@ class Verifier:
             output=data["output"],
             duration_seconds=data.get("duration_seconds", 0.0),
             detail=data.get("detail"),
+        )
+
+    def _run_command(self, plugin: VerificationPlugin) -> CheckResult:
+        """Run a command-only plugin: exit code decides pass/fail, stdout+stderr is the output."""
+        start = time.time()
+        missing = [b for b in plugin.requires if shutil.which(b) is None]
+        if missing:
+            return CheckResult(
+                name=plugin.name,
+                passed=False,
+                output=f"Required binary not found on PATH: {', '.join(missing)}",
+                duration_seconds=0.0,
+            )
+        env = {**_load_dotenv(self._root / ".env"), **os.environ, **(plugin.env or {})}
+        cwd = self._root / plugin.cwd if plugin.cwd else self._root
+        result = subprocess.run(
+            plugin.command or "",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=plugin.timeout,
+            cwd=str(cwd),
+            env=env,
+        )
+        return CheckResult(
+            name=plugin.name,
+            passed=result.returncode in plugin.pass_on_exit,
+            output=result.stdout,
+            duration_seconds=round(time.time() - start, 1),
         )
 
     async def run_layer(
@@ -468,11 +513,18 @@ class Verifier:
 
         path = proofs_dir / "verification.json"
         path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        plugins_dir = proofs_dir / "plugins"
+        plugins_dir.mkdir(exist_ok=True)
+        for check in report.checks:
+            safe = re.sub(r"[^\w.-]", "_", str(check.name)).lstrip(".") or "plugin"
+            (plugins_dir / f"{safe}.txt").write_text(str(check.output), encoding="utf-8")
         return path
 
     def _load_plugin(self, manifest_path: Path, check_path: Path) -> VerificationPlugin:
         """Load a single plugin from its manifest.yaml and check.py."""
         data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        env_raw = data.get("env")
+        codes = data.get("pass_on_exit")
         return VerificationPlugin(
             name=data["name"],
             description=data.get("description", ""),
@@ -482,6 +534,10 @@ class Verifier:
             requires=data.get("requires", []),
             check_script=check_path,
             supports_auto_fix=data.get("supports_auto_fix", False),
+            command=data.get("command"),
+            cwd=data.get("cwd"),
+            env={str(k): str(v) for k, v in env_raw.items()} or None if isinstance(env_raw, dict) else None,
+            pass_on_exit=tuple(int(c) for c in codes) if isinstance(codes, list) and codes else (0,),
         )
 
 
