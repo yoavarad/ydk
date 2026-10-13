@@ -19,7 +19,6 @@ from ydk.models.ignition import GeneratedFile, IgnitionResult
 logger = logging.getLogger("ydk.ignition")
 
 _TODO_PATTERN = "raise NotImplementedError"
-_CS_TODO_PATTERN = "throw new NotImplementedException();"
 _GENERATOR_TIMEOUT = 120
 
 
@@ -104,15 +103,11 @@ class IgnitionEngine:
         # 6. Register TODOs for each raise NotImplementedError
         todo_count = self._register_todos(to_write) if not dry_run else 0
 
-        # 7. Post-generation: syntax check, ruff format
-        if not dry_run and written_paths:
-            post_errors = self._post_generate(written_paths)
-            errors.extend(post_errors)
-
-        # 8. Install runtime dependencies if declared in pack manifest
+        # 7-8. Post-generation checks + runtime dependencies (per pack language)
         dependencies_installed: list[str] = []
         if not dry_run:
-            dependencies_installed = self._install_runtime_deps(pack, warnings)
+            post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings)
+            errors.extend(post_errors)
 
         duration = time.monotonic() - start
 
@@ -126,6 +121,69 @@ class IgnitionEngine:
             duration_seconds=round(duration, 2),
             dependencies_installed=dependencies_installed,
         )
+
+    def _run_post_steps(
+        self, pack: dict, written_paths: list[Path], warnings: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """Run language-specific post-generation steps. Returns (errors, installed deps)."""
+        language = str(pack.get("stack", {}).get("language", "python")).lower()
+        if language == "go":
+            # Deps first: go mod tidy / go build need modules resolved.
+            installed = self._install_go_deps(pack, warnings)
+            return self._post_generate_go(written_paths), installed
+        errors = self._post_generate(written_paths) if written_paths else []
+        return errors, self._install_runtime_deps(pack, warnings)
+
+    def _install_go_deps(self, pack: dict, warnings: list[str]) -> list[str]:
+        """Add Go modules (pinned) via go get, then go mod tidy + go mod vendor."""
+        deps = pack.get("runtime_dependencies", {}).get("go", [])
+        if not deps:
+            return []
+        if not (self._root / "go.mod").exists():
+            warnings.append("Cannot install runtime deps: no go.mod found")
+            return []
+        for cmd in (["go", "get", *deps], ["go", "mod", "tidy"], ["go", "mod", "vendor"]):
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=str(self._root),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+            except OSError as exc:
+                warnings.append(f"Failed to install deps ({' '.join(cmd)}): {exc}")
+                return []
+            if result.returncode != 0:
+                warnings.append(f"Failed to install deps ({' '.join(cmd)}): {result.stderr[:200]}")
+                return []
+        return list(deps)
+
+    def _post_generate_go(self, written_files: list[Path]) -> list[str]:
+        """gofmt generated .go files, then go build + go vet. Returns list of errors."""
+        go_files = [str(f) for f in written_files if f.suffix == ".go"]
+        if not go_files:
+            return []
+        errors: list[str] = []
+        steps = (["gofmt", "-w", *go_files], ["go", "build", "./..."], ["go", "vet", "./..."])
+        for cmd in steps:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=str(self._root),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+            except OSError as exc:
+                errors.append(f"{cmd[0]} not runnable: {exc}")
+                continue
+            if result.returncode != 0:
+                output = (result.stderr or result.stdout).strip()
+                errors.append(f"{' '.join(cmd[:2])} failed: {output}")
+        return errors
 
     def _install_runtime_deps(self, pack: dict, warnings: list[str]) -> list[str]:
         """Install runtime dependencies declared in the pack manifest via uv."""
@@ -446,24 +504,24 @@ class IgnitionEngine:
         """
         import ast
 
-        from ydk.core.todo_manager import TodoManager
+        from ydk.core.todo_manager import TodoManager, markers_for
 
         todo_mgr = TodoManager(self._root)
         count = 0
         for gf in files:
-            if gf.path.endswith(".cs"):
-                lines = gf.content.splitlines()
-                for i, line in enumerate(lines, start=1):
+            found = markers_for(gf.path)
+            if found and not gf.path.endswith(".py"):
+                stmts, comment_prefix = found
+                for i, line in enumerate(gf.content.splitlines(), start=1):
                     stripped = line.strip()
-                    if stripped.startswith(_CS_TODO_PATTERN):
-                        method = "<unknown>"
+                    if stripped.startswith(stmts):
                         comment = ""
-                        if "//" in stripped:
-                            comment = stripped.split("//", 1)[1].strip()
+                        if comment_prefix in stripped:
+                            comment = stripped.split(comment_prefix, 1)[1].strip()
                         todo_mgr.register(
                             file=gf.path,
                             line=i,
-                            method=method,
+                            method="<unknown>",
                             description=comment,
                         )
                         count += 1

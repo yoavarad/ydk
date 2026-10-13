@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Verification plugin: TDD guard command tracker.
 
-Tracks pytest execution and git commit commands to advance
-the TDD state machine. Always passes (never blocks commands).
+Tracks test-command execution (tdd.test_commands, default pytest) and
+git commit commands to advance the TDD state machine. Always passes (never blocks commands).
 
 Transitions:
 - pytest detected + test_files_written non-empty → phase becomes 'green'
@@ -10,6 +10,7 @@ Transitions:
 """
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -42,9 +43,25 @@ def _write_state(project_root: str, state: dict) -> None:
     state_path.write_text(json.dumps(state, indent=2))
 
 
-def _is_pytest_command(command: str) -> bool:
-    """Check if a command is running pytest."""
-    return "pytest" in command
+DEFAULT_TEST_COMMANDS = [r"\bpytest\b"]
+
+
+def _compile_patterns(context: dict) -> list[re.Pattern[str]]:
+    """Compile configured tdd.test_commands; fall back to the default if none are usable."""
+    configured = ((context.get("config") or {}).get("tdd") or {}).get("test_commands")
+    compiled: list[re.Pattern[str]] = []
+    if isinstance(configured, list):
+        for pattern in configured:
+            try:
+                compiled.append(re.compile(pattern))
+            except (re.error, TypeError):
+                continue
+    return compiled or [re.compile(p) for p in DEFAULT_TEST_COMMANDS]
+
+
+def _is_test_command(command: str, patterns: list[re.Pattern[str]]) -> bool:
+    """Check if a command matches any test-command regex."""
+    return any(p.search(command) for p in patterns)
 
 
 def _is_git_commit_command(command: str) -> bool:
@@ -79,7 +96,7 @@ def main() -> None:
     state = _read_state(project_root)
     output = "OK: command allowed"
 
-    if _is_pytest_command(command):
+    if _is_test_command(command, _compile_patterns(context)):
         # Mark that pytest was run after tests were written
         state["test_run_after_write"] = True
         test_files_written = state.get("test_files_written", [])
