@@ -198,11 +198,32 @@ cwd = data.get("cwd", ".")
 file_path = tool_input.get("file_path", "")
 command = tool_input.get("command", "")
 
-# Normalize file_path (remove cwd prefix)
-if file_path.startswith(cwd):
-    file_path = file_path[len(cwd):].lstrip("/")
+# Normalize file_path: forward slashes, relative to cwd (case-insensitive,
+# so Windows drive letters and backslash paths match the prefix rules).
+file_path = file_path.replace("\\\\", "/")
+_cwd_n = cwd.replace("\\\\", "/").rstrip("/")
+if _cwd_n and file_path.lower().startswith(_cwd_n.lower() + "/"):
+    file_path = file_path[len(_cwd_n):].lstrip("/")
+elif file_path.startswith("./"):
+    file_path = file_path[2:]
 
 root = Path(cwd)
+
+# Optional .ydk/config.yaml overrides (fail open on any read/parse error).
+_code_dirs = ["src/", "app/", "tests/"]
+_suppressions = [r"#\\s*noqa", r"#\\s*type:\\s*ignore", r"#\\s*nosec", r"//\\s*nolint", r"//\\s*lint:ignore"]
+try:
+    import yaml
+    _cfg = yaml.safe_load((root / ".ydk" / "config.yaml").read_text(encoding="utf-8")) or {}
+    _guards = _cfg.get("guards") or {}
+    if isinstance(_guards.get("code_dirs"), list) and _guards["code_dirs"]:
+        _code_dirs = [str(d).replace("\\\\", "/").removeprefix("./").rstrip("/") + "/" for d in _guards["code_dirs"]]
+    if str((_cfg.get("project") or {}).get("stack", "")).lower() in ("go", "golang"):
+        _code_dirs += ["cmd/", "internal/", "pkg/", "charts/"]
+    if isinstance(_guards.get("suppression_patterns"), list):
+        _suppressions += [str(p) for p in _guards["suppression_patterns"]]
+except Exception:
+    pass
 
 # --- GUARD: no-manual-pr and no-direct-push ---
 # Stage 01 (brainstorming) has no task ID yet, so \'ydk task done\' can\'t be used
@@ -230,9 +251,14 @@ if tool_name in ("Edit", "Write") and ".ydk/proofs/" in file_path and "summary.m
 if tool_name in ("Edit", "Write"):
     new_content = tool_input.get("new_string", "") or tool_input.get("content", "")
     if new_content and not file_path.startswith("tests/"):
-        for marker in ("# noqa", "# type: ignore", "# nosec"):
-            if marker in new_content:
-                sys.stderr.write(f"BLOCKED: \'{marker}\' not allowed. Fix the violation instead of suppressing it.\\n")
+        import re
+        for pattern in _suppressions:
+            try:
+                m = re.search(pattern, new_content)
+            except re.error:
+                continue
+            if m and m.group(0):
+                sys.stderr.write(f"BLOCKED: \'{m.group(0)}\' not allowed. Fix it, do not suppress.\\n")
                 sys.exit(2)
 
 # --- GUARD: no-mock-internals ---
@@ -252,7 +278,7 @@ if state_file.exists() and file_path:
         stage = state.get("stage", "00")
 
         # Stage 01/02: block source file edits
-        if stage in ("01", "02") and file_path.startswith(("src/", "app/", "tests/")):
+        if stage in ("01", "02") and file_path.startswith(tuple(_code_dirs)):
             if not file_path.startswith(".ydk/"):
                 sys.stderr.write(f"BLOCKED: Stage {stage} — cannot edit source files yet.\\n")
                 sys.exit(2)

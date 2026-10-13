@@ -355,3 +355,124 @@ class TestEdgeCases:
             cwd=tmp_path,
         )
         assert result.returncode == 2  # Should still be blocked
+
+
+def _stage(tmp_path: Path, stage: str = "01") -> None:
+    ydk_dir = tmp_path / ".ydk"
+    ydk_dir.mkdir(exist_ok=True)
+    (ydk_dir / "state.json").write_text(json.dumps({"stage": stage}))
+
+
+class TestConfigurableGuards:
+    """Stage-gate dirs, suppression patterns, and Windows paths."""
+
+    def test_go_stack_blocks_internal_in_stage_01(self, guard_script: Path, tmp_path: Path) -> None:
+        _stage(tmp_path)
+        (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: x\n  stack: go\n")
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "internal/x.go", "new_string": "package x"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 2
+
+    def test_internal_allowed_without_go_config(self, guard_script: Path, tmp_path: Path) -> None:
+        _stage(tmp_path)
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "internal/x.go", "new_string": "package x"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0
+
+    def test_configured_code_dirs_block(self, guard_script: Path, tmp_path: Path) -> None:
+        _stage(tmp_path)
+        (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: x\nguards:\n  code_dirs: [charts/]\n")
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "charts/a.yaml", "content": "a: 1"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 2
+
+    @pytest.mark.parametrize("marker", ["//nolint:errcheck", "// nolint", "//lint:ignore SA1000 reason"])
+    def test_blocks_go_suppression(self, guard_script: Path, marker: str) -> None:
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "main.go", "new_string": f"x() {marker}"},
+                "cwd": str(guard_script.parent),
+            },
+        )
+        assert result.returncode == 2
+        assert "BLOCKED" in result.stderr
+
+    def test_configured_suppression_pattern(self, guard_script: Path, tmp_path: Path) -> None:
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            "project:\n  name: x\nguards:\n  suppression_patterns: ['@ts-ignore']\n"
+        )
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "a.ts", "new_string": "// @ts-ignore"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 2
+
+    def test_windows_relative_backslash_blocked(self, guard_script: Path, tmp_path: Path) -> None:
+        _stage(tmp_path)
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "src\\a.py", "new_string": "x"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 2
+
+    def test_windows_absolute_with_backslash_cwd_blocked(self, guard_script: Path, tmp_path: Path) -> None:
+        _stage(tmp_path)
+        cwd = str(tmp_path).replace("/", "\\")
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": cwd.upper() + "\\src\\a.py", "new_string": "x"},
+                "cwd": cwd,
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 2
+
+    def test_malformed_config_fails_open(self, guard_script: Path, tmp_path: Path) -> None:
+        _stage(tmp_path, "03")
+        (tmp_path / ".ydk" / "config.yaml").write_text("guards: [unclosed\n  : :")
+        result = _run_guard(
+            guard_script,
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "src/a.py", "new_string": "x = 1"},
+                "cwd": str(tmp_path),
+            },
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0
