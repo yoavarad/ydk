@@ -285,6 +285,7 @@ def list_plugins(ctx: typer.Context) -> None:
 def create_plugin(
     name: str = typer.Argument(..., help="Plugin name"),
     trigger: str = typer.Option("git:pre-commit", "--trigger", help="Trigger ID (e.g. git:pre-commit)"),
+    command: str | None = typer.Option(None, "--command", help="Shell command to run instead of scaffolding check.py"),
 ) -> None:
     """Create a new project-specific verification plugin."""
     from pathlib import Path
@@ -296,7 +297,7 @@ def create_plugin(
 
     plugin_dir.mkdir(parents=True)
 
-    manifest = {
+    manifest: dict[str, object] = {
         "name": name,
         "description": f"Custom verification: {name}",
         "trigger": trigger,
@@ -304,7 +305,12 @@ def create_plugin(
         "timeout": 30,
         "requires": [],
     }
+    if command:
+        manifest["command"] = command
     (plugin_dir / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False))
+    if command:
+        console.print(f"[green]Created command plugin at {plugin_dir}[/green]")
+        return
 
     check_template = f'''#!/usr/bin/env python3
 """Verification plugin: {name}."""
