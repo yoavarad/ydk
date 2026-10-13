@@ -58,6 +58,8 @@ def run(
         context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
     context["config"]["go"] = config.verification.go.model_dump()
 
+    context["config"]["helm"] = config.verification.helm.model_dump()
+
     effective_trigger = trigger or "manual"
     if effective_trigger == "pre-push":
         from ydk.core.active_task import diff_base
@@ -232,6 +234,11 @@ def check_guard(
     from pathlib import Path
 
     project_root = Path(context.get("project_root", "."))
+    try:
+        tdd_cfg = load_config(project_root / ".ydk" / "config.yaml").tdd
+        context.setdefault("config", {})["tdd"] = {"test_commands": tdd_cfg.test_commands}
+    except Exception as exc:  # fail open: guard must never break on bad config
+        sys.stderr.write(f"warning: tdd config not loaded, using defaults: {exc}\n")
     v = Verifier(project_root=project_root, use_cache=False)
 
     passed, message = v.run_guard(trigger, context)
@@ -279,6 +286,7 @@ def list_plugins(ctx: typer.Context) -> None:
 def create_plugin(
     name: str = typer.Argument(..., help="Plugin name"),
     trigger: str = typer.Option("git:pre-commit", "--trigger", help="Trigger ID (e.g. git:pre-commit)"),
+    command: str | None = typer.Option(None, "--command", help="Shell command to run instead of scaffolding check.py"),
 ) -> None:
     """Create a new project-specific verification plugin."""
     from pathlib import Path
@@ -290,7 +298,7 @@ def create_plugin(
 
     plugin_dir.mkdir(parents=True)
 
-    manifest = {
+    manifest: dict[str, object] = {
         "name": name,
         "description": f"Custom verification: {name}",
         "trigger": trigger,
@@ -298,7 +306,12 @@ def create_plugin(
         "timeout": 30,
         "requires": [],
     }
+    if command:
+        manifest["command"] = command
     (plugin_dir / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False))
+    if command:
+        console.print(f"[green]Created command plugin at {plugin_dir}[/green]")
+        return
 
     check_template = f'''#!/usr/bin/env python3
 """Verification plugin: {name}."""

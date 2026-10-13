@@ -246,3 +246,41 @@ def test_scan_file_bare_not_implemented(mgr: TodoManager, project: Path) -> None
     assert len(results) == 1
     assert results[0]["comment"] == ""
     assert results[0]["method_name"] == "do_thing"
+
+
+# --- per-language markers ---
+
+
+def test_verify_done_go_panic_still_present(mgr: TodoManager, project: Path) -> None:
+    src = project / "svc.go"
+    src.write_text('package svc\n\nfunc Run() {\n\tpanic("not implemented") // YDK-TODO-001: impl\n}\n')
+    todo_id = mgr.register(file="svc.go", line=4, method="Run")
+    assert mgr.verify_done(todo_id) is False
+    with pytest.raises(TodoError):
+        mgr.done(todo_id)
+    src.write_text("package svc\n\nfunc Run() {\n\treturn\n}\n")
+    mgr.done(todo_id)
+
+
+def test_verify_done_go_ydk_todo_panic(mgr: TodoManager, project: Path) -> None:
+    src = project / "svc.go"
+    src.write_text('package svc\n\nfunc Run() {\n\tpanic("YDK-TODO-001: impl Run")\n}\n')
+    todo_id = mgr.register(file="svc.go", line=4, method="Run")
+    assert mgr.verify_done(todo_id) is False
+
+
+def test_verify_done_cs_throw_still_present(mgr: TodoManager, project: Path) -> None:
+    src = project / "Foo.cs"
+    src.write_text("class Foo {\n  void Run() {\n    throw new NotImplementedException();\n  }\n}\n")
+    todo_id = mgr.register(file="Foo.cs", line=3, method="Run")
+    assert mgr.verify_done(todo_id) is False
+    src.write_text("class Foo {\n  void Run() {\n  }\n}\n")
+    assert mgr.verify_done(todo_id) is True
+
+
+def test_slash_comment_marker_recognized() -> None:
+    from ydk.core.todo_manager import _TODO_COMMENT_RE
+
+    m = _TODO_COMMENT_RE.search('\tpanic("x") // YDK-TODO-001: do it')
+    assert m is not None
+    assert m.group(2) == "do it"

@@ -272,6 +272,17 @@ class TestVerifyCreate:
         assert (plugin_dir / "manifest.yaml").exists()
         assert (plugin_dir / "check.py").exists()
 
+    def test_command_option_writes_command_only_manifest(self, monkeypatch, tmp_path: Path) -> None:
+        import yaml
+
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["verify", "create", "foo", "--command", "make test"])
+        assert result.exit_code == 0
+        plugin_dir = tmp_path / ".ydk" / "verifications" / "foo"
+        data = yaml.safe_load((plugin_dir / "manifest.yaml").read_text(encoding="utf-8"))
+        assert data["command"] == "make test"
+        assert not (plugin_dir / "check.py").exists()
+
 
 class TestVerifySkipPlugin:
     def test_skip_plugin_repeatable_excludes_plugins(self, monkeypatch) -> None:
