@@ -1,5 +1,6 @@
 """Pydantic models for .ydk/config.yaml."""
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -200,6 +201,25 @@ class VerificationFilterConfig(BaseModel):
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
 
 
+class TddConfig(BaseModel):
+    """Settings for the ``tdd-guard-cmd`` plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_commands: list[str] = Field(default_factory=lambda: [r"\bpytest\b"])
+
+    @field_validator("test_commands")
+    @classmethod
+    def _valid_regexes(cls, v: list[str]) -> list[str]:
+        for pattern in v:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                msg = f"tdd.test_commands: invalid regex {pattern!r}: {exc}"
+                raise ValueError(msg) from exc
+        return v
+
+
 class ComponentConfig(BaseModel):
     """Component manifest system paths."""
 
@@ -225,3 +245,4 @@ class YdkConfig(BaseModel):
     learning: LearningConfig = LearningConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()
+    tdd: TddConfig = TddConfig()
