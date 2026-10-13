@@ -218,6 +218,20 @@ class TestRegisterTodos:
         ]
         assert engine._register_todos(files) == 1
 
+    def test_counts_go_panic_not_implemented(self, tmp_path: Path) -> None:
+        engine = IgnitionEngine(tmp_path)
+        files = [
+            GeneratedFile(
+                path="svc/svc.go",
+                content='package svc\n\nfunc Run() {\n\tpanic("not implemented") // YDK-TODO-001: impl\n}\n',
+            ),
+        ]
+        assert engine._register_todos(files) == 1
+        from ydk.core.todo_manager import TodoManager
+
+        todo = TodoManager(tmp_path).list_todos()[0]
+        assert (todo.file, todo.line) == ("svc/svc.go", 4)
+
 
 class TestIgniteFull:
     def test_ignite_no_pack_raises(self, tmp_path: Path) -> None:

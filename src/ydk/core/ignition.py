@@ -19,7 +19,6 @@ from ydk.models.ignition import GeneratedFile, IgnitionResult
 logger = logging.getLogger("ydk.ignition")
 
 _TODO_PATTERN = "raise NotImplementedError"
-_CS_TODO_PATTERN = "throw new NotImplementedException();"
 _GENERATOR_TIMEOUT = 120
 
 
@@ -446,24 +445,24 @@ class IgnitionEngine:
         """
         import ast
 
-        from ydk.core.todo_manager import TodoManager
+        from ydk.core.todo_manager import TodoManager, markers_for
 
         todo_mgr = TodoManager(self._root)
         count = 0
         for gf in files:
-            if gf.path.endswith(".cs"):
-                lines = gf.content.splitlines()
-                for i, line in enumerate(lines, start=1):
+            found = markers_for(gf.path)
+            if found and not gf.path.endswith(".py"):
+                stmts, comment_prefix = found
+                for i, line in enumerate(gf.content.splitlines(), start=1):
                     stripped = line.strip()
-                    if stripped.startswith(_CS_TODO_PATTERN):
-                        method = "<unknown>"
+                    if stripped.startswith(stmts):
                         comment = ""
-                        if "//" in stripped:
-                            comment = stripped.split("//", 1)[1].strip()
+                        if comment_prefix in stripped:
+                            comment = stripped.split(comment_prefix, 1)[1].strip()
                         todo_mgr.register(
                             file=gf.path,
                             line=i,
-                            method=method,
+                            method="<unknown>",
                             description=comment,
                         )
                         count += 1
