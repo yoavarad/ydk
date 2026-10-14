@@ -314,7 +314,7 @@ class ComponentTestGenerator:
         base, _, level_suffix = base.partition(".")
         level = str(manifest.get("level") or level_suffix)
         suffix = "" if level in ("", "unit") else "_" + level
-        package = re.sub(r"[^a-zA-Z0-9_]", "_", namespace.rsplit("/", 1)[-1]).lower() or "tests"
+        package = _go_package(namespace.rsplit("/", 1)[-1])
         target = str(manifest.get("target") or "").rsplit("/", 1)[-1] or base
         ident = re.sub(r"[^a-zA-Z0-9]", "", target)
         func_name = "Test" + ident[:1].upper() + ident[1:] + suffix.replace("_", "").capitalize()
@@ -335,7 +335,9 @@ class ComponentTestGenerator:
             func_name=func_name,
             cases=cases,
         )
-        path = f"{namespace}/{base}{suffix}_test.go" if namespace else f"{base}{suffix}_test.go"
+        dirs = [d for d in (_path_segment(seg) for seg in namespace.split("/")) if d]
+        file_name = f"{_path_segment(base) or 'tests'}{suffix}_test.go"
+        path = "/".join([*dirs, file_name])
         return GeneratedTest(component_id=component_id, test_code=code, test_file_path=path, test_count=len(cases))
 
     @staticmethod
@@ -343,12 +345,69 @@ class ComponentTestGenerator:
         return [c for c in manifest.get("cases") or [] if isinstance(c, dict) and c.get("name")]
 
     def missing_go_cases(self, manifest: dict[str, Any], existing_code: str) -> list[str]:
-        """Return manifest case names with no ``t.Run`` subtest in ``existing_code``."""
-        return [
-            str(c["name"])
-            for c in self._go_cases(manifest)
-            if not re.search(r"t\.Run\(\s*" + re.escape(json.dumps(str(c["name"]), ensure_ascii=False)), existing_code)
-        ]
+        """Return manifest case names with no subtest in ``existing_code``.
+
+        Covered when ``t.Run`` is called with the name as a "..." or `...` literal, or when the file
+        calls ``t.Run`` with a non-literal name (table-driven) and the case name appears as a table
+        entry (``field: "name"`` or ``{"name", ...}``).
+        """
+        dynamic_run = re.search(r"t\.Run\(\s*[A-Za-z_]", existing_code) is not None
+        missing = []
+        for c in self._go_cases(manifest):
+            name = str(c["name"])
+            lits = [re.escape(json.dumps(name, ensure_ascii=False)), "`" + re.escape(name) + "`"]
+            alt = "(?:" + "|".join(lits) + ")"
+            if re.search(r"t\.Run\(\s*" + alt, existing_code):
+                continue
+            if dynamic_run and re.search(r"(?:[:{,]\s*)" + alt, existing_code):
+                continue
+            missing.append(name)
+        return missing
+
+
+_GO_KEYWORDS = frozenset(
+    [
+        "break",
+        "case",
+        "chan",
+        "const",
+        "continue",
+        "default",
+        "defer",
+        "else",
+        "fallthrough",
+        "for",
+        "func",
+        "go",
+        "goto",
+        "if",
+        "import",
+        "interface",
+        "map",
+        "package",
+        "range",
+        "return",
+        "select",
+        "struct",
+        "switch",
+        "type",
+        "var",
+    ]
+)
+
+
+def _go_package(segment: str) -> str:
+    """Sanitize a namespace segment into a valid lowercase Go package identifier."""
+    pkg = re.sub(r"[^a-z0-9_]", "_", segment.lower()).strip("_") or "tests"
+    if pkg[0].isdigit():
+        pkg = "p" + pkg
+    return pkg + "_" if pkg in _GO_KEYWORDS else pkg
+
+
+def _path_segment(text: str) -> str:
+    """Make one path segment safe for any OS: no separators, colons, dots-only or whitespace."""
+    seg = re.sub(r"[^A-Za-z0-9_-]", "_", text).strip("_")
+    return seg
 
 
 def _go_comment(label: str, text: object) -> str:

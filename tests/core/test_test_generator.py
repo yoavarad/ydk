@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import ast
+import re
 
+import pytest
+
+from ydk.core.test_coverage import TestCoverageChecker
 from ydk.core.test_generator import ComponentTestGenerator, _class_name_from_id
 
 
@@ -246,3 +250,76 @@ class TestGenerateGoFromTest:
     def test_non_ascii_name_kept_literal(self):
         m = self._manifest(cases=[{"name": "ok-😀", "given": "g", "when": "w", "then": "t"}])
         assert 't.Run("ok-😀"' in ComponentTestGenerator().generate_go_from_test(m).test_code
+
+    def test_package_name_sanitized_to_go_identifier(self):
+        gen = ComponentTestGenerator()
+        for ns, expected in [
+            ("my-pkg.v2", "my_pkg_v2"),
+            ("9lives", "p9lives"),
+            ("type", "type_"),
+            ("Msg", "msg"),
+            ("-", "tests"),
+        ]:
+            m = self._manifest(id=f"ydk:test:{ns}/store.unit")
+            assert f"package {expected}\n" in gen.generate_go_from_test(m).test_code
+
+    def test_default_path_sanitized(self):
+        gen = ComponentTestGenerator()
+        m = self._manifest(id="ydk:test:../evil:x/st ore.unit")
+        path = gen.generate_go_from_test(m).test_file_path
+        assert ".." not in path.split("/")
+        assert not any(ch in path for ch in ':\\ "<>|*?')
+        assert path.endswith("_test.go")
+
+    def test_missing_cases_backtick_literal(self):
+        existing = "func TestStore(t *testing.T) {\n\tt.Run(`fifo-101`, func(t *testing.T) {})\n}\n"
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_missing_cases_table_driven(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n"
+            '\tcases := []struct{ name string }{\n\t\t{name: "fifo-101"},\n\t\t{"empty-pop"},\n\t}\n'
+            "\tfor _, tc := range cases {\n\t\tt.Run(tc.name, func(t *testing.T) {})\n\t}\n}\n"
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == []
+
+    def test_table_driven_partial(self):
+        existing = (
+            'func TestStore(t *testing.T) {\n\tcases := []struct{ name string }{{name: "fifo-101"}}\n'
+            "\tfor _, tc := range cases {\n\t\tt.Run(tc.name, func(t *testing.T) {})\n\t}\n}\n"
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_name_string_without_dynamic_run_is_not_covered(self):
+        existing = 'func TestStore(t *testing.T) {\n\t_ = "fifo-101"\n}\n'
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["fifo-101", "empty-pop"]
+
+    def test_generated_source_plausible(self):
+        for level in ("unit", "integration"):
+            code = ComponentTestGenerator().generate_go_from_test(self._manifest(level)).test_code
+            body = code.split("package ", 1)[1]
+            assert re.match(r"[a-z_][a-z0-9_]*\n\nimport \"testing\"\n\nfunc Test\w+\(t \*testing\.T\) \{\n", body)
+            assert code.count("{") == code.count("}")
+            assert code.count("(") == code.count(")")
+            assert code.endswith("}\n")
+
+
+class TestGoRoundTripWithCoverage:
+    @pytest.mark.parametrize(
+        "target", ["ydk:adapter:messaging/cluster", "ydk:entity:messaging/kafka-adapter", "ydk:entity:messaging/Store"]
+    )
+    @pytest.mark.parametrize("level", ["unit", "integration"])
+    def test_generated_file_counts_as_implemented(self, tmp_path, target, level):
+        manifest = {
+            "id": f"ydk:test:messaging/thing.{level}",
+            "level": level,
+            "target": target,
+            "cases": [{"name": "a", "given": "g", "when": "w", "then": "t"}],
+        }
+        code = ComponentTestGenerator().generate_go_from_test(manifest).test_code
+        go_file = tmp_path / "thing_test.go"
+        go_file.write_text(code)
+        covered = TestCoverageChecker._is_implemented(
+            manifest["id"], str(manifest["target"]).rsplit("/", 1)[-1].replace(".", ""), "a", [(go_file, code)]
+        )
+        assert covered
