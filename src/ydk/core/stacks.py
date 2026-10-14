@@ -82,7 +82,6 @@ STACKS: dict[str, dict[str, Any]] = {
             "tdd-guard",
             "tdd-guard-cmd",
             "guard-no-manual-pr",
-            "guard-no-mock-internals",
             "guard-no-noqa",
             "guard-no-proof-tamper",
             "guard-stage-gate",
