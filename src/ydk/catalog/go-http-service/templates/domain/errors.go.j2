@@ -1,0 +1,11 @@
+package {{ pkg }}
+
+import "errors"
+
+// Sentinel errors from ydk:error manifests.
+var (
+{% for e in errors %}
+	// {{ e.name }} -- {{ e.id }} ({{ e.code }})
+	{{ e.name }} = errors.New({{ e.message }})
+{% endfor %}
+)

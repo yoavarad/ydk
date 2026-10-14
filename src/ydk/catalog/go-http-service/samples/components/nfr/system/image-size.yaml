@@ -1,0 +1,10 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/image-size
+description: "Size of the runtime container image (ubi-micro base + static binary)."
+category: performance
+target: "<= 60 MB compressed (gzip of docker save output)"
+measurement: "docker save <image> | gzip -c | wc -c"
+test_method: "build stage script fails when the byte count exceeds 62914560."
+monitoring: "None."
+applies_to:
+  - ydk:route:api/index

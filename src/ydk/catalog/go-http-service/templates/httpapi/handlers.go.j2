@@ -1,0 +1,34 @@
+package httpapi
+
+import (
+	"net/http"
+{% if uses_web %}
+
+	"{{ module }}/web"
+{% endif %}
+)
+{% for r in routes %}
+
+// {{ r.handler }} serves {{ r.method }} {{ r.path }} -- {{ r.id }}: {{ r.description }}
+func (s *Server) {{ r.handler }}(w http.ResponseWriter, r *http.Request) {
+{% if r.kind == "health" %}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+{% elif r.kind == "ready" %}
+	if !s.ready.Load() {
+		writeError(w, http.StatusServiceUnavailable, {{ msg_503 }})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+{% elif r.kind == "page" %}
+	body, err := web.Pages.ReadFile({{ r.page_file }})
+	if err != nil {
+		panic(err)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(body)
+{% else %}
+	{{ todo }} // {{ r.id }}: {{ r.method }} {{ r.path }}
+{% endif %}
+}
+{% endfor %}

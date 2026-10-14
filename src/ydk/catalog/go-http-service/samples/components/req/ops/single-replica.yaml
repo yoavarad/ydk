@@ -1,0 +1,12 @@
+$schema: ydk:schema:req
+id: ydk:req:ops/single-replica
+description: "Exactly one pod per instance (ADR-004)."
+type: constraint
+priority: high
+rule: "Deployment replicas is fixed at 1 (not a chart value) with strategy Recreate, so old and new pods never consume the same consumer group concurrently and the in-memory store has one owner. No HorizontalPodAutoscaler, no PodDisruptionBudget, no PersistentVolumeClaim."
+failure_behavior: "Chart test fails if replicas != 1 or strategy != Recreate."
+related_components:
+  - ydk:entity:messaging/MessageStore
+  - ydk:nfr:system/availability
+acceptance_criteria:
+  - "helm template output has replicas: 1 and strategy.type: Recreate"

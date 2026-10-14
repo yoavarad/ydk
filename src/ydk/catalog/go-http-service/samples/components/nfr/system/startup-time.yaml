@@ -1,0 +1,10 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/startup-time
+description: "Time from container start to first 200 on the readiness endpoint. Readiness does not wait for Kafka (ADR-016)."
+category: reliability
+target: "<= 10 s"
+measurement: "Pod condition timestamps: Ready lastTransitionTime minus container state.running.startedAt."
+test_method: "e2e stage after helm install of each release; readiness probe periodSeconds 2, initialDelaySeconds 0 so the probe does not dominate."
+monitoring: "None."
+applies_to:
+  - ydk:route:api/readyz

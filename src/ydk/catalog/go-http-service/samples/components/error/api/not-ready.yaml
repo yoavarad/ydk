@@ -1,0 +1,15 @@
+$schema: ydk:schema:error
+id: ydk:error:api/not-ready
+description: "Readiness failure during shutdown. Kubernetes removes the pod from Service endpoints. Kafka state never causes this error (ADR-016)."
+status_code: 503
+code: NOT_READY
+detail_template: "shutting down"
+response_shape:
+  error:
+    type: string
+    description: "Fixed message 'shutting down'"
+triggers:
+  - "SIGTERM or SIGINT received"
+related:
+  - ydk:route:api/readyz
+  - ydk:crosscut:system/health-checks

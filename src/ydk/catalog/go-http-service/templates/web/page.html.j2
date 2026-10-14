@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+</head>
+<body>
+<!-- {{ id }}: {{ description }} -->
+<!-- Layout: {{ layout }} -->
+<main>
+{% for s in sections %}
+<section id="{{ s.name }}">
+  <!-- YDK-TODO: {{ s.description }}{% if s.data_sources %} (data: {{ s.data_sources }}){% endif %} -->
+</section>
+{% endfor %}
+</main>
+</body>
+</html>

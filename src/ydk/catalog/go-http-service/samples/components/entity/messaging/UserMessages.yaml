@@ -1,0 +1,44 @@
+$schema: ydk:schema:entity
+id: ydk:entity:messaging/UserMessages
+description: |
+  The bucket of received messages for one username inside the store. Holds at most 100
+  messages in arrival order; adding the 101st drops the oldest (FIFO). Created when the first
+  valid record for a username arrives; removed only by LRU eviction. A GET for an unknown
+  username never creates a bucket (ADR-013).
+fields:
+  user:
+    type: string
+    required: true
+    nullable: false
+    primary_key: true
+    max_length: 128
+    constraints: "1..128 Unicode code points; exact match (case-sensitive, no trimming, no Unicode normalization)"
+    description: "Username taken from the record value field 'user'"
+  messages:
+    type: list
+    required: true
+    nullable: false
+    constraints: "0..100 Message items in arrival order; on insert beyond 100 the oldest is removed"
+    description: "Received messages for this username"
+  lru_element:
+    type: pointer
+    required: true
+    generated: true
+    auto: true
+    constraints: "Element of the store LRU list; moved to front on receive and on GET of this user; no timestamp stored"
+    description: "Recency position used for LRU eviction"
+state_transitions: {}
+relationships:
+  - entity: ydk:entity:messaging/MessageStore
+    type: many-to-one
+    fk: user
+    description: "A bucket lives in exactly one store"
+  - entity: ydk:entity:messaging/Message
+    type: one-to-many
+    fk: messages
+    description: "A bucket holds 0..100 messages"
+indexes:
+  - fields: [user]
+    unique: true
+    description: "Map lookup by username for receive and GET"
+crud: [create, read, update, delete]

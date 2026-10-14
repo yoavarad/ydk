@@ -1,0 +1,20 @@
+package {{ pkg }}
+{% if imports %}
+
+import (
+{% for imp in imports %}
+	"{{ imp }}"
+{% endfor %}
+)
+{% endif %}
+{% for c in contracts %}
+
+// {{ c.name }} -- {{ c.id }}: {{ c.description }}
+type {{ c.name }} interface {
+{% for m in c.methods %}
+	// {{ m.name }}: {{ m.description }}
+	{{ m.name }}({{ m.params }}){% if m.result %} {{ m.result }}{% endif %}
+
+{% endfor %}
+}
+{% endfor %}

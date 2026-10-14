@@ -95,7 +95,7 @@ class IgnitionEngine:
                 full = self._root / gf.path
                 full.parent.mkdir(parents=True, exist_ok=True)
                 content = gf.content
-                full.write_text(content)
+                full.write_text(content, encoding="utf-8")
                 state.update(gf.path, content)
                 written_paths.append(full)
             state.save()
@@ -108,6 +108,13 @@ class IgnitionEngine:
         if not dry_run:
             post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings)
             errors.extend(post_errors)
+            # Formatters (gofmt -w) rewrite files in place; record the formatted content so a
+            # re-ignite does not mistake the rewrite for a developer edit.
+            for gf in to_write:
+                full = self._root / gf.path
+                if gf.path.endswith(".go") and full.exists():
+                    state.update(gf.path, full.read_text(encoding="utf-8"))
+            state.save()
 
         duration = time.monotonic() - start
 
@@ -262,7 +269,7 @@ class IgnitionEngine:
             component_type = component_type_dir.name
             components: list[dict] = []
             for yaml_file in sorted(component_type_dir.rglob("*.yaml")):
-                data = yaml.safe_load(yaml_file.read_text())
+                data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     components.append(data)
             if components:
@@ -410,7 +417,7 @@ class IgnitionEngine:
                 fd, tmp_str = tempfile.mkstemp(suffix=".yaml", prefix=f"ydk_{comp_type}_")
                 os.close(fd)
                 tmp = Path(tmp_str)
-                tmp.write_text(yaml.dump(components, default_flow_style=False))
+                tmp.write_text(yaml.dump(components, default_flow_style=False, sort_keys=False))
                 temp_files.append(tmp)
                 env_key = f"YDK_COMPONENTS_{comp_type.upper()}"
                 env_vars[env_key] = str(tmp)
@@ -421,7 +428,7 @@ class IgnitionEngine:
                     fd2, tmp_str2 = tempfile.mkstemp(suffix=".yaml", prefix=f"ydk_{comp_type}_singular_")
                     os.close(fd2)
                     tmp2 = Path(tmp_str2)
-                    tmp2.write_text(yaml.dump(components[0], default_flow_style=False))
+                    tmp2.write_text(yaml.dump(components[0], default_flow_style=False, sort_keys=False))
                     temp_files.append(tmp2)
                     env_vars[singular_key] = str(tmp2)
 

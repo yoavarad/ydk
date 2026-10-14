@@ -1,0 +1,24 @@
+$schema: ydk:schema:crosscut
+id: ydk:crosscut:system/health-checks
+description: "Liveness and readiness semantics and probe settings (ADR-016)."
+specification: |
+  Liveness (ydk:route:api/healthz): 200 while the process serves HTTP.
+  Readiness (ydk:route:api/readyz): 200 once the HTTP server listens (configuration already
+  validated, otherwise the process exited); 503 after SIGTERM. Neither probe checks Kafka, so a
+  Kafka outage never removes the pod from the Service and never restarts it. Kafka problems
+  surface to users as ydk:error:api/kafka-unavailable on send, shown in the UI as
+  "Kafka: disconnected".
+  Startup: the Kafka client is created without blocking on broker connection, so readiness does
+  not wait for Kafka.
+  Chart probes: liveness httpGet /healthz port 8080, periodSeconds 10, timeoutSeconds 2,
+  failureThreshold 3. Readiness httpGet /readyz port 8080, periodSeconds 2,
+  initialDelaySeconds 0, timeoutSeconds 2, failureThreshold 3. No startupProbe.
+applies_to: "HTTP server, Helm deployment template"
+implementation_notes:
+  - "Health routes are excluded from request logging to keep logs quiet"
+  - "Readiness is an atomic flag cleared at the first step of shutdown"
+related:
+  - ydk:route:api/healthz
+  - ydk:route:api/readyz
+  - ydk:error:api/not-ready
+  - ydk:nfr:system/startup-time

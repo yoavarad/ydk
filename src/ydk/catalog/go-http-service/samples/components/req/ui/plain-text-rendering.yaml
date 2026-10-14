@@ -1,0 +1,13 @@
+$schema: ydk:schema:req
+id: ydk:req:ui/plain-text-rendering
+description: "Received text is displayed as plain text, never interpreted as HTML (ADR-005)."
+type: policy
+priority: critical
+rule: "The UI writes received text and usernames into the DOM only via textContent (never innerHTML). Whitespace and newlines are preserved with CSS white-space: pre-wrap."
+failure_behavior: "Defect (XSS); caught by ydk:test:system/round-trip.e2e sending '<img src=x onerror=alert(1)>' and by code review."
+related_components:
+  - ydk:page:ui/main
+  - ydk:component:ui/received-list
+acceptance_criteria:
+  - "Text '<b>x</b>' displays literally as <b>x</b>"
+  - "Text with two lines and leading spaces displays with line break and spaces intact"

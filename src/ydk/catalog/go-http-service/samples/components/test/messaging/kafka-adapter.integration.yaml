@@ -1,0 +1,51 @@
+$schema: ydk:schema:test
+id: ydk:test:messaging/kafka-adapter.integration
+description: "Kafka adapter against real Strimzi in kind (build tag integration). No Kafka mocks. Also measures send latency and throughput."
+level: integration
+target: ydk:ext:kafka/cluster
+cases:
+  - name: publish-record-shape
+    description: "ydk:event:messaging/message-record"
+    given: "Adapter on a fresh test topic, SASL_SSL listener"
+    when: "Publish('bob_','hi_'); read the topic with a plain franz-go consumer"
+    then: "Key 'bob_', value exactly {\"user\":\"bob_\",\"text\":\"hi_\"}, no headers"
+  - name: consume-to-store
+    description: "Valid record lands in a real Store with Kafka timestamp"
+    given: "Consumer on test input topic, real Store"
+    when: "Produce a valid record"
+    then: "Store Get returns it with time = record timestamp within 5 s"
+  - name: drop-invalid
+    description: "ydk:req:messaging/drop-invalid-incoming"
+    given: "Consumer running"
+    when: "Produce 'not json', then {user:'a'}, then a valid record"
+    then: "Only the valid record is stored; two WARN lines with offsets"
+  - name: new-group-latest
+    description: "New group starts at latest (ADR-017)"
+    given: "Topic already holds 3 records; consumer group name never used"
+    when: "Start consumer, then produce 1 record"
+    then: "Only the new record is delivered"
+  - name: offset-resume
+    description: "Restart resumes from committed offset (ADR-004)"
+    given: "Consumer processed 3 records and stopped gracefully"
+    when: "Produce 2 more; start a new consumer in the same group"
+    then: "Only the 2 new records are delivered"
+  - name: plaintext-mode
+    description: "PLAINTEXT listener works"
+    given: "Adapter with PLAINTEXT on 9092"
+    when: "Publish"
+    then: "Succeeds"
+  - name: bad-credentials
+    description: "SASL failure surfaces as error"
+    given: "Wrong password"
+    when: "Publish with 5 s deadline"
+    then: "Error returned (maps to 503)"
+  - name: latency-throughput
+    description: "ydk:nfr:system/send-latency and ydk:nfr:system/throughput"
+    given: "HTTP server wired to the real adapter"
+    when: "500 sends of 1000 code points, 10 concurrent workers"
+    then: "P95 <= 200 ms, P99 <= 500 ms, >= 50 sends/s, 0 errors"
+stubs: []
+never_mock:
+  - "Kafka (real Strimzi broker)"
+  - "franz-go client"
+  - "Store"

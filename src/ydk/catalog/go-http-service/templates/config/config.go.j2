@@ -1,0 +1,47 @@
+// Package config loads runtime configuration from environment variables.
+// Source: {{ source }}
+package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+)
+
+// ErrInvalidConfig wraps every configuration error; the message names the variable, never its value.
+var ErrInvalidConfig = errors.New("invalid config")
+
+// Config is the typed runtime configuration, read once at startup.
+type Config struct {
+{% for v in vars %}
+	// {{ v.field }} is {{ v.name }}{% if v.required %} (required){% endif %}{% if v.rule %}: {{ v.rule }}{% endif %}
+
+	{{ v.field }} string
+{% endfor %}
+}
+
+// Load reads every variable, applying defaults, and fails on the first missing required one.
+func Load() (Config, error) {
+	var cfg Config
+{% if vars %}
+	var err error
+{% endif %}
+{% for v in vars %}
+	if cfg.{{ v.field }}, err = lookup({{ v.name_lit }}, {{ v.default_lit }}, {{ "true" if v.required else "false" }}); err != nil {
+		return Config{}, err
+	}
+{% endfor %}
+	return cfg, nil
+}
+
+// lookup distinguishes unset (default applies) from set-but-empty via os.LookupEnv.
+func lookup(name, def string, required bool) (string, error) {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		value = def
+	}
+	if required && value == "" {
+		return "", fmt.Errorf("%w: %s: missing", ErrInvalidConfig, name)
+	}
+	return value, nil
+}

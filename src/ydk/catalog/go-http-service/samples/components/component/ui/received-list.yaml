@@ -1,0 +1,27 @@
+$schema: ydk:schema:component
+id: ydk:component:ui/received-list
+description: |
+  Right column of ydk:page:ui/main; polls the received-messages route every 2 s (ADR-003)
+  for the current username and immediately on user-changed; skips polling while the username
+  is empty (list cleared). Replaces the whole list on each successful response; on failure
+  keeps the last list and logs to the browser console. Discards a response whose username no
+  longer matches the field (out-of-order guard).
+  Each item: local time HH:MM:SS from the RFC3339 time, a [copy] button, and the text in a
+  box rendered via textContent with white-space pre-wrap (ydk:req:ui/plain-text-rendering).
+  Copy: navigator.clipboard.writeText when window.isSecureContext; otherwise a temporary
+  off-screen textarea + select + document.execCommand('copy'). Button label shows 'copied'
+  for 1 s on success, 'copy failed' on failure.
+type: display
+framework: agnostic
+props:
+  user:
+    type: string
+    required: true
+    description: "Username whose received messages are shown"
+columns: []
+data_source: ydk:route:api/get-messages
+pagination: none
+default_sort:
+  field: time
+  order: newest first (server order, not re-sorted client-side)
+emits: []

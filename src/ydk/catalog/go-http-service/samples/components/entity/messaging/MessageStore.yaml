@@ -1,0 +1,40 @@
+$schema: ydk:schema:entity
+id: ydk:entity:messaging/MessageStore
+description: |
+  Process-wide in-memory store of received messages (ADR-004, ADR-013). One instance per
+  process, guarded by one sync.Mutex. Capacity 100 usernames; inserting a 101st username evicts
+  the least-recently-used username with all its messages. Contents are lost on restart.
+  Operations are defined in ydk:contract:messaging/Store
+fields:
+  buckets:
+    type: map
+    required: true
+    nullable: false
+    constraints: "Key = username; value = UserMessages bucket; at most 100 entries"
+    description: "Username to bucket lookup"
+  lru:
+    type: list
+    required: true
+    nullable: false
+    constraints: "container/list of usernames; front = most recently used, back = eviction candidate; same membership as buckets"
+    description: "Recency order of usernames"
+  max_users:
+    type: integer
+    required: true
+    default: 100
+    constraints: "Constant, not configurable"
+    description: "User capacity"
+  max_messages_per_user:
+    type: integer
+    required: true
+    default: 100
+    constraints: "Constant, not configurable"
+    description: "Per-user message capacity"
+state_transitions: {}
+relationships:
+  - entity: ydk:entity:messaging/UserMessages
+    type: one-to-many
+    fk: buckets
+    description: "Store owns 0..100 buckets"
+indexes: []
+crud: [create, read, update, delete]

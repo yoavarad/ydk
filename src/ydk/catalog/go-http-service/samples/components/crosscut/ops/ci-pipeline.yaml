@@ -1,0 +1,24 @@
+$schema: ydk:schema:crosscut
+id: ydk:crosscut:ops/ci-pipeline
+description: "CI/CD stages, triggers, environments and versioning (ADR-010, ADR-011)."
+specification: |
+  All logic in Makefile targets + POSIX sh scripts; .github/workflows/ and .gitlab-ci.yml only
+  call make. No marketplace actions or remote templates in core steps.
+  Stages / make targets:
+  1. lint: gofmt -l (must be empty), go vet, go mod vendor diff check, helm lint, values.schema.json validation.
+  2. test: go test -race -cover ./...; coverage >= 80% on internal/censor, internal/store, internal/message, internal/httpapi, internal/config.
+  3. build: multi-stage image (golang:1.27 -> ubi9/ubi-micro), CGO_ENABLED=0, -mod=vendor, -trimpath; image size gate (ydk:nfr:system/image-size).
+  4. scan: trivy image + chart config, fail on HIGH/CRITICAL; runs when SCAN_ENABLED=true (GitHub true, GitLab false until DB mirror).
+  5. e2e: env-up, install both releases, run e2e script, env-down.
+  6. publish: image + chart (OCI) to GHCR (GitHub) or GitLab registry (GitLab).
+  7. deploy: helm upgrade --install --atomic --wait.
+  8. smoke: readiness 200 + one round trip.
+  Triggers: 1-5 on every push/PR/MR; 6-8 on main merge (env dev) and tag vX.Y.Z (env prod,
+  manual approval). Environments dev and prod only; GitHub deploy/smoke target an ephemeral
+  kind cluster; GitLab targets OpenShift with CI-variable credentials.
+  Versioning: SemVer tag vX.Y.Z; main builds X.Y.Z-dev.<shortsha>; chart version = appVersion
+  = image tag.
+applies_to: "Makefile, scripts/, .github/workflows/, .gitlab-ci.yml"
+related:
+  - ydk:nfr:system/image-size
+  - ydk:crosscut:ops/local-environment

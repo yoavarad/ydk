@@ -1,0 +1,19 @@
+$schema: ydk:schema:req
+id: ydk:req:messaging/drop-invalid-incoming
+description: "Invalid records on the input topic never block consumption (ADR-006)."
+type: policy
+priority: critical
+rule: |
+  For each consumed record: decode value as JSON object; require string fields user and text;
+  apply ydk:req:messaging/user-length and ydk:req:messaging/text-length; unknown extra fields
+  are ignored. The record key is ignored on receive (user comes from the value). On failure the
+  record is dropped, a WARN line is logged with topic, partition, offset and reason (never the
+  value), and its offset is committed like any processed record.
+failure_behavior: "ydk:error:messaging/bad-incoming-record"
+related_components:
+  - ydk:entity:messaging/KafkaRecord
+  - ydk:event:messaging/message-record
+acceptance_criteria:
+  - "Record 'not json' followed by a valid record: valid record is displayed, one WARN logged"
+  - "Record with extra field 'origin' is accepted"
+  - "Restart after a dropped record does not re-deliver it"

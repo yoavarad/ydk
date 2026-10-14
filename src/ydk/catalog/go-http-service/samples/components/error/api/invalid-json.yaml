@@ -1,0 +1,16 @@
+$schema: ydk:schema:error
+id: ydk:error:api/invalid-json
+description: "Send request body cannot be decoded as a JSON object with string fields user and text. Nothing is published."
+status_code: 400
+code: INVALID_JSON
+detail_template: "invalid JSON body"
+response_shape:
+  error:
+    type: string
+    description: "Human-readable message; the code is not in the body (ydk:crosscut:system/error-format)"
+triggers:
+  - "Body is not syntactically valid JSON"
+  - "Body is valid JSON but not an object, or user/text is not a JSON string"
+related:
+  - ydk:route:api/send-message
+  - ydk:crosscut:system/error-format

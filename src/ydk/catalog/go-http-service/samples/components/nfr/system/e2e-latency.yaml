@@ -1,0 +1,12 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/e2e-latency
+description: "Time from a send on instance A until the message is visible in the received list on instance B (2 s UI poll + Kafka transit)."
+category: performance
+target: "P95 <= 5 s (local kind environment only; prod pipeline latency is outside this system)"
+measurement: "e2e script: timestamp before POST on A, poll GET on B every 250 ms until the text appears; add 2 s worst-case UI poll interval to the API-visible time."
+test_method: "e2e stage, 20 sends A->B and 20 sends B->A, sorted, P95 compared to 5 s."
+monitoring: "None (local measurement only)."
+applies_to:
+  - ydk:route:api/send-message
+  - ydk:route:api/get-messages
+  - ydk:event:messaging/message-record

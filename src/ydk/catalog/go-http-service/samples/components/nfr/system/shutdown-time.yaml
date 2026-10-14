@@ -1,0 +1,10 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/shutdown-time
+description: "Bound on graceful shutdown after SIGTERM (ydk:crosscut:system/graceful-shutdown)."
+category: reliability
+target: "Process exits <= 10 s after SIGTERM; terminationGracePeriodSeconds 15"
+measurement: "Time between SIGTERM and process exit, from the 'shutdown complete' log line duration_ms field."
+test_method: "Unit test of the shutdown sequence with a fake Publisher that blocks 2 s: exit within 10 s and in-flight request answered. e2e: kubectl delete pod, pod terminates without SIGKILL (exit code 0)."
+monitoring: "None."
+applies_to:
+  - ydk:crosscut:system/graceful-shutdown

@@ -1,0 +1,17 @@
+$schema: ydk:schema:error
+id: ydk:error:api/kafka-unavailable
+description: "Publish to the output topic failed or no broker ack arrived within 5 s (ADR-017). This is the only way Kafka state reaches the UI (ADR-016): on 503 the status line shows 'Kafka: disconnected' and the textarea keeps the text so the user can resend."
+status_code: 503
+code: KAFKA_UNAVAILABLE
+detail_template: "kafka unavailable, message not sent"
+response_shape:
+  error:
+    type: string
+    description: "Fixed message from detail_template"
+triggers:
+  - "Publisher Publish returns an error (broker down, auth failure, topic missing, not leader)"
+  - "5 s publish deadline exceeded"
+related:
+  - ydk:route:api/send-message
+  - ydk:contract:messaging/Publisher
+  - ydk:ext:kafka/cluster

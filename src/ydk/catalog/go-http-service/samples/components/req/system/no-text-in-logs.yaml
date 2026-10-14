@@ -1,0 +1,15 @@
+$schema: ydk:schema:req
+id: ydk:req:system/no-text-in-logs
+description: "Message text never appears in logs at any level (ADR-012)."
+type: policy
+priority: critical
+rule: |
+  No log line at any level contains message text or the raw record value. Allowed metadata:
+  user, text length in code points, topic, partition, offset, HTTP method, route, status,
+  duration in ms. KAFKA_SASL_PASSWORD is never logged.
+failure_behavior: "Defect; caught by a unit test that captures slog output during send and receive and asserts the text marker is absent."
+related_components:
+  - ydk:crosscut:system/logging
+  - ydk:route:api/send-message
+acceptance_criteria:
+  - "Send and receive a text containing marker 'SECRET-MARKER-123' at LOG_LEVEL=DEBUG; captured output does not contain the marker"

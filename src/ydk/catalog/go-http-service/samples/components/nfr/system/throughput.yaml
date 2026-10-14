@@ -1,0 +1,10 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/throughput
+description: "Sustained successful sends per instance."
+category: performance
+target: ">= 50 sends/s per instance with 0 errors, 1000-code-point text"
+measurement: "Successful 202 responses divided by elapsed wall time."
+test_method: "Same integration run as ydk:nfr:system/send-latency: 500 sends, 10 concurrent workers; assert rate >= 50/s and zero non-202 responses."
+monitoring: "None."
+applies_to:
+  - ydk:route:api/send-message

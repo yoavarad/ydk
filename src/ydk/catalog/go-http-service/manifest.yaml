@@ -1,0 +1,29 @@
+stack:
+  language: go
+
+runtime_dependencies:
+  go:
+    - github.com/twmb/franz-go@v1.22.1
+
+generators:
+  - id: go-module
+    script: generators/go_module.py
+    inputs: [config]
+  - id: config-loader
+    script: generators/config_loader.py
+    inputs: [crosscut, config]
+  - id: domain-packages
+    script: generators/domain_packages.py
+    inputs: [entity, contract, error, ext]
+  - id: http-api
+    script: generators/http_api.py
+    inputs: [route, error, crosscut, contract, page, config]
+  - id: ext-adapters
+    script: generators/ext_adapters.py
+    inputs: [ext, contract, entity, config]
+  - id: web-pages
+    script: generators/web_pages.py
+    inputs: [page, config]
+  - id: main-cmd
+    script: generators/main_cmd.py
+    inputs: [contract, nfr, config]

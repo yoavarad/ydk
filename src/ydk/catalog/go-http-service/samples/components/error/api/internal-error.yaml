@@ -1,0 +1,17 @@
+$schema: ydk:schema:error
+id: ydk:error:api/internal-error
+description: "Unexpected fault in a handler (recovered panic, JSON encode failure). Logged at ERROR with route and request method; never includes message text."
+status_code: 500
+code: INTERNAL
+detail_template: "internal error"
+response_shape:
+  error:
+    type: string
+    description: "Fixed message; no internal details leaked"
+triggers:
+  - "Recovered panic in a handler"
+  - "Response encoding failure"
+related:
+  - ydk:route:api/send-message
+  - ydk:route:api/get-messages
+  - ydk:crosscut:system/error-format
