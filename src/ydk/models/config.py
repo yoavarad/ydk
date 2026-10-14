@@ -191,6 +191,32 @@ class DotnetVerificationConfig(BaseModel):
         return v
 
 
+class TddVerificationConfig(BaseModel):
+    """Settings for the tdd-guard / python-tdd-guard plugins.
+
+    ``None`` globs keep the legacy Python behaviour (src/ + app/ prefixes, test_*.py / *_test.py).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_globs: list[str] | None = None
+    test_globs: list[str] | None = None
+    exempt_globs: list[str] = Field(default_factory=list)
+    test_for: Literal["python-tests-dir", "same-dir-suffix"] = "python-tests-dir"
+    test_suffix: str = "_test.go"
+
+
+class GoVerificationConfig(BaseModel):
+    """Settings for the stock go-fmt/vet/test/vendor verification plugins."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_min: float = Field(default=0.0, ge=0.0, le=100.0)
+    coverage_packages: list[str] = Field(default_factory=list)
+    test_tags: list[str] = Field(default_factory=list)
+    race: bool = True
+
+
 class HelmVerificationConfig(BaseModel):
     """Settings for the ``helm-lint`` verification plugin."""
 
@@ -209,6 +235,8 @@ class VerificationFilterConfig(BaseModel):
     enabled: list[str] = Field(default_factory=list)
     pr_body: PrBodyConfig = Field(default_factory=PrBodyConfig)
     dotnet: DotnetVerificationConfig = Field(default_factory=DotnetVerificationConfig)
+    tdd: TddVerificationConfig = Field(default_factory=TddVerificationConfig)
+    go: GoVerificationConfig = Field(default_factory=GoVerificationConfig)
     helm: HelmVerificationConfig = Field(default_factory=HelmVerificationConfig)
 
 
@@ -248,6 +276,21 @@ class ComponentConfig(BaseModel):
     components_path: str = ".ydk/components"
 
 
+class GuardsConfig(BaseModel):
+    """Overrides for the PreToolUse guard hook (.claude/hooks/guard.py)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code_dirs: list[str] = []
+    suppression_patterns: list[str] = []
+class TestingConfig(BaseModel):
+    """Test discovery settings for ``ydk test coverage``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_globs: list[str] = Field(default_factory=lambda: ["tests/**/test_*.py"])
+
+
 class YdkConfig(BaseModel):
     """Top-level YDK configuration aggregating all sub-configs."""
 
@@ -265,4 +308,6 @@ class YdkConfig(BaseModel):
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()
     proof: ProofConfig = ProofConfig()
+    guards: GuardsConfig = GuardsConfig()
+    testing: TestingConfig = TestingConfig()
     tdd: TddConfig = TddConfig()

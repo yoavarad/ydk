@@ -1,0 +1,10 @@
+name: go-quality
+version: "0.1.0"
+description: Go verification set — gofmt, go vet, go test -race with coverage gate, vendor check
+tags:
+  - verification
+  - go
+  - quality
+publish_checks:
+  - name: has-check
+    description: Must include a check.py or manifest.yaml
