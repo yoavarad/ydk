@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -304,3 +305,54 @@ class ComponentTestGenerator:
             test_file_path=test_file_path,
             test_count=test_count,
         )
+
+    def generate_go_from_test(self, manifest: dict[str, Any]) -> GeneratedTest:
+        """Generate a Go table-test stub file (one failing subtest per case) from a ydk:test manifest."""
+        component_id = manifest.get("id", "unknown")
+        name_part = component_id.split(":", 2)[-1]
+        namespace, _, base = name_part.rpartition("/")
+        base, _, level_suffix = base.partition(".")
+        level = str(manifest.get("level") or level_suffix)
+        suffix = "" if level in ("", "unit") else "_" + level
+        package = re.sub(r"[^a-zA-Z0-9_]", "_", namespace.rsplit("/", 1)[-1]).lower() or "tests"
+        target = str(manifest.get("target") or "").rsplit("/", 1)[-1] or base
+        ident = re.sub(r"[^a-zA-Z0-9]", "", target)
+        func_name = "Test" + ident[:1].upper() + ident[1:] + suffix.replace("_", "").capitalize()
+        cases = [
+            {
+                "name_literal": json.dumps(str(c["name"]), ensure_ascii=False),
+                "comments": "\n".join(
+                    _go_comment(label, c.get(key))
+                    for label, key in (("Given", "given"), ("When", "when"), ("Then", "then"))
+                ),
+            }
+            for c in self._go_cases(manifest)
+        ]
+        template = self._env.from_string(self._load_template("go_test.go.j2"))
+        code = template.render(
+            build_tag="integration" if manifest.get("level") == "integration" else "",
+            package=package,
+            func_name=func_name,
+            cases=cases,
+        )
+        path = f"{namespace}/{base}{suffix}_test.go" if namespace else f"{base}{suffix}_test.go"
+        return GeneratedTest(component_id=component_id, test_code=code, test_file_path=path, test_count=len(cases))
+
+    @staticmethod
+    def _go_cases(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+        return [c for c in manifest.get("cases") or [] if isinstance(c, dict) and c.get("name")]
+
+    def missing_go_cases(self, manifest: dict[str, Any], existing_code: str) -> list[str]:
+        """Return manifest case names with no ``t.Run`` subtest in ``existing_code``."""
+        return [
+            str(c["name"])
+            for c in self._go_cases(manifest)
+            if not re.search(r"t\.Run\(\s*" + re.escape(json.dumps(str(c["name"]), ensure_ascii=False)), existing_code)
+        ]
+
+
+def _go_comment(label: str, text: object) -> str:
+    lines = str(text or "").splitlines() or [""]
+    out = [f"\t\t// {label}: {lines[0]}".rstrip()]
+    out += [f"\t\t// {ln}".rstrip() for ln in lines[1:]]
+    return "\n".join(out)

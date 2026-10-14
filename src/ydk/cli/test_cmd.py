@@ -37,10 +37,33 @@ def _load_component(component_id: str) -> tuple[dict, dict]:
     return manifest, schema
 
 
+def _generate_go_from_test(generator: ComponentTestGenerator, manifest: dict, lang: str, output: Path | None) -> None:
+    """Emit a Go test stub file for a ydk:test manifest; never overwrite an existing file."""
+    if lang != "go":
+        console.print(f"[red]ydk:test manifests support --lang go only (got {lang})[/red]")
+        raise typer.Exit(code=1)
+    result = generator.generate_go_from_test(manifest)
+    path = output or Path(result.test_file_path)
+    if path.exists():
+        missing = generator.missing_go_cases(manifest, path.read_text(encoding="utf-8", errors="replace"))
+        console.print(f"[yellow]{path} exists; not overwritten.[/yellow]")
+        if missing:
+            console.print(f"Missing cases ({len(missing)}):")
+            for name in missing:
+                console.print(f"  - {name}", markup=False)
+        else:
+            console.print("No missing cases.")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(result.test_code, encoding="utf-8", newline="\n")
+    console.print(f"[green]Generated {result.test_count} test(s) -> {path}[/green]")
+
+
 @test_app.command("generate")
 def generate(
     component_id: str = typer.Option(..., "--from", help="Component ID to generate tests for"),
     output: Path | None = typer.Option(None, "--output", "-o", help="Output file path (default: stdout)"),  # noqa: B008
+    lang: str = typer.Option("python", "--lang", help="Target language (ydk:test manifests: go)"),
 ) -> None:
     """Generate tests from a component manifest."""
     try:
@@ -51,9 +74,17 @@ def generate(
 
     generator = ComponentTestGenerator()
 
+    if lang != "python" and not component_id.startswith("ydk:test:"):
+        console.print(f"[red]--lang {lang} is only supported for ydk:test manifests[/red]")
+        raise typer.Exit(code=1)
+
     # Determine component type
     parts = component_id.split(":", 2)
     comp_type = parts[1] if len(parts) >= 2 else "unknown"
+
+    if comp_type == "test":
+        _generate_go_from_test(generator, manifest, lang, output)
+        return
 
     if comp_type == "entity":
         result = generator.generate_from_entity(manifest, schema)

@@ -176,3 +176,73 @@ class TestGenerateFromError:
         result = gen.generate_from_error(self._make_manifest(), self._make_schema())
         # 1 required-fields test + 3 field-type tests (code, message, details)
         assert result.test_count >= 4
+
+
+class TestGenerateGoFromTest:
+    def _manifest(self, level="unit", **overrides):
+        base = {
+            "id": f"ydk:test:messaging/store.{level}",
+            "level": level,
+            "target": "ydk:entity:messaging/Store",
+            "cases": [
+                {"name": "fifo-101", "given": "empty store", "when": "push a then b", "then": "pop returns a"},
+                {"name": "empty-pop", "given": "empty store", "when": "pop", "then": "error"},
+            ],
+        }
+        base.update(overrides)
+        return base
+
+    def test_one_subtest_per_case(self):
+        result = ComponentTestGenerator().generate_go_from_test(self._manifest())
+        assert result.test_count == 2
+        assert result.test_code.count("t.Run(") == 2
+        assert 't.Run("fifo-101"' in result.test_code
+        assert "func TestStore(t *testing.T) {" in result.test_code
+        assert "package messaging" in result.test_code
+        assert 't.Fatal("YDK-TODO: implement")' in result.test_code
+        assert "//go:build" not in result.test_code
+
+    def test_given_when_then_comments(self):
+        code = ComponentTestGenerator().generate_go_from_test(self._manifest()).test_code
+        assert "// Given: empty store" in code
+        assert "// When: push a then b" in code
+        assert "// Then: pop returns a" in code
+
+    def test_integration_gets_build_tag(self):
+        code = ComponentTestGenerator().generate_go_from_test(self._manifest("integration")).test_code
+        assert code.startswith("//go:build integration\n\npackage messaging")
+
+    def test_default_path(self):
+        result = ComponentTestGenerator().generate_go_from_test(self._manifest())
+        assert result.test_file_path == "messaging/store_test.go"
+
+    def test_case_name_quotes_escaped(self):
+        m = self._manifest(cases=[{"name": 'say "hi"', "given": "g", "when": "w", "then": "t"}])
+        code = ComponentTestGenerator().generate_go_from_test(m).test_code
+        assert 't.Run("say \\"hi\\""' in code
+
+    def test_multiline_comment_lines_prefixed(self):
+        m = self._manifest(cases=[{"name": "a", "given": "l1\nl2", "when": "w", "then": "t"}])
+        code = ComponentTestGenerator().generate_go_from_test(m).test_code
+        assert "// Given: l1\n\t\t// l2" in code
+
+    def test_missing_cases_in_existing_file(self):
+        existing = (
+            'package messaging\n\nfunc TestStore(t *testing.T) {\n\tt.Run("fifo-101", func(t *testing.T) {})\n}\n'
+        )
+        gen = ComponentTestGenerator()
+        assert gen.missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_lowercase_target_func_name_is_runnable_by_go_test(self):
+        m = self._manifest(target="ydk:adapter:messaging/cluster")
+        code = ComponentTestGenerator().generate_go_from_test(m).test_code
+        assert "func TestCluster(t *testing.T) {" in code
+
+    def test_integration_path_and_func_do_not_collide_with_unit(self):
+        r = ComponentTestGenerator().generate_go_from_test(self._manifest("integration"))
+        assert r.test_file_path == "messaging/store_integration_test.go"
+        assert "func TestStoreIntegration(" in r.test_code
+
+    def test_non_ascii_name_kept_literal(self):
+        m = self._manifest(cases=[{"name": "ok-😀", "given": "g", "when": "w", "then": "t"}])
+        assert 't.Run("ok-😀"' in ComponentTestGenerator().generate_go_from_test(m).test_code

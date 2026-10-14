@@ -1,0 +1,12 @@
+{% if build_tag %}//go:build {{ build_tag }}
+
+{% endif %}package {{ package }}
+
+import "testing"
+
+func {{ func_name }}(t *testing.T) {
+{% for case in cases %}	t.Run({{ case.name_literal }}, func(t *testing.T) {
+{{ case.comments }}
+		t.Fatal("YDK-TODO: implement")
+	})
+{% endfor %}}
