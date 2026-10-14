@@ -494,6 +494,108 @@ class TestTddStateMachine:
         assert "BLOCKED" in msg
 
 
+GO_TDD = {
+    "source_globs": ["**/*.go"],
+    "test_globs": ["**/*_test.go"],
+    "exempt_globs": [],
+    "test_for": "same-dir-suffix",
+    "test_suffix": "_test.go",
+}
+
+_RAN = {"phase": "red", "test_files_written": ["x_test.go"], "test_run_after_write": True, "active_task": None}
+
+
+def _guard(tmp_path: Path, file_path: str, tdd: dict | None, state: dict | None = None) -> tuple[bool, str]:
+    _install_tdd_guard(tmp_path)
+    if state is not None:
+        _write_state(tmp_path, state)
+    v = Verifier(project_root=tmp_path, use_cache=False)
+    context: dict = {
+        "project_root": str(tmp_path),
+        "trigger": "guard:edit",
+        "file_path": file_path,
+        "tool_name": "Edit",
+    }
+    if tdd is not None:
+        context["config"] = {"tdd": tdd}
+    return v.run_guard("guard:edit", context)
+
+
+class TestTddGuardConfigurable:
+    """Table-driven path/config combinations for configurable globs."""
+
+    def test_default_config_matches_legacy(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "internal/store/store.go", None)
+        assert passed is True  # .go is not source under legacy rules
+
+    def test_go_source_blocked_in_red_without_same_dir_test(self, tmp_path: Path) -> None:
+        passed, msg = _guard(tmp_path, "internal/store/store.go", GO_TDD, _RAN)
+        assert passed is False
+        assert "same directory" in msg
+
+    def test_go_source_allowed_with_counterpart_test(self, tmp_path: Path) -> None:
+        (tmp_path / "internal/store").mkdir(parents=True)
+        (tmp_path / "internal/store/store_test.go").write_text("package store")
+        passed, _ = _guard(tmp_path, "internal/store/store.go", GO_TDD, _RAN)
+        assert passed is True
+
+    def test_go_source_allowed_with_any_test_in_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "internal/store").mkdir(parents=True)
+        (tmp_path / "internal/store/other_test.go").write_text("package store")
+        passed, _ = _guard(tmp_path, "internal/store/store.go", GO_TDD, _RAN)
+        assert passed is True
+
+    def test_go_source_blocked_when_test_exists_but_not_run(self, tmp_path: Path) -> None:
+        (tmp_path / "internal/store").mkdir(parents=True)
+        (tmp_path / "internal/store/store_test.go").write_text("package store")
+        state = {"phase": "red", "test_files_written": ["x_test.go"], "test_run_after_write": False}
+        passed, _ = _guard(tmp_path, "internal/store/store.go", GO_TDD, state)
+        assert passed is False
+
+    def test_go_test_file_always_allowed_and_recorded(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "internal/store/store_test.go", GO_TDD)
+        assert passed is True
+        assert "internal/store/store_test.go" in _read_state(tmp_path)["test_files_written"]
+
+    def test_test_file_under_src_not_source(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "src/store_test.go", GO_TDD)
+        assert passed is True
+
+    def test_vendor_never_guarded(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "vendor/github.com/x/y.go", GO_TDD)
+        assert passed is True
+
+    def test_vendor_exempt_even_with_custom_globs(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "vendor/lib/x.py", {"source_globs": ["**/*.py"]})
+        assert passed is True
+
+    def test_vendor_exempt_without_tdd_config(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "vendor/lib/x.py", None)
+        assert passed is True
+
+    def test_nested_vendor_exempt_without_tdd_config(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "pkg/vendor/lib/x.py", {})
+        assert passed is True
+
+    def test_exempt_globs(self, tmp_path: Path) -> None:
+        tdd = {**GO_TDD, "exempt_globs": ["internal/gen/**"]}
+        passed, _ = _guard(tmp_path, "internal/gen/api.go", tdd)
+        assert passed is True
+
+    def test_go_green_phase_allows(self, tmp_path: Path) -> None:
+        state = {"phase": "green", "test_files_written": ["a_test.go"], "test_run_after_write": True}
+        passed, _ = _guard(tmp_path, "internal/store/store.go", GO_TDD, state)
+        assert passed is True
+
+    def test_custom_source_globs_guard_match(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "lib/a/b.py", {"source_globs": ["lib/**/*.py"]})
+        assert passed is False
+
+    def test_custom_source_globs_non_match_allowed(self, tmp_path: Path) -> None:
+        passed, _ = _guard(tmp_path, "other/b.py", {"source_globs": ["lib/**/*.py"]})
+        assert passed is True
+
+
 class TestTddGuardCmdConfigurableCommands:
     """tdd.test_commands config (passed via context) controls which commands advance the phase."""
 
