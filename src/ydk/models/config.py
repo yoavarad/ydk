@@ -283,6 +283,8 @@ class GuardsConfig(BaseModel):
 
     code_dirs: list[str] = []
     suppression_patterns: list[str] = []
+
+
 class TestingConfig(BaseModel):
     """Test discovery settings for ``ydk test coverage``."""
 
