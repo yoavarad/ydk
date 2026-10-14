@@ -1,0 +1,25 @@
+package {{ pkg }}
+{% if imports %}
+
+import (
+{% for imp in imports %}
+	"{{ imp }}"
+{% endfor %}
+)
+{% endif %}
+{% for c in contracts %}
+
+// New{{ c.name }} returns the default {{ c.name }} implementation (business logic TODO).
+func New{{ c.name }}() {{ c.name }} {
+	return &{{ c.stub }}{}
+}
+
+type {{ c.stub }} struct{}
+{% for m in c.methods %}
+
+// {{ m.name }} implements {{ c.name }}.
+func (*{{ c.stub }}) {{ m.name }}({{ m.params }}){% if m.result %} {{ m.result }}{% endif %} {
+	{{ todo }} // {{ c.id }}.{{ m.name }}: {{ m.description }}
+}
+{% endfor %}
+{% endfor %}

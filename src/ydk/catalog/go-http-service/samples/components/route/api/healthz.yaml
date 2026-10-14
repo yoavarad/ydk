@@ -1,0 +1,18 @@
+$schema: ydk:schema:route
+id: ydk:route:api/healthz
+description: |
+  Liveness endpoint (ydk:crosscut:system/health-checks). Returns 200 whenever the HTTP server
+  goroutine is serving; does not check Kafka. Used by the Kubernetes liveness probe. Not logged
+  at INFO.
+method: GET
+path: /healthz
+request: {}
+responses:
+  "200":
+    description: "Process alive"
+    shape:
+      body: "{\"status\":\"ok\"}"
+  "405":
+    description: "Method other than GET"
+    ref: ydk:error:api/method-not-allowed
+auth: none

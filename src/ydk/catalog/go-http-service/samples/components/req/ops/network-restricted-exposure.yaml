@@ -1,0 +1,17 @@
+$schema: ydk:schema:req
+id: ydk:req:ops/network-restricted-exposure
+description: "No application authentication; exposure limited by deployment (ADR-014)."
+type: policy
+priority: high
+rule: |
+  The app has no login, tokens or user identities. The chart exposes the Service only through
+  an internal OpenShift Route with edge TLS (openshift.enabled=true) or an Ingress (otherwise),
+  and installs a NetworkPolicy that allows ingress to the pod on port 8080 only from the
+  namespace selected by networkPolicy.ingressNamespaceSelector (router or ingress controller).
+  Egress is not restricted.
+failure_behavior: "helm lint / e2e fail if the NetworkPolicy is missing; a pod in another namespace cannot reach port 8080."
+related_components:
+  - ydk:crosscut:ops/openshift-conventions
+acceptance_criteria:
+  - "Rendered chart contains a NetworkPolicy with one ingress rule from the configured namespace selector"
+  - "e2e: request from a pod in an unlabeled namespace times out; request through the Ingress succeeds"

@@ -1,0 +1,31 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+)
+
+// Error messages from ydk:error manifests. Every non-2xx body is {"error": "<message>"}{% if error_format %} ({{ error_format }}){% endif %}.
+const (
+{% for m in messages %}
+	{{ m.name }} = {{ m.message }} // {{ m.id }} ({{ m.status }})
+{% endfor %}
+)
+
+// writeJSON writes v as a JSON body with the given status.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeError is the single error helper every handler uses.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// renderMessage fills ${name} placeholders: renderMessage(tmpl, "${method}", r.Method).
+func renderMessage(tmpl string, pairs ...string) string {
+	return strings.NewReplacer(pairs...).Replace(tmpl)
+}

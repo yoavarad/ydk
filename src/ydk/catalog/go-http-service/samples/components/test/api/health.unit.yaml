@@ -1,0 +1,35 @@
+$schema: ydk:schema:test
+id: ydk:test:api/health.unit
+description: "Liveness, readiness and shutdown behaviour (ydk:crosscut:system/health-checks, ydk:crosscut:system/graceful-shutdown)."
+level: unit
+target: ydk:route:api/readyz
+cases:
+  - name: healthz
+    description: "Liveness"
+    given: "Server running"
+    when: "GET /healthz"
+    then: "200 {status:'ok'}"
+  - name: ready
+    description: "Readiness independent of Kafka (ADR-016)"
+    given: "Fake Publisher whose Publish always returns error"
+    when: "GET /readyz"
+    then: "200 {status:'ok'}"
+  - name: shutting-down
+    description: "ydk:error:api/not-ready after SIGTERM"
+    given: "Shutdown started"
+    when: "GET /readyz"
+    then: "503 {error:'shutting down'}"
+  - name: in-flight-finishes
+    description: "ydk:nfr:system/shutdown-time"
+    given: "Fake Publish blocks 2 s; one send in flight"
+    when: "Shutdown triggered"
+    then: "In-flight send gets 202; shutdown returns in < 10 s"
+  - name: not-found
+    description: "ydk:error:api/not-found"
+    given: "Router"
+    when: "GET /nope"
+    then: "404 {error:'not found'}"
+stubs:
+  - "Publisher (fake)"
+never_mock:
+  - "net/http server and router"

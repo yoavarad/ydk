@@ -1,0 +1,18 @@
+$schema: ydk:schema:req
+id: ydk:req:ui/keep-text-on-error
+description: "A failed send never loses what the user typed."
+type: business-rule
+priority: high
+rule: |
+  On a non-202 response or network failure the textarea keeps its content. Status line:
+  503 -> 'Kafka: disconnected' (ADR-016); other JSON error -> 'error: ' + the error field;
+  non-JSON body -> 'error: HTTP <status>'; no response -> 'error: network error'.
+  On 202 the textarea is cleared, the counter resets to 0/1000 and the status line shows 'sent'.
+failure_behavior: "Defect; covered by manual check and e2e of the API status codes."
+related_components:
+  - ydk:component:ui/send-form
+  - ydk:error:api/kafka-unavailable
+  - ydk:error:api/validation-failed
+acceptance_criteria:
+  - "Kafka down: Send shows 'Kafka: disconnected' and text remains"
+  - "Success: textarea empty, status 'sent'"

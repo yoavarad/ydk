@@ -1,0 +1,17 @@
+$schema: ydk:schema:req
+id: ydk:req:system/dependency-policy
+description: "Third-party code and air-gapped build rules (ADR-002, ADR-015)."
+type: policy
+priority: critical
+rule: |
+  The only third-party Go module is github.com/twmb/franz-go v1.22.1 (including its
+  pkg/sasl/scram package). vendor/ is committed; builds use -mod=vendor and need no network.
+  The UI uses no external scripts, fonts or stylesheets. Adding any dependency or tool needs a
+  new ADR.
+failure_behavior: "Lint stage fails when go.mod lists another module or vendor/ is out of sync (go mod vendor diff check)."
+related_components:
+  - ydk:route:api/index
+  - ydk:ext:kafka/cluster
+acceptance_criteria:
+  - "go.mod require block lists only franz-go modules (and their own vendored transitive deps)"
+  - "Image build succeeds with network disabled"

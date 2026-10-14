@@ -1,0 +1,24 @@
+$schema: ydk:schema:component
+id: ydk:component:ui/send-form
+description: |
+  Left column of ydk:page:ui/main: username input (maxlength 128, value persisted in
+  localStorage key 'clopy-paste.user', restored on load), textarea (maxlength 1000, about half
+  the viewport height), counter 'n/1000' updated on input (counts text.length as the browser
+  does; server is authority), Send button, status line.
+  Send: disabled while a request is in flight; POSTs {user, text} as JSON. On 202: clear
+  textarea, counter 0/1000, status 'sent'. On error: keep textarea; status 'Kafka: disconnected'
+  on 503 (only Kafka-state signal, ADR-016), 'error: <error field of JSON body>' on other
+  errors, 'error: HTTP <status>' for a non-JSON body, or 'error: network error'
+  (ydk:req:ui/keep-text-on-error). Send is a no-op with status
+  'error: user and text required' when either field is empty.
+type: form
+framework: agnostic
+props:
+  instanceName:
+    type: string
+    required: true
+    description: "Server-inserted label shown as [<instanceName>]"
+data_source: ydk:route:api/send-message
+pagination: none
+emits:
+  - "user-changed (on every input event of the username field; triggers immediate refresh of the received list)"

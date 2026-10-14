@@ -1,0 +1,11 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/availability
+description: "Availability model: one replica, no SLA. Kubernetes restarts the container on crash or failed liveness probe; received history is lost on restart (ADR-004)."
+category: reliability
+target: "No uptime SLA. 1 replica. Container restarted within liveness failureThreshold 3 x periodSeconds 10 = 30 s of a hung process; restarted immediately on exit."
+measurement: "Pod restartCount and Ready condition."
+test_method: "e2e: kill the process (kubectl delete pod); new pod Ready <= 10 s after start; messages sent during the downtime are displayed after restart (offset resume)."
+monitoring: "Platform pod restart alerts; not owned by this project."
+applies_to:
+  - ydk:route:api/healthz
+  - ydk:req:ops/single-replica

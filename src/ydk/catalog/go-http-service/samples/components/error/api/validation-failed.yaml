@@ -1,0 +1,20 @@
+$schema: ydk:schema:error
+id: ydk:error:api/validation-failed
+description: "Input violates a length limit or a required value is missing. Lengths are counted in Unicode code points on the server; the server is the only authority (ADR-006). No truncation, nothing published."
+status_code: 400
+code: VALIDATION_FAILED
+detail_template: "${field} must be 1..${max} characters"
+response_shape:
+  error:
+    type: string
+    description: "One of the exact messages listed in triggers"
+triggers:
+  - "send: user missing, empty or over 128 code points -> 'user must be 1..128 characters'"
+  - "send: text missing, empty or over 1000 code points -> 'text must be 1..1000 characters'"
+  - "send: body over 16384 bytes -> 'request body too large'"
+  - "get: user query parameter missing, empty or over 128 code points -> 'user must be 1..128 characters'"
+related:
+  - ydk:route:api/send-message
+  - ydk:route:api/get-messages
+  - ydk:req:messaging/user-length
+  - ydk:req:messaging/text-length

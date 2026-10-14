@@ -1,0 +1,87 @@
+// Command {{ app }} is the HTTP service generated from YDK component manifests.
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"{{ module }}/internal/config"
+	"{{ module }}/internal/httpapi"
+{% for imp in domain_imports %}
+	"{{ imp }}"
+{% endfor %}
+)
+
+const (
+	listenAddr = ":{{ port }}"
+	// shutdownTimeout bounds graceful shutdown{% if shutdown_source %} ({{ shutdown_source }}){% endif %}.
+	shutdownTimeout = {{ shutdown_seconds }} * time.Second
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLevel(os.Getenv("LOG_LEVEL"))}))
+	slog.SetDefault(logger)
+	if err := run(logger); err != nil {
+		logger.Error("exit", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(logger *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	_ = cfg // pass cfg to adapters when wiring them in place of the default stubs below
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	api := httpapi.NewServer(httpapi.Deps{
+		Logger: logger,
+{% for d in deps %}
+		{{ d.field }}: {{ d.ctor }}(),
+{% endfor %}
+	})
+	srv := &http.Server{Addr: listenAddr, Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second}
+
+	serveErr := make(chan error, 1)
+	go func() {
+		logger.Info("listening", "addr", listenAddr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- err
+		}
+		close(serveErr)
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+	}
+
+	logger.Info("shutdown started")
+	api.SetReady(false)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	logger.Info("shutdown complete")
+	return nil
+}
+
+// parseLevel maps DEBUG/INFO/WARN/ERROR to a slog level, defaulting to INFO.
+func parseLevel(s string) slog.Level {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(s)); err != nil {
+		return slog.LevelInfo
+	}
+	return level
+}

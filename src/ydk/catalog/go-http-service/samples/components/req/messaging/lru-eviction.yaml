@@ -1,0 +1,19 @@
+$schema: ydk:schema:req
+id: ydk:req:messaging/lru-eviction
+description: "The store holds at most 100 usernames; the least-recently-used username is evicted when a new one must be added (ADR-013)."
+type: constraint
+priority: high
+rule: |
+  When a valid record arrives for a username not in the store and the store already holds 100
+  usernames, the username at the back of the LRU list is removed together with all its
+  messages, then the new username is inserted at the front. Eviction is triggered only by
+  inserting a new username from a received record.
+failure_behavior: "No error path; the evicted user's history is gone and a later GET for it returns [] (ydk:req:messaging/unknown-user-not-created)."
+related_components:
+  - ydk:entity:messaging/MessageStore
+  - ydk:contract:messaging/Store
+  - ydk:req:messaging/lru-touch
+acceptance_criteria:
+  - "Receive for u001..u100, then for u101: GET u001 returns [], GET u002 returns its message"
+  - "Receive for u001..u100, GET u001, receive u101: u002 is evicted, u001 kept"
+  - "Store never holds more than 100 usernames"

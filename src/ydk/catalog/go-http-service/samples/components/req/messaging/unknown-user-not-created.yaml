@@ -1,0 +1,13 @@
+$schema: ydk:schema:req
+id: ydk:req:messaging/unknown-user-not-created
+description: "Lookups never create store entries (ADR-013)."
+type: business-rule
+priority: high
+rule: "GET for a username not in the store returns 200 with an empty JSON array and does not insert, evict or reorder anything."
+failure_behavior: "No error path."
+related_components:
+  - ydk:route:api/get-messages
+  - ydk:contract:messaging/Store
+acceptance_criteria:
+  - "Store with 100 users; GET for 50 unknown names; all 100 original users still present"
+  - "GET unknown returns body [] (not null)"

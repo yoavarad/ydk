@@ -58,8 +58,20 @@ class TodoManager:
         component_refs: list[str] | None = None,
         description: str = "",
     ) -> str:
-        """Register a new TODO from ignition. Returns the TODO ID."""
+        """Register a TODO from ignition. Returns the TODO ID.
+
+        An open or in-progress TODO already registered at the same file and line is reused,
+        so re-running ignition never duplicates entries.
+        """
         registry = self._load()
+        for existing in registry.todos.values():
+            if existing.file == file and existing.line == line and existing.status != TodoStatus.DONE:
+                # Regenerated code may put a different method at this line; keep details current.
+                existing.method = method
+                existing.description = description
+                existing.component_refs = component_refs or []
+                self._save(registry)
+                return existing.id
         todo_id = f"YDK-TODO-{registry.next_id:03d}"
         registry.todos[todo_id] = TodoItem(
             id=todo_id,

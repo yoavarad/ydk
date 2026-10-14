@@ -1,0 +1,21 @@
+$schema: ydk:schema:route
+id: ydk:route:api/index
+description: |
+  Serves the single page ydk:page:ui/main; the page is one embedded index.html (go:embed, no
+  build step) rendered with html/template so the server inserts INSTANCE_NAME (HTML-escaped)
+  into the title-bar instance label. Exact path match only; any other unknown path returns 404.
+method: GET
+path: /
+request: {}
+responses:
+  "200":
+    description: "Page HTML; Content-Type text/html; charset=utf-8; Cache-Control no-store"
+    shape:
+      body: "text/html document"
+  "404":
+    description: "Path is not exactly / and matches no other route"
+    ref: ydk:error:api/not-found
+  "405":
+    description: "Method other than GET or HEAD on /"
+    ref: ydk:error:api/method-not-allowed
+auth: none

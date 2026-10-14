@@ -1,0 +1,61 @@
+// Package kafka adapts {{ ext_ids }} to domain contracts using franz-go.
+package kafka
+
+import (
+{% for imp in std_imports %}
+	"{{ imp }}"
+{% endfor %}
+{% if std_imports %}
+
+{% endif %}
+	"github.com/twmb/franz-go/pkg/kgo"
+{% if domain_imports %}
+
+{% for imp in domain_imports %}
+	"{{ imp }}"
+{% endfor %}
+{% endif %}
+)
+
+// NewClient creates a franz-go client for the seed brokers; pass extra kgo options for TLS/SASL.
+func NewClient(seeds []string, opts ...kgo.Opt) (*kgo.Client, error) {
+	return kgo.NewClient(append([]kgo.Opt{kgo.SeedBrokers(seeds...)}, opts...)...)
+}
+{% for c in contracts %}
+
+// {{ c.name }} implements {{ c.qualified }} ({{ c.id }}) on a franz-go client.
+type {{ c.name }} struct {
+	client *kgo.Client
+}
+
+var _ {{ c.qualified }} = (*{{ c.name }})(nil)
+
+// New{{ c.name }} wraps an existing client.
+func New{{ c.name }}(client *kgo.Client) *{{ c.name }} {
+	return &{{ c.name }}{client: client}
+}
+{% for m in c.methods %}
+
+// {{ m.name }}: {{ m.description }}
+func (recv *{{ c.name }}) {{ m.name }}({{ m.params }}){% if m.result %} {{ m.result }}{% endif %} {
+	{{ todo }} // {{ c.id }}.{{ m.name }} via franz-go
+}
+{% endfor %}
+{% endfor %}
+{% if consume %}
+
+// Consumer polls the input topic ({{ consume.ext_id }} endpoint {{ consume.name }}).
+type Consumer struct {
+	client *kgo.Client
+}
+
+// NewConsumer wraps an existing client configured with ConsumeTopics/ConsumerGroup.
+func NewConsumer(client *kgo.Client) *Consumer {
+	return &Consumer{client: client}
+}
+
+// Run polls until ctx is done: {{ consume.description }}
+func (recv *Consumer) Run(ctx context.Context) error {
+	{{ todo }} // {{ consume.ext_id }}.{{ consume.name }}: poll, validate, hand records to the domain
+}
+{% endif %}

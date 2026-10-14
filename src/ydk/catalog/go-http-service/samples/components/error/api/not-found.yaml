@@ -1,0 +1,15 @@
+$schema: ydk:schema:error
+id: ydk:error:api/not-found
+description: "Request path matches no route. Returned as JSON, not the Go default plain-text body."
+status_code: 404
+code: NOT_FOUND
+detail_template: "not found"
+response_shape:
+  error:
+    type: string
+    description: "Fixed message"
+triggers:
+  - "Any path other than the five defined routes"
+related:
+  - ydk:route:api/index
+  - ydk:crosscut:system/error-format

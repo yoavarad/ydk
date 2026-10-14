@@ -1,0 +1,21 @@
+$schema: ydk:schema:crosscut
+id: ydk:crosscut:system/error-format
+description: "One JSON error body for every non-2xx HTTP response."
+specification: |
+  Every 4xx/5xx response has Content-Type application/json; charset=utf-8 and body
+  {"error":"<message>"} with exactly one field. Status codes used: 400, 404, 405, 500, 503;
+  no others. The machine-readable code in each error manifest is used in logs and tests, not
+  in the body. Messages never contain message text, credentials or stack traces.
+  Success bodies are JSON too (202 {}, 200 arrays/objects) except the HTML page.
+applies_to: "All routes"
+implementation_notes:
+  - "One helper writeError(w, status, msg) in internal/httpapi used by every handler"
+  - "Wrap the ServeMux so Go's default plain-text 404/405 bodies are replaced by this format; keep the Allow header on 405"
+related:
+  - ydk:error:api/invalid-json
+  - ydk:error:api/validation-failed
+  - ydk:error:api/not-found
+  - ydk:error:api/method-not-allowed
+  - ydk:error:api/internal-error
+  - ydk:error:api/kafka-unavailable
+  - ydk:error:api/not-ready

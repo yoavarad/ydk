@@ -1,0 +1,16 @@
+$schema: ydk:schema:contract
+id: ydk:contract:messaging/Censor
+description: |
+  Pure function built from CENSOR_CHARS that replaces every code point in the denylist with '_'
+  (ADR-005). Applied server-side to username and text before publishing, and to the query
+  username before store lookup.
+methods:
+  Apply:
+    description: "Return s with each denied code point replaced by '_'; code-point length unchanged; all other code points unchanged"
+    params:
+      s:
+        type: string
+        description: "Input (valid UTF-8 after JSON or query decoding)"
+    returns:
+      type: string
+      description: "Censored string"

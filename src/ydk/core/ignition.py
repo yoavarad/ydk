@@ -95,7 +95,7 @@ class IgnitionEngine:
                 full = self._root / gf.path
                 full.parent.mkdir(parents=True, exist_ok=True)
                 content = gf.content
-                full.write_text(content)
+                full.write_text(content, encoding="utf-8")
                 state.update(gf.path, content)
                 written_paths.append(full)
             state.save()
@@ -108,6 +108,15 @@ class IgnitionEngine:
         if not dry_run:
             post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings)
             errors.extend(post_errors)
+            # Post-steps rewrite files in place (gofmt -w, ruff format, go get/tidy on go.mod); record
+            # the rewritten content so a re-ignite does not mistake it for a developer edit.
+            for gf in to_write:
+                full = self._root / gf.path
+                if full.exists():
+                    on_disk = full.read_text(encoding="utf-8")
+                    if on_disk != gf.content:
+                        state.record_formatted(gf.path, on_disk)
+            state.save()
 
         duration = time.monotonic() - start
 
@@ -262,7 +271,7 @@ class IgnitionEngine:
             component_type = component_type_dir.name
             components: list[dict] = []
             for yaml_file in sorted(component_type_dir.rglob("*.yaml")):
-                data = yaml.safe_load(yaml_file.read_text())
+                data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     components.append(data)
             if components:
@@ -410,7 +419,7 @@ class IgnitionEngine:
                 fd, tmp_str = tempfile.mkstemp(suffix=".yaml", prefix=f"ydk_{comp_type}_")
                 os.close(fd)
                 tmp = Path(tmp_str)
-                tmp.write_text(yaml.dump(components, default_flow_style=False))
+                tmp.write_text(yaml.dump(components, default_flow_style=False, sort_keys=False))
                 temp_files.append(tmp)
                 env_key = f"YDK_COMPONENTS_{comp_type.upper()}"
                 env_vars[env_key] = str(tmp)
@@ -421,7 +430,7 @@ class IgnitionEngine:
                     fd2, tmp_str2 = tempfile.mkstemp(suffix=".yaml", prefix=f"ydk_{comp_type}_singular_")
                     os.close(fd2)
                     tmp2 = Path(tmp_str2)
-                    tmp2.write_text(yaml.dump(components[0], default_flow_style=False))
+                    tmp2.write_text(yaml.dump(components[0], default_flow_style=False, sort_keys=False))
                     temp_files.append(tmp2)
                     env_vars[singular_key] = str(tmp2)
 
@@ -507,7 +516,7 @@ class IgnitionEngine:
         from ydk.core.todo_manager import TodoManager, markers_for
 
         todo_mgr = TodoManager(self._root)
-        count = 0
+        existing = {t.id for t in todo_mgr.list_todos()}
         for gf in files:
             found = markers_for(gf.path)
             if found and not gf.path.endswith(".py"):
@@ -524,7 +533,6 @@ class IgnitionEngine:
                             method="<unknown>",
                             description=comment,
                         )
-                        count += 1
                 continue
             if not gf.path.endswith(".py"):
                 continue
@@ -539,7 +547,6 @@ class IgnitionEngine:
                         method=finding["method_name"],
                         description=finding.get("comment", ""),
                     )
-                    count += 1
             else:
                 # Fallback: scan content directly with AST for method context
                 lines = gf.content.splitlines()
@@ -581,8 +588,8 @@ class IgnitionEngine:
                             method=method,
                             description=comment,
                         )
-                        count += 1
-        return count
+        # register() reuses a TODO already open at the same location; count only new ones.
+        return len({t.id for t in todo_mgr.list_todos()} - existing)
 
     @staticmethod
     def _extract_implement_comment(lines: list[str], raise_line: int) -> str:

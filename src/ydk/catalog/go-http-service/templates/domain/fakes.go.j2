@@ -1,0 +1,38 @@
+package {{ pkg }}
+{% if imports %}
+
+import (
+{% for imp in imports %}
+	"{{ imp }}"
+{% endfor %}
+)
+{% endif %}
+{% for c in contracts %}
+
+// Fake{{ c.name }} is a configurable {{ c.name }} for unit tests; unset funcs return zero values.
+type Fake{{ c.name }} struct {
+{% for m in c.methods %}
+	{{ m.name }}Fn func({{ m.param_types }}){% if m.result %} {{ m.result }}{% endif %}
+
+{% endfor %}
+}
+
+var _ {{ c.name }} = (*Fake{{ c.name }})(nil)
+{% for m in c.methods %}
+
+// {{ m.name }} calls {{ m.name }}Fn when set.
+func (recv *Fake{{ c.name }}) {{ m.name }}({{ m.params }}){% if m.result %} {{ m.result }}{% endif %} {
+{% if m.result %}
+	if recv.{{ m.name }}Fn != nil {
+		return recv.{{ m.name }}Fn({{ m.call_args }})
+	}
+	var out {{ m.result }}
+	return out
+{% else %}
+	if recv.{{ m.name }}Fn != nil {
+		recv.{{ m.name }}Fn({{ m.call_args }})
+	}
+{% endif %}
+}
+{% endfor %}
+{% endfor %}

@@ -1,0 +1,11 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/send-latency
+description: "Server-side time of a successful send, from request received to 202 written, including the Kafka ack with acks=all."
+category: performance
+target: "P95 <= 200 ms, P99 <= 500 ms at 50 sends/s, 1000-code-point text, single-node Strimzi in kind"
+measurement: "Wall-clock duration per POST measured client-side by the Go integration test (time.Since around the HTTP call against the running server wired to real Kafka)."
+test_method: "Integration test (build tag integration) against Strimzi in kind: 500 sends, 10 concurrent goroutines, compute P95/P99 from sorted durations, fail when above target."
+monitoring: "None (no /metrics, out of scope). Send log line carries duration_ms for ad-hoc analysis."
+applies_to:
+  - ydk:route:api/send-message
+  - ydk:contract:messaging/Publisher

@@ -1,0 +1,19 @@
+$schema: ydk:schema:ext
+id: ydk:ext:kafka/external-pipeline
+description: |
+  Pipeline owned by another team that moves records from one instance's output topic to the
+  other instance's input topic (ADR-001). This system never calls it; it only depends on the
+  pipeline copying records with key and value unchanged. Locally it is emulated by topic
+  wiring: release A output topic a.out is release B input topic, and b.out is A's input
+  topic. No forwarder code exists.
+base_url: "none (no direct calls; interaction is only through Kafka topics)"
+auth: none
+endpoints: {}
+rate_limits:
+  pipeline: "Unknown and not controlled; projected load equals ydk:nfr:system/throughput at most"
+error_handling:
+  pipeline_down: "Sends still return 202 (record acked by our Kafka); messages appear on the other side when the pipeline resumes; no detection in this system"
+  key_not_preserved: "Per-user ordering not guaranteed; display order follows consumption order"
+  record_altered: "Invalid result is dropped per ydk:error:messaging/bad-incoming-record"
+retry_strategy:
+  owner: "Pipeline team; this system performs no retries toward the pipeline"

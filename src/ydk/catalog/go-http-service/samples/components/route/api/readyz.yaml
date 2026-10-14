@@ -1,0 +1,23 @@
+$schema: ydk:schema:route
+id: ydk:route:api/readyz
+description: |
+  Readiness endpoint (ydk:crosscut:system/health-checks, ADR-016). Returns 200 once the HTTP
+  server is listening; the process only reaches that point after configuration validated.
+  Does not depend on Kafka. Returns 503 once SIGTERM is received
+  (ydk:crosscut:system/graceful-shutdown). Used by the Kubernetes readiness probe. Not logged
+  at INFO.
+method: GET
+path: /readyz
+request: {}
+responses:
+  "200":
+    description: "Server up, config valid, not shutting down"
+    shape:
+      body: "{\"status\":\"ok\"}"
+  "405":
+    description: "Method other than GET"
+    ref: ydk:error:api/method-not-allowed
+  "503":
+    description: "Shutdown in progress"
+    ref: ydk:error:api/not-ready
+auth: none

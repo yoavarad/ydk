@@ -1,0 +1,16 @@
+$schema: ydk:schema:req
+id: ydk:req:messaging/lru-touch
+description: "Define what counts as 'use' for LRU ordering (ADR-013)."
+type: business-rule
+priority: high
+rule: |
+  A username moves to most-recently-used when (1) a valid record for it is received, or
+  (2) a GET for it finds an existing entry. Sending a message never touches the local store.
+  The GET side effect on LRU order is intentional.
+failure_behavior: "No error path."
+related_components:
+  - ydk:contract:messaging/Store
+  - ydk:route:api/get-messages
+acceptance_criteria:
+  - "A user polled by the UI every 2 s is not evicted while fewer than 100 other users are received between polls"
+  - "Sending as user X does not create or touch X in the local store"

@@ -1,0 +1,10 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/cpu
+description: "CPU resources of the container."
+category: scalability
+target: "CPU request 50m, limit 500m; meets ydk:nfr:system/throughput and ydk:nfr:system/send-latency within the limit"
+measurement: "Chart default resources; throughput and latency tests run with these limits in kind."
+test_method: "helm template asserts resources; integration/e2e latency and throughput tests run against the pod with these limits."
+monitoring: "Platform CPU throttling metrics; no project-owned alert."
+applies_to:
+  - ydk:route:api/send-message

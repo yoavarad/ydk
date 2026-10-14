@@ -1,0 +1,25 @@
+$schema: ydk:schema:contract
+id: ydk:contract:messaging/Publisher
+description: |
+  Go interface (port) used by the send handler to publish a censored message. Implemented by
+  the Kafka adapter on franz-go. Faked in handler unit tests; this is the only faked boundary.
+  Handlers never import the Kafka adapter or franz-go. Kafka state reaches the UI only through
+  the result of Publish (ADR-016).
+methods:
+  Publish:
+    description: "Produce one ydk:event:messaging/message-record to the output topic (acks=all, idempotent) and block until the broker ack or ctx expiry"
+    params:
+      ctx:
+        type: context.Context
+        description: "Request context with a 5 s deadline set by the send handler (ADR-017)"
+      user:
+        type: string
+        description: "Censored, validated username"
+      text:
+        type: string
+        description: "Censored, validated text"
+    returns:
+      type: error
+      description: "nil after broker ack; non-nil on deadline, broker error or connection failure"
+    raises:
+      - ydk:error:api/kafka-unavailable

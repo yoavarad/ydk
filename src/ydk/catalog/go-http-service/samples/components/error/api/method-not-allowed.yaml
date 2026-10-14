@@ -1,0 +1,18 @@
+$schema: ydk:schema:error
+id: ydk:error:api/method-not-allowed
+description: "Path exists but not for this HTTP method. Response carries an Allow header listing permitted methods."
+status_code: 405
+code: METHOD_NOT_ALLOWED
+detail_template: "method ${method} not allowed"
+response_shape:
+  error:
+    type: string
+    description: "Message naming the rejected method"
+triggers:
+  - "e.g. PUT or DELETE on the messages path, POST on /, /healthz or /readyz"
+related:
+  - ydk:route:api/index
+  - ydk:route:api/send-message
+  - ydk:route:api/get-messages
+  - ydk:route:api/healthz
+  - ydk:route:api/readyz

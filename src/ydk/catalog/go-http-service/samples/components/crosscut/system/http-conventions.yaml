@@ -1,0 +1,17 @@
+$schema: ydk:schema:crosscut
+id: ydk:crosscut:system/http-conventions
+description: "Uniform HTTP behaviour: port, timestamps, encoding, limits, CORS, pagination."
+specification: |
+  - Listen on :8080, plain HTTP inside the pod (TLS terminates at the Route/Ingress).
+  - Timestamps in API responses: RFC3339 UTC with seconds precision (e.g. 2026-10-13T14:02:31Z).
+    The UI converts to local time HH:MM:SS.
+  - Text lengths are Unicode code points everywhere on the server.
+  - JSON request bodies limited to 16384 bytes (http.MaxBytesReader); unknown fields ignored.
+  - No CORS headers (same origin). No pagination (lists are capped at 100).
+  - No IDs are generated; usernames are the only keys.
+  - Server timeouts: ReadHeaderTimeout 5 s, ReadTimeout 10 s, WriteTimeout 10 s, IdleTimeout 60 s.
+applies_to: "All routes"
+related:
+  - ydk:route:api/send-message
+  - ydk:route:api/get-messages
+  - ydk:config:ops/app

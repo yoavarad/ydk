@@ -1,0 +1,57 @@
+name: go-http-service
+version: 0.1.0
+description: Stdlib-first Go net/http service skeleton (slog, graceful shutdown, JSON errors, franz-go Kafka adapter) generated from YDK component manifests
+tags: [ignition-pack, go, net-http, stdlib, kafka]
+
+inputs:
+  route:
+    schema_ref: ydk-core-schemas/route
+    version: ">=1.0.0"
+    required: true
+  contract:
+    schema_ref: ydk-core-schemas/contract
+    version: ">=1.0.0"
+    required: false
+  entity:
+    schema_ref: ydk-core-schemas/entity
+    version: ">=1.0.0"
+    required: false
+  error:
+    schema_ref: ydk-core-schemas/error
+    version: ">=1.0.0"
+    required: false
+  crosscut:
+    schema_ref: ydk-core-schemas/crosscut
+    version: ">=1.0.0"
+    required: false
+  config:
+    schema_ref: ydk-core-schemas/config
+    version: ">=1.0.0"
+    required: false
+  ext:
+    schema_ref: ydk-core-schemas/ext
+    version: ">=1.0.0"
+    required: false
+  page:
+    schema_ref: ydk-core-schemas/page
+    version: ">=1.0.0"
+    required: false
+  nfr:
+    schema_ref: ydk-core-schemas/nfr
+    version: ">=1.0.0"
+    required: false
+
+verification_sets:
+  - name: go-quality
+    version: ">=0.1.0"
+
+component_schemas:
+  - name: ydk-core-schemas
+    version: ">=1.0.0"
+
+publish_checks:
+  - name: has-manifest
+    description: Must include manifest.yaml with generator execution order
+  - name: compiles-and-starts
+    description: Ignite samples/components, go build + go vet, start the binary, GET /healthz -> 200, unknown path -> JSON 404
+    command: "python checks/smoke.py"

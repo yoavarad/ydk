@@ -1,0 +1,18 @@
+package {{ pkg }}
+{% if imports %}
+
+import (
+{% for imp in imports %}
+	"{{ imp }}"
+{% endfor %}
+)
+{% endif %}
+{% for e in entities %}
+
+// {{ e.name }} -- {{ e.id }}: {{ e.description }}
+type {{ e.name }} struct {
+{% for f in e.fields %}
+	{{ f.name }} {{ f.type }} `json:"{{ f.json }}"` // {{ f.description }}
+{% endfor %}
+}
+{% endfor %}

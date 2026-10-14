@@ -1,0 +1,10 @@
+$schema: ydk:schema:nfr
+id: ydk:nfr:system/memory
+description: "Memory bound of the process. Worst-case store payload: 100 users x 100 messages x 1000 code points x 4 bytes = 40 MB."
+category: scalability
+target: "Container memory request 64Mi, limit 128Mi; Go heap with a full store (worst case) <= 100 MiB; no OOMKill in e2e"
+measurement: "Unit test fills the store to 100 x 100 x 1000 four-byte code points, runs runtime.GC, reads runtime.MemStats.HeapAlloc."
+test_method: "Unit test asserts HeapAlloc <= 100 MiB after fill. e2e asserts pod restartCount == 0 and lastState not OOMKilled after the LRU and limits scenarios."
+monitoring: "Kubernetes container memory usage vs. limit (platform metrics); alert threshold not owned by this project."
+applies_to:
+  - ydk:entity:messaging/MessageStore

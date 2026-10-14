@@ -1,0 +1,54 @@
+$schema: ydk:schema:test
+id: ydk:test:system/round-trip.e2e
+description: "Two releases in kind (ydk:crosscut:ops/local-environment), exercised only over HTTP through their Ingress with POSIX sh + curl."
+level: e2e
+target: ydk:event:messaging/message-record
+cases:
+  - name: a-to-b
+    description: "Send on A appears on B"
+    given: "Both releases Ready; warm-up done: probe messages A->B and B->A resent every 1 s (up to 30 s) until each arrives, proving both new consumer groups joined (they start at latest, ADR-017)"
+    when: "POST on A as bob with a unique text; poll GET bob on B every 250 ms up to 10 s"
+    then: "B returns the text; GET bob on A returns [] (ydk:req:messaging/sent-not-stored)"
+  - name: b-to-a
+    description: "Reply direction (B uses PLAINTEXT, A uses SASL_SSL)"
+    given: "Both releases Ready"
+    when: "POST on B as bob; poll A"
+    then: "A returns the text"
+  - name: censoring
+    description: "ydk:req:messaging/censor-denylist end to end"
+    given: "Default CENSOR_CHARS"
+    when: "POST on A user 'eve$' text 'a$b!c~'"
+    then: "GET 'eve_' on B returns 'a_b_c_'; GET 'eve$' on B returns the same"
+  - name: limits
+    description: "ydk:req:messaging/text-length and ydk:req:messaging/user-length"
+    given: "A Ready"
+    when: "POST 1001-code-point text; POST 129-code-point user"
+    then: "400 with exact messages; nothing appears on B"
+  - name: plain-text
+    description: "ydk:req:ui/plain-text-rendering at API level"
+    given: "A Ready"
+    when: "POST text '<img src=x onerror=alert(1)>'"
+    then: "B returns it byte-identical; lint stage greps index.html and fails on any innerHTML or insertAdjacentHTML use"
+  - name: lru-eviction
+    description: "ydk:req:messaging/lru-eviction"
+    given: "B store fresh (pod restarted)"
+    when: "POST on A for u001..u101 one message each; wait for u101 on B"
+    then: "GET u001 on B returns []; GET u002 returns 1 item"
+  - name: e2e-latency
+    description: "ydk:nfr:system/e2e-latency"
+    given: "Both Ready"
+    when: "20 sends each direction, measure API-visible time + 2 s"
+    then: "P95 <= 5 s"
+  - name: kafka-down
+    description: "ydk:error:api/kafka-unavailable; readiness independent of Kafka (ADR-016)"
+    given: "Kafka broker pod scaled to 0 (Strimzi KafkaNodePool replicas 0)"
+    when: "POST on A through its Ingress; GET page and readiness on A"
+    then: "POST 503 with JSON body {error:'kafka unavailable, message not sent'}; page 200; readiness 200; pod stays Ready, restartCount unchanged; after broker returns, POST 202"
+  - name: restart-resume
+    description: "ydk:nfr:system/availability and ydk:nfr:system/startup-time"
+    given: "B pod deleted"
+    when: "POST on A while B is down; wait for B Ready"
+    then: "B Ready <= 10 s after container start; message displayed on B"
+stubs: []
+never_mock:
+  - "Everything: real images, real Strimzi, real Ingress and NetworkPolicy"

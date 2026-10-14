@@ -126,6 +126,14 @@ class TestAssembleComponents:
         result = engine._assemble_components()
         assert len(result["entity"]) == 1
 
+    def test_reads_utf8_regardless_of_locale(self, tmp_path: Path) -> None:
+        comp_dir = tmp_path / ".ydk" / "components" / "page"
+        comp_dir.mkdir(parents=True)
+        # U+2510 encodes to bytes containing 0x90, undefined in cp1252.
+        (comp_dir / "main.yaml").write_text("name: main\nwireframe: ┌─┐\n", encoding="utf-8")
+        result = IgnitionEngine(tmp_path)._assemble_components()
+        assert result["page"][0]["wireframe"] == "┌─┐"
+
 
 class TestRunGenerator:
     def test_simple_generator_produces_files(self, tmp_path: Path) -> None:
@@ -164,6 +172,21 @@ class TestRunGenerator:
         script = tmp_path / ".ydk" / "ignition-pack" / "empty.py"
         files = engine._run_generator(script, {}, tmp_path, {})
         assert files == []
+
+    def test_component_key_order_preserved(self, tmp_path: Path) -> None:
+        # Method params are ordered maps; generators must see manifest order, not sorted keys.
+        echo = textwrap.dedent("""\
+            import json, os, yaml
+            with open(os.environ["YDK_COMPONENTS_CONTRACT"]) as f:
+                params = yaml.safe_load(f)[0]["methods"]["publish"]["params"]
+            print(json.dumps([{"path": "order.txt", "content": ",".join(params)}]))
+        """)
+        _setup_pack(tmp_path, generators=[{"script": "echo.py"}], generator_scripts={"echo.py": echo})
+        contract = {"methods": {"publish": {"params": {"ctx": {}, "user": {}, "text": {}}}}}
+        engine = IgnitionEngine(tmp_path)
+        script = tmp_path / ".ydk" / "ignition-pack" / "echo.py"
+        files = engine._run_generator(script, {"contract": [contract]}, tmp_path, {})
+        assert files[0].content == "ctx,user,text"
 
 
 class TestRegisterTodos:
@@ -1162,6 +1185,59 @@ class TestGoIgniteDispatch:
         go_deps.assert_called_once()
         py_post.assert_not_called()
         py_deps.assert_not_called()
+
+
+class TestGoReigniteAfterGofmt:
+    def test_gofmt_rewrite_not_treated_as_developer_edit(self, tmp_path: Path) -> None:
+        import subprocess as real_subprocess
+        from pathlib import Path
+        from unittest.mock import patch
+
+        gen = textwrap.dedent("""\
+            import json
+            body = "package main\\nfunc main()  {\\n" + "\\tpanic(\\"not implemented\\")\\n}\\n"
+            files = [{"path": "main.go", "content": body}, {"path": "go.mod", "content": "module x\\n"}]
+            print(json.dumps(files))
+        """)
+        pack_dir = tmp_path / ".ydk" / "ignition-pack"
+        pack_dir.mkdir(parents=True)
+        manifest = {
+            "name": "go-pack",
+            "stack": {"language": "go"},
+            "runtime_dependencies": {"go": ["example.com/dep@v1.0.0"]},
+            "generators": [{"script": "gen.py"}],
+        }
+        (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
+        (pack_dir / "gen.py").write_text(gen)
+        _setup_components(tmp_path, {"entity": [{"name": "X"}]})
+        real_run = real_subprocess.run
+
+        def run(cmd, **kw):
+            if cmd[0] == "gofmt":  # simulate gofmt rewriting the file
+                for f in cmd[2:]:
+                    Path(f).write_text('package main\n\nfunc main() {\n\tpanic("not implemented")\n}\n')
+                return _fake_run()
+            if cmd[:2] == ["go", "get"]:  # simulate go get adding a require line to go.mod
+                with (tmp_path / "go.mod").open("a") as fh:
+                    fh.write("require example.com/dep v1.0.0\n")
+                return _fake_run()
+            if cmd[0] == "go":
+                return _fake_run()
+            return real_run(cmd, **kw)
+
+        with patch("ydk.core.ignition.subprocess.run", side_effect=run):
+            IgnitionEngine(tmp_path).ignite()
+            second = IgnitionEngine(tmp_path).ignite()
+            forced = IgnitionEngine(tmp_path).ignite(force=True)
+        assert not any("developer-owned" in w for w in second.warnings)
+        # Unchanged generator output: nothing rewritten, no TODO registered twice.
+        assert second.files_written == 0
+        assert second.todos_registered == 0
+        # A forced rewrite re-scans the same TODO location: reused, not counted as new.
+        assert forced.files_written == 2
+        assert forced.todos_registered == 0
+        todos = yaml.safe_load((tmp_path / ".ydk" / "todos.yaml").read_text())["todos"]
+        assert len(todos) == 1
 
 
 class TestGoMissingToolchain:
