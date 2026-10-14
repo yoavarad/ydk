@@ -90,11 +90,11 @@ STACKS: dict[str, dict[str, Any]] = {
         "config_overrides": {
             "verification.tdd.source_globs": ["**/*.go"],
             "verification.tdd.test_globs": ["**/*_test.go"],
-            "verification.tdd.exempt_globs": ["vendor/**"],
+            "verification.tdd.exempt_globs": ["vendor/**", "test/**"],
             "verification.tdd.test_for": "same-dir-suffix",
             "verification.tdd.test_suffix": "_test.go",
             "tdd.test_commands": [r"\bgo test\b", r"\bmake test\b"],
-            "guards.code_dirs": ["cmd", "internal", "pkg", "charts", "scripts", "test"],
+            "guards.code_dirs": ["cmd", "internal", "pkg", "charts", "scripts", "test", "tests"],
             "testing.test_globs": ["**/*_test.go"],
         },
     },

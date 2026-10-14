@@ -434,9 +434,9 @@ def test_init_go_stack(tmp_path: Path, monkeypatch: object) -> None:
     assert "tests-pytest" not in enabled
     assert cfg["verification"]["tdd"]["source_globs"] == ["**/*.go"]
     assert r"\bgo test\b" in cfg["tdd"]["test_commands"]
-    assert "cmd" in cfg["guards"]["code_dirs"]
+    assert "tests" in cfg["guards"]["code_dirs"]
     assert cfg["verification"]["tdd"]["test_for"] == "same-dir-suffix"
-    assert cfg["verification"]["tdd"]["exempt_globs"] == ["vendor/**"]
+    assert cfg["verification"]["tdd"]["exempt_globs"] == ["vendor/**", "test/**"]
     assert cfg["testing"]["test_globs"] == ["**/*_test.go"]
 
 

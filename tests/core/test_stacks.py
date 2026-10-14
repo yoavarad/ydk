@@ -74,7 +74,7 @@ def test_go_stack_overrides() -> None:
     o = get_stack("go")["config_overrides"]
     assert o["verification.tdd.source_globs"] == ["**/*.go"]
     assert o["verification.tdd.test_globs"] == ["**/*_test.go"]
-    assert "vendor/**" in o["verification.tdd.exempt_globs"]
+    assert o["verification.tdd.exempt_globs"] == ["vendor/**", "test/**"]
     assert o["verification.tdd.test_for"] == "same-dir-suffix"
-    assert o["guards.code_dirs"] == ["cmd", "internal", "pkg", "charts", "scripts", "test"]
+    assert o["guards.code_dirs"] == ["cmd", "internal", "pkg", "charts", "scripts", "test", "tests"]
     assert o["testing.test_globs"] == ["**/*_test.go"]
