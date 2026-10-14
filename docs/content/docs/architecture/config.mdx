@@ -108,6 +108,7 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 | `go.coverage_packages` | list[str] | `[]` | Globs over module-relative (`internal/censor`, `internal/*`) or full import paths that the coverage gate applies to. Empty means every package in the module (Go 1.22+ reports packages without tests as 0%, so they fail a non-zero gate). `*` also matches across `/`. |
 | `go.test_tags` | list[str] | `[]` | Build tags passed as `-tags` to `go vet` and `go test`. Tagged files (e.g. `integration`) are excluded unless listed. |
 | `go.race` | bool | `true` | Run `go test` with `-race` (requires cgo). |
+| `go.skip_patterns` | list[str] | `["\bt\.Skip\(\s*\)", "\bt\.SkipNow\(\s*\)"]` | Regexes that fail `ydk task done` on a Go-stack project when found in the task's `*_test.go` files (same-dir tests of its TODO files plus test files changed against the diff base). Default flags skips without a reason. Empty list disables the check. Invalid regexes are rejected. |
 | `pr_body.ui_exclude` | list[str] | `["graphify-out/**"]` | Globs (`**` supported, POSIX paths) for changed files that `pr-body-validation` must not treat as UI, so no screenshots are required. A user-set list replaces the default. Honoured by `ydk task done` and `ydk verify pr-body`. |
 
 ## ComponentConfig

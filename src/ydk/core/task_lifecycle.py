@@ -30,6 +30,7 @@ from ydk.services.git import default_branch
 
 if TYPE_CHECKING:
     from ydk.core.git_worktree import WorktreeManager
+    from ydk.core.stack_profile import LanguageProfile
     from ydk.core.verifier import Verifier
     from ydk.models.verification import CheckResult
     from ydk.repositories.protocols import LifecycleTaskRepository
@@ -276,7 +277,7 @@ class TaskLifecycle:
             context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
         if config.verification.tdd.model_fields_set:
             context["config"]["tdd"] = config.verification.tdd.model_dump()
-        context["config"]["go"] = config.verification.go.model_dump()
+        context["config"]["go"] = config.verification.go.model_dump(exclude={"skip_patterns"})
         if task_files:
             context["changed_files"] = task_files
 
@@ -368,7 +369,8 @@ class TaskLifecycle:
         # Check that xfail markers for this task's TODOs have been removed
         xfail_warnings = self._check_xfail_removed(task_id, task_files)
         if xfail_warnings:
-            error_msg = f"Task incomplete: {len(xfail_warnings)} tests still marked as xfail for this task's TODOs"
+            skip_label = self._language_profile().skip_label
+            error_msg = f"Task incomplete: {len(xfail_warnings)} tests still marked as {skip_label}"
             details = "\n".join(f"  - {w}" for w in xfail_warnings)
             self._repo.add_comment(task_id, f"**xfail check FAILED:**\n{error_msg}\n{details}")
             return {"passed": False, "error": error_msg, "xfail_warnings": xfail_warnings}
@@ -452,7 +454,7 @@ class TaskLifecycle:
         Automatically marks verified TODOs as done. Returns warnings for
         any TODO that still has NotImplementedError.
         """
-        from ydk.core.todo_manager import TodoError, TodoManager
+        from ydk.core.todo_manager import TodoError, TodoManager, markers_for
 
         warnings: list[str] = []
         todo_mgr = TodoManager(self._root)
@@ -469,7 +471,9 @@ class TaskLifecycle:
                     todo_mgr.done(todo.id)
                     logger.info("Auto-resolved TODO %s", todo.id)
                 else:
-                    msg = f"TODO {todo.id} still has NotImplementedError in {todo.file}"
+                    markers = markers_for(todo.file)
+                    label = "NotImplementedError" if markers is None or todo.file.endswith(".py") else markers[0][0]
+                    msg = f"TODO {todo.id} still has {label} in {todo.file}"
                     warnings.append(msg)
                     logger.warning(msg)
             except TodoError as exc:
@@ -482,8 +486,12 @@ class TaskLifecycle:
         Scans test files corresponding to the task's source files for
         @pytest.mark.xfail markers whose reason references TODOs assigned
         to this task.  Returns a list of warning strings for any remaining
-        xfail markers.
+        xfail markers. On the go stack, un-reasoned skips are checked instead
+        (see ``_check_go_skips``).
         """
+        if self._language_profile().name == "go":
+            return self._check_go_skips(task_files)
+
         warnings: list[str] = []
 
         # Derive test file paths from source files
@@ -526,6 +534,16 @@ class TaskLifecycle:
         - app/api/routes/foo.py -> tests/integration/api/test_foo_routes.py
         - Any path with 'services' -> tests/unit/test_{name}.py
         """
+        profile = self._language_profile()
+        if profile.test_layout == "same-dir-suffix":
+            # Go-style: foo.go -> foo_test.go in the same directory.
+            suffix = profile.test_suffix
+            ext = Path(suffix).suffix
+            derived = (
+                src if src.endswith(suffix) else src[: -len(ext)] + suffix for src in source_files if src.endswith(ext)
+            )
+            return list(dict.fromkeys(derived))
+
         test_files: list[str] = []
         seen: set[str] = set()
 
@@ -554,6 +572,62 @@ class TaskLifecycle:
                 seen.add(candidate)
 
         return test_files
+
+    def _language_profile(self) -> LanguageProfile:
+        """Language profile for the project stack in ``.ydk/config.yaml``."""
+        from ydk.core.config import load_config
+        from ydk.core.stack_profile import profile_for
+
+        return profile_for(load_config(self._root / ".ydk" / "config.yaml"))
+
+    def _check_go_skips(self, task_files: list[str]) -> list[str]:
+        """Flag ``verification.go.skip_patterns`` hits in the task's Go test files.
+
+        Scans the same-dir tests derived from *task_files* plus every
+        ``*_test.go`` changed against the task's diff base.
+        """
+        from ydk.core.config import load_config
+
+        patterns = load_config(self._root / ".ydk" / "config.yaml").verification.go.skip_patterns
+        if not patterns:
+            return []
+        try:
+            diff = subprocess.run(
+                ["git", "diff", "--name-only", diff_base(self._root) or default_branch(self._root)],
+                cwd=str(self._root),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+            )
+            ok = diff.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            ok = False
+        if ok:
+            changed = [f.strip() for f in diff.stdout.splitlines() if f.strip().endswith("_test.go")]
+        else:
+            # No usable diff: fail safe by scanning every Go test outside vendor/testdata/hidden dirs.
+            logger.warning("git diff failed — scanning all *_test.go for un-reasoned skips")
+            changed = [
+                p.relative_to(self._root).as_posix()
+                for p in self._root.rglob("*_test.go")
+                if not any(
+                    part in ("vendor", "testdata") or part.startswith(".")
+                    for part in p.relative_to(self._root).parts[:-1]
+                )
+            ]
+        regexes = [re.compile(p) for p in patterns]
+        warnings: list[str] = []
+        for test_file in dict.fromkeys([*self._derive_test_files(task_files), *changed]):
+            full_path = self._root / test_file
+            if not full_path.is_file():
+                continue
+            text = full_path.read_text(encoding="utf-8", errors="replace")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if any(rx.search(line) for rx in regexes):
+                    warnings.append(f"Un-reasoned skip `{line.strip()}` in {test_file}:{lineno}")
+        return warnings
 
     def _screenshot_ref_patterns(self) -> list[str]:
         """Load ``proof.screenshot_ref_patterns`` from project config."""

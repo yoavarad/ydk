@@ -86,6 +86,22 @@ class TestPluginsSection:
         body = builder.build("T-001", proof_dir)
         assert "pytest — FAIL" in body
 
+    def test_go_test_summary_shows_counts_and_coverage(self, proof_dir: Path) -> None:
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "go-test.txt").write_text(
+            "PASSED (1.0s)\n\nok  \texample.com/m/a\t0.1s\tcoverage: 75.0% of statements\n", encoding="utf-8"
+        )
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "<summary>go test — PASS (1 package(s) ok, 0 FAIL, avg pkg coverage 75.0%)</summary>" in body
+
+    def test_go_test_skipped_summary_shows_reason(self, proof_dir: Path) -> None:
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "go-test.txt").write_text("PASSED (0.0s)\n\nNo go.mod found — skipped\n", encoding="utf-8")
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "<summary>go test — PASS (No go.mod found — skipped)</summary>" in body
+
     def test_multiple_plugins_sorted(self, proof_dir: Path) -> None:
         plugins_dir = proof_dir / "plugins"
         plugins_dir.mkdir()
@@ -312,6 +328,28 @@ class TestSummaryExtraction:
 
     def test_empty_output(self) -> None:
         assert _extract_summary_line("ruff check", "") == "no output"
+
+    def test_go_test_counts_and_coverage(self) -> None:
+        raw = (
+            "PASSED (3.1s)\n"
+            "ok  \texample.com/m/internal/a\t0.10s\tcoverage: 80.0% of statements\n"
+            "ok  \texample.com/m/internal/b\t0.20s\tcoverage: 60.0% of statements\n"
+            "?   \texample.com/m/cmd\t[no test files]\n"
+        )
+        assert _extract_summary_line("go test", raw) == "2 package(s) ok, 0 FAIL, avg pkg coverage 70.0%"
+
+    def test_go_test_failures_counted(self) -> None:
+        raw = (
+            "FAILED (2.0s)\n"
+            "--- FAIL: TestX (0.00s)\n"
+            "FAIL\n"
+            "FAIL\texample.com/m/internal/a\t0.10s\n"
+            "ok  \texample.com/m/internal/b\t0.20s\n"
+        )
+        assert _extract_summary_line("go test", raw) == "1 package(s) ok, 1 FAIL"
+
+    def test_go_test_no_package_lines_falls_back(self) -> None:
+        assert _extract_summary_line("go test", "No go.mod found — skipped") == "No go.mod found — skipped"
 
     def test_ty_error(self) -> None:
         raw = "error[unresolved-attribute]: foo\nerror[unresolved-attribute]: bar"

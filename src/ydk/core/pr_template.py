@@ -6,10 +6,16 @@ proof sections; only ``summary.md`` is agent-authored.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+# ``go test`` package result lines: "ok  <pkg> ...", "FAIL\t<pkg> ..." (bare "FAIL" and "--- FAIL:" excluded).
+_GO_OK_RE = re.compile(r"^ok[ \t]+\S+", re.MULTILINE)
+_GO_FAIL_RE = re.compile(r"^FAIL[ \t]+\S+", re.MULTILINE)
+_GO_COVERAGE_RE = re.compile(r"coverage: (\d+(?:\.\d+)?)% of statements")
 
 
 _MAX_BLOCK_CHARS = 2000
@@ -123,6 +129,9 @@ class PRBodyBuilder:
             else:
                 status = "FAIL"
             summary_text = f"{plugin_name} — {status}"
+            if plugin_name == "go test":
+                output = raw.split("\n", 1)[1] if "\n" in raw else ""  # drop the status line
+                summary_text += f" ({_extract_summary_line('go test', output)})"
             proof_relpath = f".ydk/proofs/{task_id}/plugins/{plugin_file.name}"
             content = _truncate_raw(raw, proof_relpath)
             block = _details_block(summary_text, content)
@@ -307,6 +316,17 @@ def _extract_summary_line(label: str, raw: str) -> str:
         if line_count == 1:
             return stripped.splitlines()[0]
         return f"{line_count} issue(s) found"
+
+    if label == "go test":
+        ok = len(_GO_OK_RE.findall(stripped))
+        failed = len(_GO_FAIL_RE.findall(stripped))
+        if not ok and not failed:
+            return stripped.splitlines()[0]
+        line = f"{ok} package(s) ok, {failed} FAIL"
+        coverage = [float(c) for c in _GO_COVERAGE_RE.findall(stripped)]
+        if coverage:
+            line += f", avg pkg coverage {sum(coverage) / len(coverage):.1f}%"
+        return line
 
     if label == "ty check":
         if not stripped:

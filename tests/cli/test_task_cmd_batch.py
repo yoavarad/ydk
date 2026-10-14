@@ -695,6 +695,43 @@ class TestScaffoldBatch:
         assert result.exit_code == 0, result.output
         assert mock_write_text.call_args.kwargs.get("encoding") == "utf-8"
 
+    @staticmethod
+    def _final_task(tmp_path: Path, monkeypatch: object, stack: str | None) -> dict:
+        from ydk.models.todo import TodoItem
+
+        monkeypatch.chdir(tmp_path)
+        if stack is not None:
+            (tmp_path / ".ydk").mkdir()
+            (tmp_path / ".ydk" / "config.yaml").write_text(
+                yaml.dump({"project": {"name": "p", "stack": stack}}), encoding="utf-8"
+            )
+        mock_mgr = MagicMock()
+        mock_mgr.list_todos.return_value = [TodoItem(id="YDK-TODO-1", file="internal/svc/x.go", line=3, method="Do")]
+        output_path = tmp_path / "batch-tasks.yaml"
+        with patch("ydk.core.todo_manager.TodoManager", return_value=mock_mgr):
+            result = runner.invoke(app, ["task", "scaffold-batch", "--output", str(output_path)])
+        assert result.exit_code == 0, result.output
+        data = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+        return next(t for t in data["tasks"] if t["id"] == "T-FINAL")
+
+    def test_tfinal_python_criteria_unchanged(self, tmp_path: Path, monkeypatch: object) -> None:
+        final = self._final_task(tmp_path, monkeypatch, None)
+        assert final["title"] == "Final verification: all tests pass, zero xfail"
+        assert final["acceptance_criteria"] == [
+            "Zero @pytest.mark.xfail in test suite",
+            "Zero NotImplementedError in services",
+            "All E2E tests pass",
+            "Full ruff + ty clean",
+        ]
+
+    def test_tfinal_go_stack_lists_go_criteria(self, tmp_path: Path, monkeypatch: object) -> None:
+        final = self._final_task(tmp_path, monkeypatch, "go")
+        text = " ".join([final["title"], final["test_strategy"], *final["acceptance_criteria"]])
+        assert 'panic("not implemented")' in text
+        assert "gofmt + go vet clean" in final["acceptance_criteria"]
+        for python_tool in ("ruff", "pytest", "xfail", "NotImplementedError"):
+            assert python_tool not in text
+
 
 # -- Helpers -------------------------------------------------------------------
 

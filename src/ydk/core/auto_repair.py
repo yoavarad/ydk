@@ -5,7 +5,7 @@ and supports retrying up to a configurable max count. YDK does NOT call an
 LLM -- the coding agent (Claude Code) reads the structured output and fixes
 the code itself.
 
-Between retries, auto-fixable tools (ruff) are applied automatically.
+Between retries, auto-fixable tools (ruff, gofmt) are applied automatically.
 """
 
 from __future__ import annotations
@@ -79,6 +79,7 @@ class RepairLoop:
         Currently supports:
         - ruff check --fix (lint auto-fixes)
         - ruff format (formatting)
+        - gofmt -w on the files a failed go-fmt check flagged
         """
         # Check if any lint-related check failed
         lint_failed = any(not check.passed and check.name in ("lint", "ruff", "ruff-check") for check in report.checks)
@@ -111,6 +112,28 @@ class RepairLoop:
                     timeout=60,
                 )
                 logger.info("Applied ruff format")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+
+        # go-fmt lists the unformatted .go files in detail["files"]; rewrite just those.
+        go_files = [
+            f
+            for check in report.checks
+            if not check.passed and check.name == "go-fmt"
+            for f in (check.detail or {}).get("files", [])
+        ]
+        if go_files:
+            try:
+                subprocess.run(
+                    ["gofmt", "-w", *go_files],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    cwd=str(self._root),
+                    timeout=60,
+                )
+                logger.info("Applied gofmt -w to %d file(s)", len(go_files))
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
 

@@ -215,6 +215,19 @@ class GoVerificationConfig(BaseModel):
     coverage_packages: list[str] = Field(default_factory=list)
     test_tags: list[str] = Field(default_factory=list)
     race: bool = True
+    # Regexes that fail ``task done`` when found in a task's Go test files (default: un-reasoned skips).
+    skip_patterns: list[str] = Field(default_factory=lambda: [r"\bt\.Skip\(\s*\)", r"\bt\.SkipNow\(\s*\)"])
+
+    @field_validator("skip_patterns")
+    @classmethod
+    def _valid_skip_regexes(cls, v: list[str]) -> list[str]:
+        for pattern in v:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                msg = f"verification.go.skip_patterns: invalid regex {pattern!r}: {exc}"
+                raise ValueError(msg) from exc
+        return v
 
 
 class HelmVerificationConfig(BaseModel):
@@ -283,6 +296,8 @@ class GuardsConfig(BaseModel):
 
     code_dirs: list[str] = []
     suppression_patterns: list[str] = []
+
+
 class TestingConfig(BaseModel):
     """Test discovery settings for ``ydk test coverage``."""
 

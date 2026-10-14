@@ -154,3 +154,42 @@ class TestRepairResult:
         assert result.attempts == 2
         assert result.final_passed is True
         assert len(result.errors_per_attempt) == 2
+
+
+class TestApplyAutoFixes:
+    """Auto-fixes between retries; subprocess (the external tools) is the only mock."""
+
+    @staticmethod
+    def _report(check: CheckResult) -> VerificationReport:
+        return VerificationReport(
+            timestamp="2026-04-28T00:00:00Z", checks=[check], all_passed=False, total_duration_seconds=0.1
+        )
+
+    def test_go_fmt_failure_runs_gofmt_w_on_flagged_files(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock_run = MagicMock()
+        monkeypatch.setattr("ydk.core.auto_repair.subprocess.run", mock_run)
+        check = CheckResult(
+            name="go-fmt",
+            passed=False,
+            output="gofmt found unformatted files",
+            duration_seconds=0.1,
+            detail={"files": ["a.go", "internal/b.go"]},
+        )
+        RepairLoop()._apply_auto_fixes(self._report(check))
+        assert [c.args[0] for c in mock_run.call_args_list] == [["gofmt", "-w", "a.go", "internal/b.go"]]
+
+    def test_go_fmt_failure_without_files_runs_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock_run = MagicMock()
+        monkeypatch.setattr("ydk.core.auto_repair.subprocess.run", mock_run)
+        check = CheckResult(name="go-fmt", passed=False, output="boom", duration_seconds=0.1)
+        RepairLoop()._apply_auto_fixes(self._report(check))
+        mock_run.assert_not_called()
+
+    def test_lint_failure_still_runs_ruff_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock_run = MagicMock()
+        monkeypatch.setattr("ydk.core.auto_repair.subprocess.run", mock_run)
+        RepairLoop()._apply_auto_fixes(_fail_report())
+        assert [c.args[0] for c in mock_run.call_args_list] == [
+            ["ruff", "check", "--fix", "."],
+            ["ruff", "format", "."],
+        ]
