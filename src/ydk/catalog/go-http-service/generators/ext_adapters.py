@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from _go_common import (
     TODO_STMT,
+    check_unique,
     comment,
     contract_methods,
     emit,
@@ -62,6 +63,12 @@ def main() -> None:
                 }
             )
         consume = _consume_endpoint(exts)
+        entries = [("NewClient", "the pack's client constructor")]
+        if consume:
+            entries += [(n, f"the consumer for {consume['ext_id']}") for n in ("Consumer", "NewConsumer")]
+        for c in contracts:
+            entries += [(c["name"], c["id"]), ("New" + c["name"], c["id"])]
+        check_unique(f"package internal/adapters/{tech}", entries)
         types = [t for c in contracts for m in c["methods"] for t in m["types"]]
         std_imports = sorted(set(imports_for(types)) | ({"context"} if consume else set()))
         content = render(

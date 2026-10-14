@@ -1195,11 +1195,18 @@ class TestGoReigniteAfterGofmt:
 
         gen = textwrap.dedent("""\
             import json
-            print(json.dumps([{"path": "main.go", "content": "package main\\nfunc main()  {}\\n"}]))
+            body = "package main\\nfunc main()  {\\n" + "\\tpanic(\\"not implemented\\")\\n}\\n"
+            files = [{"path": "main.go", "content": body}, {"path": "go.mod", "content": "module x\\n"}]
+            print(json.dumps(files))
         """)
         pack_dir = tmp_path / ".ydk" / "ignition-pack"
         pack_dir.mkdir(parents=True)
-        manifest = {"name": "go-pack", "stack": {"language": "go"}, "generators": [{"script": "gen.py"}]}
+        manifest = {
+            "name": "go-pack",
+            "stack": {"language": "go"},
+            "runtime_dependencies": {"go": ["example.com/dep@v1.0.0"]},
+            "generators": [{"script": "gen.py"}],
+        }
         (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
         (pack_dir / "gen.py").write_text(gen)
         _setup_components(tmp_path, {"entity": [{"name": "X"}]})
@@ -1208,7 +1215,11 @@ class TestGoReigniteAfterGofmt:
         def run(cmd, **kw):
             if cmd[0] == "gofmt":  # simulate gofmt rewriting the file
                 for f in cmd[2:]:
-                    Path(f).write_text("package main\n\nfunc main() {}\n")
+                    Path(f).write_text('package main\n\nfunc main() {\n\tpanic("not implemented")\n}\n')
+                return _fake_run()
+            if cmd[:2] == ["go", "get"]:  # simulate go get adding a require line to go.mod
+                with (tmp_path / "go.mod").open("a") as fh:
+                    fh.write("require example.com/dep v1.0.0\n")
                 return _fake_run()
             if cmd[0] == "go":
                 return _fake_run()
@@ -1217,7 +1228,16 @@ class TestGoReigniteAfterGofmt:
         with patch("ydk.core.ignition.subprocess.run", side_effect=run):
             IgnitionEngine(tmp_path).ignite()
             second = IgnitionEngine(tmp_path).ignite()
+            forced = IgnitionEngine(tmp_path).ignite(force=True)
         assert not any("developer-owned" in w for w in second.warnings)
+        # Unchanged generator output: nothing rewritten, no TODO registered twice.
+        assert second.files_written == 0
+        assert second.todos_registered == 0
+        # A forced rewrite re-scans the same TODO location: reused, not counted as new.
+        assert forced.files_written == 2
+        assert forced.todos_registered == 0
+        todos = yaml.safe_load((tmp_path / ".ydk" / "todos.yaml").read_text())["todos"]
+        assert len(todos) == 1
 
 
 class TestGoMissingToolchain:

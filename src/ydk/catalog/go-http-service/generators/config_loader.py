@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from _go_common import comment, emit, go_ident, go_string, load, render
+from _go_common import check_unique, comment, emit, go_ident, go_string, load, render
 
 _ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
@@ -19,10 +19,19 @@ def _cells(line: str) -> list[str]:
 
 
 def parse_env_table(spec: str) -> list[dict]:
-    """Rows of a markdown table whose header has an 'Env var' column."""
-    lines = [ln for ln in spec.splitlines() if ln.strip().startswith("|")]
-    if not lines:
-        return []
+    """Rows of every markdown table in spec whose header has an 'Env var' column."""
+    rows: list[dict] = []
+    table: list[str] = []
+    for line in [*spec.splitlines(), ""]:
+        if line.strip().startswith("|"):
+            table.append(line)
+        elif table:
+            rows.extend(_parse_table(table))
+            table = []
+    return rows
+
+
+def _parse_table(lines: list[str]) -> list[dict]:
     header = [c.lower() for c in _cells(lines[0])]
     if "env var" not in header:
         return []
@@ -58,13 +67,19 @@ def parse_env_table(spec: str) -> list[dict]:
 
 def main() -> None:
     env_vars: list[dict] = []
-    source = "no environment table found"
+    names: set[str] = set()
+    sources: list[str] = []
     for crosscut in load("crosscut"):
         rows = parse_env_table(str(crosscut.get("specification", "")))
         if rows:
-            env_vars, source = rows, str(crosscut.get("id"))
-            break
-    else:
+            sources.append(str(crosscut.get("id")))
+        for row in rows:
+            if row["name"] not in names:  # a var listed in several tables keeps its first definition
+                names.add(row["name"])
+                env_vars.append(row)
+    check_unique("internal/config Config", [(v["field"], f"env var {v['name']}") for v in env_vars])
+    source = ", ".join(sources) or "no environment table found"
+    if not sources:
         configs = load("config")
         if configs:
             source = str(configs[0].get("id"))

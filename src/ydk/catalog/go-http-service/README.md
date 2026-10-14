@@ -19,6 +19,12 @@ This ignition pack generates a stdlib-first Go `net/http` service from YDK compo
 - **TODOs:** every unimplemented handler, stub method and adapter method has the body `panic("not implemented") // <component id>: <description>`. Ignition registers each of these lines as a YDK TODO. The panic recovery middleware turns a TODO panic into a JSON 500, so the app still builds and serves `/healthz`.
 - **Ext technology:** the technology comes from the ext id namespace, so `ydk:ext:kafka/cluster` maps to `kafka`. A contract is ext-backed when its description names the technology. Only `kafka` has an adapter template. Other technologies are skipped.
 - **Health:** `/healthz` and `/readyz` are always registered, and they are added when no route declares them. `/readyz` returns 503 once shutdown starts.
+- **Validation:** the generator fails ignition, naming the components involved, when:
+  - two manifests would generate the same Go identifier in one package, struct, interface, `httpapi.Deps` or the `Config` struct
+  - a route path is not a valid ServeMux pattern
+  - two routes conflict under Go 1.22 ServeMux rules: a duplicate, or an overlap where neither is more specific (`GET` also covers `HEAD`)
+- **Env tables:** every `Env var` table in every `ydk:crosscut` is read. A variable listed more than once keeps its first definition, in crosscut id order.
+- **Re-ignite:** unchanged generator output is not rewritten, even after `gofmt` reformatted it on disk. TODOs are registered once per file and line.
 - **Post-generation:** ignition runs `go get` (franz-go), `go mod tidy`, `go mod vendor`, `gofmt -w`, `go build ./...` and `go vet ./...`.
 
 ## Publish gate

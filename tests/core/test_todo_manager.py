@@ -40,6 +40,29 @@ def test_register_increments_id(mgr: TodoManager) -> None:
     assert third == "YDK-TODO-003"
 
 
+def test_register_same_location_is_deduplicated(mgr: TodoManager) -> None:
+    first = mgr.register(file="main.go", line=7, method="<unknown>")
+    second = mgr.register(file="main.go", line=7, method="<unknown>")
+    assert first == second
+    assert len(mgr.list_todos()) == 1
+
+
+def test_register_same_location_refreshes_details(mgr: TodoManager) -> None:
+    todo_id = mgr.register(file="main.go", line=7, method="<unknown>", description="old")
+    mgr.register(file="main.go", line=7, method="Svc.Do", description="new")
+    item = mgr.get(todo_id)
+    assert (item.method, item.description) == ("Svc.Do", "new")
+
+
+def test_register_same_location_after_done_creates_new(mgr: TodoManager, project: Path) -> None:
+    src = project / "app" / "service.py"
+    src.parent.mkdir(parents=True)
+    src.write_text("def create(self):\n    return 1\n")
+    first = mgr.register(file="app/service.py", line=1, method="Service.create")
+    mgr.done(first)
+    assert mgr.register(file="app/service.py", line=1, method="Service.create") != first
+
+
 def test_register_saves_to_yaml(mgr: TodoManager, project: Path) -> None:
     mgr.register(file="app/service.py", line=10, method="Service.create", description="Impl create")
     registry_path = project / ".ydk" / "todos.yaml"

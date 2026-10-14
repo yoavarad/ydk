@@ -281,6 +281,135 @@ class TestIgniteEdgeCases:
         assert "\\ud83d" not in errors_go
 
 
+def _component(components: Path, rel: str, data: dict) -> None:
+    target = components / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+def _route(rid: str, method: str, path: str) -> dict:
+    return {"id": f"ydk:route:{rid}", "description": "d", "method": method, "path": path, "responses": {}}
+
+
+def _env_crosscut(cid: str, rows: list[str], preamble: str = "") -> dict:
+    table = "| Env var | Required | Default | Rule |\n|---|---|---|---|\n" + "\n".join(rows)
+    return {"id": f"ydk:crosscut:{cid}", "description": "d", "specification": preamble + table, "applies_to": "x"}
+
+
+class TestManifestValidation:
+    """Invalid manifests fail ignition with an error naming every component involved."""
+
+    def _errors(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extra: dict[str, dict]) -> str:
+        components = _copy_samples(tmp_path, ())
+        for rel, data in extra.items():
+            _component(components, rel, data)
+        _, result = _ignite(tmp_path, monkeypatch, components)
+        return "\n".join(result.errors)
+
+    def test_entity_and_contract_share_a_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        entity = {"id": "ydk:entity:messaging/Store", "description": "d", "fields": {}}
+        errors = self._errors(tmp_path, monkeypatch, {"entity/messaging/Store.yaml": entity})
+        assert "name collision" in errors
+        assert "ydk:entity:messaging/Store" in errors
+        assert "ydk:contract:messaging/Store" in errors
+
+    def test_sentinel_errors_share_a_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        err = {"id": "ydk:error:messaging/kafka-unavailable", "status_code": 0, "code": "K", "detail_template": "k"}
+        errors = self._errors(tmp_path, monkeypatch, {"error/messaging/kafka-unavailable.yaml": err})
+        assert "ErrKafkaUnavailable" in errors
+        assert "ydk:error:api/kafka-unavailable" in errors
+        assert "ydk:error:messaging/kafka-unavailable" in errors
+
+    def test_entity_fields_share_a_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fields = {"user_id": {"type": "string"}, "userId": {"type": "string"}}
+        entity = {"id": "ydk:entity:messaging/Account", "description": "d", "fields": fields}
+        errors = self._errors(tmp_path, monkeypatch, {"entity/messaging/Account.yaml": entity})
+        assert "ydk:entity:messaging/Account" in errors
+        assert "user_id" in errors
+        assert "userId" in errors
+
+    def test_contracts_with_same_name_in_two_namespaces(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        contract = {"id": "ydk:contract:storage/Store", "description": "d", "methods": {}}
+        errors = self._errors(tmp_path, monkeypatch, {"contract/storage/Store.yaml": contract})
+        assert "Deps" in errors
+        assert "ydk:contract:messaging/Store" in errors
+        assert "ydk:contract:storage/Store" in errors
+
+    def test_contract_named_like_a_reserved_field(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        contract = {"id": "ydk:contract:messaging/Logger", "description": "d", "methods": {}}
+        errors = self._errors(tmp_path, monkeypatch, {"contract/messaging/Logger.yaml": contract})
+        assert "ydk:contract:messaging/Logger" in errors
+        assert "Logger" in errors
+
+    def test_kafka_adapter_name_clash(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        contract = {"id": "ydk:contract:messaging/Consumer", "description": "Kafka consumer port", "methods": {}}
+        errors = self._errors(tmp_path, monkeypatch, {"contract/messaging/Consumer.yaml": contract})
+        assert "internal/adapters/kafka" in errors
+        assert "ydk:contract:messaging/Consumer" in errors
+
+    def test_env_vars_mapping_to_same_field(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        crosscut = _env_crosscut("ops/more-env", ["| LOG__LEVEL | no | - | dup field |"])
+        errors = self._errors(tmp_path, monkeypatch, {"crosscut/ops/more-env.yaml": crosscut})
+        assert "LOG_LEVEL" in errors
+        assert "LOG__LEVEL" in errors
+
+    def test_duplicate_route(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        dup = _route("api/healthz-again", "GET", "/healthz")
+        errors = self._errors(tmp_path, monkeypatch, {"route/api/healthz-again.yaml": dup})
+        assert "route conflict" in errors
+        assert "ydk:route:api/healthz" in errors
+        assert "ydk:route:api/healthz-again" in errors
+
+    def test_overlapping_wildcard_routes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        extra = {
+            "route/api/a.yaml": _route("api/a", "GET", "/items/{id}/parts"),
+            "route/api/b.yaml": _route("api/b", "GET", "/items/special/{part}"),
+        }
+        errors = self._errors(tmp_path, monkeypatch, extra)
+        assert "route conflict" in errors
+        assert "ydk:route:api/a" in errors
+        assert "ydk:route:api/b" in errors
+
+    def test_get_and_head_conflict(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # GET also serves HEAD, so these overlap (POST instead of HEAD would be disjoint).
+        extra = {
+            "route/api/h.yaml": _route("api/h", "HEAD", "/items/{x}"),
+            "route/api/g.yaml": _route("api/g", "GET", "/{y}/special"),
+        }
+        assert "route conflict" in self._errors(tmp_path, monkeypatch, extra)
+        extra["route/api/h.yaml"] = _route("api/h", "POST", "/items/{x}")
+        assert "route conflict" not in self._errors(tmp_path / "post", monkeypatch, extra)
+
+    @pytest.mark.parametrize("path", ["/api/{bad-name}", "/api/{x}y", "/api/{rest...}/more", "api/no-slash"])
+    def test_invalid_route_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str) -> None:
+        errors = self._errors(tmp_path, monkeypatch, {"route/api/bad.yaml": _route("api/bad", "GET", path)})
+        assert "invalid route path" in errors
+        assert "ydk:route:api/bad" in errors
+
+    def test_more_specific_routes_are_allowed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        extra = {
+            "route/api/any.yaml": _route("api/any", "GET", "/api/{name}"),
+            "route/api/files.yaml": _route("api/files", "GET", "/files/{path...}"),
+        }
+        assert self._errors(tmp_path, monkeypatch, extra).count("enerator") == 0
+
+
+class TestEnvTables:
+    def test_every_env_table_is_parsed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        components = _copy_samples(tmp_path, ())
+        # Second crosscut whose spec has a non-env table first, then an env table; LOG_LEVEL repeats.
+        preamble = "| Port | Use |\n|---|---|\n| 8080 | http |\n\nText between tables.\n\n"
+        rows = ["| EXTRA_VAR | yes | - | extra |", "| LOG_LEVEL | no | DEBUG | repeated |"]
+        _component(components, "crosscut/ops/more-env.yaml", _env_crosscut("ops/more-env", rows, preamble))
+        project, result = _ignite(tmp_path, monkeypatch, components)
+        assert [e for e in result.errors if "enerator" in e] == []
+        cfg = _read(project, "internal/config/config.go")
+        assert 'lookup("EXTRA_VAR", "", true)' in cfg
+        assert 'lookup("INSTANCE_NAME", "", true)' in cfg
+        assert cfg.count('lookup("LOG_LEVEL"') == 1  # first definition wins
+        assert 'lookup("LOG_LEVEL", "INFO", false)' in cfg
+
+
 @pytest.mark.skipif(shutil.which("go") is None, reason="go toolchain not on PATH")
 class TestGoIntegration:
     def test_smoke_check_builds_and_serves(self) -> None:

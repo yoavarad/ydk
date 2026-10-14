@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from _go_common import (
     TODO_STMT,
+    check_unique,
     comment,
     contract_methods,
     emit,
@@ -134,12 +135,31 @@ def _contract_files(pkg: str, items: list[dict], techs: list[str]) -> list[dict]
     return files
 
 
+def _check_names(pkg: str, entities: list[dict], contracts: list[dict], errors: list[dict], techs: list[str]) -> None:
+    """Fail on any Go identifier generated twice in one package, struct or interface."""
+    entries: list[tuple[str, str]] = []
+    for e in entities:
+        entries.append((e["name"], e["id"]))
+        check_unique(f"struct {e['name']} ({e['id']})", [(f["name"], f"field {f['json']!r}") for f in e["fields"]])
+    for c in contracts:
+        entries += [(c["name"], c["id"]), ("New" + c["name"], c["id"]), (c["stub"], c["id"])]
+        if any(is_ext_backed(c["raw"], t) for t in techs):
+            entries.append(("Fake" + c["name"], c["id"]))
+        check_unique(
+            f"interface {c['name']} ({c['id']})", [(m["name"], f"method {m['raw_name']!r}") for m in c["methods"]]
+        )
+    entries += [(e["name"], e["id"]) for e in errors]
+    check_unique(f"package internal/{pkg}", entries)
+
+
 def main() -> None:
     known = entity_names_by_ns()
     entities = _entities(known)
     contracts = _contracts(known)
     errors = _errors(set(entities) | set(contracts), contracts)
     techs = ext_technologies()
+    for pkg in sorted(set(entities) | set(contracts) | set(errors)):
+        _check_names(pkg, entities.get(pkg, []), contracts.get(pkg, []), errors.get(pkg, []), techs)
     files = []
     for pkg in sorted(set(entities) | set(contracts) | set(errors)):
         if pkg in entities:

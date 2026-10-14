@@ -106,3 +106,40 @@ def test_load_handles_corrupt_file(tmp_path: Path) -> None:
     path.write_text("just a string\n")
     state = ScaffoldState(path)
     assert state.is_modified("any.py", "content")
+
+
+def test_formatted_content_is_not_developer_owned(tmp_path: Path) -> None:
+    """A formatter rewrite recorded via record_formatted is not a developer edit; later edits are."""
+    state = ScaffoldState(tmp_path / "state.yaml")
+    target = tmp_path / "main.go"
+    state.update("main.go", "package main\nfunc main()  {}\n")
+    target.write_text("package main\n\nfunc main() {}\n")
+    state.record_formatted("main.go", target.read_text())
+    state.save()
+
+    reloaded = ScaffoldState(tmp_path / "state.yaml")
+    assert not reloaded.is_developer_owned("main.go", tmp_path)
+    # Generated (pre-format) content is unchanged, so no rewrite is needed.
+    assert not reloaded.is_modified("main.go", "package main\nfunc main()  {}\n")
+    target.write_text("package main\n\nfunc main() { println() }\n")
+    assert reloaded.is_developer_owned("main.go", tmp_path)
+
+
+def test_update_clears_formatted_hash(tmp_path: Path) -> None:
+    """A fresh write replaces any earlier formatted hash."""
+    state = ScaffoldState(tmp_path / "state.yaml")
+    target = tmp_path / "main.go"
+    state.update("main.go", "a")
+    state.record_formatted("main.go", "b")
+    state.update("main.go", "c")
+    target.write_text("c")
+    assert not state.is_developer_owned("main.go", tmp_path)
+
+
+def test_loads_state_without_formatted_section(tmp_path: Path) -> None:
+    """State files written before formatted hashes existed (or with a null section) still load."""
+    (tmp_path / "state.yaml").write_text("hashes:\n  main.go: abc\nformatted:\n")
+    state = ScaffoldState(tmp_path / "state.yaml")
+    state.record_formatted("main.go", "x")
+    state.save()
+    assert "formatted" in (tmp_path / "state.yaml").read_text()

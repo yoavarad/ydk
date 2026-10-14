@@ -15,8 +15,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from _go_common import (
     TODO_STMT,
+    check_unique,
     comment,
     emit,
+    fail,
     go_ident,
     go_pkg,
     go_string,
@@ -26,6 +28,7 @@ from _go_common import (
     split_id,
 )
 from _go_common import message as full_message
+from _routing import conflicts, parse_path
 
 _GENERIC_CODES = {
     404: ("NOT_FOUND",),
@@ -98,8 +101,6 @@ def _routes(pages: dict[str, str]) -> list[dict]:
     for route in load("route"):
         method = str(route.get("method", "GET")).upper()
         path = str(route.get("path", "/"))
-        if (method, path) in seen:  # ServeMux panics on duplicate patterns; keep the first
-            continue
         seen.add((method, path))
         kind = "todo"
         if method == "GET" and path == "/healthz":
@@ -143,8 +144,25 @@ def _routes(pages: dict[str, str]) -> list[dict]:
         r["handler"] = _unique("handle" + go_ident(r["name"]), handlers)
     for r in routes:
         pattern = r["path"] + "{$}" if r["path"].endswith("/") else r["path"]
-        r["pattern_lit"] = go_string(f"{r['method']} {pattern}")
+        try:
+            r["segments"] = parse_path(pattern)
+        except ValueError as exc:
+            fail(f"invalid route path in {r['id']}: {r['path']!r}: {exc}")
+        r["pattern"] = f"{r['method']} {pattern}"
+        r["pattern_lit"] = go_string(r["pattern"])
+    _check_conflicts(routes)
     return routes
+
+
+def _check_conflicts(routes: list[dict]) -> None:
+    """ServeMux panics at startup on duplicate or ambiguous patterns; reject them here instead."""
+    for i, a in enumerate(routes):
+        for b in routes[i + 1 :]:
+            if conflicts(a["method"], a["segments"], b["method"], b["segments"]):
+                fail(
+                    f"route conflict: {a['id']} ({a['pattern']}) and {b['id']} ({b['pattern']}) "
+                    "match the same requests and neither is more specific"
+                )
 
 
 def _deps() -> tuple[list[dict], list[str]]:
@@ -153,7 +171,8 @@ def _deps() -> tuple[list[dict], list[str]]:
         ns, name = split_id(str(contract.get("id", "")))
         pkg = go_pkg(ns)
         imports.add(f"{module_path()}/internal/{pkg}")
-        deps.append({"field": go_ident(name), "type": f"{pkg}.{go_ident(name)}"})
+        deps.append({"field": go_ident(name), "type": f"{pkg}.{go_ident(name)}", "id": contract.get("id")})
+    check_unique("httpapi.Deps", [("Logger", "the pack's Deps.Logger"), *((d["field"], d["id"]) for d in deps)])
     return deps, sorted(imports)
 
 
