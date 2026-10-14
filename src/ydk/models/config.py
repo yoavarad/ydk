@@ -268,6 +268,13 @@ class ComponentConfig(BaseModel):
     components_path: str = ".ydk/components"
 
 
+class GuardsConfig(BaseModel):
+    """Overrides for the PreToolUse guard hook (.claude/hooks/guard.py)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code_dirs: list[str] = []
+    suppression_patterns: list[str] = []
 class TestingConfig(BaseModel):
     """Test discovery settings for ``ydk test coverage``."""
 
@@ -292,5 +299,6 @@ class YdkConfig(BaseModel):
     learning: LearningConfig = LearningConfig()
     verification: VerificationFilterConfig = VerificationFilterConfig()
     components: ComponentConfig = ComponentConfig()
+    guards: GuardsConfig = GuardsConfig()
     testing: TestingConfig = TestingConfig()
     tdd: TddConfig = TddConfig()

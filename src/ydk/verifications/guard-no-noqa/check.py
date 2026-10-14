@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard plugin: block lint suppressions (noqa, type: ignore, nosec).
+"""Guard plugin: block lint suppressions (noqa, type: ignore, nosec, //nolint, //lint:ignore).
 
 Violations must be fixed, not silenced. Exception: tests/ files are
 exempt from annotation-rule (ANN*) noqa comments.
@@ -25,6 +25,8 @@ def main() -> None:
         (r"#\s*noqa", "# noqa"),
         (r"#\s*type:\s*ignore", "# type: ignore"),
         (r"#\s*nosec", "# nosec"),
+        (r"//\s*nolint", "//nolint"),
+        (r"//\s*lint:ignore", "//lint:ignore"),
     ]
 
     for pattern, label in suppression_patterns:
