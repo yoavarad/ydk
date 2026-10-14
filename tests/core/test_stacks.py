@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from ydk.core.stacks import STACKS, get_stack
@@ -53,3 +55,26 @@ def test_all_stacks_have_verifications() -> None:
     for name, stack in STACKS.items():
         assert "verifications" in stack, f"Stack {name!r} missing verifications"
         assert len(stack["verifications"]) > 0, f"Stack {name!r} has empty verifications"
+
+
+GO_PYTHON_PLUGINS = {"lint-ruff", "types-ty", "tests-pytest", "python-quality", "python-tdd-guard"}
+
+
+def test_go_stack_plugins_are_go_only() -> None:
+    stack = get_stack("go")
+    enabled = set(stack["verifications"])
+    assert {"go-fmt", "go-vet", "go-test", "go-vendor", "helm-lint", "tdd-guard", "tdd-guard-cmd"} <= enabled
+    assert not enabled & GO_PYTHON_PLUGINS
+    assert all(
+        (Path(__file__).parents[2] / "src" / "ydk" / "verifications" / p / "manifest.yaml").is_file() for p in enabled
+    )
+
+
+def test_go_stack_overrides() -> None:
+    o = get_stack("go")["config_overrides"]
+    assert o["verification.tdd.source_globs"] == ["**/*.go"]
+    assert o["verification.tdd.test_globs"] == ["**/*_test.go"]
+    assert o["verification.tdd.exempt_globs"] == ["vendor/**", "test/**"]
+    assert o["verification.tdd.test_for"] == "same-dir-suffix"
+    assert o["guards.code_dirs"] == ["cmd", "internal", "pkg", "charts", "scripts", "test", "tests"]
+    assert o["testing.test_globs"] == ["**/*_test.go"]

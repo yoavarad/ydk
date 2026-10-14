@@ -460,10 +460,16 @@ def init_command(
     force: bool = typer.Option(False, "--force", help="Overwrite existing config"),
     remote: str = typer.Option("local", "--remote", "-r", help="Remote type: local, github, gitlab"),
     stack: str = typer.Option(
-        "", "--stack", "-s", help="Technology stack: python-fastapi, python-cli, nextjs-fsd, terraform, dotnet"
+        "", "--stack", "-s", help="Technology stack: python-fastapi, python-cli, nextjs-fsd, terraform, dotnet, go"
     ),
 ) -> None:
     """Initialize YDK in a project directory."""
+    if stack:
+        from ydk.core.stacks import STACKS
+
+        if stack not in STACKS:
+            typer.echo(f"Error: unknown stack {stack!r}. Valid stacks: {', '.join(sorted(STACKS))}", err=True)
+            raise typer.Exit(code=2)
     try:
         config = init_config(
             project_name=name,

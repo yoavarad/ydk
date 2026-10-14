@@ -421,3 +421,29 @@ def test_init_local_writes_no_workflows(tmp_path: Path, monkeypatch: pytest.Monk
     result = runner.invoke(app, ["init", "--name", "p", "--remote", "local"])
     assert result.exit_code == 0, result.output
     assert not (tmp_path / ".github" / "workflows").exists()
+
+
+def test_init_go_stack(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    result = runner.invoke(app, ["init", "--name", "svc", "--stack", "go"])
+    assert result.exit_code == 0
+    cfg = yaml.safe_load((tmp_path / ".ydk" / "config.yaml").read_text())
+    assert cfg["project"]["stack"] == "go"
+    enabled = cfg["verification"]["enabled"]
+    assert "go-test" in enabled
+    assert "tests-pytest" not in enabled
+    assert cfg["verification"]["tdd"]["source_globs"] == ["**/*.go"]
+    assert r"\bgo test\b" in cfg["tdd"]["test_commands"]
+    assert "tests" in cfg["guards"]["code_dirs"]
+    assert cfg["verification"]["tdd"]["test_for"] == "same-dir-suffix"
+    assert cfg["verification"]["tdd"]["exempt_globs"] == ["vendor/**", "test/**"]
+    assert cfg["testing"]["test_globs"] == ["**/*_test.go"]
+
+
+def test_init_unknown_stack_exits_2(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    result = runner.invoke(app, ["init", "--name", "x", "--stack", "nope"])
+    assert result.exit_code == 2
+    assert "go" in result.output
+    assert "python-fastapi" in result.output
+    assert not (tmp_path / ".ydk" / "config.yaml").exists()

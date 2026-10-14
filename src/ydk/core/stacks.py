@@ -69,6 +69,35 @@ STACKS: dict[str, dict[str, Any]] = {
         ],
         "templates": ["dotnet-webapi-clean"],
     },
+    "go": {
+        "verifications": [
+            "go-fmt",
+            "go-vet",
+            "go-test",
+            "go-vendor",
+            "helm-lint",
+            "spec-alignment",
+            "pr-body-validation",
+            "ai-code-review",
+            "tdd-guard",
+            "tdd-guard-cmd",
+            "guard-no-manual-pr",
+            "guard-no-noqa",
+            "guard-no-proof-tamper",
+            "guard-stage-gate",
+            "guard-stage-gate-cmd",
+        ],
+        "config_overrides": {
+            "verification.tdd.source_globs": ["**/*.go"],
+            "verification.tdd.test_globs": ["**/*_test.go"],
+            "verification.tdd.exempt_globs": ["vendor/**", "test/**"],
+            "verification.tdd.test_for": "same-dir-suffix",
+            "verification.tdd.test_suffix": "_test.go",
+            "tdd.test_commands": [r"\bgo test\b", r"\bmake test\b"],
+            "guards.code_dirs": ["cmd", "internal", "pkg", "charts", "scripts", "test", "tests"],
+            "testing.test_globs": ["**/*_test.go"],
+        },
+    },
 }
 
 
