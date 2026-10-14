@@ -2372,10 +2372,10 @@ def scaffold_batch(
         task_idx += 1
 
     # Add final verification task that depends on all other tasks; criteria come from the stack's language profile
-    from ydk.core.config import load_config
+    from ydk.core.config import find_project_root, load_config
     from ydk.core.stack_profile import profile_for
 
-    profile = profile_for(load_config(Path.cwd() / ".ydk" / "config.yaml"))
+    profile = profile_for(load_config(find_project_root() / ".ydk" / "config.yaml"))
     all_task_ids = [t["id"] for t in tasks]
     final_task = {
         "id": "T-FINAL",

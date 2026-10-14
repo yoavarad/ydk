@@ -215,8 +215,14 @@ class GoVerificationConfig(BaseModel):
     coverage_packages: list[str] = Field(default_factory=list)
     test_tags: list[str] = Field(default_factory=list)
     race: bool = True
-    # Regexes that fail ``task done`` when found in a task's Go test files (default: un-reasoned skips).
-    skip_patterns: list[str] = Field(default_factory=lambda: [r"\bt\.Skip\(\s*\)", r"\bt\.SkipNow\(\s*\)"])
+    # Regexes that fail ``task done`` on lines a task adds to Go tests (comments and string contents are
+    # blanked first). Default: un-reasoned skips -- Skip()/Skip("")/Skipf("")/SkipNow() on t, b, tb or f.
+    skip_patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"(?<![\w.])(?:t|b|tb|f)\.SkipNow\(\s*\)",
+            r"(?<![\w.])(?:t|b|tb|f)\.Skipf?\(\s*(?:\"\"|``)?\s*[,)]",
+        ]
+    )
 
     @field_validator("skip_patterns")
     @classmethod

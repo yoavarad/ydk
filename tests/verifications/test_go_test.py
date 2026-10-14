@@ -269,3 +269,45 @@ def test_timeout_fails_cleanly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, 
         data = _run_main(mod, tmp_path, monkeypatch, capsys)
     assert data["passed"] is False
     assert "timed out" in data["output"]
+
+
+_PROFILE = (
+    "mode: atomic\n"
+    "example.com/m/a/a.go:3.10,5.2 3 1\n"
+    "example.com/m/a/a.go:7.10,9.2 1 0\n"
+    "example.com/m/b/b.go:3.10,5.2 4 0\n"
+    "example.com/m/b/b.go:3.10,5.2 4 2\n"
+)
+
+
+class TestTotalCoverage:
+    def test_statement_weighted_with_duplicate_blocks_merged(self) -> None:
+        # covered stmts: a(3) + b(4, duplicate block counts merged) = 7 of 8
+        assert _load()._total_coverage(_PROFILE) == pytest.approx(87.5)
+
+    def test_none_for_empty_profile(self) -> None:
+        assert _load()._total_coverage("mode: set\n") is None
+
+
+class TestSummary:
+    def test_counts_and_total(self) -> None:
+        out = "ok  \texample.com/m/a\t0.1s\tcoverage: 80.0% of statements\nFAIL\texample.com/m/b\t0.2s\nFAIL\n"
+        assert _load()._summary(out, 72.25) == "1 package(s) ok, 1 FAIL, total coverage 72.2%"
+
+    def test_without_total(self) -> None:
+        assert _load()._summary("ok  \texample.com/m/a\t0.1s\n", None) == "1 package(s) ok, 0 FAIL"
+
+
+def test_main_reports_summary_with_total_from_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    mod = _load()
+    _go_module(tmp_path)
+
+    def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess:
+        profile = next(a for a in cmd if a.startswith("-coverprofile=")).split("=", 1)[1]
+        Path(profile).write_text(_PROFILE, encoding="utf-8")
+        return _completed(0, stdout="ok  \texample.com/m/a\t0.1s\tcoverage: 75.0% of statements\n")
+
+    with patch.object(mod.shutil, "which", return_value="go"), patch.object(mod.subprocess, "run", fake_run):
+        data = _run_main(mod, tmp_path, monkeypatch, capsys)
+    assert data["detail"]["coverage_total"] == pytest.approx(87.5)
+    assert data["detail"]["summary"] == "1 package(s) ok, 0 FAIL, total coverage 87.5%"

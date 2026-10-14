@@ -490,7 +490,7 @@ class TaskLifecycle:
         (see ``_check_go_skips``).
         """
         if self._language_profile().name == "go":
-            return self._check_go_skips(task_files)
+            return self._check_go_skips()
 
         warnings: list[str] = []
 
@@ -580,53 +580,68 @@ class TaskLifecycle:
 
         return profile_for(load_config(self._root / ".ydk" / "config.yaml"))
 
-    def _check_go_skips(self, task_files: list[str]) -> list[str]:
-        """Flag ``verification.go.skip_patterns`` hits in the task's Go test files.
+    def _git_output(self, args: list[str]) -> str | None:
+        """stdout of ``git <args>`` in the project root, or ``None`` when git fails."""
+        try:
+            # Bytes, not text mode: universal-newline translation would shift diff line numbers.
+            proc = subprocess.run(
+                ["git", "-c", "core.quotepath=false", *args],
+                cwd=str(self._root),
+                capture_output=True,
+                timeout=30,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return None
+        return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else None
 
-        Scans the same-dir tests derived from *task_files* plus every
-        ``*_test.go`` changed against the task's diff base.
+    def _go_test_targets(self) -> dict[str, set[int] | None]:
+        """Go test files the task touched -> added line numbers (``None`` = whole file).
+
+        Lines added to ``*_test.go`` against the diff base, plus untracked new
+        test files. If git fails, every test outside vendor/testdata/hidden
+        dirs is scanned whole (fail safe).
+        """
+        from ydk.core.go_source import added_lines
+
+        base = diff_base(self._root) or default_branch(self._root)
+        diff = self._git_output(["diff", "-U0", "--no-color", "--no-ext-diff", "--relative", base, "--", "*_test.go"])
+        untracked = self._git_output(["ls-files", "-z", "--others", "--exclude-standard", "--", "*_test.go"])
+        if diff is None or untracked is None:
+            logger.warning("git diff failed — scanning all *_test.go for un-reasoned skips")
+            return {
+                rel: None
+                for rel in (p.relative_to(self._root).as_posix() for p in self._root.rglob("*_test.go"))
+                if not any(part in ("vendor", "testdata") or part.startswith(".") for part in rel.split("/")[:-1])
+            }
+        targets: dict[str, set[int] | None] = dict(added_lines(diff))
+        targets.update({f: None for f in untracked.split("\0") if f})
+        return targets
+
+    def _check_go_skips(self) -> list[str]:
+        """Flag ``verification.go.skip_patterns`` hits on lines the task added to Go tests.
+
+        Comments and string contents are blanked before matching, so a
+        commented-out ``t.Skip()`` or one inside a string never fails.
         """
         from ydk.core.config import load_config
+        from ydk.core.go_source import blank_comments_and_strings
 
         patterns = load_config(self._root / ".ydk" / "config.yaml").verification.go.skip_patterns
         if not patterns:
             return []
-        try:
-            diff = subprocess.run(
-                ["git", "diff", "--name-only", diff_base(self._root) or default_branch(self._root)],
-                cwd=str(self._root),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=30,
-            )
-            ok = diff.returncode == 0
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            ok = False
-        if ok:
-            changed = [f.strip() for f in diff.stdout.splitlines() if f.strip().endswith("_test.go")]
-        else:
-            # No usable diff: fail safe by scanning every Go test outside vendor/testdata/hidden dirs.
-            logger.warning("git diff failed — scanning all *_test.go for un-reasoned skips")
-            changed = [
-                p.relative_to(self._root).as_posix()
-                for p in self._root.rglob("*_test.go")
-                if not any(
-                    part in ("vendor", "testdata") or part.startswith(".")
-                    for part in p.relative_to(self._root).parts[:-1]
-                )
-            ]
         regexes = [re.compile(p) for p in patterns]
         warnings: list[str] = []
-        for test_file in dict.fromkeys([*self._derive_test_files(task_files), *changed]):
+        for test_file, lines in self._go_test_targets().items():
             full_path = self._root / test_file
             if not full_path.is_file():
                 continue
-            text = full_path.read_text(encoding="utf-8", errors="replace")
-            for lineno, line in enumerate(text.splitlines(), start=1):
-                if any(rx.search(line) for rx in regexes):
-                    warnings.append(f"Un-reasoned skip `{line.strip()}` in {test_file}:{lineno}")
+            # Split on "\n" only, like git, so line numbers line up with the diff.
+            text = full_path.read_bytes().decode("utf-8", errors="replace")
+            raw = text.split("\n")
+            code = blank_comments_and_strings(text)
+            for lineno, line in enumerate(code, start=1):
+                if (lines is None or lineno in lines) and any(rx.search(line) for rx in regexes):
+                    warnings.append(f"Un-reasoned skip `{raw[lineno - 1].strip()}` in {test_file}:{lineno}")
         return warnings
 
     def _screenshot_ref_patterns(self) -> list[str]:

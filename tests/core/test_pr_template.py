@@ -86,21 +86,56 @@ class TestPluginsSection:
         body = builder.build("T-001", proof_dir)
         assert "pytest — FAIL" in body
 
-    def test_go_test_summary_shows_counts_and_coverage(self, proof_dir: Path) -> None:
+    @staticmethod
+    def _report(proof_dir: Path, checks: list[dict]) -> None:
+        import json
+
+        report = {"timestamp": "t", "checks": checks, "all_passed": True, "total_duration_seconds": 1.0}
+        (proof_dir / "verification-report.json").write_text(json.dumps(report), encoding="utf-8")
+
+    def test_plugin_declared_summary_appended_by_check_name(self, proof_dir: Path) -> None:
         plugins_dir = proof_dir / "plugins"
         plugins_dir.mkdir()
-        (plugins_dir / "go-test.txt").write_text(
-            "PASSED (1.0s)\n\nok  \texample.com/m/a\t0.1s\tcoverage: 75.0% of statements\n", encoding="utf-8"
+        (plugins_dir / "unit-suite.txt").write_text("PASSED (1.0s)\n\nok  example.com/m/a", encoding="utf-8")
+        summary = "1 package(s) ok, 0 FAIL, total coverage 75.0%"
+        self._report(
+            proof_dir,
+            [
+                {
+                    "name": "unit-suite",
+                    "passed": True,
+                    "output": "",
+                    "duration_seconds": 1.0,
+                    "detail": {"summary": summary},
+                }
+            ],
         )
         body = PRBodyBuilder().build("T-001", proof_dir)
-        assert "<summary>go test — PASS (1 package(s) ok, 0 FAIL, avg pkg coverage 75.0%)</summary>" in body
+        assert f"<summary>unit suite — PASS ({summary})</summary>" in body
 
-    def test_go_test_skipped_summary_shows_reason(self, proof_dir: Path) -> None:
+    def test_declared_summary_escaped_and_single_line(self, proof_dir: Path) -> None:
+        (proof_dir / "plugins").mkdir()
+        (proof_dir / "plugins" / "x.txt").write_text("PASSED (1.0s)\n\nok", encoding="utf-8")
+        detail = {"summary": "a <b>\n</summary> c"}
+        self._report(
+            proof_dir, [{"name": "x", "passed": True, "output": "", "duration_seconds": 1.0, "detail": detail}]
+        )
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "<summary>x — PASS (a &lt;b&gt; &lt;/summary&gt; c)</summary>" in body
+
+    def test_malformed_report_ignored(self, proof_dir: Path) -> None:
+        (proof_dir / "plugins").mkdir()
+        (proof_dir / "plugins" / "x.txt").write_text("PASSED (1.0s)\n\nok", encoding="utf-8")
+        (proof_dir / "verification-report.json").write_text("{not json", encoding="utf-8")
+        assert "<summary>x — PASS</summary>" in PRBodyBuilder()._plugins_section("T-001", proof_dir)
+
+    def test_no_declared_summary_leaves_header_unchanged(self, proof_dir: Path) -> None:
         plugins_dir = proof_dir / "plugins"
         plugins_dir.mkdir()
-        (plugins_dir / "go-test.txt").write_text("PASSED (0.0s)\n\nNo go.mod found — skipped\n", encoding="utf-8")
+        (plugins_dir / "go-test.txt").write_text("PASSED (1.0s)\n\nok", encoding="utf-8")
+        self._report(proof_dir, [{"name": "go-test", "passed": True, "output": "", "duration_seconds": 1.0}])
         body = PRBodyBuilder().build("T-001", proof_dir)
-        assert "<summary>go test — PASS (No go.mod found — skipped)</summary>" in body
+        assert "<summary>go test — PASS</summary>" in body
 
     def test_multiple_plugins_sorted(self, proof_dir: Path) -> None:
         plugins_dir = proof_dir / "plugins"
@@ -328,28 +363,6 @@ class TestSummaryExtraction:
 
     def test_empty_output(self) -> None:
         assert _extract_summary_line("ruff check", "") == "no output"
-
-    def test_go_test_counts_and_coverage(self) -> None:
-        raw = (
-            "PASSED (3.1s)\n"
-            "ok  \texample.com/m/internal/a\t0.10s\tcoverage: 80.0% of statements\n"
-            "ok  \texample.com/m/internal/b\t0.20s\tcoverage: 60.0% of statements\n"
-            "?   \texample.com/m/cmd\t[no test files]\n"
-        )
-        assert _extract_summary_line("go test", raw) == "2 package(s) ok, 0 FAIL, avg pkg coverage 70.0%"
-
-    def test_go_test_failures_counted(self) -> None:
-        raw = (
-            "FAILED (2.0s)\n"
-            "--- FAIL: TestX (0.00s)\n"
-            "FAIL\n"
-            "FAIL\texample.com/m/internal/a\t0.10s\n"
-            "ok  \texample.com/m/internal/b\t0.20s\n"
-        )
-        assert _extract_summary_line("go test", raw) == "1 package(s) ok, 1 FAIL"
-
-    def test_go_test_no_package_lines_falls_back(self) -> None:
-        assert _extract_summary_line("go test", "No go.mod found — skipped") == "No go.mod found — skipped"
 
     def test_ty_error(self) -> None:
         raw = "error[unresolved-attribute]: foo\nerror[unresolved-attribute]: bar"

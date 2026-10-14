@@ -97,11 +97,78 @@ class TestGoSkipCheck:
         _commit(go_repo, "internal/svc/foo_test.go", _REASONED)
         assert _lifecycle(go_repo)._check_xfail_removed("T-001", []) == []
 
-    def test_derived_test_of_task_file_is_scanned(self, go_repo: Path) -> None:
+    def test_unchanged_derived_test_with_old_skip_passes(self, go_repo: Path) -> None:
         _commit(go_repo, "internal/svc/foo_test.go", _UNREASONED)
-        _git(go_repo, "checkout", "-q", "-B", "main")  # no diff vs base: only derivation can find it
-        warnings = _lifecycle(go_repo)._check_xfail_removed("T-001", ["internal/svc/foo.go"])
+        _git(go_repo, "checkout", "-q", "-B", "main")  # skip predates the task: no diff vs base
+        assert _lifecycle(go_repo)._check_xfail_removed("T-001", ["internal/svc/foo.go"]) == []
+
+    def test_preexisting_skip_in_touched_file_passes(self, go_repo: Path) -> None:
+        _commit(go_repo, "internal/svc/foo_test.go", _UNREASONED)
+        _git(go_repo, "checkout", "-q", "-B", "main")
+        _git(go_repo, "checkout", "-q", "-B", "feature")
+        _commit(go_repo, "internal/svc/foo_test.go", _UNREASONED + '\nfunc TestBar(t *testing.T) {\n\tt.Log("x")\n}\n')
+        assert _lifecycle(go_repo)._check_xfail_removed("T-001", ["internal/svc/foo.go"]) == []
+
+    def test_added_skip_in_preexisting_file_fails_with_new_line_number(self, go_repo: Path) -> None:
+        _commit(go_repo, "internal/svc/foo_test.go", _REASONED)
+        _git(go_repo, "checkout", "-q", "-B", "main")
+        _git(go_repo, "checkout", "-q", "-B", "feature")
+        _commit(go_repo, "internal/svc/foo_test.go", _REASONED + "\nfunc TestBar(t *testing.T) {\n\tt.Skip()\n}\n")
+        warnings = _lifecycle(go_repo)._check_xfail_removed("T-001", [])
         assert len(warnings) == 1
+        assert "internal/svc/foo_test.go:10" in warnings[0]
+
+    def test_untracked_new_test_file_is_scanned(self, go_repo: Path) -> None:
+        (go_repo / "pkg").mkdir()
+        (go_repo / "pkg" / "new_test.go").write_text(_UNREASONED, encoding="utf-8")
+        warnings = _lifecycle(go_repo)._check_xfail_removed("T-001", [])
+        assert len(warnings) == 1
+        assert "pkg/new_test.go:6" in warnings[0]
+
+    def test_untracked_unicode_test_file_is_scanned(self, go_repo: Path) -> None:
+        (go_repo / "pé_test.go").write_text(_UNREASONED, encoding="utf-8")
+        assert len(_lifecycle(go_repo)._check_xfail_removed("T-001", [])) == 1
+
+    def test_committed_unicode_test_file_is_scanned(self, go_repo: Path) -> None:
+        _commit(go_repo, "pé_test.go", _UNREASONED)
+        assert len(_lifecycle(go_repo)._check_xfail_removed("T-001", [])) == 1
+
+    def test_formfeed_in_comment_keeps_line_numbers(self, go_repo: Path) -> None:
+        _commit(go_repo, "x_test.go", "package x\n// a\fb\nfunc TestX(t *testing.T) {\n\tt.Skip()\n}\n")
+        warnings = _lifecycle(go_repo)._check_xfail_removed("T-001", [])
+        assert len(warnings) == 1
+        assert "x_test.go:4" in warnings[0]
+
+    def test_project_root_in_repo_subdir(self, go_repo: Path) -> None:
+        sub = go_repo / "svc"
+        sub.mkdir()
+        _write_config(sub, "go")
+        _commit(go_repo, "svc/x_test.go", _UNREASONED)
+        warnings = _lifecycle(sub)._check_xfail_removed("T-001", [])
+        assert len(warnings) == 1
+        assert "x_test.go:6" in warnings[0]
+
+    @pytest.mark.parametrize(
+        "call", ['t.Skip("")', "t.SkipNow()", 't.Skipf("")', "b.Skip()", "tb.SkipNow()", "f.Skip( )"]
+    )
+    def test_unreasoned_variants_fail(self, go_repo: Path, call: str) -> None:
+        _commit(go_repo, "x_test.go", f"package x\n\nfunc TestX(t *testing.T) {{\n\t{call}\n}}\n")
+        assert len(_lifecycle(go_repo)._check_xfail_removed("T-001", [])) == 1
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            '\tt.Skipf("needs %s", "db")',
+            "\t// t.Skip()",
+            "\tx := 1 // t.SkipNow()",
+            "\t/* t.Skip() */",
+            "\t/*\n\tt.Skip()\n\t*/",
+            '\ts := "t.Skip()"',
+        ],
+    )
+    def test_reasoned_or_commented_skips_pass(self, go_repo: Path, body: str) -> None:
+        _commit(go_repo, "x_test.go", f"package x\n\nfunc TestX(t *testing.T) {{\n{body}\n}}\n")
+        assert _lifecycle(go_repo)._check_xfail_removed("T-001", []) == []
 
     def test_skip_patterns_configurable(self, go_repo: Path) -> None:
         _write_config(go_repo, "go", go={"skip_patterns": []})

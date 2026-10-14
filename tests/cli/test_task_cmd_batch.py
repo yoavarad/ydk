@@ -724,6 +724,16 @@ class TestScaffoldBatch:
             "Full ruff + ty clean",
         ]
 
+    def test_tfinal_config_resolved_from_project_root_in_subdir(self, tmp_path: Path, monkeypatch: object) -> None:
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            yaml.dump({"project": {"name": "p", "stack": "go"}}), encoding="utf-8"
+        )
+        sub = tmp_path / "internal" / "svc"
+        sub.mkdir(parents=True)
+        final = self._final_task(sub, monkeypatch, None)
+        assert "gofmt + go vet clean" in final["acceptance_criteria"]
+
     def test_tfinal_go_stack_lists_go_criteria(self, tmp_path: Path, monkeypatch: object) -> None:
         final = self._final_task(tmp_path, monkeypatch, "go")
         text = " ".join([final["title"], final["test_strategy"], *final["acceptance_criteria"]])

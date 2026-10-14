@@ -6,16 +6,10 @@ proof sections; only ``summary.md`` is agent-authored.
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-# ``go test`` package result lines: "ok  <pkg> ...", "FAIL\t<pkg> ..." (bare "FAIL" and "--- FAIL:" excluded).
-_GO_OK_RE = re.compile(r"^ok[ \t]+\S+", re.MULTILINE)
-_GO_FAIL_RE = re.compile(r"^FAIL[ \t]+\S+", re.MULTILINE)
-_GO_COVERAGE_RE = re.compile(r"coverage: (\d+(?:\.\d+)?)% of statements")
 
 
 _MAX_BLOCK_CHARS = 2000
@@ -116,6 +110,7 @@ class PRBodyBuilder:
         blocks: list[str] = []
         omitted: list[str] = []
         total_chars = 0
+        declared = self._declared_summaries(proof_dir)
         for plugin_file in sorted(plugins_dir.glob("*.txt")):
             plugin_name = plugin_file.stem.replace("-", " ").replace("_", " ")
             if total_chars >= _MAX_SECTION_CHARS:
@@ -129,9 +124,8 @@ class PRBodyBuilder:
             else:
                 status = "FAIL"
             summary_text = f"{plugin_name} — {status}"
-            if plugin_name == "go test":
-                output = raw.split("\n", 1)[1] if "\n" in raw else ""  # drop the status line
-                summary_text += f" ({_extract_summary_line('go test', output)})"
+            if plugin_file.stem in declared:
+                summary_text += f" ({declared[plugin_file.stem]})"
             proof_relpath = f".ydk/proofs/{task_id}/plugins/{plugin_file.name}"
             content = _truncate_raw(raw, proof_relpath)
             block = _details_block(summary_text, content)
@@ -253,6 +247,29 @@ class PRBodyBuilder:
         return ""
 
     @staticmethod
+    def _declared_summaries(proof_dir: Path) -> dict[str, str]:
+        """Proof-file stem -> ``detail.summary`` a plugin declared in verification-report.json."""
+        report_path = proof_dir / "verification-report.json"
+        if not report_path.exists():
+            return {}
+        import html
+
+        from pydantic import ValidationError
+
+        from ydk.models.verification import VerificationReport
+
+        try:
+            report = VerificationReport.model_validate_json(report_path.read_text(encoding="utf-8"))
+        except (ValidationError, ValueError):
+            return {}
+        # Key matches ProofCapture's plugins/<name>.txt naming; text is one escaped line for <summary>.
+        return {
+            c.name.replace("/", "_").replace(" ", "_"): html.escape(" ".join(str(c.detail["summary"]).split()))
+            for c in report.checks
+            if c.detail and c.detail.get("summary")
+        }
+
+    @staticmethod
     def _list_images(proof_dir: Path) -> list[Path]:
         screenshots_dir = proof_dir / "screenshots"
         if not screenshots_dir.is_dir():
@@ -316,17 +333,6 @@ def _extract_summary_line(label: str, raw: str) -> str:
         if line_count == 1:
             return stripped.splitlines()[0]
         return f"{line_count} issue(s) found"
-
-    if label == "go test":
-        ok = len(_GO_OK_RE.findall(stripped))
-        failed = len(_GO_FAIL_RE.findall(stripped))
-        if not ok and not failed:
-            return stripped.splitlines()[0]
-        line = f"{ok} package(s) ok, {failed} FAIL"
-        coverage = [float(c) for c in _GO_COVERAGE_RE.findall(stripped)]
-        if coverage:
-            line += f", avg pkg coverage {sum(coverage) / len(coverage):.1f}%"
-        return line
 
     if label == "ty check":
         if not stripped:
