@@ -105,3 +105,61 @@ class TestCoverageCommand:
         result = runner.invoke(app, ["test", "coverage"])
         assert result.exit_code == 0
         assert "entity" in result.output.lower() or "Coverage" in result.output
+
+
+def _setup_test_manifest(tmp_path: Path, level: str = "unit") -> None:
+    d = tmp_path / ".ydk" / "components" / "test" / "messaging"
+    d.mkdir(parents=True)
+    (tmp_path / ".ydk" / "schemas").mkdir(parents=True)
+    data = {
+        "$schema": "ydk:schema:test",
+        "id": f"ydk:test:messaging/store.{level}",
+        "description": "x",
+        "level": level,
+        "target": "ydk:entity:messaging/Store",
+        "cases": [
+            {"name": "fifo-101", "description": "d", "given": "g", "when": "w", "then": "t"},
+            {"name": "empty-pop", "description": "d", "given": "g", "when": "w", "then": "t"},
+        ],
+    }
+    (d / f"store.{level}.yaml").write_text(yaml.dump(data))
+
+
+class TestGenerateGoFromTestManifest:
+    def test_writes_default_path(self, tmp_path, monkeypatch):
+        _setup_test_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["test", "generate", "--from", "ydk:test:messaging/store.unit", "--lang", "go"])
+        assert result.exit_code == 0, result.output
+        text = (tmp_path / "messaging" / "store_test.go").read_text()
+        assert text.count("t.Run(") == 2
+
+    def test_integration_build_tag(self, tmp_path, monkeypatch):
+        _setup_test_manifest(tmp_path, "integration")
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            app, ["test", "generate", "--from", "ydk:test:messaging/store.integration", "--lang", "go"]
+        )
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "messaging" / "store_integration_test.go").read_text().startswith("//go:build integration")
+
+    def test_existing_file_not_overwritten_missing_reported(self, tmp_path, monkeypatch):
+        _setup_test_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "messaging" / "store_test.go"
+        target.parent.mkdir()
+        original = (
+            'package messaging\n\nfunc TestStore(t *testing.T) {\n\tt.Run("fifo-101", func(t *testing.T) {})\n}\n'
+        )
+        target.write_text(original)
+        result = runner.invoke(app, ["test", "generate", "--from", "ydk:test:messaging/store.unit", "--lang", "go"])
+        assert result.exit_code == 0, result.output
+        assert target.read_text() == original
+        assert "empty-pop" in result.output
+        assert "fifo-101" not in result.output
+
+    def test_non_go_lang_for_test_manifest_errors(self, tmp_path, monkeypatch):
+        _setup_test_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["test", "generate", "--from", "ydk:test:messaging/store.unit"])
+        assert result.exit_code == 1

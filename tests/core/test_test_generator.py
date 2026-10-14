@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import ast
+import re
 
+import pytest
+
+from ydk.core.test_coverage import TestCoverageChecker
 from ydk.core.test_generator import ComponentTestGenerator, _class_name_from_id
 
 
@@ -176,3 +180,146 @@ class TestGenerateFromError:
         result = gen.generate_from_error(self._make_manifest(), self._make_schema())
         # 1 required-fields test + 3 field-type tests (code, message, details)
         assert result.test_count >= 4
+
+
+class TestGenerateGoFromTest:
+    def _manifest(self, level="unit", **overrides):
+        base = {
+            "id": f"ydk:test:messaging/store.{level}",
+            "level": level,
+            "target": "ydk:entity:messaging/Store",
+            "cases": [
+                {"name": "fifo-101", "given": "empty store", "when": "push a then b", "then": "pop returns a"},
+                {"name": "empty-pop", "given": "empty store", "when": "pop", "then": "error"},
+            ],
+        }
+        base.update(overrides)
+        return base
+
+    def test_one_subtest_per_case(self):
+        result = ComponentTestGenerator().generate_go_from_test(self._manifest())
+        assert result.test_count == 2
+        assert result.test_code.count("t.Run(") == 2
+        assert 't.Run("fifo-101"' in result.test_code
+        assert "func TestStore(t *testing.T) {" in result.test_code
+        assert "package messaging" in result.test_code
+        assert 't.Fatal("YDK-TODO: implement")' in result.test_code
+        assert "//go:build" not in result.test_code
+
+    def test_given_when_then_comments(self):
+        code = ComponentTestGenerator().generate_go_from_test(self._manifest()).test_code
+        assert "// Given: empty store" in code
+        assert "// When: push a then b" in code
+        assert "// Then: pop returns a" in code
+
+    def test_integration_gets_build_tag(self):
+        code = ComponentTestGenerator().generate_go_from_test(self._manifest("integration")).test_code
+        assert code.startswith("//go:build integration\n\npackage messaging")
+
+    def test_default_path(self):
+        result = ComponentTestGenerator().generate_go_from_test(self._manifest())
+        assert result.test_file_path == "messaging/store_test.go"
+
+    def test_case_name_quotes_escaped(self):
+        m = self._manifest(cases=[{"name": 'say "hi"', "given": "g", "when": "w", "then": "t"}])
+        code = ComponentTestGenerator().generate_go_from_test(m).test_code
+        assert 't.Run("say \\"hi\\""' in code
+
+    def test_multiline_comment_lines_prefixed(self):
+        m = self._manifest(cases=[{"name": "a", "given": "l1\nl2", "when": "w", "then": "t"}])
+        code = ComponentTestGenerator().generate_go_from_test(m).test_code
+        assert "// Given: l1\n\t\t// l2" in code
+
+    def test_missing_cases_in_existing_file(self):
+        existing = (
+            'package messaging\n\nfunc TestStore(t *testing.T) {\n\tt.Run("fifo-101", func(t *testing.T) {})\n}\n'
+        )
+        gen = ComponentTestGenerator()
+        assert gen.missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_lowercase_target_func_name_is_runnable_by_go_test(self):
+        m = self._manifest(target="ydk:adapter:messaging/cluster")
+        code = ComponentTestGenerator().generate_go_from_test(m).test_code
+        assert "func TestCluster(t *testing.T) {" in code
+
+    def test_integration_path_and_func_do_not_collide_with_unit(self):
+        r = ComponentTestGenerator().generate_go_from_test(self._manifest("integration"))
+        assert r.test_file_path == "messaging/store_integration_test.go"
+        assert "func TestStoreIntegration(" in r.test_code
+
+    def test_non_ascii_name_kept_literal(self):
+        m = self._manifest(cases=[{"name": "ok-😀", "given": "g", "when": "w", "then": "t"}])
+        assert 't.Run("ok-😀"' in ComponentTestGenerator().generate_go_from_test(m).test_code
+
+    def test_package_name_sanitized_to_go_identifier(self):
+        gen = ComponentTestGenerator()
+        for ns, expected in [
+            ("my-pkg.v2", "my_pkg_v2"),
+            ("9lives", "p9lives"),
+            ("type", "type_"),
+            ("Msg", "msg"),
+            ("-", "tests"),
+        ]:
+            m = self._manifest(id=f"ydk:test:{ns}/store.unit")
+            assert f"package {expected}\n" in gen.generate_go_from_test(m).test_code
+
+    def test_default_path_sanitized(self):
+        gen = ComponentTestGenerator()
+        m = self._manifest(id="ydk:test:../evil:x/st ore.unit")
+        path = gen.generate_go_from_test(m).test_file_path
+        assert ".." not in path.split("/")
+        assert not any(ch in path for ch in ':\\ "<>|*?')
+        assert path.endswith("_test.go")
+
+    def test_missing_cases_backtick_literal(self):
+        existing = "func TestStore(t *testing.T) {\n\tt.Run(`fifo-101`, func(t *testing.T) {})\n}\n"
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_missing_cases_table_driven(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n"
+            '\tcases := []struct{ name string }{\n\t\t{name: "fifo-101"},\n\t\t{"empty-pop"},\n\t}\n'
+            "\tfor _, tc := range cases {\n\t\tt.Run(tc.name, func(t *testing.T) {})\n\t}\n}\n"
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == []
+
+    def test_table_driven_partial(self):
+        existing = (
+            'func TestStore(t *testing.T) {\n\tcases := []struct{ name string }{{name: "fifo-101"}}\n'
+            "\tfor _, tc := range cases {\n\t\tt.Run(tc.name, func(t *testing.T) {})\n\t}\n}\n"
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_name_string_without_dynamic_run_is_not_covered(self):
+        existing = 'func TestStore(t *testing.T) {\n\t_ = "fifo-101"\n}\n'
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["fifo-101", "empty-pop"]
+
+    def test_generated_source_plausible(self):
+        for level in ("unit", "integration"):
+            code = ComponentTestGenerator().generate_go_from_test(self._manifest(level)).test_code
+            body = code.split("package ", 1)[1]
+            assert re.match(r"[a-z_][a-z0-9_]*\n\nimport \"testing\"\n\nfunc Test\w+\(t \*testing\.T\) \{\n", body)
+            assert code.count("{") == code.count("}")
+            assert code.count("(") == code.count(")")
+            assert code.endswith("}\n")
+
+
+class TestGoRoundTripWithCoverage:
+    @pytest.mark.parametrize(
+        "target", ["ydk:adapter:messaging/cluster", "ydk:entity:messaging/kafka-adapter", "ydk:entity:messaging/Store"]
+    )
+    @pytest.mark.parametrize("level", ["unit", "integration"])
+    def test_generated_file_counts_as_implemented(self, tmp_path, target, level):
+        manifest = {
+            "id": f"ydk:test:messaging/thing.{level}",
+            "level": level,
+            "target": target,
+            "cases": [{"name": "a", "given": "g", "when": "w", "then": "t"}],
+        }
+        code = ComponentTestGenerator().generate_go_from_test(manifest).test_code
+        go_file = tmp_path / "thing_test.go"
+        go_file.write_text(code)
+        covered = TestCoverageChecker._is_implemented(
+            manifest["id"], str(manifest["target"]).rsplit("/", 1)[-1].replace(".", ""), "a", [(go_file, code)]
+        )
+        assert covered

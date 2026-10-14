@@ -149,7 +149,12 @@ class TestCoverageChecker:
     def _is_implemented(manifest_id: str, target: str, case: str, contents: list[tuple[Path, str]]) -> bool:
         marker = re.compile(re.escape(f"{manifest_id}#{case}") + r"(?![\w-])")
         go_run = re.compile(r't\.Run\(\s*"' + re.escape(case) + '"')
-        go_func = re.compile(r"^func Test" + re.escape(target) + r"\w*\(", re.MULTILINE) if target else None
+        go_func = None
+        if target:
+            # generator emits Test<Target> with an upper-cased first letter and no punctuation
+            ident = re.sub(r"[^a-zA-Z0-9]", "", target)
+            first = f"[{ident[:1].lower()}{ident[:1].upper()}]" if ident[:1].isalpha() else re.escape(ident[:1])
+            go_func = re.compile(r"^func Test" + first + re.escape(ident[1:]) + r"\w*\(", re.MULTILINE)
         for path, text in contents:
             if marker.search(text):
                 return True
