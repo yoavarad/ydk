@@ -5,4 +5,4 @@ parallel: true
 timeout: 60
 requires:
 - go
-supports_auto_fix: false
+supports_auto_fix: true

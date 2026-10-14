@@ -110,6 +110,7 @@ class PRBodyBuilder:
         blocks: list[str] = []
         omitted: list[str] = []
         total_chars = 0
+        declared = self._declared_summaries(proof_dir)
         for plugin_file in sorted(plugins_dir.glob("*.txt")):
             plugin_name = plugin_file.stem.replace("-", " ").replace("_", " ")
             if total_chars >= _MAX_SECTION_CHARS:
@@ -123,6 +124,8 @@ class PRBodyBuilder:
             else:
                 status = "FAIL"
             summary_text = f"{plugin_name} — {status}"
+            if plugin_file.stem in declared:
+                summary_text += f" ({declared[plugin_file.stem]})"
             proof_relpath = f".ydk/proofs/{task_id}/plugins/{plugin_file.name}"
             content = _truncate_raw(raw, proof_relpath)
             block = _details_block(summary_text, content)
@@ -242,6 +245,29 @@ class PRBodyBuilder:
             skip_note = f", {skipped} skipped" if skipped else ""
             return f"- {passed}/{total} verification checks passed{skip_note} ({report.total_duration_seconds:.1f}s)"
         return ""
+
+    @staticmethod
+    def _declared_summaries(proof_dir: Path) -> dict[str, str]:
+        """Proof-file stem -> ``detail.summary`` a plugin declared in verification-report.json."""
+        report_path = proof_dir / "verification-report.json"
+        if not report_path.exists():
+            return {}
+        import html
+
+        from pydantic import ValidationError
+
+        from ydk.models.verification import VerificationReport
+
+        try:
+            report = VerificationReport.model_validate_json(report_path.read_text(encoding="utf-8"))
+        except (ValidationError, ValueError):
+            return {}
+        # Key matches ProofCapture's plugins/<name>.txt naming; text is one escaped line for <summary>.
+        return {
+            c.name.replace("/", "_").replace(" ", "_"): html.escape(" ".join(str(c.detail["summary"]).split()))
+            for c in report.checks
+            if c.detail and c.detail.get("summary")
+        }
 
     @staticmethod
     def _list_images(proof_dir: Path) -> list[Path]:

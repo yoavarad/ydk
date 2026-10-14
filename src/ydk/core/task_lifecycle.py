@@ -30,6 +30,7 @@ from ydk.services.git import default_branch
 
 if TYPE_CHECKING:
     from ydk.core.git_worktree import WorktreeManager
+    from ydk.core.stack_profile import LanguageProfile
     from ydk.core.verifier import Verifier
     from ydk.models.verification import CheckResult
     from ydk.repositories.protocols import LifecycleTaskRepository
@@ -276,7 +277,7 @@ class TaskLifecycle:
             context["config"]["dotnet"] = {"target": config.verification.dotnet.target}
         if config.verification.tdd.model_fields_set:
             context["config"]["tdd"] = config.verification.tdd.model_dump()
-        context["config"]["go"] = config.verification.go.model_dump()
+        context["config"]["go"] = config.verification.go.model_dump(exclude={"skip_patterns"})
         if task_files:
             context["changed_files"] = task_files
 
@@ -368,7 +369,8 @@ class TaskLifecycle:
         # Check that xfail markers for this task's TODOs have been removed
         xfail_warnings = self._check_xfail_removed(task_id, task_files)
         if xfail_warnings:
-            error_msg = f"Task incomplete: {len(xfail_warnings)} tests still marked as xfail for this task's TODOs"
+            skip_label = self._language_profile().skip_label
+            error_msg = f"Task incomplete: {len(xfail_warnings)} tests still marked as {skip_label}"
             details = "\n".join(f"  - {w}" for w in xfail_warnings)
             self._repo.add_comment(task_id, f"**xfail check FAILED:**\n{error_msg}\n{details}")
             return {"passed": False, "error": error_msg, "xfail_warnings": xfail_warnings}
@@ -452,7 +454,7 @@ class TaskLifecycle:
         Automatically marks verified TODOs as done. Returns warnings for
         any TODO that still has NotImplementedError.
         """
-        from ydk.core.todo_manager import TodoError, TodoManager
+        from ydk.core.todo_manager import TodoError, TodoManager, markers_for
 
         warnings: list[str] = []
         todo_mgr = TodoManager(self._root)
@@ -469,7 +471,9 @@ class TaskLifecycle:
                     todo_mgr.done(todo.id)
                     logger.info("Auto-resolved TODO %s", todo.id)
                 else:
-                    msg = f"TODO {todo.id} still has NotImplementedError in {todo.file}"
+                    markers = markers_for(todo.file)
+                    label = "NotImplementedError" if markers is None or todo.file.endswith(".py") else markers[0][0]
+                    msg = f"TODO {todo.id} still has {label} in {todo.file}"
                     warnings.append(msg)
                     logger.warning(msg)
             except TodoError as exc:
@@ -482,8 +486,12 @@ class TaskLifecycle:
         Scans test files corresponding to the task's source files for
         @pytest.mark.xfail markers whose reason references TODOs assigned
         to this task.  Returns a list of warning strings for any remaining
-        xfail markers.
+        xfail markers. On the go stack, un-reasoned skips are checked instead
+        (see ``_check_go_skips``).
         """
+        if self._language_profile().name == "go":
+            return self._check_go_skips()
+
         warnings: list[str] = []
 
         # Derive test file paths from source files
@@ -526,6 +534,16 @@ class TaskLifecycle:
         - app/api/routes/foo.py -> tests/integration/api/test_foo_routes.py
         - Any path with 'services' -> tests/unit/test_{name}.py
         """
+        profile = self._language_profile()
+        if profile.test_layout == "same-dir-suffix":
+            # Go-style: foo.go -> foo_test.go in the same directory.
+            suffix = profile.test_suffix
+            ext = Path(suffix).suffix
+            derived = (
+                src if src.endswith(suffix) else src[: -len(ext)] + suffix for src in source_files if src.endswith(ext)
+            )
+            return list(dict.fromkeys(derived))
+
         test_files: list[str] = []
         seen: set[str] = set()
 
@@ -554,6 +572,77 @@ class TaskLifecycle:
                 seen.add(candidate)
 
         return test_files
+
+    def _language_profile(self) -> LanguageProfile:
+        """Language profile for the project stack in ``.ydk/config.yaml``."""
+        from ydk.core.config import load_config
+        from ydk.core.stack_profile import profile_for
+
+        return profile_for(load_config(self._root / ".ydk" / "config.yaml"))
+
+    def _git_output(self, args: list[str]) -> str | None:
+        """stdout of ``git <args>`` in the project root, or ``None`` when git fails."""
+        try:
+            # Bytes, not text mode: universal-newline translation would shift diff line numbers.
+            proc = subprocess.run(
+                ["git", "-c", "core.quotepath=false", *args],
+                cwd=str(self._root),
+                capture_output=True,
+                timeout=30,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return None
+        return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else None
+
+    def _go_test_targets(self) -> dict[str, set[int] | None]:
+        """Go test files the task touched -> added line numbers (``None`` = whole file).
+
+        Lines added to ``*_test.go`` against the diff base, plus untracked new
+        test files. If git fails, every test outside vendor/testdata/hidden
+        dirs is scanned whole (fail safe).
+        """
+        from ydk.core.go_source import added_lines
+
+        base = diff_base(self._root) or default_branch(self._root)
+        diff = self._git_output(["diff", "-U0", "--no-color", "--no-ext-diff", "--relative", base, "--", "*_test.go"])
+        untracked = self._git_output(["ls-files", "-z", "--others", "--exclude-standard", "--", "*_test.go"])
+        if diff is None or untracked is None:
+            logger.warning("git diff failed — scanning all *_test.go for un-reasoned skips")
+            return {
+                rel: None
+                for rel in (p.relative_to(self._root).as_posix() for p in self._root.rglob("*_test.go"))
+                if not any(part in ("vendor", "testdata") or part.startswith(".") for part in rel.split("/")[:-1])
+            }
+        targets: dict[str, set[int] | None] = dict(added_lines(diff))
+        targets.update({f: None for f in untracked.split("\0") if f})
+        return targets
+
+    def _check_go_skips(self) -> list[str]:
+        """Flag ``verification.go.skip_patterns`` hits on lines the task added to Go tests.
+
+        Comments and string contents are blanked before matching, so a
+        commented-out ``t.Skip()`` or one inside a string never fails.
+        """
+        from ydk.core.config import load_config
+        from ydk.core.go_source import blank_comments_and_strings
+
+        patterns = load_config(self._root / ".ydk" / "config.yaml").verification.go.skip_patterns
+        if not patterns:
+            return []
+        regexes = [re.compile(p) for p in patterns]
+        warnings: list[str] = []
+        for test_file, lines in self._go_test_targets().items():
+            full_path = self._root / test_file
+            if not full_path.is_file():
+                continue
+            # Split on "\n" only, like git, so line numbers line up with the diff.
+            text = full_path.read_bytes().decode("utf-8", errors="replace")
+            raw = text.split("\n")
+            code = blank_comments_and_strings(text)
+            for lineno, line in enumerate(code, start=1):
+                if (lines is None or lineno in lines) and any(rx.search(line) for rx in regexes):
+                    warnings.append(f"Un-reasoned skip `{raw[lineno - 1].strip()}` in {test_file}:{lineno}")
+        return warnings
 
     def _screenshot_ref_patterns(self) -> list[str]:
         """Load ``proof.screenshot_ref_patterns`` from project config."""

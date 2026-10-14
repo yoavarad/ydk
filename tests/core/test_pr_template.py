@@ -86,6 +86,57 @@ class TestPluginsSection:
         body = builder.build("T-001", proof_dir)
         assert "pytest — FAIL" in body
 
+    @staticmethod
+    def _report(proof_dir: Path, checks: list[dict]) -> None:
+        import json
+
+        report = {"timestamp": "t", "checks": checks, "all_passed": True, "total_duration_seconds": 1.0}
+        (proof_dir / "verification-report.json").write_text(json.dumps(report), encoding="utf-8")
+
+    def test_plugin_declared_summary_appended_by_check_name(self, proof_dir: Path) -> None:
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "unit-suite.txt").write_text("PASSED (1.0s)\n\nok  example.com/m/a", encoding="utf-8")
+        summary = "1 package(s) ok, 0 FAIL, total coverage 75.0%"
+        self._report(
+            proof_dir,
+            [
+                {
+                    "name": "unit-suite",
+                    "passed": True,
+                    "output": "",
+                    "duration_seconds": 1.0,
+                    "detail": {"summary": summary},
+                }
+            ],
+        )
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert f"<summary>unit suite — PASS ({summary})</summary>" in body
+
+    def test_declared_summary_escaped_and_single_line(self, proof_dir: Path) -> None:
+        (proof_dir / "plugins").mkdir()
+        (proof_dir / "plugins" / "x.txt").write_text("PASSED (1.0s)\n\nok", encoding="utf-8")
+        detail = {"summary": "a <b>\n</summary> c"}
+        self._report(
+            proof_dir, [{"name": "x", "passed": True, "output": "", "duration_seconds": 1.0, "detail": detail}]
+        )
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "<summary>x — PASS (a &lt;b&gt; &lt;/summary&gt; c)</summary>" in body
+
+    def test_malformed_report_ignored(self, proof_dir: Path) -> None:
+        (proof_dir / "plugins").mkdir()
+        (proof_dir / "plugins" / "x.txt").write_text("PASSED (1.0s)\n\nok", encoding="utf-8")
+        (proof_dir / "verification-report.json").write_text("{not json", encoding="utf-8")
+        assert "<summary>x — PASS</summary>" in PRBodyBuilder()._plugins_section("T-001", proof_dir)
+
+    def test_no_declared_summary_leaves_header_unchanged(self, proof_dir: Path) -> None:
+        plugins_dir = proof_dir / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "go-test.txt").write_text("PASSED (1.0s)\n\nok", encoding="utf-8")
+        self._report(proof_dir, [{"name": "go-test", "passed": True, "output": "", "duration_seconds": 1.0}])
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "<summary>go test — PASS</summary>" in body
+
     def test_multiple_plugins_sorted(self, proof_dir: Path) -> None:
         plugins_dir = proof_dir / "plugins"
         plugins_dir.mkdir()

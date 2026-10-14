@@ -132,6 +132,19 @@ class TestGoVerificationConfig:
         with pytest.raises(ValueError, match="coverage_min"):
             YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"go": {"coverage_min": bad}}})
 
+    def test_skip_patterns_default_matches_unreasoned_skip_only(self) -> None:
+        import re
+
+        patterns = YdkConfig.model_validate({"project": {"name": "x"}}).verification.go.skip_patterns
+        for bad in ("\tt.Skip()", "\tt.SkipNow()", '\tt.Skip("")', '\tt.Skipf("")', "\tb.Skip()", "\ttb.SkipNow()"):
+            assert any(re.search(p, bad) for p in patterns), bad
+        for ok in ('\tt.Skip("needs db")', '\tt.Skipf("needs %s", x)', "\tit.Skip()", "\tt.Skipped()", "\ta.b.Skip()"):
+            assert not any(re.search(p, ok) for p in patterns), ok
+
+    def test_invalid_skip_pattern_rejected(self) -> None:
+        with pytest.raises(ValueError, match="skip_patterns"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"go": {"skip_patterns": ["("]}}})
+
     def test_unknown_go_key_rejected(self) -> None:
         with pytest.raises(ValueError, match="bogus"):
             YdkConfig.model_validate({"project": {"name": "x"}, "verification": {"go": {"bogus": 1}}})

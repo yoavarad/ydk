@@ -9,7 +9,8 @@ must reach it. Note: Go 1.22+ reports packages without tests as 0.0%, so
 with an empty package list such packages (e.g. ``cmd/...``) fail the gate.
 
 Skips when no Go-relevant files changed, the go toolchain is missing, or
-the project has no go.mod.
+the project has no go.mod. ``detail.summary`` (package ok/FAIL counts and the
+statement-weighted total coverage from the coverprofile) is shown in the PR body.
 """
 
 import fnmatch
@@ -24,6 +25,9 @@ from pathlib import Path
 
 _COVERAGE_RE = re.compile(r"^[ \t]*(?:ok[ \t]+)?(\S+)[ \t].*?coverage: (\d+(?:\.\d+)?)% of statements", re.MULTILINE)
 _MODULE_RE = re.compile(r"^module\s+(\S+)", re.MULTILINE)
+# Package result lines: "ok  <pkg> ...", "FAIL\t<pkg> ..." (bare "FAIL" and "--- FAIL:" excluded).
+_OK_RE = re.compile(r"^ok[ \t]+\S+", re.MULTILINE)
+_FAIL_RE = re.compile(r"^FAIL[ \t]+\S+", re.MULTILINE)
 
 
 def _is_go_relevant(path: str) -> bool:
@@ -56,6 +60,28 @@ def _module_path(root: Path) -> str | None:
 def _parse_coverage(output: str) -> dict[str, float]:
     """Map import path -> coverage % from ``go test -cover`` output lines."""
     return {m.group(1): float(m.group(2)) for m in _COVERAGE_RE.finditer(output)}
+
+
+def _total_coverage(profile: str) -> float | None:
+    """Statement-weighted total % from a coverprofile (duplicate blocks merged), like ``go tool cover -func``."""
+    blocks: dict[str, tuple[int, int]] = {}
+    for line in profile.splitlines()[1:]:
+        parts = line.rsplit(" ", 2)
+        if len(parts) != 3 or not parts[1].isdigit() or not parts[2].isdigit():
+            continue
+        stmts, count = int(parts[1]), int(parts[2])
+        prev = blocks.get(parts[0], (stmts, 0))
+        blocks[parts[0]] = (stmts, max(prev[1], count))
+    total = sum(s for s, _ in blocks.values())
+    if not total:
+        return None
+    return 100.0 * sum(s for s, c in blocks.values() if c > 0) / total
+
+
+def _summary(stdout: str, total: float | None) -> str:
+    """One-line PR summary: package ok/FAIL counts plus total coverage when known."""
+    line = f"{len(_OK_RE.findall(stdout))} package(s) ok, {len(_FAIL_RE.findall(stdout))} FAIL"
+    return line + (f", total coverage {total:.1f}%" if total is not None else "")
 
 
 def _relative(pkg: str, module: str | None) -> str:
@@ -128,6 +154,12 @@ def main() -> None:
         except subprocess.TimeoutExpired:
             _emit(_result(False, "go test timed out after 590s", start, {"command": cmd}))
             return
+        profile_path = Path(tmp) / "coverage.out"
+        total = (
+            _total_coverage(profile_path.read_text(encoding="utf-8", errors="replace"))
+            if proc.returncode == 0 and profile_path.is_file()  # failed runs leave a partial profile
+            else None
+        )
     output = (proc.stdout + ("\n" + proc.stderr if proc.stderr else "")).strip()
     coverage = _parse_coverage(proc.stdout)
     minimum = float(go_config.get("coverage_min") or 0.0)
@@ -142,6 +174,8 @@ def main() -> None:
         "coverage": coverage,
         "coverage_min": minimum,
         "below_threshold": dict(failures),
+        "coverage_total": total,
+        "summary": _summary(proc.stdout, total),
     }
     _emit(_result(passed, output, start, detail))
 

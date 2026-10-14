@@ -4,6 +4,8 @@
 Fails when ``gofmt -l`` lists any unformatted Go file, naming each one.
 Skips when no Go-relevant files changed, the go toolchain is missing, or
 the project has no go.mod. vendor/ and hidden directories are not checked.
+With ``auto_fix`` in the context (``verify run --auto-fix``), the listed
+files are rewritten with ``gofmt -w`` instead of failing.
 """
 
 import json
@@ -48,6 +50,28 @@ def _format_targets(root: Path) -> list[str]:
     return targets
 
 
+def _auto_fix(gofmt_bin: str, root: Path, files: list[str], start: float) -> dict:
+    """Rewrite *files* in place with ``gofmt -w`` (``verify run --auto-fix``)."""
+    try:
+        proc = subprocess.run(
+            [gofmt_bin, "-w", *files],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(root),
+            timeout=55,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return _result(False, "gofmt -w timed out after 55s", start, {"files": files})
+    if proc.returncode != 0:
+        return _result(False, (proc.stderr or proc.stdout).strip(), start, {"files": files})
+    listing = "\n".join(f"  {f}" for f in files)
+    detail = {"files": files, "auto_fixed_count": len(files)}
+    return _result(True, f"gofmt -w reformatted {len(files)} file(s):\n{listing}", start, detail)
+
+
 def _emit(result: dict) -> None:
     json.dump(result, sys.stdout)
     sys.exit(0 if result["passed"] else 1)
@@ -89,6 +113,18 @@ def main() -> None:
     files = [f for f in (line.strip() for line in proc.stdout.splitlines()) if f and not _ignored(f)]
     if proc.returncode != 0:
         _emit(_result(False, (proc.stderr or proc.stdout).strip(), start, {"files": files}))
+        return
+    if files and context.get("auto_fix"):
+        # Only rewrite changed files; pre-existing unformatted files elsewhere still fail.
+        changed = {f.replace("\\", "/") for f in changed_files or []}
+        fixable = [f for f in files if not changed or f in changed]
+        rest = [f for f in files if f not in fixable]
+        result = _auto_fix(gofmt_bin, root, fixable, start) if fixable else _result(True, "", start)
+        if result["passed"] and rest:
+            listing = "\n".join(f"  {f}" for f in rest)
+            msg = f"gofmt found unformatted files outside the change (run `gofmt -w`):\n{listing}"
+            result = _result(False, msg, start, {"files": rest, "auto_fixed_count": len(fixable)})
+        _emit(result)
         return
     if files:
         listing = "\n".join(f"  {f}" for f in files)

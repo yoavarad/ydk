@@ -43,8 +43,11 @@ def _run_main(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     changed_files: list[str] | None = None,
+    auto_fix: bool = False,
 ) -> dict:
     context: dict[str, object] = {"project_root": str(project_root)}
+    if auto_fix:
+        context["auto_fix"] = True
     if changed_files is not None:
         context["changed_files"] = changed_files
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(context)))
@@ -194,3 +197,43 @@ def test_nested_vendor_and_testdata_files_ignored(tmp_path: Path, monkeypatch: p
     ):
         data = _run_main(mod, tmp_path, monkeypatch, capsys)
     assert data["passed"] is True
+
+
+def test_auto_fix_runs_gofmt_w_on_flagged_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    mod = _load()
+    _go_module(tmp_path)
+    run = Mock(side_effect=[_completed(0, stdout="main.go\ninternal/x/bad.go\n"), _completed(0)])
+    with patch.object(mod.shutil, "which", return_value="gofmt"), patch.object(mod.subprocess, "run", run):
+        data = _run_main(mod, tmp_path, monkeypatch, capsys, auto_fix=True)
+    assert run.call_args_list[1].args[0] == ["gofmt", "-w", "main.go", "internal/x/bad.go"]
+    assert data["passed"] is True
+    assert data["detail"]["auto_fixed_count"] == 2
+    assert "internal/x/bad.go" in data["output"]
+
+
+def test_auto_fix_write_failure_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    mod = _load()
+    _go_module(tmp_path)
+    run = Mock(side_effect=[_completed(0, stdout="main.go\n"), _completed(2, stderr="permission denied")])
+    with patch.object(mod.shutil, "which", return_value="gofmt"), patch.object(mod.subprocess, "run", run):
+        data = _run_main(mod, tmp_path, monkeypatch, capsys, auto_fix=True)
+    assert data["passed"] is False
+    assert "permission denied" in data["output"]
+
+
+def test_go_fmt_manifest_supports_auto_fix() -> None:
+    import yaml
+
+    manifest = yaml.safe_load((CHECK_SCRIPT.parent / "manifest.yaml").read_text())
+    assert manifest["supports_auto_fix"] is True
+
+
+def test_auto_fix_only_rewrites_changed_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    mod = _load()
+    _go_module(tmp_path)
+    run = Mock(side_effect=[_completed(0, stdout="main.go\ninternal/x/bad.go\n"), _completed(0)])
+    with patch.object(mod.shutil, "which", return_value="gofmt"), patch.object(mod.subprocess, "run", run):
+        data = _run_main(mod, tmp_path, monkeypatch, capsys, changed_files=["main.go"], auto_fix=True)
+    assert run.call_args_list[1].args[0] == ["gofmt", "-w", "main.go"]
+    assert data["passed"] is False
+    assert data["detail"] == {"files": ["internal/x/bad.go"], "auto_fixed_count": 1}

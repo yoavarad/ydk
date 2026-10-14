@@ -2371,20 +2371,19 @@ def scaffold_batch(
         story_idx += 1
         task_idx += 1
 
-    # Add final verification task that depends on all other tasks
+    # Add final verification task that depends on all other tasks; criteria come from the stack's language profile
+    from ydk.core.config import find_project_root, load_config
+    from ydk.core.stack_profile import profile_for
+
+    profile = profile_for(load_config(find_project_root() / ".ydk" / "config.yaml"))
     all_task_ids = [t["id"] for t in tasks]
     final_task = {
         "id": "T-FINAL",
-        "title": "Final verification: all tests pass, zero xfail",
+        "title": profile.tfinal_title,
         "story": stories[0]["id"] if stories else "S-001",
         "depends_on": all_task_ids,
-        "acceptance_criteria": [
-            "Zero @pytest.mark.xfail in test suite",
-            "Zero NotImplementedError in services",
-            "All E2E tests pass",
-            "Full ruff + ty clean",
-        ],
-        "test_strategy": "Run full test suite with --strict-markers, verify zero xfail remaining",
+        "acceptance_criteria": list(profile.tfinal_criteria),
+        "test_strategy": profile.tfinal_test_strategy,
     }
     tasks.append(final_task)
 
@@ -2398,7 +2397,7 @@ def scaffold_batch(
     console.print(f"[green]Batch YAML written to {output_path}[/green]")
     console.print(f"  {len(epics)} epic(s), {len(stories)} story(ies), {len(tasks)} task(s)")
     console.print(f"  Covering {len(items)} TODO(s)")
-    console.print("  [bold]T-FINAL[/bold] added — depends on all tasks, verifies zero xfail")
+    console.print(f"  [bold]T-FINAL[/bold] added — depends on all tasks, {profile.tfinal_summary}")
 
 
 _MERGE_DRIVER_NAME = "ydk-bookkeeping"

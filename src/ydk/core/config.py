@@ -49,6 +49,17 @@ def load_config(config_path: Path = Path(".ydk/config.yaml")) -> YdkConfig:
     return YdkConfig.model_validate(raw)
 
 
+def find_project_root(start: Path | None = None) -> Path:
+    """Nearest dir at or above *start* holding ``.ydk/config.yaml``; stops at the git root, else *start*."""
+    start = (start or Path.cwd()).resolve()
+    for directory in (start, *start.parents):
+        if (directory / ".ydk" / "config.yaml").is_file():
+            return directory
+        if (directory / ".git").exists():
+            break
+    return start
+
+
 def save_config(config: dict[str, Any], config_path: Path = Path(".ydk/config.yaml")) -> None:
     """Save config dict to YAML."""
     config_path.parent.mkdir(parents=True, exist_ok=True)

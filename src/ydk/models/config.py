@@ -215,6 +215,25 @@ class GoVerificationConfig(BaseModel):
     coverage_packages: list[str] = Field(default_factory=list)
     test_tags: list[str] = Field(default_factory=list)
     race: bool = True
+    # Regexes that fail ``task done`` on lines a task adds to Go tests (comments and string contents are
+    # blanked first). Default: un-reasoned skips -- Skip()/Skip("")/Skipf("")/SkipNow() on t, b, tb or f.
+    skip_patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"(?<![\w.])(?:t|b|tb|f)\.SkipNow\(\s*\)",
+            r"(?<![\w.])(?:t|b|tb|f)\.Skipf?\(\s*(?:\"\"|``)?\s*[,)]",
+        ]
+    )
+
+    @field_validator("skip_patterns")
+    @classmethod
+    def _valid_skip_regexes(cls, v: list[str]) -> list[str]:
+        for pattern in v:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                msg = f"verification.go.skip_patterns: invalid regex {pattern!r}: {exc}"
+                raise ValueError(msg) from exc
+        return v
 
 
 class HelmVerificationConfig(BaseModel):

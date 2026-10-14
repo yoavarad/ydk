@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from ydk.core.config import (
     DEFAULT_CONFIG,
+    find_project_root,
     get_config_value,
     init_config,
     load_config,
@@ -128,3 +129,18 @@ class TestSetConfigValue:
         assert result["spec_check"]["timeout"] == 90
         assert config["spec_check"]["timeout"] == 60
         assert DEFAULT_CONFIG["spec_check"]["timeout"] == 60
+
+
+class TestFindProjectRoot:
+    def test_walks_up_to_dir_with_ydk_config(self, tmp_path) -> None:
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text("project: {name: p}\n")
+        sub = tmp_path / "a" / "b"
+        sub.mkdir(parents=True)
+        assert find_project_root(sub) == tmp_path
+
+    def test_stops_at_git_root_and_falls_back_to_start(self, tmp_path) -> None:
+        (tmp_path / ".git").mkdir()
+        sub = tmp_path / "a"
+        sub.mkdir()
+        assert find_project_root(sub) == sub
