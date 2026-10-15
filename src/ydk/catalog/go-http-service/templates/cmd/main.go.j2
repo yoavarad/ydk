@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,8 +19,12 @@ import (
 {% endfor %}
 )
 
+// version is set at build time with -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 const (
-	listenAddr = ":{{ port }}"
+	// listenPort is fixed; LISTEN_HOST (default all interfaces) picks the bind address.
+	listenPort = "{{ port }}"
 	// shutdownTimeout bounds graceful shutdown{% if shutdown_source %} ({{ shutdown_source }}){% endif %}.
 	shutdownTimeout = {{ shutdown_seconds }} * time.Second
 )
@@ -34,6 +39,7 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
+	logger.Info("starting", "version", version)
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -49,6 +55,7 @@ func run(logger *slog.Logger) error {
 		{{ d.field }}: {{ d.ctor }}(),
 {% endfor %}
 	})
+	listenAddr := net.JoinHostPort(os.Getenv("LISTEN_HOST"), listenPort)
 	srv := &http.Server{Addr: listenAddr, Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second}
 
 	serveErr := make(chan error, 1)

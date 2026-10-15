@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import copy
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from ydk.models.config import YdkConfig
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "project": {
@@ -50,13 +53,20 @@ def load_config(config_path: Path = Path(".ydk/config.yaml")) -> YdkConfig:
 
 
 def find_project_root(start: Path | None = None) -> Path:
-    """Nearest dir at or above *start* holding ``.ydk/config.yaml``; stops at the git root, else *start*."""
+    """Nearest dir at or above *start* holding ``.ydk/config.yaml``.
+
+    The walk stops at the git root and never visits a strict ancestor of the user's home dir; else returns *start*.
+    """
     start = (start or Path.cwd()).resolve()
+    home = Path.home().resolve()
     for directory in (start, *start.parents):
+        if directory != home and home.is_relative_to(directory):
+            break
         if (directory / ".ydk" / "config.yaml").is_file():
             return directory
         if (directory / ".git").exists():
-            break
+            return start
+    logger.warning("No .ydk/config.yaml or git root found above %s; falling back to it", start)
     return start
 
 

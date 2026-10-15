@@ -255,6 +255,27 @@ class TestRegisterTodos:
         todo = TodoManager(tmp_path).list_todos()[0]
         assert (todo.file, todo.line) == ("svc/svc.go", 4)
 
+    def test_reignite_moved_marker_leaves_one_entry(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        engine = IgnitionEngine(tmp_path)
+        old = "class Svc:\n    def run(self):\n        raise NotImplementedError\n"
+        moved = "# header\n# header\n" + old
+        engine._register_todos([GeneratedFile(path="app/svc.py", content=old)])
+        engine._register_todos([GeneratedFile(path="app/svc.py", content=moved)])
+        todos = TodoManager(tmp_path).list_todos()
+        assert [(t.line, t.status.value) for t in todos] == [(5, "open")]
+
+    def test_reignite_removed_marker_is_resolved(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        engine = IgnitionEngine(tmp_path)
+        old = "class Svc:\n    def run(self):\n        raise NotImplementedError\n"
+        engine._register_todos([GeneratedFile(path="app/svc.py", content=old)])
+        engine._register_todos([GeneratedFile(path="app/svc.py", content="class Svc:\n    pass\n")])
+        todos = TodoManager(tmp_path).list_todos()
+        assert [t.status.value for t in todos] == ["done"]
+
 
 class TestIgniteFull:
     def test_ignite_no_pack_raises(self, tmp_path: Path) -> None:
@@ -891,6 +912,31 @@ class TestPhasedIgnitionRunsInOrder:
 
         assert result.files_generated == 2
         assert not result.errors
+        assert (tmp_path / "models" / "item.py").exists()
+        assert (tmp_path / "docker-compose.yml").exists()
+
+
+class TestPhasedIgnitionWithTopLevelGenerators:
+    def test_top_level_generators_run_before_phases(self, tmp_path: Path) -> None:
+        """Top-level generators run alongside phases, before them."""
+        _setup_phased_pack(
+            tmp_path,
+            phases=[{"id": "ops", "generators": [{"script": "gen_b.py"}]}],
+            generator_scripts={
+                "gen_a.py": _PHASE_GENERATOR_A,
+                "gen_b.py": _PHASE_GENERATOR_INFRA,
+            },
+        )
+        manifest_path = tmp_path / ".ydk" / "ignition-pack" / "manifest.yaml"
+        manifest = yaml.safe_load(manifest_path.read_text())
+        manifest["generators"] = [{"script": "gen_a.py"}]
+        manifest_path.write_text(yaml.dump(manifest, default_flow_style=False))
+        _setup_components(tmp_path, {"entity": [{"name": "Item"}]})
+
+        result = IgnitionEngine(tmp_path).ignite()
+
+        assert not result.errors
+        assert result.files_generated == 2
         assert (tmp_path / "models" / "item.py").exists()
         assert (tmp_path / "docker-compose.yml").exists()
 

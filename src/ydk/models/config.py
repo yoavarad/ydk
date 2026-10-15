@@ -216,11 +216,12 @@ class GoVerificationConfig(BaseModel):
     test_tags: list[str] = Field(default_factory=list)
     race: bool = True
     # Regexes that fail ``task done`` on lines a task adds to Go tests (comments and string contents are
-    # blanked first). Default: un-reasoned skips -- Skip()/Skip("")/Skipf("")/SkipNow() on t, b, tb or f.
+    # blanked first; matched across the whole file so calls may span lines). Default: un-reasoned skips --
+    # Skip()/Skip("")/Skipf("")/SkipNow() on any receiver (t, b, tb, f, s.T(), custom helpers).
     skip_patterns: list[str] = Field(
         default_factory=lambda: [
-            r"(?<![\w.])(?:t|b|tb|f)\.SkipNow\(\s*\)",
-            r"(?<![\w.])(?:t|b|tb|f)\.Skipf?\(\s*(?:\"\"|``)?\s*[,)]",
+            r"\.SkipNow\(\s*\)",
+            r"\.Skipf?\(\s*(?:\"\"|``)?\s*[,)]",
         ]
     )
 

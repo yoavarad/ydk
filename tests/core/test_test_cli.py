@@ -126,13 +126,24 @@ def _setup_test_manifest(tmp_path: Path, level: str = "unit") -> None:
 
 
 class TestGenerateGoFromTestManifest:
-    def test_writes_default_path(self, tmp_path, monkeypatch):
+    def test_no_output_prints_stdout_and_writes_nothing(self, tmp_path, monkeypatch):
         _setup_test_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
+        before = {p.name for p in tmp_path.iterdir()}
         result = runner.invoke(app, ["test", "generate", "--from", "ydk:test:messaging/store.unit", "--lang", "go"])
         assert result.exit_code == 0, result.output
-        text = (tmp_path / "messaging" / "store_test.go").read_text()
-        assert text.count("t.Run(") == 2
+        assert result.output.count("t.Run(") == 2
+        assert {p.name for p in tmp_path.iterdir()} == before
+
+    def test_output_flag_writes_file(self, tmp_path, monkeypatch):
+        _setup_test_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        out = tmp_path / "messaging" / "store_test.go"
+        result = runner.invoke(
+            app, ["test", "generate", "--from", "ydk:test:messaging/store.unit", "--lang", "go", "-o", str(out)]
+        )
+        assert result.exit_code == 0, result.output
+        assert out.read_text().count("t.Run(") == 2
 
     def test_integration_build_tag(self, tmp_path, monkeypatch):
         _setup_test_manifest(tmp_path, "integration")
@@ -141,7 +152,7 @@ class TestGenerateGoFromTestManifest:
             app, ["test", "generate", "--from", "ydk:test:messaging/store.integration", "--lang", "go"]
         )
         assert result.exit_code == 0, result.output
-        assert (tmp_path / "messaging" / "store_integration_test.go").read_text().startswith("//go:build integration")
+        assert result.output.startswith("//go:build integration")
 
     def test_existing_file_not_overwritten_missing_reported(self, tmp_path, monkeypatch):
         _setup_test_manifest(tmp_path)
@@ -152,7 +163,10 @@ class TestGenerateGoFromTestManifest:
             'package messaging\n\nfunc TestStore(t *testing.T) {\n\tt.Run("fifo-101", func(t *testing.T) {})\n}\n'
         )
         target.write_text(original)
-        result = runner.invoke(app, ["test", "generate", "--from", "ydk:test:messaging/store.unit", "--lang", "go"])
+        result = runner.invoke(
+            app,
+            ["test", "generate", "--from", "ydk:test:messaging/store.unit", "--lang", "go", "-o", str(target)],
+        )
         assert result.exit_code == 0, result.output
         assert target.read_text() == original
         assert "empty-pop" in result.output
