@@ -221,3 +221,32 @@ class TestTddConfig:
     def test_invalid_regex_rejected(self) -> None:
         with pytest.raises(ValidationError):
             YdkConfig.model_validate({"project": {"name": "x"}, "tdd": {"test_commands": ["(unclosed"]}})
+
+
+class TestCiConfig:
+    def test_defaults(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        assert cfg.ci.make_targets == []
+        assert cfg.ci.gitlab.image == ""
+
+    def test_valid_parse(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {
+                "project": {"name": "x"},
+                "ci": {"make_targets": ["lint", "test"], "gitlab": {"image": "registry.local/go:1.27"}},
+            }
+        )
+        assert cfg.ci.make_targets == ["lint", "test"]
+        assert cfg.ci.gitlab.image == "registry.local/go:1.27"
+
+    def test_invalid_target_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="invalid make target"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "ci": {"make_targets": ["lint; rm"]}})
+
+    def test_duplicate_target_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="duplicate make target"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "ci": {"make_targets": ["lint", "lint"]}})
+
+    def test_unknown_key_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="bogus"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "ci": {"bogus": 1}})

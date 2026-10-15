@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]  # your default branch; edit if it is not main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  YDK_VERSION: "{{YDK_VERSION}}"
+
+jobs:
+  ci:
+    name: Make targets and verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # setup-go v6 reads the toolchain (else go) directive from go.mod; no hard-coded Go version here.
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # Pipeline logic lives in the Makefile; this workflow only calls make (set ci.make_targets).
+{{MAKE_STEPS}}
+      - uses: astral-sh/setup-uv@v7
+      - name: Install ydk
+        run: uv tool install --python 3.13 "git+https://github.com/yoavarad/ydk@v${YDK_VERSION}"
+      - name: ydk verify
+        run: ydk verify run --trigger git:pre-push --skip-plugin ai-code-review --skip-plugin spec-alignment

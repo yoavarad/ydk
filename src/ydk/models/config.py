@@ -312,6 +312,37 @@ class TestingConfig(BaseModel):
     test_globs: list[str] = Field(default_factory=lambda: ["tests/**/test_*.py"])
 
 
+class GitlabCiConfig(BaseModel):
+    """GitLab CI settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    image: str = ""  # GitLab CI image; empty = runner default image.
+
+
+class CiConfig(BaseModel):
+    """CI generation settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    make_targets: list[str] = []  # empty = stack default
+    gitlab: GitlabCiConfig = GitlabCiConfig()
+
+    @field_validator("make_targets")
+    @classmethod
+    def _valid_make_targets(cls, v: list[str]) -> list[str]:
+        seen: set[str] = set()
+        for t in v:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", t):
+                msg = f"ci.make_targets: invalid make target {t!r}"
+                raise ValueError(msg)
+            if t in seen:
+                msg = f"ci.make_targets: duplicate make target {t!r}"
+                raise ValueError(msg)
+            seen.add(t)
+        return v
+
+
 class YdkConfig(BaseModel):
     """Top-level YDK configuration aggregating all sub-configs."""
 
@@ -332,3 +363,4 @@ class YdkConfig(BaseModel):
     guards: GuardsConfig = GuardsConfig()
     testing: TestingConfig = TestingConfig()
     tdd: TddConfig = TddConfig()
+    ci: CiConfig = CiConfig()

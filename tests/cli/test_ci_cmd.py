@@ -7,6 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from ydk.cli import app
@@ -160,3 +161,67 @@ def test_dotnet_stack_summary_and_solution_warning(tmp_path: Path, monkeypatch: 
     assert (tmp_path / ".github" / "workflows" / "ci.yml").is_file()
     assert "stack CI (dotnet)" in result.output
     assert "SOLUTION" in result.output
+
+
+def _gitlab_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: str) -> Path:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(config, encoding="utf-8")
+    monkeypatch.setattr(ci_generator.importlib.metadata, "version", lambda name: "1.5.0")
+    return tmp_path
+
+
+GO_CONFIG = "project:\n  name: demo\n  remote: local\n  stack: go\n"
+
+
+def test_gitlab_help() -> None:
+    result = runner.invoke(app, ["ci", "init", "--help"])
+    assert result.exit_code == 0
+    assert "--gitlab" in re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+
+
+def test_gitlab_go_writes_gitlab_ci(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _gitlab_repo(tmp_path, monkeypatch, GO_CONFIG)
+    result = runner.invoke(app, ["ci", "init", "--gitlab"])
+    assert result.exit_code == 0, result.output
+    assert ".gitlab-ci.yml" in result.output
+    assert not (repo / ".github").exists()
+    data = yaml.safe_load((repo / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    assert data["stages"] == ["lint", "test"]
+    assert "include" not in data
+
+
+def test_gitlab_json_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _gitlab_repo(tmp_path, monkeypatch, GO_CONFIG)
+    result = runner.invoke(app, ["--format", "json", "ci", "init", "--gitlab"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["written"] == [".gitlab-ci.yml"]
+
+
+def test_gitlab_non_go_without_make_targets_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _gitlab_repo(tmp_path, monkeypatch, "project:\n  name: demo\n  remote: local\n  stack: python-cli\n")
+    result = runner.invoke(app, ["ci", "init", "--gitlab"])
+    assert result.exit_code == 1
+    assert "ci.make_targets" in result.output
+    assert not (repo / ".gitlab-ci.yml").exists()
+
+
+def test_gitlab_skip_then_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _gitlab_repo(tmp_path, monkeypatch, GO_CONFIG)
+    assert runner.invoke(app, ["ci", "init", "--gitlab"]).exit_code == 0
+    second = runner.invoke(app, ["ci", "init", "--gitlab"])
+    assert second.exit_code == 0
+    assert "--gitlab --force" in re.sub(r"\x1b\[[0-9;]*m", "", second.output)
+    (repo / ".gitlab-ci.yml").write_text("custom", encoding="utf-8")
+    forced = runner.invoke(app, ["ci", "init", "--gitlab", "--force"])
+    assert forced.exit_code == 0
+    assert "overwritten" in forced.output
+    assert (repo / ".gitlab-ci.yml").read_text(encoding="utf-8") != "custom"
+
+
+def test_gitlab_invalid_make_target_exits_1_without_traceback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _gitlab_repo(tmp_path, monkeypatch, GO_CONFIG + 'ci:\n  make_targets: ["lint; rm"]\n')
+    result = runner.invoke(app, ["ci", "init", "--gitlab"])
+    assert result.exit_code == 1
+    assert "Error:" in result.output
+    assert isinstance(result.exception, SystemExit)

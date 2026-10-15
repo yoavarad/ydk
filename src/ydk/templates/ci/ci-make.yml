@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]  # your default branch; edit if it is not main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  make:
+    name: Make targets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Make-wrapper mode (ci.make_targets): all pipeline logic lives in the Makefile.
+      # Add the toolchain setup steps your targets need before the make steps.
+{{MAKE_STEPS}}

@@ -2,7 +2,7 @@
 
 Pure render/write logic behind `ydk ci init`; the CLI layer only formats the result.
 Later tasks add workflows by appending a `CiTarget` to `CI_TARGETS` and dropping a
-template file into `src/ydk/templates/ci/`.
+template file into `src/ydk/templates/ci/`. `generate_gitlab_ci` writes `.gitlab-ci.yml`.
 """
 
 from __future__ import annotations
@@ -14,10 +14,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import jinja2
+import yaml
+from pydantic import ValidationError
+
 from ydk.core.config import load_config
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+
+    from ydk.models.config import YdkConfig
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates" / "ci"
 WORKFLOWS_DIR = Path(".github") / "workflows"
@@ -87,6 +93,9 @@ CI_TARGETS: list[CiTarget] = [
 PYTHON_CI = CiTarget(template="ci-python.yml", output="ci.yml", purpose="stack CI (python)")
 DOTNET_CI = CiTarget(template="ci-dotnet.yml", output="ci.yml", purpose="stack CI (dotnet)")
 
+GO_CI = CiTarget(template="ci-go.yml", output="ci.yml", purpose="stack CI (go: make targets + ydk verify)")
+MAKE_CI = CiTarget(template="ci-make.yml", output="ci.yml", purpose="stack CI (make wrapper)")
+
 FALLBACK_CI = CiTarget(template="ci-fallback.yml", output="ci.yml", purpose="stack CI (fallback: verify run)")
 
 # `project.stack` -> stack CI target written as `ci.yml`. Unlisted stacks get FALLBACK_CI.
@@ -94,7 +103,33 @@ STACK_CI_TARGETS: dict[str, CiTarget] = {
     "python-fastapi": PYTHON_CI,
     "python-cli": PYTHON_CI,
     "dotnet": DOTNET_CI,
+    "go": GO_CI,
+    "golang": GO_CI,
 }
+
+DEFAULT_GO_MAKE_TARGETS = ("lint", "test")
+GITLAB_CI_PATH = Path(".gitlab-ci.yml")
+GITLAB_TEMPLATE = "gitlab-ci.yml.j2"
+GITLAB_RESERVED = frozenset(
+    {
+        "default",
+        "include",
+        "stages",
+        "variables",
+        "workflow",
+        "image",
+        "services",
+        "cache",
+        "before_script",
+        "after_script",
+        "spec",
+    }
+)
+
+MAKEFILE_MISSING_WARNING = "Makefile not found at the repo root; CI runs 'make {targets}'."
+MAKE_TARGET_MISSING_WARNING = "Makefile has no '{target}' target; CI runs 'make {target}'."
+GITLAB_IMAGE_WARNING = "ci.gitlab.image is not set; .gitlab-ci.yml jobs use the runner's default image."
+_MAKE_RULE_RE = re.compile(r"^([A-Za-z0-9_.][A-Za-z0-9_. -]*?)\s*::?(?!=)", re.MULTILINE)
 
 SOLUTION_WARNING = (
     'Could not detect a single .sln/.slnx file; ci.yml has SOLUTION: "". Set the SOLUTION env var in ci.yml.'
@@ -147,6 +182,38 @@ def detect_solution(root: Path) -> str:
 def select_stack_target(stack: str) -> CiTarget | None:
     """Return the stack CI target for *stack*: its own template, else the fallback."""
     return STACK_CI_TARGETS.get(stack, FALLBACK_CI)
+
+
+def render_make_steps(targets: Sequence[str]) -> str:
+    """Workflow steps running `make <target>` for each target."""
+    return "\n".join(f"      - name: make {t}\n        run: make {t}" for t in targets)
+
+
+def _load_ci_config(config_path: Path) -> YdkConfig:
+    try:
+        return load_config(config_path)
+    except ValidationError as exc:
+        msg = f"{config_path.as_posix()} is invalid:\n{exc}"
+        raise CiConfigError(msg) from exc
+
+
+def _make_targets(config: YdkConfig) -> list[str]:
+    """Configured `ci.make_targets`, else the Go defaults for go stacks, else empty."""
+    if config.ci.make_targets:
+        return list(config.ci.make_targets)
+    if config.project.stack.lower() in ("go", "golang"):
+        return list(DEFAULT_GO_MAKE_TARGETS)
+    return []
+
+
+def makefile_warnings(root: Path, targets: Sequence[str]) -> list[str]:
+    """Warn when the root Makefile is absent or lacks a target CI runs."""
+    makefile = root / "Makefile"
+    if not makefile.is_file():
+        return [MAKEFILE_MISSING_WARNING.format(targets=" ".join(targets))]
+    text = makefile.read_text(encoding="utf-8", errors="replace")
+    defined = {name for m in _MAKE_RULE_RE.finditer(text) for name in m.group(1).split()}
+    return [MAKE_TARGET_MISSING_WARNING.format(target=t) for t in targets if t not in defined]
 
 
 @dataclass(frozen=True)
@@ -228,7 +295,7 @@ def generate_ci(
     if not config_path.is_file():
         msg = f"{config_path.as_posix()} not found. Run 'ydk init --remote github' first."
         raise CiConfigError(msg)
-    config = load_config(config_path)
+    config = _load_ci_config(config_path)
     if config.project.remote != "github":
         msg = f"project.remote is '{config.project.remote}'; ydk ci init requires remote 'github'."
         raise CiConfigError(msg)
@@ -242,6 +309,8 @@ def generate_ci(
     )
     if targets is None:
         stack_target = select_stack_target(ctx.stack)
+        if config.ci.make_targets and stack_target is not GO_CI:
+            stack_target = MAKE_CI
         targets = [*CI_TARGETS, *([stack_target] if stack_target else [])]
     tdir = templates_dir or TEMPLATES_DIR
     files: list[CiFileResult] = []
@@ -260,9 +329,58 @@ def generate_ci(
             extra = {"SOLUTION": solution, "DOTNET_VERSION_LINE": version_line}
         if t is PYTHON_CI:
             extra = {"PYTHON_VERSION": detect_python_version(root)}
+        if t is GO_CI or t is MAKE_CI:
+            make_targets = _make_targets(config)
+            extra = {"MAKE_STEPS": render_make_steps(make_targets)}
+            warnings.extend(makefile_warnings(root, make_targets))
         content = render((tdir / t.template).read_text(encoding="utf-8"), ctx, extra)
         files.append(_write(root, WORKFLOWS_DIR / t.output, content, t.purpose, force=force))
         if t is PYTHON_CI and not (root / "uv.lock").is_file():
             warnings.append(UV_LOCK_WARNING)
     files.append(_write(root, PR_TEMPLATE_PATH, PR_TEMPLATE, "Pull request template", force=force))
     return CiInitResult(version=ctx.version, files=files, warnings=warnings)
+
+
+def generate_gitlab_ci(
+    root: Path,
+    *,
+    force: bool,
+    version: str | None = None,
+    templates_dir: Path | None = None,
+) -> CiInitResult:
+    """Render and write `.gitlab-ci.yml` running the configured make targets under *root*.
+
+    Raises CiConfigError (writing nothing) when `.ydk/config.yaml` is missing,
+    `ci.make_targets` resolves empty, or a target is a reserved GitLab CI keyword.
+    """
+    config_path = root / ".ydk" / "config.yaml"
+    if not config_path.is_file():
+        msg = f"{config_path.as_posix()} not found. Run 'ydk init' first."
+        raise CiConfigError(msg)
+    config = _load_ci_config(config_path)
+    targets = _make_targets(config)
+    if not targets:
+        msg = f"ci.make_targets is empty; set it in .ydk/config.yaml for stack '{config.project.stack}'."
+        raise CiConfigError(msg)
+    for t in targets:
+        if t in GITLAB_RESERVED:
+            msg = f"ci.make_targets: '{t}' is a reserved GitLab CI keyword and cannot be a job name."
+            raise CiConfigError(msg)
+        if yaml.safe_load(t) != t:
+            msg = f"ci.make_targets: '{t}' is not a plain YAML string and cannot be a GitLab job name."
+            raise CiConfigError(msg)
+    version = version or importlib.metadata.version("ydk")
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(templates_dir or TEMPLATES_DIR),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        keep_trailing_newline=True,
+        undefined=jinja2.StrictUndefined,
+        autoescape=False,
+    )
+    image = config.ci.gitlab.image
+    content = env.get_template(GITLAB_TEMPLATE).render(version=version, targets=targets, image=image)
+    warnings = [GITLAB_IMAGE_WARNING] if not image else []
+    warnings.extend(makefile_warnings(root, targets))
+    file = _write(root, GITLAB_CI_PATH, content, "GitLab CI (make targets)", force=force)
+    return CiInitResult(version=version, files=[file], warnings=warnings)
