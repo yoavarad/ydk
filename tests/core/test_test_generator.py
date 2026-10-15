@@ -242,6 +242,16 @@ class TestGenerateGoFromTest:
         code = ComponentTestGenerator().generate_go_from_test(m).test_code
         assert "func TestCluster(t *testing.T) {" in code
 
+    def test_func_name_camel_cases_word_boundaries(self):
+        gen = ComponentTestGenerator()
+        for target, level, expected in [
+            ("ydk:adapter:api/get-messages", "unit", "TestGetMessages"),
+            ("ydk:entity:messaging/MessageRecord", "e2e", "TestMessageRecordE2E"),
+            ("ydk:entity:messaging/round_trip.v2", "unit", "TestRoundTripV2"),
+        ]:
+            m = self._manifest(level, target=target)
+            assert f"func {expected}(t *testing.T) {{" in gen.generate_go_from_test(m).test_code
+
     def test_integration_path_and_func_do_not_collide_with_unit(self):
         r = ComponentTestGenerator().generate_go_from_test(self._manifest("integration"))
         assert r.test_file_path == "messaging/store_integration_test.go"
