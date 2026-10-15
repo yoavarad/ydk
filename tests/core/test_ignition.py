@@ -895,6 +895,31 @@ class TestPhasedIgnitionRunsInOrder:
         assert (tmp_path / "docker-compose.yml").exists()
 
 
+class TestPhasedIgnitionWithTopLevelGenerators:
+    def test_top_level_generators_run_before_phases(self, tmp_path: Path) -> None:
+        """Top-level generators run alongside phases, before them."""
+        _setup_phased_pack(
+            tmp_path,
+            phases=[{"id": "ops", "generators": [{"script": "gen_b.py"}]}],
+            generator_scripts={
+                "gen_a.py": _PHASE_GENERATOR_A,
+                "gen_b.py": _PHASE_GENERATOR_INFRA,
+            },
+        )
+        manifest_path = tmp_path / ".ydk" / "ignition-pack" / "manifest.yaml"
+        manifest = yaml.safe_load(manifest_path.read_text())
+        manifest["generators"] = [{"script": "gen_a.py"}]
+        manifest_path.write_text(yaml.dump(manifest, default_flow_style=False))
+        _setup_components(tmp_path, {"entity": [{"name": "Item"}]})
+
+        result = IgnitionEngine(tmp_path).ignite()
+
+        assert not result.errors
+        assert result.files_generated == 2
+        assert (tmp_path / "models" / "item.py").exists()
+        assert (tmp_path / "docker-compose.yml").exists()
+
+
 class TestPhasedIgnitionArtifactPassing:
     def test_artifacts_passed_between_phases(self, tmp_path: Path) -> None:
         """Artifacts exported from phase A are available as env vars in phase B."""

@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "[[ app ]].fullname" . }}
+  labels:
+    {{- include "[[ app ]].labels" . | nindent 4 }}
+spec:
+[% if single_replica %]
+  replicas: 1
+  strategy:
+    type: Recreate
+[% else %]
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+[% endif %]
+  selector:
+    matchLabels:
+      {{- include "[[ app ]].selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "[[ app ]].selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: [[ grace ]]
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: [[ app ]]
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: [[ port ]]
+              protocol: TCP
+[% if env %]
+          env:
+[% for e in env %]
+[% if e.cond %]
+            {{- if [[ e.cond ]] }}
+[% endif %]
+            - name: [[ e.name ]]
+[% if e.secret %]
+              valueFrom:
+                secretKeyRef:
+                  name: {{ [[ e.secret ]] }}
+                  key: {{ [[ e.key ]] }}
+[% else %]
+              value: [[ e.value ]]
+[% endif %]
+[% if e.cond %]
+            {{- end }}
+[% endif %]
+[% endfor %]
+[% endif %]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+[% if mounts %]
+          {{- if [[ mount_cond ]] }}
+          volumeMounts:
+[% for m in mounts %]
+            {{- if [[ m.cond ]] }}
+            - name: [[ m.name ]]
+              mountPath: [[ m.dir ]]
+              readOnly: true
+            {{- end }}
+[% endfor %]
+          {{- end }}
+      {{- if [[ mount_cond ]] }}
+      volumes:
+[% for m in mounts %]
+        {{- if [[ m.base ]].existingSecret }}
+        - name: [[ m.name ]]
+          secret:
+            secretName: {{ [[ m.base ]].existingSecret }}
+        {{- else if [[ m.base ]].configMap }}
+        - name: [[ m.name ]]
+          configMap:
+            name: {{ [[ m.base ]].configMap }}
+        {{- end }}
+[% endfor %]
+      {{- end }}
+[% endif %]
