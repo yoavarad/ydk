@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -335,7 +336,14 @@ class ComponentTestGenerator:
             cases=cases,
         )
         dirs = [d for d in (_path_segment(seg) for seg in namespace.split("/")) if d]
-        file_name = f"{_path_segment(base) or 'tests'}{suffix}_test.go"
+        skipped = [d for d in dirs if d[0] in "_." or d == "testdata"]
+        if skipped:
+            warnings.warn(
+                f"Go ignores directories starting with '_' or '.' or named testdata ({', '.join(skipped)}); "
+                f"'go test ./...' will skip {'/'.join(dirs)}/",
+                stacklevel=2,
+            )
+        file_name = f"{_path_segment(base).lstrip('_.') or 'tests'}{suffix}_test.go"
         path = "/".join([*dirs, file_name])
         return GeneratedTest(component_id=component_id, test_code=code, test_file_path=path, test_count=len(cases))
 
@@ -410,8 +418,8 @@ def _go_camel(text: str) -> str:
 
 
 def _path_segment(text: str) -> str:
-    """Make one path segment safe for any OS: no separators, colons, dots-only or whitespace."""
-    seg = re.sub(r"[^A-Za-z0-9_-]", "_", text).strip("_")
+    """Make one path segment safe for any OS; keeps valid leading '_' and inner '.', drops dots-only."""
+    seg = re.sub(r"[^A-Za-z0-9_.-]", "_", text).rstrip(".")
     return seg
 
 
