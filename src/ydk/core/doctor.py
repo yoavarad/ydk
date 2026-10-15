@@ -3,16 +3,56 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from pydantic import ValidationError
 
-from ydk.models.config import YdkConfig
+from ydk.core.stack_profile import language_for
+from ydk.models.config import DoctorToolSpec, YdkConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+# -- stack-aware tool checks ------------------------------------------------
+
+# Command that prints each tool's version; tools absent here use ``<tool> --version``.
+# ``None`` means presence-only (gofmt has no version flag).
+_VERSION_CMDS: dict[str, list[str] | None] = {
+    "go": ["go", "version"],
+    "gofmt": None,
+    "helm": ["helm", "version", "--short"],
+    "kubectl": ["kubectl", "version", "--client"],
+    "kind": ["kind", "version"],
+}
+
+# Default tools per language: (required, optional).
+_STACK_TOOLS: dict[str, tuple[list[str], list[str]]] = {
+    "go": (["go", "gofmt"], ["helm", "kubectl", "kind", "docker", "trivy"]),
+}
+
+_VERSION_RE = re.compile(r"\d+(?:\.\d+)+")
+_GO_TOOLCHAIN_RE = re.compile(r"^toolchain\s+go(\d+(?:\.\d+)*)", re.MULTILINE)
+_GO_DIRECTIVE_RE = re.compile(r"^go\s+(\d+(?:\.\d+)*)", re.MULTILINE)
+
+
+def parse_tool_version(text: str) -> str | None:
+    """Return the first dotted version in *text* (``go1.27.2`` -> ``1.27.2``, ``v4.3.0+g1`` -> ``4.3.0``)."""
+    match = _VERSION_RE.search(text)
+    return match.group(0) if match else None
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    parts = [int(p) for p in version.split(".")]
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
 
 
 class CheckSeverity(StrEnum):
@@ -39,9 +79,12 @@ class Doctor:
     def __init__(self, project_root: Path = Path(".")) -> None:
         self._root = project_root
 
-    def run_all(self) -> list[CheckResult]:
-        """Run all health checks. Returns list of results."""
-        checks = [
+    def _checks(self) -> list[Callable[[], CheckResult]]:
+        """Checks to run: Python tool checks only for python projects."""
+        config = self._load_config_safe()
+        python = config is None or language_for(config.project.stack, config.verification.enabled) == "python"
+        python_tools = [self._check_test_runner, self._check_linter, self._check_type_checker] if python else []
+        return [
             self._check_python,
             self._check_git,
             self._check_git_repo,
@@ -49,9 +92,7 @@ class Doctor:
             self._check_spec_location,
             self._check_adrs_location,
             self._check_project_rules,
-            self._check_test_runner,
-            self._check_linter,
-            self._check_type_checker,
+            *python_tools,
             self._check_remote_cli,
             self._check_gh_auth,
             self._check_gh_repo,
@@ -60,7 +101,10 @@ class Doctor:
             self._check_task_pr_drift,
             self._check_epic_retros,
         ]
-        return [check() for check in checks]
+
+    def run_all(self) -> list[CheckResult]:
+        """Run all health checks. Returns list of results."""
+        return [check() for check in self._checks()] + self._tool_checks()
 
     def has_errors(self, results: list[CheckResult]) -> bool:
         """Return True if any result has error severity."""
@@ -445,3 +489,75 @@ class Doctor:
             f"{len(missing)} finished epic(s) missing a retrospective",
             detail=detail,
         )
+
+    # -- stack-aware tool checks -------------------------------------------
+
+    def _tool_checks(self) -> list[CheckResult]:
+        """Check stack default tools plus ``doctor.required_tools`` / ``doctor.optional_tools``."""
+        config = self._load_config_safe()
+        language = language_for(config.project.stack, config.verification.enabled) if config else "python"
+        required_names, optional_names = _STACK_TOOLS.get(language, ([], []))
+        specs: dict[str, tuple[DoctorToolSpec, bool]] = {}
+        for name in optional_names:
+            specs[name] = (DoctorToolSpec(name=name), False)
+        for name in required_names:
+            specs[name] = (DoctorToolSpec(name=name), True)
+        if config is not None:
+            for spec in config.doctor.optional_tools:
+                specs[spec.name] = (spec, False)
+            for spec in config.doctor.required_tools:
+                specs[spec.name] = (spec, True)
+        go_min = self._go_mod_min_version() if language == "go" else None
+        results = []
+        for name, (spec, required) in specs.items():
+            min_version = spec.min_version or (go_min if name == "go" else "") or ""
+            results.append(self._check_tool(name, required, min_version))
+        return results
+
+    def _go_mod_min_version(self) -> str | None:
+        """Go version demanded by go.mod: the ``toolchain`` line, else the ``go`` directive."""
+        go_mod = self._root / "go.mod"
+        if not go_mod.is_file():
+            return None
+        text = go_mod.read_text(encoding="utf-8", errors="replace")
+        match = _GO_TOOLCHAIN_RE.search(text) or _GO_DIRECTIVE_RE.search(text)
+        return match.group(1) if match else None
+
+    def _run_version(self, cmd: list[str]) -> str | None:
+        """Run a version command; return its output, or None if it failed."""
+        try:
+            out = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return (out.stdout + out.stderr) if out.returncode == 0 else None
+
+    def _check_tool(self, name: str, required: bool, min_version: str) -> CheckResult:
+        """Check one tool is on PATH and (optionally) new enough."""
+        missing = CheckSeverity.error if required else CheckSeverity.warning
+        wsl = False
+        if shutil.which(name):
+            cmd = _VERSION_CMDS.get(name, [name, "--version"])
+            output = self._run_version(cmd) if cmd else None
+        elif name == "docker" and shutil.which("wsl"):
+            output = self._run_version(["wsl", "docker", "--version"])
+            wsl = output is not None
+            if not wsl:
+                return CheckResult(name, missing, f"{name} not found")
+        else:
+            return CheckResult(name, missing, f"{name} not found")
+
+        version = parse_tool_version(output) if output else None
+        label = f"{name} {version}" if version else f"{name} available"
+        if wsl:
+            label += " (via WSL)"
+        if min_version and version and _version_tuple(version) < _version_tuple(min_version):
+            return CheckResult(name, missing, f"{name} {version} found — requires >= {min_version}")
+        return CheckResult(name, CheckSeverity.ok, label)
