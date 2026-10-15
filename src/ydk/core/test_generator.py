@@ -348,21 +348,109 @@ class ComponentTestGenerator:
         """Return manifest case names with no subtest in ``existing_code``.
 
         Covered when ``t.Run`` is called with the name as a "..." or `...` literal, or when the file
-        calls ``t.Run`` with a non-literal name (table-driven) and the case name appears as a table
-        entry (``field: "name"`` or ``{"name", ...}``).
+        calls ``t.Run`` with a non-literal name (table-driven) and the case name is a ``name:`` field
+        (or leading unkeyed element) of the composite literal ranged over by the ``for ... range`` loop.
+        Comments are ignored.
         """
-        dynamic_run = re.search(r"t\.Run\(\s*[A-Za-z_]", existing_code) is not None
+        code = _strip_go_comments(existing_code)
+        dynamic_run = re.search(r"t\.Run\(\s*[A-Za-z_]", code) is not None
+        table = _go_range_tables(code) if dynamic_run else ""
         missing = []
         for c in self._go_cases(manifest):
             name = str(c["name"])
             lits = [re.escape(json.dumps(name, ensure_ascii=False)), "`" + re.escape(name) + "`"]
             alt = "(?:" + "|".join(lits) + ")"
-            if re.search(r"t\.Run\(\s*" + alt, existing_code):
+            if re.search(r"t\.Run\(\s*" + alt, code):
                 continue
-            if dynamic_run and re.search(r"(?:[:{,]\s*)" + alt, existing_code):
+            if table and re.search(r"(?:\bname\s*:|\{)\s*" + alt, table):
                 continue
             missing.append(name)
         return missing
+
+
+def _go_string_end(code: str, i: int) -> int:
+    """Index just past the Go string/rune literal starting at ``code[i]``."""
+    quote = code[i]
+    j = i + 1
+    while j < len(code) and code[j] != quote:
+        j += 2 if quote != "`" and code[j] == "\\" else 1
+    return j + 1
+
+
+def _strip_go_comments(code: str) -> str:
+    out: list[str] = []
+    i, n = 0, len(code)
+    while i < n:
+        ch = code[i]
+        if ch in "\"`'":
+            j = min(_go_string_end(code, i), n)
+            out.append(code[i:j])
+            i = j
+        elif code.startswith("//", i):
+            while i < n and code[i] != "\n":
+                i += 1
+        elif code.startswith("/*", i):
+            end = code.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            out.append(" ")
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _go_balanced_end(code: str, i: int) -> int:
+    """Index just past the ``{...}`` group opening at ``code[i]``."""
+    depth = 0
+    while i < len(code):
+        ch = code[i]
+        if ch in "\"`'":
+            i = _go_string_end(code, i)
+            continue
+        depth += (ch == "{") - (ch == "}")
+        i += 1
+        if depth == 0:
+            break
+    return i
+
+
+def _go_blank_nested(literal: str) -> str:
+    """Blank content nested deeper than table rows, so only row-level ``name:``/first elements remain."""
+    out: list[str] = []
+    depth, i = 0, 0
+    while i < len(literal):
+        ch = literal[i]
+        if ch in "\"`'":
+            j = _go_string_end(literal, i)
+            out.append(literal[i:j] if depth <= 2 else " ")
+            i = j
+            continue
+        if ch == "{":
+            depth += 1
+            out.append(ch if depth <= 2 else " ")
+        elif ch == "}":
+            out.append(ch if depth <= 2 else " ")
+            depth -= 1
+        else:
+            out.append(ch if depth <= 2 else " ")
+        i += 1
+    return "".join(out)
+
+
+def _go_range_tables(code: str) -> str:
+    """Concatenated composite-literal bodies of every table ranged over by a ``for ... range`` loop."""
+    bodies: list[str] = []
+    for tbl in dict.fromkeys(re.findall(r"\bfor\b[^{\n]*?\brange\s+([A-Za-z_]\w*)\s*\{", code)):
+        for m in re.finditer(r"\b" + re.escape(tbl) + r"\s*(?::=|=(?!=))\s*[^\n{]*(?=\{)", code):
+            start = end = m.end()
+            while True:  # skip brace groups of the element type (``struct{...}``) up to the value literal
+                end = _go_balanced_end(code, end)
+                nxt = re.match(r"\s*(?=\{)", code[end:])
+                if not nxt:
+                    break
+                end += nxt.end()
+            bodies.append(_go_blank_nested(code[start:end]))
+    return "\n".join(bodies)
 
 
 _GO_KEYWORDS = frozenset(

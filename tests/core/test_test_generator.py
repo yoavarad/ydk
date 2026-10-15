@@ -294,6 +294,44 @@ class TestGenerateGoFromTest:
         existing = 'func TestStore(t *testing.T) {\n\t_ = "fifo-101"\n}\n'
         assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["fifo-101", "empty-pop"]
 
+    _LOOP = "\tfor _, tc := range cases {\n\t\tt.Run(tc.name, func(t *testing.T) {})\n\t}\n}\n"
+
+    def test_table_driven_decoy_outside_table_not_covered(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n"
+            '\tother := []string{"fifo-101", "empty-pop"}\n\t_ = struct{ a string }{a: "empty-pop"}\n'
+            '\tcases := []struct{ name string }{{name: "fifo-101"}}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_table_driven_commented_cases_missing(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name string }{\n"
+            '\t\t{name: "fifo-101"},\n\t\t// {name: "empty-pop"},\n\t\t/* {"empty-pop"}, */\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_table_driven_non_name_field_not_covered(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name, desc string }{\n"
+            '\t\t{name: "fifo-101", desc: "empty-pop"},\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_table_driven_unkeyed_and_multiline_table(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name string }{\n"
+            '\t\t{\n\t\t\t"fifo-101",\n\t\t},\n\t\t{"empty-pop"},\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == []
+
+    def test_table_driven_nested_literal_not_covered(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name string; tags []string }{\n"
+            '\t\t{name: "fifo-101", tags: []string{"empty-pop"}},\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
     def test_generated_source_plausible(self):
         for level in ("unit", "integration"):
             code = ComponentTestGenerator().generate_go_from_test(self._manifest(level)).test_code
