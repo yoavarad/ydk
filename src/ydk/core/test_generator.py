@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -316,8 +317,7 @@ class ComponentTestGenerator:
         suffix = "" if level in ("", "unit") else "_" + level
         package = _go_package(namespace.rsplit("/", 1)[-1])
         target = str(manifest.get("target") or "").rsplit("/", 1)[-1] or base
-        ident = re.sub(r"[^a-zA-Z0-9]", "", target)
-        func_name = "Test" + ident[:1].upper() + ident[1:] + suffix.replace("_", "").capitalize()
+        func_name = "Test" + _go_camel(target) + _go_camel(suffix)
         cases = [
             {
                 "name_literal": json.dumps(str(c["name"]), ensure_ascii=False),
@@ -336,7 +336,14 @@ class ComponentTestGenerator:
             cases=cases,
         )
         dirs = [d for d in (_path_segment(seg) for seg in namespace.split("/")) if d]
-        file_name = f"{_path_segment(base) or 'tests'}{suffix}_test.go"
+        skipped = [d for d in dirs if d[0] in "_." or d == "testdata"]
+        if skipped:
+            warnings.warn(
+                f"Go ignores directories starting with '_' or '.' or named testdata ({', '.join(skipped)}); "
+                f"'go test ./...' will skip {'/'.join(dirs)}/",
+                stacklevel=2,
+            )
+        file_name = f"{_path_segment(base).lstrip('_.') or 'tests'}{suffix}_test.go"
         path = "/".join([*dirs, file_name])
         return GeneratedTest(component_id=component_id, test_code=code, test_file_path=path, test_count=len(cases))
 
@@ -404,9 +411,15 @@ def _go_package(segment: str) -> str:
     return pkg + "_" if pkg in _GO_KEYWORDS else pkg
 
 
+def _go_camel(text: str) -> str:
+    """CamelCase on non-alphanumeric boundaries, keeping inner capitals; a letter after a digit is upper-cased."""
+    words = (w for w in re.split(r"[^a-zA-Z0-9]+", text) if w)
+    return re.sub(r"(?<=\d)[a-z]", lambda m: m.group().upper(), "".join(w[:1].upper() + w[1:] for w in words))
+
+
 def _path_segment(text: str) -> str:
-    """Make one path segment safe for any OS: no separators, colons, dots-only or whitespace."""
-    seg = re.sub(r"[^A-Za-z0-9_-]", "_", text).strip("_")
+    """Make one path segment safe for any OS; keeps valid leading '_' and inner '.', drops dots-only."""
+    seg = re.sub(r"[^A-Za-z0-9_.-]", "_", text).rstrip(".")
     return seg
 
 

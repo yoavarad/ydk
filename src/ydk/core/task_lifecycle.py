@@ -7,6 +7,7 @@ Uses dependency injection for all collaborators.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import json
 import logging
 import re
@@ -638,10 +639,19 @@ class TaskLifecycle:
             # Split on "\n" only, like git, so line numbers line up with the diff.
             text = full_path.read_bytes().decode("utf-8", errors="replace")
             raw = text.split("\n")
-            code = blank_comments_and_strings(text)
-            for lineno, line in enumerate(code, start=1):
-                if (lines is None or lineno in lines) and any(rx.search(line) for rx in regexes):
-                    warnings.append(f"Un-reasoned skip `{raw[lineno - 1].strip()}` in {test_file}:{lineno}")
+            code = "\n".join(blank_comments_and_strings(text))
+            starts = [0]
+            starts.extend(m.end() for m in re.finditer("\n", code))
+            hit_lines: set[int] = set()
+            for rx in regexes:
+                for match in rx.finditer(code):
+                    first = bisect.bisect_right(starts, match.start())
+                    last = bisect.bisect_right(starts, max(match.end() - 1, match.start()))
+                    if lines is None or any(n in lines for n in range(first, last + 1)):
+                        hit_lines.add(first)
+            warnings.extend(
+                f"Un-reasoned skip `{raw[lineno - 1].strip()}` in {test_file}:{lineno}" for lineno in sorted(hit_lines)
+            )
         return warnings
 
     def _screenshot_ref_patterns(self) -> list[str]:

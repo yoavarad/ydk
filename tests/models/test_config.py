@@ -136,9 +136,17 @@ class TestGoVerificationConfig:
         import re
 
         patterns = YdkConfig.model_validate({"project": {"name": "x"}}).verification.go.skip_patterns
-        for bad in ("\tt.Skip()", "\tt.SkipNow()", '\tt.Skip("")', '\tt.Skipf("")', "\tb.Skip()", "\ttb.SkipNow()"):
+        for bad in (
+            "\tt.Skip()",
+            "\tt.SkipNow()",
+            '\tt.Skip("")',
+            '\tt.Skipf("")',
+            "\tb.Skip()",
+            "\ttb.SkipNow()",
+            "\ts.T().Skip()",
+        ):
             assert any(re.search(p, bad) for p in patterns), bad
-        for ok in ('\tt.Skip("needs db")', '\tt.Skipf("needs %s", x)', "\tit.Skip()", "\tt.Skipped()", "\ta.b.Skip()"):
+        for ok in ('\tt.Skip("needs db")', '\tt.Skipf("needs %s", x)', "\tt.Skipped()", '\ts.T().Skip("x")'):
             assert not any(re.search(p, ok) for p in patterns), ok
 
     def test_invalid_skip_pattern_rejected(self) -> None:
