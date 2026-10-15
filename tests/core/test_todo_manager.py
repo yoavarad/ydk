@@ -350,3 +350,18 @@ def test_reconcile_same_method_twice_moves_each(mgr: TodoManager) -> None:
     mgr.reconcile("a.go", [_marker(5, "<unknown>"), _marker(8, "<unknown>")])
     assert sorted(t.line for t in mgr.list_todos()) == [5, 8]
     assert all(t.status == TodoStatus.OPEN for t in mgr.list_todos())
+
+
+def test_reconcile_different_method_on_same_line_gets_new_id(mgr: TodoManager) -> None:
+    old = mgr.register(file="a.py", line=5, method="Svc.old", description="impl old")
+    mgr.reconcile("a.py", [_marker(5, "Svc.other", "impl other")])
+    assert mgr.get(old).status == TodoStatus.DONE
+    fresh = [t for t in mgr.list_todos() if t.id != old]
+    assert [(t.method, t.line, t.status) for t in fresh] == [("Svc.other", 5, TodoStatus.OPEN)]
+
+
+def test_reconcile_unknown_method_different_text_on_same_line_gets_new_id(mgr: TodoManager) -> None:
+    old = mgr.register(file="a.go", line=5, method="<unknown>", description="first")
+    mgr.reconcile("a.go", [_marker(5, "<unknown>", "second")])
+    assert mgr.get(old).status == TodoStatus.DONE
+    assert len(mgr.list_todos()) == 2

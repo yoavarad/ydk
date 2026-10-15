@@ -39,6 +39,14 @@ def markers_for(path: str) -> tuple[tuple[str, ...], str] | None:
     return None
 
 
+def _same_identity(todo: TodoItem, marker: dict) -> bool:
+    """Whether a marker is plausibly the same TODO: same method if both have one, else same text."""
+    unknown = ("", "<unknown>")
+    if todo.method not in unknown and marker["method"] not in unknown:
+        return todo.method == marker["method"]
+    return todo.description == marker["description"]
+
+
 class TodoError(Exception):
     """Raised when a TODO operation fails."""
 
@@ -91,16 +99,17 @@ class TodoManager:
 
         Each marker is a dict with line, method and description. Open or in-progress
         entries are matched to markers by (line, method), then (method, description),
-        then line alone; a matched entry moves to the marker's line. Unmatched markers
+        then line alone. Line-based matches need agreeing identity (same method, or same
+        text if either lacks one). A matched entry moves to the marker's line. Unmatched markers
         are registered as new; unmatched entries are marked done (marker gone).
         """
         registry = self._load()
         active = [t for t in registry.todos.values() if t.file == file and t.status != TodoStatus.DONE]
         pending = list(markers)
         passes = (
-            lambda t, m: (t.line, t.method) == (m["line"], m["method"]),
+            lambda t, m: (t.line, t.method) == (m["line"], m["method"]) and _same_identity(t, m),
             lambda t, m: (t.method, t.description) == (m["method"], m["description"]),
-            lambda t, m: t.line == m["line"],
+            lambda t, m: t.line == m["line"] and _same_identity(t, m),
         )
         for same in passes:
             for todo in list(active):
