@@ -401,15 +401,6 @@ _GO_KEYWORDS = frozenset(
 )
 
 
-def check_path_collisions(results: list[GeneratedTest]) -> None:
-    """Raise ValueError naming both manifest ids when two results share an output path."""
-    seen: dict[str, str] = {}
-    for r in results:
-        if r.test_file_path in seen:
-            raise ValueError(f"{seen[r.test_file_path]} and {r.component_id} both resolve to {r.test_file_path}")
-        seen[r.test_file_path] = r.component_id
-
-
 def _go_package(segment: str) -> str:
     """Sanitize a namespace segment into a valid lowercase Go package identifier."""
     pkg = re.sub(r"[^a-z0-9_]", "_", segment.lower()).strip("_") or "tests"
