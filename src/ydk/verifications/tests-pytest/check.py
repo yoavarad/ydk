@@ -47,7 +47,12 @@ def _find_test_files(project_root: str, test_dir: str, changed_files: list[str])
     for f in changed_files:
         # If it's already a test file, include directly
         if f.startswith(f"{test_dir}/") or f.startswith("test_"):
-            if (root / f).exists():
+            p = Path(f)
+            if (
+                p.suffix == ".py"
+                and (p.name.startswith("test_") or p.name.endswith("_test.py"))
+                and (root / f).exists()
+            ):
                 test_files.append(f)
             continue
 

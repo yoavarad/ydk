@@ -91,3 +91,19 @@ class TestResolveTool:
         mod = _load_check_module()
         with patch("shutil.which", return_value=None):
             assert mod._resolve_tool(str(tmp_path), "pytest") is None
+
+
+def test_find_test_files_skips_non_test_files_under_tests(tmp_path: Path) -> None:
+    """Test data and conftest under tests/ are not passed to pytest."""
+    mod = _load_check_module()
+    files = [
+        "tests/core/test_x.py",
+        "tests/core/golden/ci/go.ci.yml",
+        "tests/conftest.py",
+    ]
+    for f in files:
+        path = tmp_path / f
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+
+    assert mod._find_test_files(str(tmp_path), "tests", files) == ["tests/core/test_x.py"]
