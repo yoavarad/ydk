@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -336,7 +337,8 @@ class ComponentTestGenerator:
             cases=cases,
         )
         dirs = [d for d in (_path_segment(seg) for seg in namespace.split("/")) if d]
-        file_name = f"{_path_segment(base) or 'tests'}{suffix}_test.go"
+        stem = _path_segment(base) or "tests_" + hashlib.sha256(component_id.encode("utf-8")).hexdigest()[:8]
+        file_name = f"{stem}{suffix}_test.go"
         path = "/".join([*dirs, file_name])
         return GeneratedTest(component_id=component_id, test_code=code, test_file_path=path, test_count=len(cases))
 
@@ -394,6 +396,15 @@ _GO_KEYWORDS = frozenset(
         "var",
     ]
 )
+
+
+def check_path_collisions(results: list[GeneratedTest]) -> None:
+    """Raise ValueError naming both manifest ids when two results share an output path."""
+    seen: dict[str, str] = {}
+    for r in results:
+        if r.test_file_path in seen:
+            raise ValueError(f"{seen[r.test_file_path]} and {r.component_id} both resolve to {r.test_file_path}")
+        seen[r.test_file_path] = r.component_id
 
 
 def _go_package(segment: str) -> str:

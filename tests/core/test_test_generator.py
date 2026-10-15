@@ -271,6 +271,28 @@ class TestGenerateGoFromTest:
         assert not any(ch in path for ch in ':\\ "<>|*?')
         assert path.endswith("_test.go")
 
+    def test_non_ascii_manifests_get_distinct_stable_paths(self):
+        gen = ComponentTestGenerator()
+        a = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/测试.unit")).test_file_path
+        b = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/テスト.unit")).test_file_path
+        again = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/测试.unit")).test_file_path
+        assert a != b
+        assert a == again
+        assert a.endswith("_test.go")
+        assert a.rsplit("/", 1)[-1].startswith("tests_")
+
+    def test_path_collision_names_both_ids(self):
+        import pytest
+
+        from ydk.core.test_generator import check_path_collisions
+        from ydk.models.test_gen import GeneratedTest
+
+        r1 = GeneratedTest(component_id="ydk:test:a/x.unit", test_code="", test_file_path="a/x_test.go", test_count=1)
+        r2 = GeneratedTest(component_id="ydk:test:a/y.unit", test_code="", test_file_path="a/x_test.go", test_count=1)
+        with pytest.raises(ValueError, match=r"ydk:test:a/x.unit.*ydk:test:a/y.unit"):
+            check_path_collisions([r1, r2])
+        check_path_collisions([r1])
+
     def test_missing_cases_backtick_literal(self):
         existing = "func TestStore(t *testing.T) {\n\tt.Run(`fifo-101`, func(t *testing.T) {})\n}\n"
         assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
