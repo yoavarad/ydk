@@ -27,6 +27,10 @@ generators:
   - id: main-cmd
     script: generators/main_cmd.py
     inputs: [contract, nfr, config]
+  - id: env
+    script: generators/env_pipeline.py
+    inputs: [crosscut, ext, test, config]
+
 
 phases:
   - id: ops
