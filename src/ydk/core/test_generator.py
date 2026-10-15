@@ -316,8 +316,7 @@ class ComponentTestGenerator:
         suffix = "" if level in ("", "unit") else "_" + level
         package = _go_package(namespace.rsplit("/", 1)[-1])
         target = str(manifest.get("target") or "").rsplit("/", 1)[-1] or base
-        ident = re.sub(r"[^a-zA-Z0-9]", "", target)
-        func_name = "Test" + ident[:1].upper() + ident[1:] + suffix.replace("_", "").capitalize()
+        func_name = "Test" + _go_camel(target) + _go_camel(suffix)
         cases = [
             {
                 "name_literal": json.dumps(str(c["name"]), ensure_ascii=False),
@@ -402,6 +401,12 @@ def _go_package(segment: str) -> str:
     if pkg[0].isdigit():
         pkg = "p" + pkg
     return pkg + "_" if pkg in _GO_KEYWORDS else pkg
+
+
+def _go_camel(text: str) -> str:
+    """CamelCase on non-alphanumeric boundaries, keeping inner capitals; a letter after a digit is upper-cased."""
+    words = (w for w in re.split(r"[^a-zA-Z0-9]+", text) if w)
+    return re.sub(r"(?<=\d)[a-z]", lambda m: m.group().upper(), "".join(w[:1].upper() + w[1:] for w in words))
 
 
 def _path_segment(text: str) -> str:
