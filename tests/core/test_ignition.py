@@ -255,6 +255,27 @@ class TestRegisterTodos:
         todo = TodoManager(tmp_path).list_todos()[0]
         assert (todo.file, todo.line) == ("svc/svc.go", 4)
 
+    def test_reignite_moved_marker_leaves_one_entry(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        engine = IgnitionEngine(tmp_path)
+        old = "class Svc:\n    def run(self):\n        raise NotImplementedError\n"
+        moved = "# header\n# header\n" + old
+        engine._register_todos([GeneratedFile(path="app/svc.py", content=old)])
+        engine._register_todos([GeneratedFile(path="app/svc.py", content=moved)])
+        todos = TodoManager(tmp_path).list_todos()
+        assert [(t.line, t.status.value) for t in todos] == [(5, "open")]
+
+    def test_reignite_removed_marker_is_resolved(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        engine = IgnitionEngine(tmp_path)
+        old = "class Svc:\n    def run(self):\n        raise NotImplementedError\n"
+        engine._register_todos([GeneratedFile(path="app/svc.py", content=old)])
+        engine._register_todos([GeneratedFile(path="app/svc.py", content="class Svc:\n    pass\n")])
+        todos = TodoManager(tmp_path).list_todos()
+        assert [t.status.value for t in todos] == ["done"]
+
 
 class TestIgniteFull:
     def test_ignite_no_pack_raises(self, tmp_path: Path) -> None:

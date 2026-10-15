@@ -86,6 +86,49 @@ class TodoManager:
         logger.info("Registered %s: %s in %s:%d", todo_id, method, file, line)
         return todo_id
 
+    def reconcile(self, file: str, markers: list[dict]) -> None:
+        """Sync a file's open TODOs with the markers currently in it.
+
+        Each marker is a dict with line, method and description. Open or in-progress
+        entries are matched to markers by (line, method), then (method, description),
+        then line alone; a matched entry moves to the marker's line. Unmatched markers
+        are registered as new; unmatched entries are marked done (marker gone).
+        """
+        registry = self._load()
+        active = [t for t in registry.todos.values() if t.file == file and t.status != TodoStatus.DONE]
+        pending = list(markers)
+        passes = (
+            lambda t, m: (t.line, t.method) == (m["line"], m["method"]),
+            lambda t, m: (t.method, t.description) == (m["method"], m["description"]),
+            lambda t, m: t.line == m["line"],
+        )
+        for same in passes:
+            for todo in list(active):
+                # Closest line first, so shifted duplicates pair up in order.
+                candidates = sorted(
+                    (m for m in pending if same(todo, m)), key=lambda m: (abs(m["line"] - todo.line), m["line"])
+                )
+                if candidates:
+                    marker = candidates[0]
+                    todo.line = marker["line"]
+                    todo.method = marker["method"]
+                    todo.description = marker["description"]
+                    pending.remove(marker)
+                    active.remove(todo)
+        for todo in active:
+            todo.status = TodoStatus.DONE
+        for marker in pending:
+            todo_id = f"YDK-TODO-{registry.next_id:03d}"
+            registry.todos[todo_id] = TodoItem(
+                id=todo_id,
+                file=file,
+                line=marker["line"],
+                method=marker["method"],
+                description=marker["description"],
+            )
+            registry.next_id += 1
+        self._save(registry)
+
     def list_todos(self, status: str | None = None) -> list[TodoItem]:
         """List all TODOs, optionally filtered by status."""
         registry = self._load()
