@@ -89,7 +89,6 @@ def _generator_errors(result: object) -> list[str]:
 class TestEnvGenerator:
     def test_manifest_appends_env_generator(self) -> None:
         data = yaml.safe_load((PACK_DIR / "manifest.yaml").read_text(encoding="utf-8"))
-        assert "phases" not in data
         last = data["generators"][-1]
         assert last["id"] == "env"
         assert last["script"] == "generators/env_pipeline.py"

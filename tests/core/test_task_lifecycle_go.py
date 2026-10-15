@@ -149,7 +149,21 @@ class TestGoSkipCheck:
         assert "x_test.go:6" in warnings[0]
 
     @pytest.mark.parametrize(
-        "call", ['t.Skip("")', "t.SkipNow()", 't.Skipf("")', "b.Skip()", "tb.SkipNow()", "f.Skip( )"]
+        "call",
+        [
+            't.Skip("")',
+            "t.SkipNow()",
+            't.Skipf("")',
+            "b.Skip()",
+            "tb.SkipNow()",
+            "f.Skip( )",
+            "t.Skip(\n\t)",
+            "t.Skip(\n\t\t``,\n\t)",
+            "s.T().Skip()",
+            "s.T().SkipNow()",
+            "suite.Require().T().Skip()",
+            "helper.Skip()",
+        ],
     )
     def test_unreasoned_variants_fail(self, go_repo: Path, call: str) -> None:
         _commit(go_repo, "x_test.go", f"package x\n\nfunc TestX(t *testing.T) {{\n\t{call}\n}}\n")
@@ -164,6 +178,10 @@ class TestGoSkipCheck:
             "\t/* t.Skip() */",
             "\t/*\n\tt.Skip()\n\t*/",
             '\ts := "t.Skip()"',
+            '\tt.Skip(\n\t\t"needs db",\n\t)',
+            '\ts.T().Skip("needs db")',
+            "\t// s.T().Skip()",
+            "\tt.Skipped()",
         ],
     )
     def test_reasoned_or_commented_skips_pass(self, go_repo: Path, body: str) -> None:

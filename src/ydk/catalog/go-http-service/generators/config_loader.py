@@ -67,16 +67,23 @@ def _parse_table(lines: list[str]) -> list[dict]:
 
 def main() -> None:
     env_vars: list[dict] = []
-    names: set[str] = set()
+    first: dict[str, tuple[dict, str]] = {}
     sources: list[str] = []
     for crosscut in load("crosscut"):
+        cid = str(crosscut.get("id"))
         rows = parse_env_table(str(crosscut.get("specification", "")))
         if rows:
-            sources.append(str(crosscut.get("id")))
+            sources.append(cid)
         for row in rows:
-            if row["name"] not in names:  # a var listed in several tables keeps its first definition
-                names.add(row["name"])
+            if row["name"] not in first:  # a var listed in several tables keeps its first definition
+                first[row["name"]] = (row, cid)
                 env_vars.append(row)
+                continue
+            prev, prev_id = first[row["name"]]
+            if (prev["required"], prev["default_lit"]) != (row["required"], row["default_lit"]):
+                sys.stderr.write(
+                    f"conflicting definitions of env var {row['name']} in {prev_id} and {cid}; keeping {prev_id}\n"
+                )
     check_unique("internal/config Config", [(v["field"], f"env var {v['name']}") for v in env_vars])
     source = ", ".join(sources) or "no environment table found"
     if not sources:

@@ -151,10 +151,9 @@ class TestCoverageChecker:
         go_run = re.compile(r't\.Run\(\s*"' + re.escape(case) + '"')
         go_func = None
         if target:
-            # generator emits Test<Target> with an upper-cased first letter and no punctuation
+            # generator emits Test<CamelTarget>; compare case-insensitively with punctuation dropped
             ident = re.sub(r"[^a-zA-Z0-9]", "", target)
-            first = f"[{ident[:1].lower()}{ident[:1].upper()}]" if ident[:1].isalpha() else re.escape(ident[:1])
-            go_func = re.compile(r"^func Test" + first + re.escape(ident[1:]) + r"\w*\(", re.MULTILINE)
+            go_func = re.compile(r"^func Test" + re.escape(ident) + r"\w*\(", re.MULTILINE | re.IGNORECASE)
         for path, text in contents:
             if marker.search(text):
                 return True

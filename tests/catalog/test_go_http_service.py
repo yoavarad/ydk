@@ -409,6 +409,29 @@ class TestEnvTables:
         assert cfg.count('lookup("LOG_LEVEL"') == 1  # first definition wins
         assert 'lookup("LOG_LEVEL", "INFO", false)' in cfg
 
+    def _dup_warnings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, row: str
+    ) -> list[str]:
+        components = _copy_samples(tmp_path, ())
+        _component(components, "crosscut/ops/more-env.yaml", _env_crosscut("ops/more-env", [row]))
+        _ignite(tmp_path, monkeypatch, components)
+        return [r.getMessage() for r in caplog.records if "conflicting" in r.getMessage()]
+
+    def test_conflicting_duplicate_warns_naming_both_manifests(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        msgs = self._dup_warnings(tmp_path, monkeypatch, caplog, "| LOG_LEVEL | yes | DEBUG | repeated |")
+        assert len(msgs) == 1
+        assert "LOG_LEVEL" in msgs[0]
+        assert "ydk:crosscut:ops/more-env" in msgs[0]
+        assert "ydk:crosscut:ops/environment" in msgs[0]
+
+    def test_identical_duplicate_is_silent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        msgs = self._dup_warnings(tmp_path, monkeypatch, caplog, "| LOG_LEVEL | no | INFO | other prose |")
+        assert msgs == []
+
 
 @pytest.mark.skipif(shutil.which("go") is None, reason="go toolchain not on PATH")
 class TestGoIntegration:

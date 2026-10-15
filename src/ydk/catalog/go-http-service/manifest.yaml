@@ -30,3 +30,11 @@ generators:
   - id: env
     script: generators/env_pipeline.py
     inputs: [crosscut, ext, test, config]
+
+
+phases:
+  - id: ops
+    generators:
+      - id: ops-manifests
+        script: generators/ops.py
+        inputs: [crosscut, nfr, req, config]

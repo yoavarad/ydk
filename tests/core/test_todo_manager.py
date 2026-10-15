@@ -307,3 +307,61 @@ def test_slash_comment_marker_recognized() -> None:
     m = _TODO_COMMENT_RE.search('\tpanic("x") // YDK-TODO-001: do it')
     assert m is not None
     assert m.group(2) == "do it"
+
+
+# --- reconcile ---
+
+
+def _marker(line: int, method: str = "Svc.run", description: str = "") -> dict:
+    return {"line": line, "method": method, "description": description}
+
+
+def test_reconcile_moved_marker_updates_line_keeps_id(mgr: TodoManager) -> None:
+    todo_id = mgr.register(file="a.py", line=3, method="Svc.run", description="impl run")
+    mgr.reconcile("a.py", [_marker(9, "Svc.run", "impl run")])
+    todos = mgr.list_todos()
+    assert len(todos) == 1
+    assert (todos[0].id, todos[0].line, todos[0].status) == (todo_id, 9, TodoStatus.OPEN)
+
+
+def test_reconcile_removed_marker_is_resolved(mgr: TodoManager) -> None:
+    keep = mgr.register(file="a.py", line=3, method="Svc.a")
+    gone = mgr.register(file="a.py", line=8, method="Svc.b")
+    mgr.reconcile("a.py", [_marker(3, "Svc.a")])
+    assert mgr.get(keep).status == TodoStatus.OPEN
+    assert mgr.get(gone).status == TodoStatus.DONE
+
+
+def test_reconcile_new_marker_registered(mgr: TodoManager) -> None:
+    mgr.reconcile("a.py", [_marker(4, "Svc.new")])
+    todos = mgr.list_todos()
+    assert [(t.file, t.line, t.method) for t in todos] == [("a.py", 4, "Svc.new")]
+
+
+def test_reconcile_ignores_other_files_and_done(mgr: TodoManager) -> None:
+    other = mgr.register(file="b.py", line=1, method="X.y")
+    mgr.reconcile("a.py", [])
+    assert mgr.get(other).status == TodoStatus.OPEN
+
+
+def test_reconcile_same_method_twice_moves_each(mgr: TodoManager) -> None:
+    mgr.register(file="a.go", line=3, method="<unknown>")
+    mgr.register(file="a.go", line=6, method="<unknown>")
+    mgr.reconcile("a.go", [_marker(5, "<unknown>"), _marker(8, "<unknown>")])
+    assert sorted(t.line for t in mgr.list_todos()) == [5, 8]
+    assert all(t.status == TodoStatus.OPEN for t in mgr.list_todos())
+
+
+def test_reconcile_different_method_on_same_line_gets_new_id(mgr: TodoManager) -> None:
+    old = mgr.register(file="a.py", line=5, method="Svc.old", description="impl old")
+    mgr.reconcile("a.py", [_marker(5, "Svc.other", "impl other")])
+    assert mgr.get(old).status == TodoStatus.DONE
+    fresh = [t for t in mgr.list_todos() if t.id != old]
+    assert [(t.method, t.line, t.status) for t in fresh] == [("Svc.other", 5, TodoStatus.OPEN)]
+
+
+def test_reconcile_unknown_method_different_text_on_same_line_gets_new_id(mgr: TodoManager) -> None:
+    old = mgr.register(file="a.go", line=5, method="<unknown>", description="first")
+    mgr.reconcile("a.go", [_marker(5, "<unknown>", "second")])
+    assert mgr.get(old).status == TodoStatus.DONE
+    assert len(mgr.list_todos()) == 2

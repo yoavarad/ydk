@@ -216,11 +216,12 @@ class GoVerificationConfig(BaseModel):
     test_tags: list[str] = Field(default_factory=list)
     race: bool = True
     # Regexes that fail ``task done`` on lines a task adds to Go tests (comments and string contents are
-    # blanked first). Default: un-reasoned skips -- Skip()/Skip("")/Skipf("")/SkipNow() on t, b, tb or f.
+    # blanked first; matched across the whole file so calls may span lines). Default: un-reasoned skips --
+    # Skip()/Skip("")/Skipf("")/SkipNow() on any receiver (t, b, tb, f, s.T(), custom helpers).
     skip_patterns: list[str] = Field(
         default_factory=lambda: [
-            r"(?<![\w.])(?:t|b|tb|f)\.SkipNow\(\s*\)",
-            r"(?<![\w.])(?:t|b|tb|f)\.Skipf?\(\s*(?:\"\"|``)?\s*[,)]",
+            r"\.SkipNow\(\s*\)",
+            r"\.Skipf?\(\s*(?:\"\"|``)?\s*[,)]",
         ]
     )
 
@@ -312,6 +313,43 @@ class TestingConfig(BaseModel):
     test_globs: list[str] = Field(default_factory=lambda: ["tests/**/test_*.py"])
 
 
+class DoctorToolSpec(BaseModel):
+    """One tool ``ydk doctor`` should look for, with an optional minimum version."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    min_version: str = ""
+
+    @field_validator("min_version")
+    @classmethod
+    def _dotted_version(cls, v: str) -> str:
+        v = v.strip().removeprefix("v")
+        if v and not re.fullmatch(r"\d+(\.\d+)*", v):
+            msg = f"doctor min_version must be dotted numbers like '1.22' or '1.22.3', got {v!r}"
+            raise ValueError(msg)
+        return v
+
+
+class DoctorConfig(BaseModel):
+    """Extra tool checks for ``ydk doctor`` (added to the stack's defaults).
+
+    Each entry is a bare tool name or ``{name, min_version}``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    required_tools: list[DoctorToolSpec] = Field(default_factory=list)
+    optional_tools: list[DoctorToolSpec] = Field(default_factory=list)
+
+    @field_validator("required_tools", "optional_tools", mode="before")
+    @classmethod
+    def _bare_names(cls, v: object) -> object:
+        if isinstance(v, list):
+            return [{"name": item} if isinstance(item, str) else item for item in v]
+        return v
+
+
 class YdkConfig(BaseModel):
     """Top-level YDK configuration aggregating all sub-configs."""
 
@@ -332,3 +370,4 @@ class YdkConfig(BaseModel):
     guards: GuardsConfig = GuardsConfig()
     testing: TestingConfig = TestingConfig()
     tdd: TddConfig = TddConfig()
+    doctor: DoctorConfig = DoctorConfig()
