@@ -27,6 +27,17 @@ This ignition pack generates a stdlib-first Go `net/http` service from YDK compo
 - **Re-ignite:** unchanged generator output is not rewritten, even after `gofmt` reformatted it on disk. TODOs are registered once per file and line.
 - **Post-generation:** ignition runs `go get` (franz-go), `go mod tidy`, `go mod vendor`, `gofmt -w`, `go build ./...` and `go vet ./...`.
 
+## Env phase (Makefile and scripts)
+
+The `env` generator writes a `Makefile` whose targets each run `scripts/<target>.sh` (POSIX `sh`, `set -eu`): `lint`, `test`, `test-integration`, `build`, `scan`, `e2e`, `publish`, `deploy`, `smoke`, `env-up`, `env-down` (`make` alone prints them). `scripts/env.sh` holds overridable defaults (`APP`, `CLUSTER`, `NAMESPACE`, `HOST_PORT`, `IMAGE_REPO`, `VERSION`, `IMAGE`, `CHART_DIR`, plus `KAFKA_CLUSTER` and `STRIMZI_VERSION` with Kafka).
+
+- The `ydk:crosscut` whose id ends in `local-environment` drives the kind cluster name and port mapping (`deploy/local/kind-config.yaml`) and the Helm releases (`Release <name>: ... ingress host <host>`) in `deploy.sh`/`smoke.sh`. Without it there is one release named after the app, host `<app>.local`.
+- Per-release `--set` values from the env-var table (instance name, Kafka settings) are set only when its `Helm value` column names their key.
+- Only with a `ydk:ext:kafka/*` component: `deploy/local/kafka.yaml`, `kafka-topics.yaml` and `kafka-users.yaml` (Strimzi `kafka.strimzi.io/v1`, from the crosscut's Strimzi/KafkaTopic/KafkaUser lines), the Strimzi install and SCRAM credential Secrets in `env-up`, and the Kafka values in `deploy.sh`.
+- `make smoke` waits for the readiness route (GET path ending in `readyz`, default `/readyz`) on every release, then runs any `test/smoke/*.sh` (app-specific round trips go there). `test/e2e/lib.sh` has `http_get`, `http_post_json`, `http_status`, `poll_until`, `fail` and one `HOST_<RELEASE>` variable per release.
+- Each `ydk:test` with `level: e2e` becomes `test/e2e/<name>.sh`: one failing function per case, marked `# ydk:test:<id> case=<name>`, using the curl helpers in `test/e2e/lib.sh`.
+- `make lint`, `make test` and `make build` need only Go. Cluster targets need kind, docker, kubectl, helm and curl.
+
 ## Publish gate
 
 `checks/smoke.py` ignites `samples/components` into a temp dir, builds and starts the binary with the required env vars set, and expects `GET /healthz` to return 200 and an unknown path to return a JSON 404. It needs `go` on PATH and network access for franz-go.
