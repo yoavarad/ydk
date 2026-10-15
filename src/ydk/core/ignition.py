@@ -59,9 +59,15 @@ class IgnitionEngine:
             msg = "No components found in .ydk/components/. Run Stage 01 brainstorming first."
             raise IgnitionError(msg)
 
-        # 3. Run generators — phased or flat
+        # 3. Run generators — phased or flat (top-level generators run before phases)
         if "phases" in pack:
-            all_generated, phase_errors = self._ignite_phased(pack, component_data, answers, dry_run)
+            all_generated = []
+            if "generators" in pack:
+                top_generated, top_errors = self._ignite_flat(pack, component_data, answers)
+                all_generated.extend(top_generated)
+                errors.extend(top_errors)
+            phase_generated, phase_errors = self._ignite_phased(pack, component_data, answers, dry_run)
+            all_generated.extend(phase_generated)
             errors.extend(phase_errors)
         else:
             all_generated, flat_errors = self._ignite_flat(pack, component_data, answers)
