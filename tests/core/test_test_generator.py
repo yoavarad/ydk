@@ -327,6 +327,93 @@ class TestGenerateGoFromTest:
         existing = 'func TestStore(t *testing.T) {\n\t_ = "fifo-101"\n}\n'
         assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["fifo-101", "empty-pop"]
 
+    _LOOP = "\tfor _, tc := range cases {\n\t\tt.Run(tc.name, func(t *testing.T) {})\n\t}\n}\n"
+
+    def test_table_driven_decoy_outside_table_not_covered(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n"
+            '\tother := []string{"fifo-101", "empty-pop"}\n\t_ = struct{ a string }{a: "empty-pop"}\n'
+            '\tcases := []struct{ name string }{{name: "fifo-101"}}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_table_driven_commented_cases_missing(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name string }{\n"
+            '\t\t{name: "fifo-101"},\n\t\t// {name: "empty-pop"},\n\t\t/* {"empty-pop"}, */\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_table_driven_non_name_field_not_covered(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name, desc string }{\n"
+            '\t\t{name: "fifo-101", desc: "empty-pop"},\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_table_driven_unkeyed_and_multiline_table(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name string }{\n"
+            '\t\t{\n\t\t\t"fifo-101",\n\t\t},\n\t\t{"empty-pop"},\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == []
+
+    def test_table_driven_nested_literal_not_covered(self):
+        existing = (
+            "func TestStore(t *testing.T) {\n\tcases := []struct{ name string; tags []string }{\n"
+            '\t\t{name: "fifo-101", tags: []string{"empty-pop"}},\n\t}\n' + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    _TBL2 = 'cases := []struct{ name string }{{name: "fifo-101"}, {name: "empty-pop"}}\n'
+
+    def test_table_driven_same_var_name_scoped_per_function(self):
+        existing = (
+            "func TestOther(t *testing.T) {\n\t"
+            + self._TBL2
+            + self._LOOP
+            + '\nfunc TestStore(t *testing.T) {\n\tcases := []struct{ name string }{{name: "fifo-101"}}\n'
+            + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
+
+    def test_table_driven_other_function_table_not_consulted(self):
+        existing = (
+            "func TestOther(t *testing.T) {\n\t"
+            + self._TBL2
+            + self._LOOP
+            + "\nfunc TestStore(t *testing.T) {\n"
+            + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["fifo-101", "empty-pop"]
+
+    def test_table_driven_selector_range_target(self):
+        existing = (
+            'func TestStore(t *testing.T) {\n\tcases := []struct{ name string }{{name: "fifo-101"}, {"empty-pop"}}\n'
+            "\tfor _, tc := range s.cases {\n\t\tt.Run(tc.name, func(t *testing.T) {})\n\t}\n}\n"
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == []
+
+    def test_table_driven_var_declarations(self):
+        for decl in (
+            "var cases = []struct{ name string }{",
+            "var cases []struct{ name string } = []struct{ name string }{",
+        ):
+            existing = (
+                "func TestStore(t *testing.T) {\n\t"
+                + decl
+                + '\n\t\t{name: "fifo-101"},\n\t\t{"empty-pop"},\n\t}\n'
+                + self._LOOP
+            )
+            assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == [], decl
+
+    def test_table_driven_package_level_var(self):
+        existing = (
+            'var cases = []struct{ name string }{\n\t{name: "fifo-101"},\n\t{"empty-pop"},\n}\n\n'
+            "func TestStore(t *testing.T) {\n" + self._LOOP
+        )
+        assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == []
+
     def test_generated_source_plausible(self):
         for level in ("unit", "integration"):
             code = ComponentTestGenerator().generate_go_from_test(self._manifest(level)).test_code

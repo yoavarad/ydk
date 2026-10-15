@@ -310,14 +310,8 @@ class ComponentTestGenerator:
     def generate_go_from_test(self, manifest: dict[str, Any]) -> GeneratedTest:
         """Generate a Go table-test stub file (one failing subtest per case) from a ydk:test manifest."""
         component_id = manifest.get("id", "unknown")
-        name_part = component_id.split(":", 2)[-1]
-        namespace, _, base = name_part.rpartition("/")
-        base, _, level_suffix = base.partition(".")
-        level = str(manifest.get("level") or level_suffix)
-        suffix = "" if level in ("", "unit") else "_" + level
+        namespace, base, suffix, func_name = _go_test_identity(manifest)
         package = _go_package(namespace.rsplit("/", 1)[-1])
-        target = str(manifest.get("target") or "").rsplit("/", 1)[-1] or base
-        func_name = "Test" + _go_camel(target) + _go_camel(suffix)
         cases = [
             {
                 "name_literal": json.dumps(str(c["name"]), ensure_ascii=False),
@@ -355,21 +349,139 @@ class ComponentTestGenerator:
         """Return manifest case names with no subtest in ``existing_code``.
 
         Covered when ``t.Run`` is called with the name as a "..." or `...` literal, or when the file
-        calls ``t.Run`` with a non-literal name (table-driven) and the case name appears as a table
-        entry (``field: "name"`` or ``{"name", ...}``).
+        calls ``t.Run`` with a non-literal name (table-driven) and the case name is a ``name:`` field
+        (or leading unkeyed element) of the composite literal ranged over by the ``for ... range`` loop.
+        Comments are ignored.
         """
-        dynamic_run = re.search(r"t\.Run\(\s*[A-Za-z_]", existing_code) is not None
+        code = _strip_go_comments(existing_code)
+        table = _go_range_tables(code, _go_test_identity(manifest)[3])
         missing = []
         for c in self._go_cases(manifest):
             name = str(c["name"])
             lits = [re.escape(json.dumps(name, ensure_ascii=False)), "`" + re.escape(name) + "`"]
             alt = "(?:" + "|".join(lits) + ")"
-            if re.search(r"t\.Run\(\s*" + alt, existing_code):
+            if re.search(r"t\.Run\(\s*" + alt, code):
                 continue
-            if dynamic_run and re.search(r"(?:[:{,]\s*)" + alt, existing_code):
+            if table and re.search(r"(?:\bname\s*:|\{)\s*" + alt, table):
                 continue
             missing.append(name)
         return missing
+
+
+def _go_test_identity(manifest: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Return ``(namespace, base, level suffix, Go test func name)`` for a ydk:test manifest."""
+    name_part = str(manifest.get("id", "unknown")).split(":", 2)[-1]
+    namespace, _, base = name_part.rpartition("/")
+    base, _, level_suffix = base.partition(".")
+    level = str(manifest.get("level") or level_suffix)
+    suffix = "" if level in ("", "unit") else "_" + level
+    target = str(manifest.get("target") or "").rsplit("/", 1)[-1] or base
+    return namespace, base, suffix, "Test" + _go_camel(target) + _go_camel(suffix)
+
+
+def _go_string_end(code: str, i: int) -> int:
+    """Index just past the Go string/rune literal starting at ``code[i]``."""
+    quote = code[i]
+    j = i + 1
+    while j < len(code) and code[j] != quote:
+        j += 2 if quote != "`" and code[j] == "\\" else 1
+    return j + 1
+
+
+def _strip_go_comments(code: str) -> str:
+    out: list[str] = []
+    i, n = 0, len(code)
+    while i < n:
+        ch = code[i]
+        if ch in "\"`'":
+            j = min(_go_string_end(code, i), n)
+            out.append(code[i:j])
+            i = j
+        elif code.startswith("//", i):
+            while i < n and code[i] != "\n":
+                i += 1
+        elif code.startswith("/*", i):
+            end = code.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            out.append(" ")
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _go_balanced_end(code: str, i: int) -> int:
+    """Index just past the ``{...}`` group opening at ``code[i]``."""
+    depth = 0
+    while i < len(code):
+        ch = code[i]
+        if ch in "\"`'":
+            i = _go_string_end(code, i)
+            continue
+        depth += (ch == "{") - (ch == "}")
+        i += 1
+        if depth == 0:
+            break
+    return i
+
+
+def _go_blank_nested(literal: str) -> str:
+    """Blank content nested deeper than table rows, so only row-level ``name:``/first elements remain."""
+    out: list[str] = []
+    depth, i = 0, 0
+    while i < len(literal):
+        ch = literal[i]
+        if ch in "\"`'":
+            j = _go_string_end(literal, i)
+            out.append(literal[i:j] if depth <= 2 else " ")
+            i = j
+            continue
+        if ch == "{":
+            depth += 1
+            out.append(ch if depth <= 2 else " ")
+        elif ch == "}":
+            out.append(ch if depth <= 2 else " ")
+            depth -= 1
+        else:
+            out.append(ch if depth <= 2 else " ")
+        i += 1
+    return "".join(out)
+
+
+_GO_TOP_LEVEL = re.compile(r"^(?=(?:func|var|const|type)\b)", re.MULTILINE)
+_GO_FUNC_START = re.compile(r"func\b")
+
+
+def _go_range_tables(code: str, func_name: str) -> str:
+    """Composite-literal bodies of the tables ranged over in each test function.
+
+    A ``range X`` / ``range a.b.X`` target is resolved to a declaration (``X :=``, ``X =``,
+    ``var X = ...`` or ``var X T = ...``) in the enclosing function first, then at package level.
+    Tables of other functions are never consulted; selector roots are not resolved (last name only).
+    Only ``func_name`` is inspected when the file defines it, otherwise every function is.
+    """
+    segments = _GO_TOP_LEVEL.split(code)
+    pkg_level = "\n".join(sg for sg in segments if not _GO_FUNC_START.match(sg))
+    bodies: list[str] = []
+    funcs = [sg for sg in segments if _GO_FUNC_START.match(sg)]
+    own = [sg for sg in funcs if re.match(r"func\s+" + re.escape(func_name) + r"\b", sg)]
+    for fn in own or funcs:
+        if re.search(r"t\.Run\(\s*[A-Za-z_]", fn) is None:
+            continue
+        targets = re.findall(r"\bfor\b[^{\n]*?\brange\s+(?:[A-Za-z_]\w*\s*\.\s*)*([A-Za-z_]\w*)\s*\{", fn)
+        for tbl in dict.fromkeys(targets):
+            decl = re.compile(r"\b" + re.escape(tbl) + r"(?:\s*(?::=|=(?!=))|[ \t]+[^\n=]*?=(?!=))\s*[^\n{]*(?=\{)")
+            scope = fn if decl.search(fn) else pkg_level
+            for m in decl.finditer(scope):
+                start = end = m.end()
+                while True:  # skip brace groups of the element type (``struct{...}``) up to the value literal
+                    end = _go_balanced_end(scope, end)
+                    nxt = re.match(r"\s*(?=\{)", scope[end:])
+                    if not nxt:
+                        break
+                    end += nxt.end()
+                bodies.append(_go_blank_nested(scope[start:end]))
+    return "\n".join(bodies)
 
 
 _GO_KEYWORDS = frozenset(
