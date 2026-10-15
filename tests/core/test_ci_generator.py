@@ -2,25 +2,29 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 import yaml
 
 from ydk.core import ci_generator
 from ydk.core.ci_generator import (
+    DEFAULT_GO_MAKE_TARGETS,
+    GITLAB_CI_PATH,
+    GITLAB_IMAGE_WARNING,
+    GO_CI,
+    MAKE_CI,
     PR_TEMPLATE,
     CiConfigError,
     CiContext,
     CiTarget,
     generate_ci,
+    generate_gitlab_ci,
     is_release_version,
     render,
+    render_make_steps,
     select_stack_target,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _write_config(root: Path, remote: str = "github", stack: str = "python-cli") -> None:
@@ -457,3 +461,250 @@ def test_filled_pr_template_passes_pr_body_validation() -> None:
     body = body.replace("## Test Plan\n", "## Test Plan\n\n- ran pytest\n", 1)
     result = _load_validate_pr_body()(body, [])
     assert result["passed"], result["details"]
+
+
+# --- Go / make-wrapper / GitLab CI ---
+
+GOLDEN = Path(__file__).parent / "golden" / "ci"
+
+
+def _write_ci_config(root: Path, stack: str, extra_yaml: str = "", remote: str = "github") -> None:
+    _write_config(root, remote=remote, stack=stack)
+    cfg = root / ".ydk" / "config.yaml"
+    cfg.write_text(cfg.read_text(encoding="utf-8") + extra_yaml, encoding="utf-8")
+
+
+def _ci_yml(root: Path) -> Path:
+    return root / ".github" / "workflows" / "ci.yml"
+
+
+def _runs(wf: dict, job: str) -> list[str]:
+    return [s["run"] for s in wf["jobs"][job]["steps"] if "run" in s]
+
+
+@pytest.mark.parametrize("stack", ["go", "golang"])
+def test_select_stack_target_go(stack: str) -> None:
+    assert select_stack_target(stack) == GO_CI
+
+
+def test_go_and_make_targets_constants() -> None:
+    assert (GO_CI.template, GO_CI.output) == ("ci-go.yml", "ci.yml")
+    assert GO_CI.purpose == "stack CI (go: make targets + ydk verify)"
+    assert (MAKE_CI.template, MAKE_CI.output, MAKE_CI.purpose) == ("ci-make.yml", "ci.yml", "stack CI (make wrapper)")
+    assert DEFAULT_GO_MAKE_TARGETS == ("lint", "test")
+    assert Path(".gitlab-ci.yml") == GITLAB_CI_PATH
+
+
+def test_render_make_steps() -> None:
+    assert render_make_steps(["lint", "test"]) == (
+        "      - name: make lint\n        run: make lint\n      - name: make test\n        run: make test"
+    )
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        ("", ["make lint", "make test"]),
+        ("ci:\n  make_targets: [lint, test, scan]\n", ["make lint", "make test", "make scan"]),
+    ],
+)
+def test_go_ci_steps_order(tmp_path: Path, extra: str, expected: list[str]) -> None:
+    _write_ci_config(tmp_path, "go", extra)
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    wf = _load_workflow(_ci_yml(tmp_path))
+    steps = wf["jobs"]["ci"]["steps"]
+    setup = next(i for i, s in enumerate(steps) if s.get("uses") == "actions/setup-go@v6")
+    assert steps[setup]["with"] == {"go-version-file": "go.mod"}
+    runs = [s.get("run", "") for s in steps]
+    make_idx = [i for i, r in enumerate(runs) if r.startswith("make ")]
+    assert [runs[i] for i in make_idx] == expected
+    verify = next(i for i, r in enumerate(runs) if r.startswith("ydk verify run"))
+    assert setup < make_idx[0] < verify
+    assert (tmp_path / ".github" / "workflows" / "ydk-pr-checks.yml").is_file()
+
+
+def test_go_missing_makefile_warns(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "go")
+    result = generate_ci(tmp_path, force=False, version="1.5.0")
+    assert any("Makefile not found" in w for w in result.warnings)
+
+
+def test_go_makefile_missing_target_warns_once(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "go", "ci:\n  make_targets: [lint, test, scan]\n")
+    (tmp_path / "Makefile").write_text("lint:\n\tgofmt -l .\ntest: lint\n\tgo test ./...\n", encoding="utf-8")
+    result = generate_ci(tmp_path, force=False, version="1.5.0")
+    assert len(result.warnings) == 1
+    assert "'scan'" in result.warnings[0]
+
+
+def test_go_makefile_all_targets_no_warning(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "go")
+    (tmp_path / "Makefile").write_text("lint:\n\ttrue\ntest:\n\ttrue\n", encoding="utf-8")
+    result = generate_ci(tmp_path, force=False, version="1.5.0")
+    assert not any("Makefile" in w for w in result.warnings)
+
+
+@pytest.mark.parametrize("stack", ["python-cli", "dotnet", "terraform"])
+def test_make_wrapper_mode(tmp_path: Path, stack: str) -> None:
+    _write_ci_config(tmp_path, stack, "ci:\n  make_targets: [build, test]\n")
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    text = _ci_yml(tmp_path).read_text(encoding="utf-8")
+    assert "uv" not in text
+    assert _runs(_load_workflow(_ci_yml(tmp_path)), "make") == ["make build", "make test"]
+
+
+@pytest.mark.parametrize("stack", ["python-cli", "dotnet", "terraform"])
+def test_make_targets_absent_output_unchanged(tmp_path: Path, stack: str) -> None:
+    _write_ci_config(tmp_path, stack)
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    assert "make:" not in _ci_yml(tmp_path).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(("stack", "marker"), [("python-cli", "uv.lock"), ("dotnet", "App.sln")])
+def test_golden_ci_unchanged(tmp_path: Path, stack: str, marker: str) -> None:
+    _write_config(tmp_path, stack=stack)
+    (tmp_path / marker).write_text("", encoding="utf-8")
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    assert _ci_yml(tmp_path).read_text(encoding="utf-8") == (GOLDEN / f"{stack}.ci.yml").read_text(encoding="utf-8")
+
+
+def test_golden_go_ci(tmp_path: Path) -> None:
+    _write_config(tmp_path, stack="go")
+    (tmp_path / "Makefile").write_text("lint:\n\ttrue\ntest:\n\ttrue\n", encoding="utf-8")
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    assert _ci_yml(tmp_path).read_text(encoding="utf-8") == (GOLDEN / "go.ci.yml").read_text(encoding="utf-8")
+
+
+GITLAB_EXTRA = "ci:\n  make_targets: [lint, test, scan]\n  gitlab:\n    image: golang:1.24\n"
+
+
+def _gitlab(root: Path, stack: str = "go", extra: str = "", remote: str = "local") -> dict:
+    _write_ci_config(root, stack, extra, remote=remote)
+    generate_gitlab_ci(root, force=False, version="1.5.0")
+    return yaml.safe_load((root / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+
+
+def test_golden_go_gitlab_ci(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "go", GITLAB_EXTRA, remote="local")
+    generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert (tmp_path / ".gitlab-ci.yml").read_text(encoding="utf-8") == (GOLDEN / "go.gitlab-ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_golden_plain_go_gitlab_ci(tmp_path: Path) -> None:
+    """A plain Go repo: no ci section, no image, default lint/test targets, no scan gating."""
+    _write_ci_config(tmp_path, "go", remote="local")
+    (tmp_path / "Makefile").write_text("lint:\n\tgo vet ./...\ntest:\n\tgo test ./...\n", encoding="utf-8")
+    result = generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert result.warnings == [GITLAB_IMAGE_WARNING]
+    assert (tmp_path / ".gitlab-ci.yml").read_text(encoding="utf-8") == (GOLDEN / "go-plain.gitlab-ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("remote", ["local", "gitlab"])
+def test_gitlab_writes_only_gitlab_ci(tmp_path: Path, remote: str) -> None:
+    _write_ci_config(tmp_path, "go", remote=remote)
+    result = generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert not (tmp_path / ".github").exists()
+    assert [f.path for f in result.files] == [".gitlab-ci.yml"]
+    text = (tmp_path / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    assert text.startswith("# Generated by ydk ci init v1.5.0. Re-run 'ydk ci init --gitlab --force' to regenerate.\n")
+
+
+def test_gitlab_jobs_shape(tmp_path: Path) -> None:
+    targets = ["lint", "test", "scan"]
+    parsed = _gitlab(tmp_path, extra=GITLAB_EXTRA)
+    assert parsed["stages"] == targets
+    assert "include" not in parsed
+    assert "include:" not in (tmp_path / ".gitlab-ci.yml").read_text(encoding="utf-8")
+    for t in targets:
+        assert parsed[t]["stage"] == t
+        assert parsed[t]["script"] == [f"make {t}"]
+
+
+def test_gitlab_default_targets_for_go(tmp_path: Path) -> None:
+    assert _gitlab(tmp_path)["stages"] == ["lint", "test"]
+
+
+def test_gitlab_image_set(tmp_path: Path) -> None:
+    assert _gitlab(tmp_path, extra=GITLAB_EXTRA)["default"]["image"] == "golang:1.24"
+
+
+def test_gitlab_image_unset_warns(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "go", remote="local")
+    result = generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    parsed = yaml.safe_load((tmp_path / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    assert "default" not in parsed
+    assert any("ci.gitlab.image" in w for w in result.warnings)
+
+
+def test_gitlab_scan_gated(tmp_path: Path) -> None:
+    parsed = _gitlab(tmp_path, extra=GITLAB_EXTRA)
+    assert parsed["variables"]["SCAN_ENABLED"] == "false"
+    assert parsed["scan"]["rules"] == [{"if": '$SCAN_ENABLED == "true"'}]
+
+
+def test_gitlab_no_scan_no_variables_or_rules(tmp_path: Path) -> None:
+    parsed = _gitlab(tmp_path)
+    assert "variables" not in parsed
+    assert all("rules" not in parsed[t] for t in parsed["stages"])
+
+
+def test_gitlab_non_go_without_make_targets_raises(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "python-cli", remote="local")
+    with pytest.raises(CiConfigError, match=r"ci\.make_targets"):
+        generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert not (tmp_path / ".gitlab-ci.yml").exists()
+
+
+@pytest.mark.parametrize("reserved", ["variables", "default", "spec", "stages", "include", "image"])
+def test_gitlab_reserved_target_name_raises(tmp_path: Path, reserved: str) -> None:
+    _write_ci_config(tmp_path, "go", f"ci:\n  make_targets: [lint, {reserved}]\n", remote="local")
+    with pytest.raises(CiConfigError):
+        generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert not (tmp_path / ".gitlab-ci.yml").exists()
+
+
+def test_gitlab_missing_config_raises(tmp_path: Path) -> None:
+    with pytest.raises(CiConfigError):
+        generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+
+
+def test_gitlab_skip_then_force(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "go", remote="local")
+    out = tmp_path / ".gitlab-ci.yml"
+    generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    out.write_text("custom", encoding="utf-8")
+    skipped = generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert out.read_text(encoding="utf-8") == "custom"
+    assert skipped.skipped == [".gitlab-ci.yml"]
+    forced = generate_gitlab_ci(tmp_path, force=True, version="1.5.0")
+    assert out.read_text(encoding="utf-8").startswith("# Generated by ydk ci init v1.5.0.")
+    assert forced.written == [".gitlab-ci.yml"]
+
+
+@pytest.mark.parametrize("target", ["true", "no", "on", "1", "1.5", "null"])
+def test_gitlab_non_plain_yaml_target_raises(tmp_path: Path, target: str) -> None:
+    _write_ci_config(tmp_path, "go", f'ci:\n  make_targets: [lint, "{target}"]\n', remote="local")
+    with pytest.raises(CiConfigError, match="plain YAML string"):
+        generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert not (tmp_path / ".gitlab-ci.yml").exists()
+
+
+def test_invalid_ci_config_raises_ci_config_error(tmp_path: Path) -> None:
+    _write_ci_config(tmp_path, "go", 'ci:\n  make_targets: ["lint; rm -rf /"]\n', remote="github")
+    with pytest.raises(CiConfigError, match="is invalid"):
+        generate_ci(tmp_path, force=False, version="1.5.0")
+    assert not (tmp_path / ".github").exists()
+    with pytest.raises(CiConfigError, match="is invalid"):
+        generate_gitlab_ci(tmp_path, force=False, version="1.5.0")
+    assert not (tmp_path / ".gitlab-ci.yml").exists()
+
+
+def test_gitlab_hostile_image_round_trips(tmp_path: Path) -> None:
+    image = 'registry.local/a b:1 # "x": y'
+    extra = yaml.safe_dump({"ci": {"make_targets": ["lint"], "gitlab": {"image": image}}})
+    parsed = _gitlab(tmp_path, extra=extra)
+    assert parsed["default"]["image"] == image

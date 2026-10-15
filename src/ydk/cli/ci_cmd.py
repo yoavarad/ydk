@@ -1,4 +1,4 @@
-"""ydk ci — generate GitHub Actions workflows for a YDK project."""
+"""ydk ci — generate GitHub Actions workflows or .gitlab-ci.yml for a YDK project."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import typer
 from rich.table import Table
 
 from ydk.cli._helpers import format_or_echo
-from ydk.core.ci_generator import CiConfigError, CiInitResult, generate_ci
+from ydk.core.ci_generator import CiConfigError, CiInitResult, generate_ci, generate_gitlab_ci
 from ydk.output.console import console
 
 ci_app = typer.Typer(help="CI workflow generation", no_args_is_help=True)
@@ -16,7 +16,10 @@ ci_app = typer.Typer(help="CI workflow generation", no_args_is_help=True)
 FORCE_HINT = "Re-run with --force to overwrite skipped files."
 
 
-def print_ci_summary(result: CiInitResult) -> None:
+GITLAB_FORCE_HINT = "Re-run with --gitlab --force to overwrite skipped files."
+
+
+def print_ci_summary(result: CiInitResult, force_hint: str = FORCE_HINT) -> None:
     """Print the unpublished-version warning, the per-file table and the skip hint."""
     if result.unpublished:
         console.print(
@@ -33,17 +36,21 @@ def print_ci_summary(result: CiInitResult) -> None:
         table.add_row(f.path, f.action, f.purpose)
     console.print(table)
     if result.skipped:
-        console.print(FORCE_HINT)
+        console.print(force_hint)
 
 
 @ci_app.command("init")
 def init(
     ctx: typer.Context,
     force: bool = typer.Option(False, "--force", help="Overwrite existing generated files"),
+    gitlab: bool = typer.Option(
+        False, "--gitlab", help="Write .gitlab-ci.yml (make targets only) instead of GitHub workflows"
+    ),
 ) -> None:
-    """Generate .github/workflows/* and the PR template from the project config."""
+    """Generate .github/workflows/* and the PR template (or .gitlab-ci.yml with --gitlab)."""
     try:
-        result = generate_ci(Path("."), force=force)
+        generate = generate_gitlab_ci if gitlab else generate_ci
+        result = generate(Path("."), force=force)
     except CiConfigError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
@@ -51,5 +58,5 @@ def init(
     format_or_echo(
         ctx,
         {"written": result.written, "skipped": result.skipped},
-        human_fn=lambda: print_ci_summary(result),
+        human_fn=lambda: print_ci_summary(result, GITLAB_FORCE_HINT if gitlab else FORCE_HINT),
     )
