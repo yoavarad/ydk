@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import warnings
@@ -337,7 +338,12 @@ class ComponentTestGenerator:
                 f"'go test ./...' will skip {'/'.join(dirs)}/",
                 stacklevel=2,
             )
-        file_name = f"{_path_segment(base).lstrip('_.') or 'tests'}{suffix}_test.go"
+        seg = _path_segment(base)
+        stem = seg.lstrip("_.")
+        if seg != base or not stem:
+            digest = hashlib.sha256(component_id.encode("utf-8")).hexdigest()[:8]
+            stem = f"{stem or 'tests'}_{digest}"
+        file_name = f"{stem}{suffix}_test.go"
         path = "/".join([*dirs, file_name])
         return GeneratedTest(component_id=component_id, test_code=code, test_file_path=path, test_count=len(cases))
 

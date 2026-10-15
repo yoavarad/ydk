@@ -281,6 +281,22 @@ class TestGenerateGoFromTest:
         assert not any(ch in path for ch in ':\\ "<>|*?')
         assert path.endswith("_test.go")
 
+    def test_non_ascii_manifests_get_distinct_stable_paths(self):
+        gen = ComponentTestGenerator()
+        a = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/测试.unit")).test_file_path
+        b = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/テスト.unit")).test_file_path
+        again = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/测试.unit")).test_file_path
+        assert a != b
+        assert a == again
+        assert a.endswith("_test.go")
+        assert a.rsplit("/", 1)[-1].startswith("tests_")
+
+    def test_partially_non_ascii_bases_stay_distinct(self):
+        gen = ComponentTestGenerator()
+        a = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/测试x.unit")).test_file_path
+        b = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/テストx.unit")).test_file_path
+        assert a != b
+
     def test_underscore_and_dot_namespace_dirs_preserved_with_warning(self):
         gen = ComponentTestGenerator()
         for ns, expected in [("_internal", "_internal"), ("a.b", "a.b"), (".hidden/x", ".hidden/x")]:
