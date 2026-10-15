@@ -144,3 +144,37 @@ class TestFindProjectRoot:
         sub = tmp_path / "a"
         sub.mkdir()
         assert find_project_root(sub) == sub
+
+    def test_outside_git_ignores_decoy_config_above_home(self, tmp_path, monkeypatch, caplog) -> None:
+        """No .git: walk stops at home, so an ancestor config above home is never picked (#430)."""
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text("project: {name: decoy}\n")
+        home = tmp_path / "home"
+        start = home / "proj" / "sub"
+        start.mkdir(parents=True)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        with caplog.at_level("WARNING", logger="ydk.core.config"):
+            assert find_project_root(start) == start
+        assert "falling back" in caplog.text
+
+    def test_outside_git_start_outside_home_ignores_decoy_in_shared_ancestor(self, tmp_path, monkeypatch) -> None:
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text("project: {name: decoy}\n")
+        home = tmp_path / "home"
+        home.mkdir()
+        start = tmp_path / "work" / "proj"
+        start.mkdir(parents=True)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        assert find_project_root(start) == start
+
+    def test_outside_git_finds_config_at_home(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        (home / ".ydk").mkdir(parents=True)
+        (home / ".ydk" / "config.yaml").write_text("project: {name: p}\n")
+        start = home / "proj"
+        start.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        assert find_project_root(start) == home
