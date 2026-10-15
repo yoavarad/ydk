@@ -59,9 +59,15 @@ class IgnitionEngine:
             msg = "No components found in .ydk/components/. Run Stage 01 brainstorming first."
             raise IgnitionError(msg)
 
-        # 3. Run generators — phased or flat
+        # 3. Run generators — phased or flat (top-level generators run before phases)
         if "phases" in pack:
-            all_generated, phase_errors = self._ignite_phased(pack, component_data, answers, dry_run)
+            all_generated = []
+            if "generators" in pack:
+                top_generated, top_errors = self._ignite_flat(pack, component_data, answers)
+                all_generated.extend(top_generated)
+                errors.extend(top_errors)
+            phase_generated, phase_errors = self._ignite_phased(pack, component_data, answers, dry_run)
+            all_generated.extend(phase_generated)
             errors.extend(phase_errors)
         else:
             all_generated, flat_errors = self._ignite_flat(pack, component_data, answers)
@@ -518,6 +524,7 @@ class IgnitionEngine:
         todo_mgr = TodoManager(self._root)
         existing = {t.id for t in todo_mgr.list_todos()}
         for gf in files:
+            markers: list[dict] = []
             found = markers_for(gf.path)
             if found and not gf.path.endswith(".py"):
                 stmts, comment_prefix = found
@@ -527,12 +534,8 @@ class IgnitionEngine:
                         comment = ""
                         if comment_prefix in stripped:
                             comment = stripped.split(comment_prefix, 1)[1].strip()
-                        todo_mgr.register(
-                            file=gf.path,
-                            line=i,
-                            method="<unknown>",
-                            description=comment,
-                        )
+                        markers.append({"line": i, "method": "<unknown>", "description": comment})
+                todo_mgr.reconcile(gf.path, markers)
                 continue
             if not gf.path.endswith(".py"):
                 continue
@@ -540,13 +543,14 @@ class IgnitionEngine:
             full_path = self._root / gf.path
             if full_path.exists():
                 findings = todo_mgr.scan_file(gf.path)
-                for finding in findings:
-                    todo_mgr.register(
-                        file=gf.path,
-                        line=finding["line"],
-                        method=finding["method_name"],
-                        description=finding.get("comment", ""),
-                    )
+                markers.extend(
+                    {
+                        "line": finding["line"],
+                        "method": finding["method_name"],
+                        "description": finding.get("comment", ""),
+                    }
+                    for finding in findings
+                )
             else:
                 # Fallback: scan content directly with AST for method context
                 lines = gf.content.splitlines()
@@ -582,13 +586,9 @@ class IgnitionEngine:
                         # If no inline comment, look for IMPLEMENT comment on preceding lines
                         if not comment:
                             comment = self._extract_implement_comment(lines, i)
-                        todo_mgr.register(
-                            file=gf.path,
-                            line=i,
-                            method=method,
-                            description=comment,
-                        )
-        # register() reuses a TODO already open at the same location; count only new ones.
+                        markers.append({"line": i, "method": method, "description": comment})
+            todo_mgr.reconcile(gf.path, markers)
+        # reconcile() keeps existing entries for moved markers; count only new ones.
         return len({t.id for t in todo_mgr.list_todos()} - existing)
 
     @staticmethod

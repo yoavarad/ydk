@@ -43,7 +43,10 @@ def _generate_go_from_test(generator: ComponentTestGenerator, manifest: dict, la
         console.print(f"[red]ydk:test manifests support --lang go only (got {lang})[/red]")
         raise typer.Exit(code=1)
     result = generator.generate_go_from_test(manifest)
-    path = output or Path(result.test_file_path)
+    if output is None:
+        typer.echo(result.test_code, nl=False)
+        return
+    path = output
     if path.exists():
         missing = generator.missing_go_cases(manifest, path.read_text(encoding="utf-8", errors="replace"))
         console.print(f"[yellow]{path} exists; not overwritten.[/yellow]")
