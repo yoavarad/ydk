@@ -337,7 +337,10 @@ class ComponentTestGenerator:
             cases=cases,
         )
         dirs = [d for d in (_path_segment(seg) for seg in namespace.split("/")) if d]
-        stem = _path_segment(base) or "tests_" + hashlib.sha256(component_id.encode("utf-8")).hexdigest()[:8]
+        stem = _path_segment(base)
+        if stem != base:
+            digest = hashlib.sha256(component_id.encode("utf-8")).hexdigest()[:8]
+            stem = f"{stem or 'tests'}_{digest}"
         file_name = f"{stem}{suffix}_test.go"
         path = "/".join([*dirs, file_name])
         return GeneratedTest(component_id=component_id, test_code=code, test_file_path=path, test_count=len(cases))

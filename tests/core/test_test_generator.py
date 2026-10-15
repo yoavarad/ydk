@@ -281,6 +281,12 @@ class TestGenerateGoFromTest:
         assert a.endswith("_test.go")
         assert a.rsplit("/", 1)[-1].startswith("tests_")
 
+    def test_partially_non_ascii_bases_stay_distinct(self):
+        gen = ComponentTestGenerator()
+        a = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/测试x.unit")).test_file_path
+        b = gen.generate_go_from_test(self._manifest(id="ydk:test:ns/テストx.unit")).test_file_path
+        assert a != b
+
     def test_path_collision_names_both_ids(self):
         import pytest
 
