@@ -271,6 +271,29 @@ class TestGenerateGoFromTest:
         assert not any(ch in path for ch in ':\\ "<>|*?')
         assert path.endswith("_test.go")
 
+    def test_underscore_and_dot_namespace_dirs_preserved_with_warning(self):
+        gen = ComponentTestGenerator()
+        for ns, expected in [("_internal", "_internal"), ("a.b", "a.b"), (".hidden/x", ".hidden/x")]:
+            m = self._manifest(id=f"ydk:test:{ns}/store.unit")
+            if ns[0] in "_.":
+                with pytest.warns(UserWarning, match="go test"):
+                    path = gen.generate_go_from_test(m).test_file_path
+            else:
+                path = gen.generate_go_from_test(m).test_file_path
+            assert path == f"{expected}/store_test.go"
+
+    def test_testdata_dir_warns_and_leading_underscore_base_not_skipped_by_go(self):
+        gen = ComponentTestGenerator()
+        with pytest.warns(UserWarning, match="testdata"):
+            gen.generate_go_from_test(self._manifest(id="ydk:test:testdata/store.unit"))
+        path = gen.generate_go_from_test(self._manifest(id="ydk:test:pkg/_store.unit")).test_file_path
+        assert path == "pkg/store_test.go"
+
+    def test_invalid_chars_still_sanitized_and_dots_only_dropped(self):
+        m = self._manifest(id="ydk:test:a b/../c:d./store.unit")
+        path = ComponentTestGenerator().generate_go_from_test(m).test_file_path
+        assert path == "a_b/c_d/store_test.go"
+
     def test_missing_cases_backtick_literal(self):
         existing = "func TestStore(t *testing.T) {\n\tt.Run(`fifo-101`, func(t *testing.T) {})\n}\n"
         assert ComponentTestGenerator().missing_go_cases(self._manifest(), existing) == ["empty-pop"]
