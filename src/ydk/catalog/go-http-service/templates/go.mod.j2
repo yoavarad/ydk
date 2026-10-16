@@ -1,3 +1,11 @@
 module {{ module }}
 
 go 1.22
+{% if requires %}
+
+require (
+{% for mod, version in requires %}
+	{{ mod }} {{ version }}
+{% endfor %}
+)
+{% endif %}

@@ -1,7 +1,7 @@
 name: go-http-service
 version: 0.1.0
-description: Stdlib-first Go net/http service skeleton (slog, graceful shutdown, JSON errors, franz-go Kafka adapter) generated from YDK component manifests
-tags: [ignition-pack, go, net-http, stdlib, kafka]
+description: Stdlib-first Go net/http service skeleton (slog, graceful shutdown, JSON errors, pluggable ext adapters such as Kafka) generated from YDK component manifests
+tags: [ignition-pack, go, net-http, stdlib]
 
 inputs:
   route:

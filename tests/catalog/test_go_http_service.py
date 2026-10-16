@@ -68,12 +68,15 @@ class TestPackStructure:
         assert data["name"] == "go-http-service"
         assert "ignition-pack" in data["tags"]
         assert "go" in data["tags"]
+        assert "kafka" not in data["tags"]
+        assert not data["description"].lower().startswith("kafka")
         assert any(c.get("command") for c in data["publish_checks"])
 
     def test_manifest_declares_go_stack_and_scripts_exist(self) -> None:
         data = yaml.safe_load((PACK_DIR / "manifest.yaml").read_text(encoding="utf-8"))
         assert data["stack"]["language"] == "go"
-        assert any("franz-go" in dep for dep in data["runtime_dependencies"]["go"])
+        assert not any("franz-go" in dep for dep in data.get("runtime_dependencies", {}).get("go", []))
+        assert "github.com/twmb/franz-go@v1.22.1" in (PACK_DIR / "templates/adapters/kafka.deps").read_text("utf-8")
         for gen in data["generators"]:
             assert (PACK_DIR / gen["script"]).is_file(), gen["script"]
 
@@ -95,6 +98,7 @@ class TestIgniteSamples:
         go_mod = _read(project, "go.mod")
         assert go_mod.startswith(f"module {APP}\n")
         assert "\ngo 1.22" in go_mod
+        assert "github.com/twmb/franz-go v1.22.1" in go_mod
 
     def test_main_wires_config_logger_server_and_shutdown(self, ignited: tuple[Path, object]) -> None:
         project, _ = ignited
@@ -506,3 +510,110 @@ class TestMinimalService:
         for cmd in (["go", "build", "./..."], ["go", "vet", "./..."]):
             proc = subprocess.run(cmd, cwd=project, capture_output=True, text=True, encoding="utf-8", errors="replace")
             assert proc.returncode == 0, f"{cmd}: {proc.stdout}{proc.stderr}"
+
+
+def _ext_project(tmp_path: Path, tech: str) -> Path:
+    """Minimal fixture set plus one ydk:ext:<tech>/broker and a Sender contract backed by it."""
+    components = tmp_path / "components"
+    shutil.copytree(MINIMAL, components)
+    _component(components, f"ext/{tech}/broker.yaml", {"id": f"ydk:ext:{tech}/broker", "description": "d"})
+    contract = {
+        "id": "ydk:contract:queue/Sender",
+        "description": f"Port implemented by the {tech} adapter",
+        "methods": {
+            "Send": {
+                "params": {"ctx": {"type": "context.Context"}, "body": {"type": "string"}},
+                "returns": {"type": "error"},
+            }
+        },
+    }
+    _component(components, "contract/queue/Sender.yaml", contract)
+    return components
+
+
+def _ext_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if "ext technology" in r.getMessage()]
+
+
+class TestExtTechnologies:
+    """Ext technologies are discovered from templates/adapters/<tech>.go.j2 (+ optional <tech>.deps)."""
+
+    def test_unknown_tech_warns_and_still_generates_port_and_fake(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        project, result = _ignite(tmp_path, monkeypatch, _ext_project(tmp_path, "rabbitmq"))
+        assert [e for e in result.errors if "enerator" in e] == []
+        msgs = _ext_warnings(caplog)
+        assert len(msgs) == 1
+        assert "ydk:ext:rabbitmq/broker" in msgs[0]
+        assert "'rabbitmq'" in msgs[0]
+        queue = "".join(p.read_text(encoding="utf-8") for p in (project / "internal" / "queue").glob("*.go"))
+        assert "type Sender interface" in queue
+        assert "type FakeSender struct" in _read(project, "internal/queue/fakes.go")
+        assert not (project / "internal" / "adapters").exists()
+        assert "require" not in _read(project, "go.mod")
+
+    def test_kafka_is_known_and_does_not_warn(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        project, _ = _ignite(tmp_path, monkeypatch, _ext_project(tmp_path, "kafka"))
+        assert _ext_warnings(caplog) == []
+        assert (project / "internal/adapters/kafka/kafka.go").is_file()
+        assert "github.com/twmb/franz-go v1.22.1" in _read(project, "go.mod")
+
+    def test_adapter_template_is_drop_in(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        components = _ext_project(tmp_path, "redis")
+        project = tmp_path / "project"
+        pack = project / ".ydk" / "ignition-packs" / "go-http-service"
+        shutil.copytree(PACK_DIR, pack)
+        (pack / "templates/adapters/redis.go.j2").write_text("package redis\n\n// {{ ext_ids }}\n", encoding="utf-8")
+        (pack / "templates/adapters/redis.deps").write_text("# pinned\ngithub.com/redis/go-redis/v9@v9.7.0\n", "utf-8")
+        shutil.copytree(components, project / ".ydk" / "components")
+        empty_bin = tmp_path / "nobin"
+        empty_bin.mkdir()
+        monkeypatch.setenv("PATH", str(empty_bin))
+        result = IgnitionEngine(project).ignite()
+        assert [e for e in result.errors if "enerator" in e] == []
+        assert _ext_warnings(caplog) == []
+        assert "ydk:ext:redis/broker" in _read(project, "internal/adapters/redis/redis.go")
+        go_mod = _read(project, "go.mod")
+        assert "github.com/redis/go-redis/v9 v9.7.0" in go_mod
+        assert "franz-go" not in go_mod
+
+    def test_ext_id_without_namespace_is_its_own_tech(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        components = _ext_project(tmp_path, "stripe")
+        shutil.rmtree(components / "ext")
+        _component(components, "ext/stripe.yaml", {"id": "ydk:ext:stripe", "description": "d"})
+        project, _ = _ignite(tmp_path, monkeypatch, components)
+        msgs = _ext_warnings(caplog)
+        assert len(msgs) == 1
+        assert "ydk:ext:stripe" in msgs[0]
+        assert "'stripe'" in msgs[0]
+        assert "type FakeSender struct" in _read(project, "internal/queue/fakes.go")
+
+    def test_conflicting_dep_versions_fail(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        components = _ext_project(tmp_path, "redis")
+        _component(components, "ext/kafka/cluster.yaml", {"id": "ydk:ext:kafka/cluster", "description": "d"})
+        project = tmp_path / "project"
+        pack = project / ".ydk" / "ignition-packs" / "go-http-service"
+        shutil.copytree(PACK_DIR, pack)
+        (pack / "templates/adapters/redis.go.j2").write_text("package redis\n", encoding="utf-8")
+        (pack / "templates/adapters/redis.deps").write_text("github.com/twmb/franz-go@v1.0.0\n", "utf-8")
+        shutil.copytree(components, project / ".ydk" / "components")
+        empty_bin = tmp_path / "nobin"
+        empty_bin.mkdir()
+        monkeypatch.setenv("PATH", str(empty_bin))
+        result = IgnitionEngine(project).ignite()
+        assert any("go_module" in e and "more than one version" in e for e in result.errors), result.errors
+
+    @pytest.mark.skipif(shutil.which("go") is None, reason="go toolchain not on PATH")
+    def test_unknown_tech_service_builds(self, tmp_path: Path) -> None:
+        project = tmp_path / "project"
+        shutil.copytree(PACK_DIR, project / ".ydk" / "ignition-packs" / "go-http-service")
+        shutil.copytree(_ext_project(tmp_path, "rabbitmq"), project / ".ydk" / "components")
+        result = IgnitionEngine(project).ignite()
+        assert result.errors == [], result.errors

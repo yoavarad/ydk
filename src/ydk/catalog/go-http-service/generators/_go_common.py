@@ -13,8 +13,9 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 TODO_STMT = 'panic("not implemented")'
-# ydk:ext namespaces (ydk:ext:<technology>/<name>) that have an adapter template.
-SUPPORTED_EXT_TECHNOLOGIES = ("kafka",)
+# ydk:ext:<technology>/<name> is supported when templates/adapters/<technology>.go.j2 exists;
+# its optional <technology>.deps lists the Go modules (module@version, one per line) it needs.
+ADAPTERS_DIR = TEMPLATES_DIR / "adapters"
 
 _GO_KEYWORDS = frozenset(
     "break case chan const continue default defer else fallthrough for func go goto if import "
@@ -225,10 +226,32 @@ def contract_methods(contract: dict, known: set[str], qualifier: str = "") -> li
     return methods
 
 
+def ext_tech(ext: dict) -> str:
+    """Technology of a ydk:ext component: ydk:ext:kafka/cluster -> kafka, ydk:ext:stripe -> stripe."""
+    return str(ext.get("id", "")).split(":", 2)[-1].split("/", 1)[0].lower()
+
+
 def ext_technologies() -> list[str]:
-    """Supported technologies used by ydk:ext components (keyed off the id namespace)."""
-    techs = {split_id(str(e.get("id", "")))[0].lower() for e in load("ext")}
-    return [t for t in SUPPORTED_EXT_TECHNOLOGIES if t in techs]
+    """Every technology used by ydk:ext components, supported or not (unknown ones still get fakes)."""
+    return sorted({ext_tech(e) for e in load("ext")} - {""})
+
+
+def supported_ext_technologies() -> list[str]:
+    """Technologies with an adapter template (templates/adapters/<tech>.go.j2)."""
+    return sorted(p.name.removesuffix(".go.j2") for p in ADAPTERS_DIR.glob("*.go.j2"))
+
+
+def tech_deps(tech: str) -> list[str]:
+    """Go modules (module@version) from the optional templates/adapters/<tech>.deps file."""
+    path = ADAPTERS_DIR / f"{tech}.deps"
+    if not path.is_file():
+        return []
+    lines = (ln.split("#", 1)[0].strip() for ln in path.read_text(encoding="utf-8").splitlines())
+    deps = [ln for ln in lines if ln]
+    for dep in deps:
+        if "@" not in dep:
+            fail(f"templates/adapters/{tech}.deps: {dep!r} is not module@version")
+    return deps
 
 
 def is_ext_backed(contract: dict, technology: str) -> bool:
@@ -245,6 +268,11 @@ def render(template: str, **context: object) -> str:
         keep_trailing_newline=True,
     )
     return env.get_template(template).render(**context).rstrip() + "\n"
+
+
+def warn(msg: str) -> None:
+    """Non-fatal: ignition logs generator stderr as a warning."""
+    sys.stderr.write(f"warning: {msg}\n")
 
 
 def fail(msg: str) -> None:

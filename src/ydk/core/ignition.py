@@ -26,6 +26,35 @@ class IgnitionError(Exception):
     """Raised when ignition fails fatally."""
 
 
+def _go_mod_requires(text: str) -> list[str]:
+    """`module@version` for each direct require (single-line or block) in a go.mod.
+
+    `// indirect` requires (added by an earlier go mod tidy) are skipped: tidy re-resolves them.
+    """
+    deps: list[str] = []
+    in_block = False
+    for raw in text.splitlines():
+        line, _, note = raw.partition("//")
+        line = line.strip()
+        if note.strip().startswith("indirect"):
+            continue
+        if in_block:
+            if line == ")":
+                in_block = False
+                continue
+        elif line.replace(" ", "") == "require(":
+            in_block = True
+            continue
+        elif line.startswith("require "):
+            line = line[len("require ") :].strip()
+        else:
+            continue
+        parts = line.split()
+        if len(parts) == 2:
+            deps.append(f"{parts[0]}@{parts[1]}")
+    return deps
+
+
 class IgnitionEngine:
     """Reads installed ignition pack + YDK components, runs generators, produces skeleton."""
 
@@ -150,11 +179,21 @@ class IgnitionEngine:
         return errors, self._install_runtime_deps(pack, warnings)
 
     def _install_go_deps(self, pack: dict, warnings: list[str]) -> list[str]:
-        """Add Go modules (pinned) via go get, then go mod tidy + go mod vendor."""
-        deps = pack.get("runtime_dependencies", {}).get("go", [])
+        """Add Go modules (pinned) via go get, then go mod tidy + go mod vendor.
+
+        Modules come from the pack's runtime_dependencies plus the require directives of the
+        generated go.mod (generators add per-feature deps there, e.g. one per ext technology).
+        """
+        go_mod = self._root / "go.mod"
+        deps = list(pack.get("runtime_dependencies", {}).get("go", []))
+        if go_mod.exists():
+            pinned = {d.rsplit("@", 1)[0] for d in deps}
+            deps += [
+                d for d in _go_mod_requires(go_mod.read_text(encoding="utf-8")) if d.rsplit("@", 1)[0] not in pinned
+            ]
         if not deps:
             return []
-        if not (self._root / "go.mod").exists():
+        if not go_mod.exists():
             warnings.append("Cannot install runtime deps: no go.mod found")
             return []
         for cmd in (["go", "get", *deps], ["go", "mod", "tidy"], ["go", "mod", "vendor"]):
