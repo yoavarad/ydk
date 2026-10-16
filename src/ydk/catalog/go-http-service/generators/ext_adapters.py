@@ -2,9 +2,11 @@
 """Generator: ext-adapters.
 
 One adapter package per supported ydk:ext technology. The technology is the ext id
-namespace (ydk:ext:kafka/cluster -> kafka). kafka -> internal/adapters/kafka on franz-go:
-a type per ext-backed contract (contract description names the technology) implementing
-the contract interface, plus a Consumer when an ext endpoint reads (GET). Bodies are TODOs.
+namespace (ydk:ext:kafka/cluster -> kafka); it is supported when templates/adapters/<tech>.go.j2
+exists. The template gets a type per ext-backed contract (contract description names the
+technology) plus a Consumer when an ext endpoint reads (GET); bodies are TODOs. kafka renders
+internal/adapters/kafka on franz-go. An unsupported technology emits a warning naming the ext
+manifest; domain-packages still generates its port interfaces and fakes so the service compiles.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from _go_common import (
     contract_methods,
     emit,
     entity_names_by_ns,
+    ext_tech,
     ext_technologies,
     go_ident,
     go_pkg,
@@ -30,6 +33,8 @@ from _go_common import (
     module_path,
     render,
     split_id,
+    supported_ext_technologies,
+    warn,
 )
 
 
@@ -44,9 +49,17 @@ def _consume_endpoint(exts: list[dict]) -> dict | None:
 
 def main() -> None:
     known = entity_names_by_ns()
+    supported = supported_ext_technologies()
     files = []
-    for tech in ext_technologies():
-        exts = [e for e in load("ext") if split_id(str(e.get("id", "")))[0].lower() == tech]
+    for ext in load("ext"):
+        tech = ext_tech(ext)
+        if tech and tech not in supported:
+            warn(
+                f"{ext.get('id')} uses ext technology {tech!r} with no adapter template "
+                f"(templates/adapters/{tech}.go.j2); generating the port interface and fake only"
+            )
+    for tech in [t for t in ext_technologies() if t in supported]:
+        exts = [e for e in load("ext") if ext_tech(e) == tech]
         contracts, imports = [], set()
         for contract in load("contract"):
             if not is_ext_backed(contract, tech):

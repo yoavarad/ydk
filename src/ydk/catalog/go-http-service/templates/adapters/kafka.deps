@@ -1,0 +1,2 @@
+# franz-go: Kafka client used by the kafka adapter (module@version, one per line).
+github.com/twmb/franz-go@v1.22.1

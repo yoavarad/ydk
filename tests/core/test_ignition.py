@@ -1190,6 +1190,50 @@ class TestGoRuntimeDeps:
             assert engine._install_go_deps({}, []) == []
         mock_run.assert_not_called()
 
+    def test_installs_modules_required_by_generated_go_mod(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text(
+            "module x\n\ngo 1.22\n\nrequire (\n\tgithub.com/twmb/franz-go v1.22.1\n\tc/d v0.2.0 // indirect\n)\n"
+        )
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run()) as mock_run:
+            installed = engine._install_go_deps({"runtime_dependencies": {"go": ["a/b@v1.0.0"]}}, warnings)
+
+        assert installed == ["a/b@v1.0.0", "github.com/twmb/franz-go@v1.22.1"]
+        cmds = [c.args[0] for c in mock_run.call_args_list]
+        assert cmds[0] == ["go", "get", *installed]
+        assert warnings == []
+
+    def test_single_line_require_without_pack_deps(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n\nrequire github.com/twmb/franz-go v1.22.1\n")
+        engine = IgnitionEngine(tmp_path)
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run()) as mock_run:
+            installed = engine._install_go_deps({}, [])
+        assert installed == ["github.com/twmb/franz-go@v1.22.1"]
+        assert [c.args[0][:2] for c in mock_run.call_args_list] == [["go", "get"], ["go", "mod"], ["go", "mod"]]
+
+    def test_pack_pin_wins_over_go_mod_version(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n\nrequire(\n\ta/b v0.9.0\n)\n")
+        engine = IgnitionEngine(tmp_path)
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run()):
+            installed = engine._install_go_deps({"runtime_dependencies": {"go": ["a/b@v1.0.0"]}}, [])
+        assert installed == ["a/b@v1.0.0"]
+
+    def test_go_mod_without_requires_is_noop(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n\ngo 1.22\n")
+        engine = IgnitionEngine(tmp_path)
+        with patch("ydk.core.ignition.subprocess.run") as mock_run:
+            assert engine._install_go_deps({}, []) == []
+        mock_run.assert_not_called()
+
     def test_missing_go_mod_warns(self, tmp_path: Path) -> None:
         from unittest.mock import patch
 
