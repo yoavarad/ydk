@@ -160,7 +160,8 @@ YDK provides a CLI tool for automation. Install with `uv pip install -e ydk/` fr
 ### Initialization & Config
 
 ```bash
-ydk init --name <project>              # Initialize .ydk/ config, install hooks (pre-commit, commit-msg, pre-push), install guard hooks in .claude/settings.json
+ydk init --name <project> [--stack <s>] [--remote local|github|gitlab]  # --stack: python-fastapi, python-cli, nextjs-fsd, terraform, dotnet, go (sets verification plugins + config defaults).
+                                       # Initialize .ydk/ config, install hooks (pre-commit, commit-msg, pre-push), install guard hooks in .claude/settings.json
 ydk config show|get|set|validate       # Config management
 ```
 
@@ -190,7 +191,9 @@ ydk catalog uninstall <name>               # Remove an installed catalog item
 **Built-in catalog items:**
 - `ydk-core-schemas` — default component schemas
 - `ydk-default-reviewers` — default spec reviewers (N01-N10)
-- `python-quality` — ruff, ty, pytest verification plugins
+- `python-quality` — ruff, ty, pytest verification plugins (Python)
+- `go-quality` — gofmt, go vet, go test -race with coverage gate, vendor check (Go)
+- `go-http-service` — stdlib-first Go net/http ignition pack (Go)
 - `hexagonal-architecture` — hexagonal architecture ignition pack
 
 The catalog uses ChromaDB for semantic search. Local backend at `~/.ydk/catalog/`.
@@ -207,7 +210,7 @@ ydk todo done <todo-id>                    # Mark a TODO as resolved
 ydk todo coverage                          # Show TODO resolution coverage
 ```
 
-TODOs are registered during ignition with `YDK-TODO-NNN` IDs. They track `NotImplementedError` placeholders in generated code. `ydk task done` auto-checks that all assigned TODOs are resolved.
+TODOs are registered during ignition with `YDK-TODO-NNN` IDs. They track unimplemented placeholders in generated code (Python `NotImplementedError`, dotnet `NotImplementedException`, Go `panic("not implemented")`). `ydk task done` auto-checks that all assigned TODOs are resolved.
 
 ### Ignition
 
@@ -223,9 +226,9 @@ ydk ignite --skip-verify                   # Bypass spec verification gate (for 
 2. Runs generators as subprocesses (generator pack pattern)
 3. Tracks file hashes for idempotency — re-running skips unchanged files
 4. Detects developer ownership via GENERATED headers (no GENERATED headers in output — all files developer-owned)
-5. Registers TODOs for every `NotImplementedError` placeholder
-6. Post-generation: syntax check, circular import detection, ruff format
-7. Auto-installs runtime dependencies via `uv`
+5. Registers TODOs for every unimplemented placeholder (stack-specific, see TODO Management)
+6. Post-generation checks per stack: Python = syntax check, circular import detection, ruff format; Go = `go mod tidy`, `go mod vendor`, `gofmt`, `go build`, `go vet`
+7. Auto-installs runtime dependencies (Python: `uv`; Go: `go mod vendor`)
 8. **App MUST start after ignition** (e.g., `uvicorn` serves routes)
 
 **Ignition quality:**
@@ -331,7 +334,7 @@ ydk task quick "description"           # Fast path for small changes
 ydk scaffold list|info|apply|create    # Template scaffolding
 ydk verify run --trigger pre-commit    # Run pre-commit verifications
 ydk verify run --trigger pre-push      # Run all pre-push verifications
-ydk verify run --auto-fix              # Run ruff --fix before checking
+ydk verify run --auto-fix              # Run the stack's auto-fixer before checking (Python: ruff --fix)
 ydk verify run --retry N               # Auto-repair loop: retry N times with structured error output
 ydk verify run --repair                # Auto-repair: fix issues automatically between retries
 ydk verify run --pr <URL>              # Post verification results as PR comment
@@ -341,7 +344,9 @@ ydk verify pr-body --body-file F [--base-ref REF]  # Validate a PR body (pr-body
 ydk verify list                        # List available plugins
 ydk verify clear-cache                 # Clear the verification content-hash cache
 ydk test generate --from <COMPONENT_ID>  # Generate tests from a component manifest
+ydk test generate --from ydk:test:<ns>/<name> --lang go [--output <file.go>]  # Go test stub from a ydk:test manifest (one failing subtest per case; never overwrites)
 ydk test coverage                      # Show test coverage report for all components
+ydk ci init [--force] [--gitlab]       # Generate GitHub workflows + PR template, or .gitlab-ci.yml (make targets) with --gitlab
 ```
 
 **Multi-session orchestration pattern:**
@@ -523,10 +528,10 @@ A searchable registry of ignition packs, component schemas, verification plugins
 A catalog item that contains generators for producing a runnable project skeleton from component manifests. Installed via `ydk catalog install`. Each pack defines which component types it can consume and what code it generates.
 
 ### TODO (YDK-TODO-NNN)
-A tracked placeholder registered during ignition for every `NotImplementedError` in generated code. Each TODO has a unique `YDK-TODO-NNN` ID. TODOs are assigned to tasks via `ydk todo assign` and auto-checked for resolution by `ydk task done`.
+A tracked placeholder registered during ignition for every unimplemented stub in generated code (Python `NotImplementedError`, Go `panic("not implemented")`). Each TODO has a unique `YDK-TODO-NNN` ID. TODOs are assigned to tasks via `ydk todo assign` and auto-checked for resolution by `ydk task done`.
 
 ### Ignition
-The process of generating a runnable project skeleton from an installed ignition pack and component manifests. Run via `ydk ignite`. Produces compilable/runnable code with `NotImplementedError` placeholders for business logic, registered as tracked TODOs.
+The process of generating a runnable project skeleton from an installed ignition pack and component manifests. Run via `ydk ignite`. Produces compilable/runnable code with stack-specific placeholders for business logic, registered as tracked TODOs.
 
 ### Stage 1.5
 The ignition stage between brainstorming (Stage 01) and task management (Stage 02). After specs are validated, `ydk ignite` generates a runnable skeleton. Tasks in Stage 02 then focus exclusively on business logic — boilerplate is already generated.

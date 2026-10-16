@@ -2,7 +2,7 @@
 
 ## Overview
 
-Generate a runnable project skeleton from the validated spec. After brainstorming produces narratives and component manifests, ignition transforms them into compilable code with tracked TODO placeholders for business logic. The result is a project that passes syntax checks, import validation, and formatting — but every business-logic function raises `NotImplementedError`. Stage 02 tasks then focus exclusively on implementing those TODOs.
+Generate a runnable project skeleton from the validated spec. After brainstorming produces narratives and component manifests, ignition transforms them into compilable code with tracked TODO placeholders for business logic. The result is a project that passes syntax checks, import validation, and formatting — but every business-logic function is an unimplemented placeholder (Python `NotImplementedError`, dotnet `NotImplementedException`, Go `panic("not implemented")`). Stage 02 tasks then focus exclusively on implementing those TODOs.
 
 ## Prerequisites
 
@@ -52,9 +52,14 @@ Generate the skeleton:
 1. Reads the installed ignition pack and all component manifests in `.ydk/components/`
 2. Runs generators as subprocesses (one per component type, or in phases for fullstack packs)
 3. Writes generated files (no GENERATED headers — all files are developer-owned)
-4. Registers a `YDK-TODO-NNN` for every `NotImplementedError` placeholder
-5. Auto-installs runtime dependencies via `uv`
-6. Runs post-generation checks: Python syntax validation, circular import detection, `ruff format`
+4. Registers a `YDK-TODO-NNN` for every unimplemented placeholder
+5. Auto-installs runtime dependencies (Python: `uv`; Go: `go mod tidy` + `go mod vendor`)
+6. Runs post-generation checks for the stack:
+
+| Stack | Post-generation checks |
+|---|---|
+| Python | syntax validation, circular import detection, `ruff format` |
+| Go | `gofmt -w`, `go build ./...`, `go vet ./...` |
 
 **Phased ignition (fullstack packs):**
 - `manifest.yaml` supports `phases` — sequential generator groups
@@ -72,7 +77,7 @@ Generate the skeleton:
 > # Post-checks:
 > #   Syntax check: PASSED (47/47 files)
 > #   Circular imports: PASSED (0 cycles)
-> #   Ruff format: PASSED
+> #   Ruff format: PASSED   (Python stack; Go runs gofmt/go build/go vet)
 > ```
 
 ### 3. Verify the Skeleton Runs
@@ -80,13 +85,19 @@ Generate the skeleton:
 After generation, verify the skeleton is actually runnable:
 
 **Constraints:**
-- You MUST verify the project passes basic quality checks: `ruff check`, `ruff format --check`
-- You MUST verify tests can be collected (even though they all fail): `pytest --collect-only`
-- You MUST verify the application starts: e.g., `uvicorn myapp:app` serves routes (this is a hard acceptance criterion, not optional)
+- You MUST verify the project passes the stack's basic quality checks (see table below)
+- You MUST verify tests can be collected/compiled (even though they all fail)
+- You MUST verify the application starts: e.g., `uvicorn myapp:app` (Python) or the built binary answering `GET /healthz` (Go) serves routes (this is a hard acceptance criterion, not optional)
 - Runtime dependencies are auto-installed by ignition via `uv` — if the app doesn't start, the ignition pack has a bug
 - You MUST NOT attempt to make tests pass — that is Stage 03 work
 
-**Example:**
+| Stack | Quality checks | Test collection |
+|---|---|---|
+| Python | `ruff check`, `ruff format --check` | `pytest --collect-only` |
+| dotnet | `dotnet build`, `dotnet format --verify-no-changes` | `dotnet test --list-tests` |
+| Go | `gofmt -l .`, `go vet ./...` | `go test -run xxx ./...` (compiles tests, runs none) |
+
+**Example (Python stack):**
 
 > ```bash
 > ruff check src/ tests/
@@ -97,7 +108,7 @@ After generation, verify the skeleton is actually runnable:
 >
 > pytest --collect-only tests/
 > # <Module tests/unit/domain/test_order.py>
-> #   <Function test_order_creation>   (NotImplementedError expected)
+> #   <Function test_order_creation>   (NotImplementedError expected on Python)
 > # collected 23 items
 > ```
 

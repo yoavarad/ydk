@@ -51,9 +51,13 @@ Every task runs in an isolated git worktree. This means parallel agents each hav
 ## Hooks
 
 **Pre-commit (fast, < 5 seconds):**
-- `ruff format --check` (formatting)
-- `ruff check` (linting)
-- `ty check` (type checking)
+Stack-dependent (the stack's verification plugins):
+
+| Stack | Format | Lint | Types |
+|---|---|---|---|
+| Python | `ruff format --check` | `ruff check` | `ty check` |
+| dotnet | `dotnet format --verify-no-changes` | `dotnet build` | (compiler) |
+| Go | `gofmt` | `go vet` | (compiler) |
 
 **Commit-msg (instant):**
 - Conventional commit message format validation

@@ -136,7 +136,7 @@ ignition:
   post_checks:
     syntax: bool                  # default: true — run Python syntax check after generation
     circular_imports: bool        # default: true — detect circular imports after generation
-    ruff_format: bool             # default: true — run ruff format after generation
+    ruff_format: bool             # default: true — run ruff format after generation (Python stacks only)
 
 # ─── AWS ───────────────────────────────────────────────
 aws:
@@ -265,9 +265,9 @@ Every LLM call site resolves its model from a tier; overriding one tier keeps th
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `hash_store` | string | `".ydk/ignition-hashes.json"` | Path to the idempotency hash store. Tracks file content hashes to skip unchanged files on re-runs. |
-| `post_checks.syntax` | bool | `true` | Run Python syntax check on all generated files. |
+| `post_checks.syntax` | bool | `true` | Run Python syntax check on all generated files (Python stacks only). |
 | `post_checks.circular_imports` | bool | `true` | Detect circular import cycles in generated code. |
-| `post_checks.ruff_format` | bool | `true` | Run `ruff format` on generated files. |
+| `post_checks.ruff_format` | bool | `true` | Run `ruff format` on generated files (Python stacks only; Go packs run `gofmt`). |
 
 ### verification
 

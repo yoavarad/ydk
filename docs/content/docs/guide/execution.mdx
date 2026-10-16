@@ -37,7 +37,7 @@ The plan is posted as a comment on the task issue. It creates accountability (th
 
 ### Implementing TODOs with TDD
 
-The implementation phase is where tests are written first, then code to resolve assigned TODOs. After ignition, every task has specific `YDK-TODO-NNN` identifiers pointing to `NotImplementedError` placeholders that need real business logic. YDK enforces TDD through the `python-tdd-guard` verification plugin, which checks that every staged source file has a corresponding test file.
+The implementation phase is where tests are written first, then code to resolve assigned TODOs. After ignition, every task has specific `YDK-TODO-NNN` identifiers pointing to unimplemented placeholders (`NotImplementedError` in Python, `panic("not implemented")` in Go) that need real business logic. YDK enforces TDD through the `tdd-guard` verification plugin (`python-tdd-guard` on Python stacks), which checks that every staged source file has a corresponding test file.
 
 Before implementing, check which TODOs are assigned to the current task:
 
@@ -45,7 +45,7 @@ Before implementing, check which TODOs are assigned to the current task:
 ydk todo list --task T-abc12345
 ```
 
-Each TODO shows the file, line number, and description of the business logic needed. Replace the `NotImplementedError` with real implementation, guided by TDD.
+Each TODO shows the file, line number, and description of the business logic needed. Replace the placeholder with real implementation, guided by TDD.
 
 Post progress updates as you complete phases:
 
@@ -59,7 +59,7 @@ ydk task comment T-abc12345 "Model tests passing, starting route implementation"
 ydk task done T-abc12345
 ```
 
-This triggers the `ProofCapture` system, which deterministically runs all quality gates and captures their output. Before running verifications, `ydk task done` checks that all TODOs assigned to the task have been resolved -- if any `NotImplementedError` remains for an assigned TODO, the command fails with a clear error listing the unresolved TODOs. The subagent owns the full lifecycle -- it calls `ydk task done` from inside its worktree, and the proof capture runs commands against the worktree's files.
+This triggers the `ProofCapture` system, which deterministically runs all quality gates and captures their output. Before running verifications, `ydk task done` checks that all TODOs assigned to the task have been resolved -- if any placeholder remains for an assigned TODO, the command fails with a clear error listing the unresolved TODOs. The subagent owns the full lifecycle -- it calls `ydk task done` from inside its worktree, and the proof capture runs commands against the worktree's files.
 
 ## Deterministic Proof Capture
 

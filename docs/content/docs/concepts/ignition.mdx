@@ -23,12 +23,12 @@ Component Manifests ──> Ignition Pack Generators ──> Runnable Skeleton +
 1. **Read inputs**: Ignition reads the installed pack and all component manifests in `.ydk/components/`
 2. **Run generators**: Each component type (entity, route, error, etc.) has a generator that runs as a subprocess, as subprocesses (env vars in, JSON stdout out)
 3. **Track hashes**: Every generated file's content hash is stored in `.ydk/ignition-hashes.json` for idempotency -- re-running ignition skips unchanged files
-4. **Register TODOs**: Every `NotImplementedError` placeholder is registered as a tracked TODO with an `YDK-TODO-NNN` ID
+4. **Register TODOs**: Every unimplemented placeholder (Python `NotImplementedError`, dotnet `NotImplementedException`, Go `panic("not implemented")`) is registered as a tracked TODO with an `YDK-TODO-NNN` ID
 5. **Post-generation checks**: Syntax validation, circular import detection, and `ruff format` run automatically
 
 ## TODO Tracking
 
-TODOs are the connective tissue between ignition and execution. Each `NotImplementedError` in generated code gets a unique `YDK-TODO-NNN` identifier, registered in `.ydk/todos.yaml`. During Stage 02, TODOs are assigned to tasks via `ydk todo assign`. During Stage 03, `ydk task done` verifies that all assigned TODOs have been resolved -- no `NotImplementedError` remains for any TODO linked to that task.
+TODOs are the connective tissue between ignition and execution. Each placeholder in generated code gets a unique `YDK-TODO-NNN` identifier, registered in `.ydk/todos.yaml`. During Stage 02, TODOs are assigned to tasks via `ydk todo assign`. During Stage 03, `ydk task done` verifies that all assigned TODOs have been resolved -- no placeholder remains for any TODO linked to that task.
 
 ```
 Ignition registers TODOs ──> Stage 02 assigns TODOs to tasks ──> Stage 03 resolves TODOs
@@ -71,7 +71,7 @@ Ignition packs produce production-grade code, not minimal stubs. The generated s
 - **Relationship handling** -- Foreign keys, back-references, and nested serialization for related entities
 - **Migrations** -- Alembic migration files generated from the data model
 
-The goal is that the generated code looks like an experienced developer wrote it by hand. Business logic placeholders (`NotImplementedError`) are the only parts that need implementation.
+The goal is that the generated code looks like an experienced developer wrote it by hand. Business logic placeholders (`NotImplementedError` / `NotImplementedException` / `panic("not implemented")` by stack) are the only parts that need implementation.
 
 ## Runtime Dependencies
 
@@ -84,7 +84,7 @@ A key invariant: after ignition completes, the application must start successful
 - All imports resolve (no missing modules)
 - All dependency injection wires up (no unresolved dependencies)
 - The server boots and responds to health checks
-- Tests can be discovered and collected (even if they fail due to `NotImplementedError`)
+- Tests can be discovered and collected (even if they fail due to unimplemented placeholders)
 
 If the app does not start after ignition, that is a bug in the pack, not in your manifests.
 

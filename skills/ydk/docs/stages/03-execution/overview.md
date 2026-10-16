@@ -54,7 +54,7 @@ ydk task close <id>      → Check PR merge state → reconcile status to done (
 ## New Execution Features
 
 ### Auto-Fix
-`ydk verify run --auto-fix` runs `ruff --fix` before checking, automatically resolving common lint issues.
+`ydk verify run --auto-fix` runs the stack's auto-fixer before checking (Python: `ruff --fix`), automatically resolving common lint issues.
 
 ### Auto-Repair Loop
 `ydk verify run --retry N --repair` retries failed verifications up to N times, applying structured fixes between retries. The repair system parses verification error output and attempts targeted fixes.

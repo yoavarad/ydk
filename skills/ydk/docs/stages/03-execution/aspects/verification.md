@@ -11,7 +11,7 @@ This applies to ALL verifications: linting, type checking, tests, deterministic 
 ```
 # Global (ships with YDK)
 ydk/verifications/
-├── lint-ruff/
+├── lint-ruff/            # Python (also: go-fmt/, go-vet/, go-test/, go-vendor/, dotnet-*/, helm-lint/ ...)
 │   ├── manifest.yaml
 │   └── check.py
 ├── types-ty/
@@ -131,7 +131,7 @@ ydk verify clear-cache                  # Clear the verification content-hash ca
 
 ## Auto-Fix
 
-`ydk verify run --auto-fix` runs `ruff --fix` and `ruff format` before evaluating lint checks. This automatically resolves:
+`ydk verify run --auto-fix` runs the stack's auto-fixer before evaluating lint checks (Python: `ruff --fix` and `ruff format`). This automatically resolves:
 - Import ordering issues
 - Unused import removal
 - Common formatting problems
@@ -150,7 +150,7 @@ The auto-fix runs BEFORE the verification check, so the check evaluates the fixe
 5. Repeat up to N times
 
 The repair system understands common error patterns:
-- Lint violations → applies `ruff --fix` with specific rules
+- Lint violations → applies the stack's fixer with specific rules (Python: `ruff --fix`)
 - Type errors → adds type annotations, fixes imports
 - Test failures → re-runs with verbose output for better diagnostics
 
