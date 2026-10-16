@@ -1,0 +1,14 @@
+$schema: ydk:schema:entity
+id: ydk:entity:items/Item
+description: A named item. The smallest entity the generators accept.
+fields:
+  name:
+    type: string
+    required: true
+    nullable: false
+    max_length: 100
+    description: "Item name"
+state_transitions: {}
+relationships: []
+indexes: []
+crud: [read]

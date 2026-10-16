@@ -19,8 +19,8 @@ import yaml
 from ydk.core.ignition import IgnitionEngine
 
 PACK_DIR = Path(__file__).resolve().parents[2] / "src" / "ydk" / "catalog" / "go-http-service"
-SAMPLES = PACK_DIR / "samples" / "components"
-APP = "clopy-paste"
+SAMPLES = PACK_DIR / "samples" / "kafka-service" / "components"
+APP = yaml.safe_load((SAMPLES / "config" / "ops" / "app.yaml").read_text(encoding="utf-8"))["title"]
 CHART = f"charts/{APP}"
 HELM = shutil.which("helm")
 
@@ -353,7 +353,7 @@ class TestHelm:
         assert env["KAFKA_SASL_USERNAME"]["valueFrom"]["secretKeyRef"] == {"name": "kafka-user", "key": "username"}
         assert env["KAFKA_SASL_PASSWORD"]["valueFrom"]["secretKeyRef"] == {"name": "kafka-user", "key": "password"}
         assert env["KAFKA_CA_FILE"]["value"].startswith(f"/etc/{APP}/")
-        assert "CENSOR_CHARS" not in env  # optional without a literal default: unset -> app default
+        assert "FILTER_CHARS" not in env  # optional without a literal default: unset -> app default
         assert container["volumeMounts"][0]["readOnly"] is True
 
     def test_secrets_omitted_without_existing_secret(self, project: Path) -> None:
@@ -417,7 +417,7 @@ class TestMinimalService:
         assert values["image"]["repository"] == "hello-svc"
         ops_files = [project / "Dockerfile", project / ".dockerignore", *(project / "charts").rglob("*")]
         text = "".join(f.read_text(encoding="utf-8") for f in ops_files if f.is_file()).lower()
-        for specific in ("clopy", "kafka", "ubi", "ingress-nginx", "openshift.io/ingress", "8080"):
+        for specific in (APP, "kafka", "ubi", "ingress-nginx", "openshift.io/ingress", "8080"):
             assert specific not in text, specific
         deployment = _read(project, "charts/hello-svc/templates/deployment.yaml")
         assert "env:" not in deployment

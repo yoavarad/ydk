@@ -1,0 +1,45 @@
+$schema: ydk:schema:test
+id: ydk:test:messaging/store.unit
+description: "Store behaviour: FIFO per user, LRU eviction and touch, unknown-user lookups, concurrency, memory bound."
+level: unit
+target: ydk:contract:messaging/Store
+cases:
+  - name: fifo-101
+    description: "ydk:req:messaging/fifo-per-user"
+    given: "Empty store"
+    when: "Add m1..m101 for alice; Get alice"
+    then: "100 items, first m101, last m2"
+  - name: lru-evict
+    description: "ydk:req:messaging/lru-eviction"
+    given: "Add one message each for u001..u100 in order"
+    when: "Add for u101"
+    then: "Get u001 returns empty; Get u002 and u101 return 1 item"
+  - name: get-touches
+    description: "ydk:req:messaging/lru-touch"
+    given: "u001..u100 added in order"
+    when: "Get u001; Add for u101"
+    then: "u002 evicted; u001 kept"
+  - name: unknown-not-created
+    description: "ydk:req:messaging/unknown-user-not-created"
+    given: "u001..u100 added"
+    when: "Get x1..x50 (unknown)"
+    then: "Each returns empty non-nil slice; all u001..u100 still present"
+  - name: copy-returned
+    description: "Caller cannot mutate store"
+    given: "alice has 1 message"
+    when: "Caller modifies returned slice element"
+    then: "Second Get unchanged"
+  - name: concurrent
+    description: "Race safety"
+    given: "Empty store"
+    when: "50 goroutines Add and Get concurrently under -race"
+    then: "No race reported; user count <= 100"
+  - name: memory-worst-case
+    description: "ydk:nfr:system/memory"
+    given: "Empty store"
+    when: "Fill 100 users x 100 messages x 1000 four-byte code points; runtime.GC; read MemStats"
+    then: "HeapAlloc <= 100 MiB"
+stubs: []
+never_mock:
+  - "Store"
+  - "container/list"

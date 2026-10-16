@@ -1,0 +1,17 @@
+$schema: ydk:schema:req
+id: ydk:req:messaging/text-length
+description: "Message text length limit, enforced on send and on receive (ADR-006)."
+type: validation
+priority: critical
+rule: |
+  Text is 1..1000 Unicode code points, counted before filtering, without trimming; newlines
+  and other whitespace count. Outgoing violation: 400, nothing published, no truncation.
+  Incoming record violation: record dropped.
+failure_behavior: "Send: ydk:error:api/validation-failed; Receive: ydk:error:messaging/bad-incoming-record"
+related_components:
+  - ydk:route:api/send-message
+  - ydk:entity:messaging/Message
+acceptance_criteria:
+  - "1000 code points accepted; 1001 rejected with 400 'text must be 1..1000 characters'"
+  - "Empty or missing text rejected with 400"
+  - "Incoming record with 1001-code-point text is dropped and logged with reason text_length"

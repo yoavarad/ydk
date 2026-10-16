@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Publish gate for go-http-service: ignite samples, build, start, probe.
+"""Publish gate for go-http-service: ignite every sample set, build, start, probe.
 
-Ignites samples/components into a temp project (ignition runs go mod tidy/vendor,
+For each fixture set under samples/*/components, ignites it into a temp project (ignition runs go mod tidy/vendor,
 gofmt, go build ./..., go vet ./...), builds the binary, starts it with every required
 env var set, and checks GET /healthz and /readyz -> 200, an unknown path -> JSON 404,
 and a wrong method -> JSON 405 with an Allow header.
 When helm is on PATH it also checks the ops-phase chart: `helm lint --strict` and
 `helm template` pass with openshift.enabled true and false, and an unknown values key fails lint.
-Prints a JSON report as the last stdout line; exits non-zero on any failure.
+Prints a JSON report {"ok": bool, "sets": {name: {..., "ok": bool}}} as the last stdout line;
+exits non-zero unless every set passes.
 """
 
 from __future__ import annotations
@@ -80,18 +81,16 @@ def _fail(msg: str) -> int:
     return 1
 
 
-def main() -> int:
-    """Run the smoke check; return the process exit code."""
-    if shutil.which("go") is None:
-        return _fail("go toolchain not found on PATH")
+def _smoke_set(components: Path) -> dict[str, object]:
+    """Ignite one fixture set, build, start and probe it; raise RuntimeError on a hard failure."""
     port = _free_port()
     with tempfile.TemporaryDirectory(prefix="go-http-service-smoke-") as tmp:
         project = Path(tmp)
         shutil.copytree(PACK_DIR, project / ".ydk" / "ignition-packs" / PACK_DIR.name)
-        shutil.copytree(PACK_DIR / "samples" / "components", project / ".ydk" / "components")
+        shutil.copytree(components, project / ".ydk" / "components")
         result = IgnitionEngine(project).ignite(init_answers={"http_port": str(port)})
         if result.errors:
-            return _fail("ignite failed:\n" + "\n".join(result.errors))
+            raise RuntimeError("ignite failed:\n" + "\n".join(result.errors))
 
         helm_report = _helm_checks(project)
         app = next((project / "cmd").iterdir()).name
@@ -105,7 +104,7 @@ def main() -> int:
             errors="replace",
         )
         if build.returncode != 0:
-            return _fail("go build failed:\n" + build.stderr)
+            raise RuntimeError("go build failed:\n" + build.stderr)
 
         config_go = (project / "internal" / "config" / "config.go").read_text(encoding="utf-8")
         env = {**os.environ, **{name: "smoke" for name in _REQUIRED.findall(config_go)}, "LISTEN_HOST": "127.0.0.1"}
@@ -126,7 +125,7 @@ def main() -> int:
                 proc.kill()
                 proc.wait(timeout=15)
                 output = log_path.read_text(encoding="utf-8", errors="replace")
-                return _fail(f"/healthz returned {healthz}; app output:\n{output}")
+                raise RuntimeError(f"/healthz returned {healthz}; app output:\n{output}")
             readyz, _, _ = _request(base + "/readyz")
             unknown_status, unknown_body, _ = _request(base + "/ydk-smoke-unknown-path")
             wrong_status, wrong_body, allow = _request(base + "/healthz", method="DELETE")
@@ -135,7 +134,7 @@ def main() -> int:
                 proc.terminate()
             proc.wait(timeout=15)
 
-    report = {
+    report: dict[str, object] = {
         "healthz": healthz,
         "readyz": readyz,
         "unknown_status": unknown_status,
@@ -145,11 +144,30 @@ def main() -> int:
         "wrong_method_allow": allow,
         **helm_report,
     }
-    print(json.dumps(report))
     ok = readyz == 200 and unknown_status == 404 and isinstance(report["unknown_body"], dict)
     ok = ok and wrong_status == 405 and isinstance(report["wrong_method_body"], dict) and "GET" in allow
     ok = ok and all(v == 0 for k, v in helm_report.items() if k.startswith("helm_") and "rejected" not in k)
     ok = ok and helm_report.get("helm_lint_unknown_key_rejected", True) is True
+    report["ok"] = ok
+    return report
+
+
+def main() -> int:
+    """Run the smoke check over every fixture set; return the process exit code."""
+    if shutil.which("go") is None:
+        return _fail("go toolchain not found on PATH")
+    sets: dict[str, dict[str, object]] = {}
+    for components in sorted((PACK_DIR / "samples").glob("*/components")):
+        name = components.parent.name
+        try:
+            sets[name] = _smoke_set(components)
+        except (RuntimeError, OSError, subprocess.SubprocessError, StopIteration) as exc:
+            print(f"[{name}] {exc}", file=sys.stderr)
+            sets[name] = {"ok": False, "error": str(exc)}
+    if not sets:
+        return _fail("no fixture sets found under samples/*/components")
+    ok = all(r.get("ok") is True for r in sets.values())
+    print(json.dumps({"ok": ok, "sets": sets}))
     return 0 if ok else 1
 
 

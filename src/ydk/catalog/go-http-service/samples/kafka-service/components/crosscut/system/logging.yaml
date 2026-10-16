@@ -1,0 +1,23 @@
+$schema: ydk:schema:crosscut
+id: ydk:crosscut:system/logging
+description: "Structured JSON logs to stdout (ADR-012)."
+specification: |
+  log/slog JSONHandler on stdout, one JSON object per line, keys time (RFC3339Nano UTC),
+  level, msg plus attributes. Level from LOG_LEVEL (default INFO). No file output, no sidecar
+  (DEFERRED, ADR-012). Message text is never logged (ydk:req:system/no-text-in-logs).
+  Events and levels:
+  - INFO  "starting" (version, instance, topics, protocol, filter char count), "ready", "shutdown complete" (duration_ms)
+  - INFO  "message sent" (user, length, topic, partition, offset, duration_ms)
+  - INFO  "message received" (user, length, topic, partition, offset)
+  - INFO  "user evicted" (user)
+  - WARN  "dropped invalid record" (reason, topic, partition, offset)
+  - WARN  "publish failed" (user, length, error)
+  - ERROR "invalid config", "internal error" (route, method, error)
+  - DEBUG per-request line (method, route pattern, status, duration_ms); health routes excluded
+applies_to: "All Go packages; only cmd/sample-service creates the logger and passes *slog.Logger down"
+implementation_notes:
+  - "Never log *http.Request or record values wholesale"
+  - "length = utf8.RuneCountInString(text)"
+related:
+  - ydk:req:system/no-text-in-logs
+  - ydk:error:messaging/bad-incoming-record

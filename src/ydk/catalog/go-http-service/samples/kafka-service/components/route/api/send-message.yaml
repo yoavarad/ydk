@@ -1,0 +1,44 @@
+$schema: ydk:schema:route
+id: ydk:route:api/send-message
+description: |
+  Accepts a message typed on this instance and publishes it to the output topic.
+  Steps, in order: limit body to 16384 bytes; decode JSON (unknown fields ignored); validate
+  user 1..128 and text 1..1000 Unicode code points (ydk:req:messaging/user-length,
+  ydk:req:messaging/text-length); filter both fields (ydk:req:messaging/filter-blocklist);
+  call ydk:contract:messaging/Publisher Publish with a 5 s deadline; respond after the broker
+  ack. Nothing is stored locally (ydk:req:messaging/sent-not-stored). Logs user, text length
+  in code points, topic, partition and offset; never the text.
+method: POST
+path: /api/messages
+request:
+  body:
+    user:
+      type: string
+      required: true
+      description: "Username, 1..128 code points before filtering"
+    text:
+      type: string
+      required: true
+      description: "Message text, 1..1000 code points before filtering"
+responses:
+  "202":
+    description: "Record acknowledged by Kafka (acks=all)"
+    shape:
+      body: "{}"
+  "400":
+    description: "Body not valid JSON, body over 16384 bytes, user or text missing, empty or over limit"
+    refs:
+      - ydk:error:api/invalid-json
+      - ydk:error:api/validation-failed
+  "405":
+    description: "Method other than GET or POST on this path"
+    ref: ydk:error:api/method-not-allowed
+  "500":
+    description: "Unexpected server fault"
+    ref: ydk:error:api/internal-error
+  "503":
+    description: "Publish failed or did not ack within 5 s; nothing published from the client's view"
+    ref: ydk:error:api/kafka-unavailable
+auth: none
+rate_limit: "None"
+idempotency: "None. A repeated POST publishes a second record. The UI disables the Send button while a request is in flight to prevent double submit."

@@ -1,0 +1,63 @@
+$schema: ydk:schema:entity
+id: ydk:entity:messaging/Record
+description: |
+  The Kafka record exchanged between instances through the external pipeline (ADR-007).
+  Produced by the send path to the output topic, consumed from the input topic. Delivery,
+  ordering and idempotency rules live in ydk:event:messaging/message-record
+fields:
+  key:
+    type: bytes
+    required: true
+    nullable: false
+    constraints: "UTF-8 bytes of the filtered username"
+    description: "Partitioning key; preserves per-user ordering"
+  value:
+    type: bytes
+    required: true
+    nullable: false
+    constraints: "UTF-8 JSON object with exactly the two string fields 'user' and 'text' on produce; consumer ignores unknown extra fields"
+    description: "Payload, e.g. {\"user\":\"alice\",\"text\":\"hello_\"}"
+  value.user:
+    type: string
+    required: true
+    max_length: 128
+    constraints: "1..128 code points, filtered by the producing instance"
+    description: "Username"
+  value.text:
+    type: string
+    required: true
+    max_length: 1000
+    constraints: "1..1000 code points, filtered by the producing instance"
+    description: "Message text"
+  headers:
+    type: list
+    required: false
+    default: []
+    constraints: "None on produce; ignored on consume"
+    description: "Kafka record headers"
+  timestamp:
+    type: datetime
+    required: true
+    generated: true
+    auto: true
+    constraints: "Set by the producer client at produce time, or by the broker when the topic uses LogAppendTime"
+    description: "Becomes Message.time on the receiving side"
+  topic:
+    type: string
+    required: true
+    generated: true
+    description: "Output topic on produce, input topic on consume"
+  partition:
+    type: integer
+    required: true
+    generated: true
+    description: "Partition; logged in invalid-record warnings"
+  offset:
+    type: integer
+    required: true
+    generated: true
+    description: "Offset; logged in invalid-record warnings; committed after processing"
+state_transitions: {}
+relationships: []
+indexes: []
+crud: [create, read]

@@ -59,4 +59,4 @@ The manifest's `ops` phase runs `generators/ops.py` after the top-level generato
 
 ## Publish gate
 
-`checks/smoke.py` ignites `samples/components` into a temp dir, builds and starts the binary with the required env vars set, and expects `GET /healthz` to return 200 and an unknown path to return a JSON 404. It needs `go` on PATH and network access for franz-go. When `helm` is on PATH, it also runs `helm lint --strict` and `helm template` with `openshift.enabled` set to true and to false, and checks that an unknown values key fails lint.
+`checks/smoke.py` ignites every fixture set under `samples/*/components` (`minimal`, `kafka-service`) into its own temp dir, builds and starts the binary with the required env vars set, and expects `GET /healthz` to return 200 and an unknown path to return a JSON 404; the gate passes only if every set passes. It needs `go` on PATH and network access for franz-go (kafka-service set only). When `helm` is on PATH, it also runs `helm lint --strict` and `helm template` with `openshift.enabled` set to true and to false, and checks that an unknown values key fails lint.
