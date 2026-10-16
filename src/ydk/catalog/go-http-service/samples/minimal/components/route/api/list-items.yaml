@@ -1,0 +1,13 @@
+$schema: ydk:schema:route
+id: ydk:route:api/list-items
+description: Returns all items as a JSON array.
+method: GET
+path: /api/items
+request: {}
+responses:
+  "200":
+    description: "JSON array of ydk:entity:items/Item"
+    ref: ydk:entity:items/Item
+    shape:
+      body: "[{\"name\": string}]"
+auth: none

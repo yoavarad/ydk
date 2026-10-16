@@ -1,0 +1,30 @@
+$schema: ydk:schema:test
+id: ydk:test:api/get-messages.unit
+description: "GET handler via httptest with a real Store."
+level: unit
+target: ydk:route:api/get-messages
+cases:
+  - name: newest-first
+    description: "Order and shape"
+    given: "Store has alice: m1 (t1), m2 (t2)"
+    when: "GET user=alice"
+    then: "200 [{text:m2,time:t2 RFC3339 UTC},{text:m1,time:t1}]"
+  - name: unknown
+    description: "ydk:req:messaging/unknown-user-not-created"
+    given: "Empty store"
+    when: "GET user=nobody"
+    then: "200 body exactly []; store still empty"
+  - name: filtered-lookup
+    description: "Query username is filtered before lookup"
+    given: "Store has alice_ with one message; default list"
+    when: "GET user=alice$ (URL-encoded)"
+    then: "200 with the message"
+  - name: bad-param
+    description: "ydk:error:api/validation-failed"
+    given: "Any store"
+    when: "GET without user; user=''; user of 129 code points"
+    then: "400 {error:'user must be 1..128 characters'}"
+stubs: []
+never_mock:
+  - "Store"
+  - "Filter"

@@ -1,0 +1,42 @@
+$schema: ydk:schema:ext
+id: ydk:ext:kafka/cluster
+description: |
+  The Kafka cluster both instances reach (prod: AMQ Streams; local/CI: Strimzi 1.2.0, KRaft,
+  single node). Accessed with franz-go v1.22.1 over the Kafka binary protocol, not HTTP.
+  Schema note: endpoints use method POST for produce and GET for consume as a mapping of
+  write/read; path is the topic.
+base_url: "kafka://${KAFKA_BOOTSTRAP_SERVERS} (comma-separated host:port list, e.g. kafka-kafka-bootstrap.sample-service.svc:9093)"
+auth: "KAFKA_SECURITY_PROTOCOL=SASL_SSL: SCRAM-SHA-512 over TLS, credentials from Secret, CA from KAFKA_CA_FILE or system roots. KAFKA_SECURITY_PROTOCOL=PLAINTEXT: none (dev only). ADR-008."
+endpoints:
+  produce:
+    method: POST
+    path: "${KAFKA_OUTPUT_TOPIC}"
+    params:
+      acks: all
+      idempotent: true
+      key: "filtered username"
+      value: "ydk:event:messaging/message-record value JSON"
+    response: "Produce ack with partition and offset"
+    description: "Publish one message record; called once per accepted send"
+  consume:
+    method: GET
+    path: "${KAFKA_INPUT_TOPIC}"
+    params:
+      group_id: "${KAFKA_CONSUMER_GROUP} (default sample-service-${INSTANCE_NAME}; prod supplies its own, ADR-017)"
+      reset_offset: "latest (only when the group has no committed offset, ADR-017)"
+      commit: "mark after store insert or drop; autocommit of marked offsets every 5 s and on shutdown"
+    response: "Batches of Record (ydk:entity:messaging/Record)"
+    description: "Fetch records from the other side for the in-memory store"
+rate_limits:
+  broker_quotas: "Not configured by this project; prod quotas owned by the Kafka team"
+  projected_usage: "<= 50 produce requests/s per instance at peak (one human typing, NFR headroom); consume steady-state near 0"
+error_handling:
+  produce_failure_or_timeout: "Return ydk:error:api/kafka-unavailable (503) to the caller after the 5 s deadline; record not retried by the app"
+  sasl_auth_failure: "Produce returns error -> 503 on send; logged at ERROR without credentials; readiness unaffected (ADR-016)"
+  topic_missing: "Produce fails within 5 s -> 503; consumer logs WARN and keeps polling"
+  broker_unreachable: "franz-go reconnects with its internal backoff; sends return 503 until a broker answers; readiness unaffected (ADR-016)"
+  invalid_record: "ydk:error:messaging/bad-incoming-record"
+retry_strategy:
+  producer: "franz-go internal retries within the 5 s request deadline; idempotent producer prevents duplicates"
+  consumer: "franz-go internal reconnect/backoff, unbounded; never crashes the process"
+  timeout: "Produce 5 s per send (ADR-017)"

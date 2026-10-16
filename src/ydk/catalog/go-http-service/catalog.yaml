@@ -53,5 +53,5 @@ publish_checks:
   - name: has-manifest
     description: Must include manifest.yaml with generator execution order
   - name: compiles-and-starts
-    description: Ignite samples/components, go build + go vet, start the binary, GET /healthz -> 200, unknown path -> JSON 404
+    description: Ignite every samples/*/components fixture set, go build + go vet, start the binary, GET /healthz -> 200, unknown path -> JSON 404
     command: "python checks/smoke.py"

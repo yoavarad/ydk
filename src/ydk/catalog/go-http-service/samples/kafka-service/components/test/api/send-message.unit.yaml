@@ -1,0 +1,53 @@
+$schema: ydk:schema:test
+id: ydk:test:api/send-message.unit
+description: "Send handler via httptest with real Filter and validation; Publisher faked (Kafka boundary only)."
+level: unit
+target: ydk:route:api/send-message
+cases:
+  - name: accepted
+    description: "Happy path publishes filtered values"
+    given: "Fake Publisher returning nil; default filter list"
+    when: "POST {user:'alice$', text:'hi!'}"
+    then: "202 {}; fake received user 'alice_', text 'hi_'"
+  - name: invalid-json
+    description: "ydk:error:api/invalid-json"
+    given: "Fake Publisher"
+    when: "POST body 'nope'"
+    then: "400 {error:'invalid JSON body'}; fake not called"
+  - name: limits
+    description: "ydk:req:messaging/user-length and ydk:req:messaging/text-length boundaries"
+    given: "Fake Publisher"
+    when: "user of 0/1/128/129 code points; text of 0/1/1000/1001 code points (incl. 4-byte emoji)"
+    then: "0 and over-limit -> 400 with exact messages; boundaries -> 202"
+  - name: body-too-large
+    description: "16384-byte cap"
+    given: "Fake Publisher"
+    when: "POST 16385-byte body"
+    then: "400 {error:'request body too large'}"
+  - name: kafka-down
+    description: "ydk:error:api/kafka-unavailable"
+    given: "Fake Publisher returning error"
+    when: "Valid POST"
+    then: "503 {error:'kafka unavailable, message not sent'}"
+  - name: deadline
+    description: "5 s publish deadline is passed to Publisher"
+    given: "Fake Publisher that records ctx deadline"
+    when: "Valid POST"
+    then: "Deadline within 5 s of request start"
+  - name: method
+    description: "ydk:error:api/method-not-allowed"
+    given: "Router"
+    when: "PUT on messages path"
+    then: "405 JSON body, Allow header 'GET, POST' (order-insensitive)"
+  - name: no-text-in-logs
+    description: "ydk:req:system/no-text-in-logs"
+    given: "slog captured to buffer at DEBUG"
+    when: "POST text 'SECRET-MARKER-123' (accepted and failing variants)"
+    then: "Buffer does not contain the marker"
+stubs:
+  - "Publisher (fake implementing ydk:contract:messaging/Publisher)"
+never_mock:
+  - "Filter"
+  - "validation"
+  - "Store"
+  - "net/http router"

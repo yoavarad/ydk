@@ -1,0 +1,34 @@
+$schema: ydk:schema:test
+id: ydk:test:messaging/filter.unit
+description: "Table-driven tests of the blocklist replacement (ydk:req:messaging/filter-blocklist)."
+level: unit
+target: ydk:contract:messaging/Filter
+cases:
+  - name: default-list
+    description: "Default chars replaced"
+    given: "Filter built from '$!~'"
+    when: "Apply('a$b!c~d')"
+    then: "'a_b_c_d'"
+  - name: passthrough
+    description: "Unlisted characters unchanged"
+    given: "Filter built from '$!~'"
+    when: "Apply('<b> \"x\" _\\n')"
+    then: "Output equals input"
+  - name: multibyte-denied
+    description: "Multi-byte code point in list"
+    given: "Filter built from '€😀'"
+    when: "Apply('a€b😀')"
+    then: "'a_b_' and code-point length 4"
+  - name: empty-list
+    description: "Empty list disables filtering"
+    given: "Filter built from ''"
+    when: "Apply('$!~')"
+    then: "'$!~'"
+  - name: length-preserved
+    description: "Replacement is 1:1"
+    given: "Filter built from '$'"
+    when: "Apply of 1000 '$'"
+    then: "1000 '_' (code points)"
+stubs: []
+never_mock:
+  - "Filter (pure function)"

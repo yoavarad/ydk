@@ -22,7 +22,10 @@ import yaml
 from ydk.core.ignition import IgnitionEngine
 
 PACK_DIR = Path(__file__).resolve().parents[2] / "src" / "ydk" / "catalog" / "go-http-service"
-SAMPLES = PACK_DIR / "samples" / "components"
+SAMPLES = PACK_DIR / "samples" / "kafka-service" / "components"
+APP = yaml.safe_load((SAMPLES / "config" / "ops" / "app.yaml").read_text(encoding="utf-8"))["title"]
+HOST_A = f"HOST_{APP.upper().replace('-', '_')}_A"
+HOST_B = f"HOST_{APP.upper().replace('-', '_')}_B"
 TARGETS = (
     "lint",
     "test",
@@ -160,12 +163,12 @@ class TestEnvGenerator:
         for topic in topics.values():
             assert topic["kind"] == "KafkaTopic"
             assert topic["apiVersion"] == "kafka.strimzi.io/v1"
-            assert topic["metadata"]["namespace"] == "clopy-paste"
+            assert topic["metadata"]["namespace"] == APP
             assert topic["metadata"]["labels"]["strimzi.io/cluster"] == "kafka"
             assert topic["spec"]["partitions"] == 3
             assert topic["spec"]["replicas"] == 1
         users = _docs(project, "deploy/local/kafka-users.yaml")
-        assert [u["metadata"]["name"] for u in users] == ["clopy-paste-a"]
+        assert [u["metadata"]["name"] for u in users] == [f"{APP}-a"]
         assert users[0]["kind"] == "KafkaUser"
         assert users[0]["spec"]["authentication"]["type"] == "scram-sha-512"
         assert users[0]["metadata"]["labels"]["strimzi.io/cluster"] == "kafka"
@@ -178,7 +181,7 @@ class TestEnvGenerator:
         assert sorted(pool["spec"]["roles"]) == ["broker", "controller"]
         assert pool["metadata"]["labels"]["strimzi.io/cluster"] == "kafka"
         kafka = docs["Kafka"]
-        assert kafka["metadata"] == {"name": "kafka", "namespace": "clopy-paste"}
+        assert kafka["metadata"] == {"name": "kafka", "namespace": APP}
         listeners = {item["name"]: item for item in kafka["spec"]["kafka"]["listeners"]}
         assert listeners["plain"]["port"] == 9092
         assert listeners["plain"]["tls"] is False
@@ -201,9 +204,9 @@ class TestEnvGenerator:
         project, _ = ignited
         env = _read(project, "scripts/env.sh")
         for line in (
-            ': "${APP:=clopy-paste}"',
-            ': "${CLUSTER:=clopy-paste}"',
-            ': "${NAMESPACE:=clopy-paste}"',
+            f': "${{APP:={APP}}}"',
+            f': "${{CLUSTER:={APP}}}"',
+            f': "${{NAMESPACE:={APP}}}"',
             ': "${KAFKA_CLUSTER:=kafka}"',
             ': "${STRIMZI_VERSION:=1.2.0}"',
             ': "${HOST_PORT:=8080}"',
@@ -216,19 +219,19 @@ class TestEnvGenerator:
         deploy = _read(project, "scripts/deploy.sh")
         assert deploy.count("helm upgrade --install") == 2
         for expected in (
-            "helm upgrade --install clopy-paste-a",
-            "helm upgrade --install clopy-paste-b",
+            f"helm upgrade --install {APP}-a",
+            f"helm upgrade --install {APP}-b",
             '--set-string instanceName="side-a"',
             '--set-string instanceName="side-b"',
-            '--set-string ingress.host="a.clopy-paste.local"',
-            '--set-string ingress.host="b.clopy-paste.local"',
+            f'--set-string ingress.host="a.{APP}.local"',
+            f'--set-string ingress.host="b.{APP}.local"',
             '--set-string kafka.outputTopic="a.out"',
             '--set-string kafka.inputTopic="b.out"',
             '--set-string kafka.outputTopic="b.out"',
             '--set-string kafka.inputTopic="a.out"',
             '--set-string kafka.securityProtocol="SASL_SSL"',
             '--set-string kafka.securityProtocol="PLAINTEXT"',
-            '--set-string kafka.sasl.existingSecret="clopy-paste-a-credentials"',
+            f'--set-string kafka.sasl.existingSecret="{APP}-a-credentials"',
             '--set-string kafka.ca.existingSecret="${KAFKA_CLUSTER}-cluster-ca-cert"',
             '--set-string image.repository="$IMAGE_REPO"',
             '--set-string image.tag="$VERSION"',
@@ -254,7 +257,7 @@ class TestEnvGenerator:
         assert "kind create cluster" in env_up
         assert "oci://quay.io/strimzi-helm/strimzi-kafka-operator" in env_up
         assert "deploy/local/kafka-topics.yaml" in env_up
-        assert "clopy-paste-a-credentials" in env_up
+        assert f"{APP}-a-credentials" in env_up
         assert "--dry-run=client -o yaml | kubectl apply -f -" in env_up
 
     def test_e2e_skeleton_markers(self, ignited: tuple[Path, object]) -> None:
@@ -268,15 +271,15 @@ class TestEnvGenerator:
         lib = _read(project, "test/e2e/lib.sh")
         for fn in ("http_get()", "http_post_json()", "http_status()", "poll_until()", "fail()"):
             assert fn in lib, fn
-        assert ': "${HOST_CLOPY_PASTE_A:=a.clopy-paste.local}"' in lib
+        assert f': "${{{HOST_A}:=a.{APP}.local}}"' in lib
         for app_specific in ("/api/messages", "post_message", "get_messages", "MESSAGES_PATH"):
             assert app_specific not in lib, app_specific
 
     def test_smoke_is_generic(self, ignited: tuple[Path, object]) -> None:
         project, _ = ignited
         smoke = _read(project, "scripts/smoke.sh")
-        assert 'wait_ready "$HOST_CLOPY_PASTE_A"' in smoke
-        assert 'wait_ready "$HOST_CLOPY_PASTE_B"' in smoke
+        assert f'wait_ready "${HOST_A}"' in smoke
+        assert f'wait_ready "${HOST_B}"' in smoke
         assert "test/smoke/*.sh" in smoke
         assert "post" not in smoke.lower()
         assert "/readyz" in _read(project, "test/e2e/lib.sh")
@@ -326,11 +329,11 @@ class TestEnvVariants:
         project, result = _ignite(tmp_path, monkeypatch, components)
         assert _generator_errors(result) == []
         env = _read(project, "scripts/env.sh")
-        assert ': "${CLUSTER:=clopy-paste}"' in env
+        assert f': "${{CLUSTER:={APP}}}"' in env
         assert ': "${STRIMZI_VERSION:=1.2.0}"' in env
         cfg = yaml.safe_load(_read(project, "deploy/local/kind-config.yaml"))
         assert cfg["nodes"][0]["extraPortMappings"][0]["hostPort"] == 8080
-        assert "helm upgrade --install clopy-paste " in _read(project, "scripts/deploy.sh")
+        assert f"helm upgrade --install {APP} " in _read(project, "scripts/deploy.sh")
         assert not (project / "deploy" / "local" / "kafka-users.yaml").exists()
 
 
@@ -371,7 +374,7 @@ def test_minimal_non_kafka_service_is_generic(tmp_path: Path, monkeypatch: pytes
     outputs = [project / "Makefile", *_shell_files(project), *(project / "deploy" / "local").glob("*.yaml")]
     for path in outputs:
         text = path.read_text(encoding="utf-8").lower()
-        for word in ("kafka", "strimzi", "clopy"):
+        for word in ("kafka", "strimzi", APP):
             assert word not in text, f"{path}: {word}"
         if SH is not None and path.suffix == ".sh":
             proc = subprocess.run([SH, "-n", str(path)], capture_output=True, text=True)
@@ -402,7 +405,7 @@ def test_generated_scripts_run_on_skeleton(tmp_path: Path) -> None:
             errors="replace",
         )
         assert proc.returncode == 0, f"{script}: {proc.stdout}\n{proc.stderr}"
-    assert any((project / "bin").glob("clopy-paste*"))
+    assert any((project / "bin").glob(f"{APP}*"))
 
 
 GENERATORS = PACK_DIR / "generators"

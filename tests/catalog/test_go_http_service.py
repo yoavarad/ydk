@@ -22,7 +22,9 @@ import yaml
 from ydk.core.ignition import IgnitionEngine
 
 PACK_DIR = Path(__file__).resolve().parents[2] / "src" / "ydk" / "catalog" / "go-http-service"
-SAMPLES = PACK_DIR / "samples" / "components"
+SAMPLES = PACK_DIR / "samples" / "kafka-service" / "components"
+MINIMAL = PACK_DIR / "samples" / "minimal" / "components"
+APP = yaml.safe_load((SAMPLES / "config" / "ops" / "app.yaml").read_text(encoding="utf-8"))["title"]
 TODO_LINE = re.compile(r'^\s*panic\("not implemented"\)', re.MULTILINE)
 
 
@@ -91,12 +93,12 @@ class TestIgniteSamples:
     def test_go_mod(self, ignited: tuple[Path, object]) -> None:
         project, _ = ignited
         go_mod = _read(project, "go.mod")
-        assert go_mod.startswith("module clopy-paste\n")
+        assert go_mod.startswith(f"module {APP}\n")
         assert "\ngo 1.22" in go_mod
 
     def test_main_wires_config_logger_server_and_shutdown(self, ignited: tuple[Path, object]) -> None:
         project, _ = ignited
-        main = _read(project, "cmd/clopy-paste/main.go")
+        main = _read(project, f"cmd/{APP}/main.go")
         assert "package main" in main
         assert "config.Load()" in main
         assert "slog.NewJSONHandler" in main
@@ -113,7 +115,7 @@ class TestIgniteSamples:
         assert "InstanceName string" in cfg
         assert 'lookup("LOG_LEVEL", "INFO", false)' in cfg  # literal default
         assert 'lookup("INSTANCE_NAME", "", true)' in cfg  # required
-        assert 'lookup("CENSOR_CHARS", "", false)' in cfg  # prose default dropped
+        assert 'lookup("FILTER_CHARS", "", false)' in cfg  # prose default dropped
         assert "ErrInvalidConfig" in cfg
 
     def test_every_route_has_a_handler(self, ignited: tuple[Path, object]) -> None:
@@ -195,7 +197,7 @@ class TestIgniteSamples:
         project, _ = ignited
         web = _read(project, "web/web.go")
         assert "//go:embed" in web
-        assert "<title>clopy-paste</title>" in _read(project, "web/main.html")
+        assert f"<title>{APP}</title>" in _read(project, "web/main.html")
         handlers = _read(project, "internal/httpapi/handlers.go")
         index = handlers.split("func (s *Server) handleIndex", 1)[1].split("\n}\n", 1)[0]
         assert "not implemented" not in index
@@ -225,7 +227,7 @@ class TestIgniteVariants:
         assert not (project / "internal/adapters").exists()
         assert not (project / "internal/messaging/fakes.go").exists()
         assert "type Config struct" in _read(project, "internal/config/config.go")
-        main = _read(project, "cmd/clopy-paste/main.go")
+        main = _read(project, f"cmd/{APP}/main.go")
         assert "10 * time.Second" in main  # default timeout
 
     def test_health_routes_added_when_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -270,7 +272,7 @@ class TestIgniteEdgeCases:
             .read_text(encoding="utf-8")
             .startswith("package configdomain")
         )
-        assert '"clopy-paste/internal/configdomain"' in _read(project, "cmd/clopy-paste/main.go")
+        assert f'"{APP}/internal/configdomain"' in _read(project, f"cmd/{APP}/main.go")
         handlers = _read(project, "internal/httpapi/handlers.go")
         assert handlers.count("func (s *Server) handleHealthz(") == 1
         post = handlers.split("func (s *Server) handleHealthz2", 1)[1].split("\n}\n", 1)[0]
@@ -447,9 +449,60 @@ class TestGoIntegration:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         report = json.loads(result.stdout.strip().splitlines()[-1])
-        assert report["healthz"] == 200
-        assert report["unknown_status"] == 404
-        assert report["unknown_body"] == {"error": "not found"}
-        assert report["readyz"] == 200
-        assert report["wrong_method_status"] == 405
-        assert report["wrong_method_body"] == {"error": "method DELETE not allowed"}
+        assert report["ok"] is True
+        assert set(report["sets"]) == {p.parent.name for p in (PACK_DIR / "samples").glob("*/components")}
+        for name, set_report in report["sets"].items():
+            assert set_report["ok"] is True, name
+            assert set_report["healthz"] == 200
+            assert set_report["unknown_status"] == 404
+            assert set_report["unknown_body"] == {"error": "not found"}
+            assert set_report["readyz"] == 200
+            assert set_report["wrong_method_status"] == 405
+            assert set_report["wrong_method_body"] == {"error": "method DELETE not allowed"}
+
+
+class TestMinimalService:
+    """The neutral fixture set ignites to a plain HTTP service with no Kafka output."""
+
+    @pytest.fixture(scope="class")
+    def minimal(self, tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, object]:
+        tmp_path = tmp_path_factory.mktemp("go-http-service-min")
+        with pytest.MonkeyPatch.context() as mp:
+            return _ignite(tmp_path, mp, MINIMAL)
+
+    def test_generators_succeed_without_go(self, minimal: tuple[Path, object]) -> None:
+        _, result = minimal
+        assert [e for e in result.errors if "enerator" in e] == []
+        assert result.files_written > 0
+
+    def test_module_and_routes_from_fixture(self, minimal: tuple[Path, object]) -> None:
+        project, _ = minimal
+        app = yaml.safe_load((MINIMAL / "config" / "ops" / "app.yaml").read_text(encoding="utf-8"))["title"]
+        assert _read(project, "go.mod").startswith(f"module {app}\n")
+        assert (project / "cmd" / app / "main.go").is_file()
+        server = _read(project, "internal/httpapi/server.go")
+        routes = sorted((MINIMAL / "route").rglob("*.yaml"))
+        assert routes
+        for comp in routes:
+            route = yaml.safe_load(comp.read_text(encoding="utf-8"))
+            assert f'"{route["method"]} {route["path"]}"' in server
+        assert '"GET /healthz"' in server
+        assert '"GET /readyz"' in server
+
+    def test_no_kafka_output(self, minimal: tuple[Path, object]) -> None:
+        project, _ = minimal
+        assert not (project / "internal" / "adapters").exists()
+        assert not (project / "internal" / "messaging").exists()
+        assert "franz-go" not in _read(project, "go.mod")
+        assert "KAFKA_" not in _read(project, "internal/config/config.go")
+
+    @pytest.mark.skipif(shutil.which("go") is None, reason="go toolchain not on PATH")
+    def test_go_build_and_vet(self, tmp_path: Path) -> None:
+        project = tmp_path / "project"
+        shutil.copytree(PACK_DIR, project / ".ydk" / "ignition-packs" / "go-http-service")
+        shutil.copytree(MINIMAL, project / ".ydk" / "components")
+        result = IgnitionEngine(project).ignite()
+        assert result.errors == [], result.errors
+        for cmd in (["go", "build", "./..."], ["go", "vet", "./..."]):
+            proc = subprocess.run(cmd, cwd=project, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            assert proc.returncode == 0, f"{cmd}: {proc.stdout}{proc.stderr}"

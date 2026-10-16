@@ -1,0 +1,15 @@
+$schema: ydk:schema:req
+id: ydk:req:messaging/fifo-per-user
+description: "Each username keeps at most 100 received messages; oldest dropped first."
+type: constraint
+priority: high
+rule: |
+  Messages are stored per username in arrival order (consumer processing order). When a 101st
+  message arrives for a username, the oldest is removed. GET returns the stored messages in
+  reverse arrival order (newest first).
+failure_behavior: "No error path; dropped messages are gone."
+related_components:
+  - ydk:entity:messaging/UserMessages
+  - ydk:contract:messaging/Store
+acceptance_criteria:
+  - "Receive m1..m101 for alice: GET alice returns 100 items, first m101, last m2"

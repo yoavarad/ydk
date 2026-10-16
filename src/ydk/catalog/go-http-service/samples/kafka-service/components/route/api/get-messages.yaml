@@ -1,0 +1,34 @@
+$schema: ydk:schema:route
+id: ydk:route:api/get-messages
+description: |
+  Returns messages received from the other side for one username, newest first, at most 100.
+  The query username is validated (1..128 code points), then filtered with the same blocklist
+  as the send path (ydk:req:messaging/filter-blocklist) so a username typed identically on both
+  sides matches. Lookup via ydk:contract:messaging/Store Get. Known user: touches LRU
+  (ydk:req:messaging/lru-touch). Unknown user: empty list, no entry created
+  (ydk:req:messaging/unknown-user-not-created). No pagination.
+method: GET
+path: /api/messages
+request:
+  query:
+    user:
+      type: string
+      required: true
+      description: "Username, 1..128 code points, URL-encoded"
+responses:
+  "200":
+    description: "JSON array of ydk:entity:messaging/Message, newest first, 0..100 items; [] for unknown user"
+    ref: ydk:entity:messaging/Message
+    shape:
+      body: "[{\"text\": string, \"time\": RFC3339 UTC string}]"
+  "400":
+    description: "user query parameter missing, empty or over 128 code points"
+    ref: ydk:error:api/validation-failed
+  "405":
+    description: "Method other than GET or POST on this path"
+    ref: ydk:error:api/method-not-allowed
+  "500":
+    description: "Unexpected server fault"
+    ref: ydk:error:api/internal-error
+auth: none
+rate_limit: "None; expected load is one poll every 2 s per open browser tab"

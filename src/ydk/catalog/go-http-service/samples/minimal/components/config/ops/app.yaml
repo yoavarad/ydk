@@ -1,0 +1,3 @@
+$schema: ydk:schema:config
+id: ydk:config:ops/app
+title: minimal-service

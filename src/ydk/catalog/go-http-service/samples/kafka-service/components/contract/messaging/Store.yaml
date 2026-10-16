@@ -1,0 +1,28 @@
+$schema: ydk:schema:contract
+id: ydk:contract:messaging/Store
+description: |
+  Operations on ydk:entity:messaging/MessageStore; concrete Go type, not an interface; tests
+  use the real implementation (internal types are never faked). Safe for concurrent use: one
+  mutex guards map and LRU list.
+methods:
+  Add:
+    description: "Append msg to the user's bucket. If the user is absent and 100 users exist, evict the least-recently-used user first, then create the bucket. If the bucket then holds 101 messages, drop the oldest. Move the user to most-recently-used."
+    params:
+      user:
+        type: string
+        description: "Validated username from the record"
+      msg:
+        type: Message
+        description: "ydk:entity:messaging/Message"
+    returns:
+      type: none
+      description: "No return value"
+  Get:
+    description: "If the user exists, move it to most-recently-used and return a copy of its messages newest first. If not, return an empty non-nil slice and change nothing."
+    params:
+      user:
+        type: string
+        description: "Filtered username from the query"
+    returns:
+      type: "[]Message"
+      description: "0..100 messages, newest first"
