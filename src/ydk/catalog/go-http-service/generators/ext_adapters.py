@@ -3,10 +3,12 @@
 
 One adapter package per supported ydk:ext technology. The technology is the ext id
 namespace (ydk:ext:kafka/cluster -> kafka); it is supported when templates/adapters/<tech>.go.j2
-exists. The template gets a type per ext-backed contract (contract description names the
-technology) plus a Consumer when an ext endpoint reads (GET); bodies are TODOs. kafka renders
-internal/adapters/kafka on franz-go. An unsupported technology emits a warning naming the ext
-manifest; domain-packages still generates its port interfaces and fakes so the service compiles.
+exists. The template gets a type per ext-backed contract (its ext_ref names an ext of the
+technology; a description naming it is the deprecated fallback) plus a Consumer when an ext
+endpoint reads (GET); bodies are TODOs. kafka renders internal/adapters/kafka on franz-go,
+with Connect() building the client main.go wires into the adapters. An unsupported
+technology emits a warning naming the ext manifest; domain-packages still generates its port
+interfaces and fakes so the service compiles.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from _go_common import (
     check_unique,
     comment,
     contract_methods,
+    contract_tech,
     emit,
     entity_names_by_ns,
     ext_tech,
@@ -28,7 +31,6 @@ from _go_common import (
     go_ident,
     go_pkg,
     imports_for,
-    is_ext_backed,
     load,
     module_path,
     render,
@@ -62,7 +64,7 @@ def main() -> None:
         exts = [e for e in load("ext") if ext_tech(e) == tech]
         contracts, imports = [], set()
         for contract in load("contract"):
-            if not is_ext_backed(contract, tech):
+            if contract_tech(contract) != tech:
                 continue
             ns, name = split_id(str(contract.get("id", "")))
             pkg = go_pkg(ns)
@@ -76,7 +78,7 @@ def main() -> None:
                 }
             )
         consume = _consume_endpoint(exts)
-        entries = [("NewClient", "the pack's client constructor")]
+        entries = [("NewClient", "the pack's client constructor"), ("Connect", "the pack's client constructor")]
         if consume:
             entries += [(n, f"the consumer for {consume['ext_id']}") for n in ("Consumer", "NewConsumer")]
         for c in contracts:

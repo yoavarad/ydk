@@ -26,7 +26,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 sys.path.insert(0, str(Path(__file__).parent))
 
 from _go_common import TEMPLATES_DIR, app_name, emit, fail, http_port, init_answers, load, split_id
-from main_cmd import shutdown_timeout
+from main_cmd import shutdown_nfrs, shutdown_timeout
 
 CHART_VERSION = "0.1.0"
 # Neutral defaults used when no ydk:nfr names cpu or memory.
@@ -202,11 +202,11 @@ def resources() -> dict:
 
 
 def grace_seconds() -> int:
-    for nfr in load("nfr"):
+    for nfr in shutdown_nfrs(report=False):  # main-cmd reports deprecations
         match = re.search(r"terminationGracePeriodSeconds\s*(\d+)", str(nfr.get("target", "")))
-        if "shutdown" in str(nfr.get("id", "")).lower() and match:
+        if match:
             return int(match.group(1))
-    return shutdown_timeout()[0] + DEFAULT_GRACE_EXTRA_SECONDS
+    return shutdown_timeout(report=False)[0] + DEFAULT_GRACE_EXTRA_SECONDS
 
 
 def single_replica() -> bool:

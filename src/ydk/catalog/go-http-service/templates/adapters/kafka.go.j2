@@ -2,12 +2,10 @@
 package kafka
 
 import (
-{% for imp in std_imports %}
+{% for imp in (std_imports + ["os", "strings"]) | unique | sort %}
 	"{{ imp }}"
 {% endfor %}
-{% if std_imports %}
 
-{% endif %}
 	"github.com/twmb/franz-go/pkg/kgo"
 {% if domain_imports %}
 
@@ -20,6 +18,21 @@ import (
 // NewClient creates a franz-go client for the seed brokers; pass extra kgo options for TLS/SASL.
 func NewClient(seeds []string, opts ...kgo.Opt) (*kgo.Client, error) {
 	return kgo.NewClient(append([]kgo.Opt{kgo.SeedBrokers(seeds...)}, opts...)...)
+}
+
+// Connect creates the client main.go wires into the adapters, seeded from KAFKA_BOOTSTRAP_SERVERS
+// (comma-separated host:port, default localhost:9092); add TLS/SASL options here as the ext requires.
+func Connect() (*kgo.Client, error) {
+	var seeds []string
+	for _, seed := range strings.Split(os.Getenv("KAFKA_BOOTSTRAP_SERVERS"), ",") {
+		if seed = strings.TrimSpace(seed); seed != "" {
+			seeds = append(seeds, seed)
+		}
+	}
+	if len(seeds) == 0 {
+		seeds = []string{"localhost:9092"}
+	}
+	return NewClient(seeds)
 }
 {% for c in contracts %}
 

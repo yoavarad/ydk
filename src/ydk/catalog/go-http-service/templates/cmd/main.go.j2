@@ -14,6 +14,9 @@ import (
 
 	"{{ module }}/internal/config"
 	"{{ module }}/internal/httpapi"
+{% for a in adapters %}
+	{{ a.alias }} "{{ a.path }}"
+{% endfor %}
 {% for imp in domain_imports %}
 	"{{ imp }}"
 {% endfor %}
@@ -44,7 +47,15 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	_ = cfg // pass cfg to adapters when wiring them in place of the default stubs below
+	_ = cfg // pass cfg to adapters and stubs below as they need it
+{% for a in adapters %}
+
+	{{ a.client }}, err := {{ a.alias }}.Connect()
+	if err != nil {
+		return err
+	}
+	defer {{ a.client }}.Close()
+{% endfor %}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -52,7 +63,7 @@ func run(logger *slog.Logger) error {
 	api := httpapi.NewServer(httpapi.Deps{
 		Logger: logger,
 {% for d in deps %}
-		{{ d.field }}: {{ d.ctor }}(),
+		{{ d.field }}: {{ d.ctor }},
 {% endfor %}
 	})
 	listenAddr := net.JoinHostPort(os.Getenv("LISTEN_HOST"), listenPort)

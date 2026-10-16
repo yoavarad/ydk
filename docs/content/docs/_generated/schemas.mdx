@@ -131,6 +131,10 @@ fields:
     type: text
     required: true
     description: "What this service contract represents"
+  ext_ref:
+    type: ref
+    ref_type: ext
+    description: "The ydk:ext component (ydk:ext:<ns>/<name>) whose adapter implements this contract"
   methods:
     type: map
     required: true
@@ -171,6 +175,9 @@ fields:
     type: text
     required: true
     description: "What this cross-cutting concern defines"
+  kind:
+    type: string
+    description: "What kind of concern this is, for generators to select it by (e.g. error-format)"
   specification:
     type: text
     required: true
@@ -525,6 +532,9 @@ fields:
     values: [performance, scalability, reliability, security, observability]
     required: true
     description: "NFR category"
+  tags:
+    type: list
+    description: "Labels for generators to select this NFR by (e.g. [shutdown])"
   target:
     type: string
     required: true

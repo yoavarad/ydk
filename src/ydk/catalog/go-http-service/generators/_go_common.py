@@ -7,9 +7,13 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 TODO_STMT = 'panic("not implemented")'
@@ -254,9 +258,56 @@ def tech_deps(tech: str) -> list[str]:
     return deps
 
 
-def is_ext_backed(contract: dict, technology: str) -> bool:
-    """A contract is backed by an ext technology when its description names it."""
-    return re.search(rf"\b{re.escape(technology)}\b", str(contract.get("description", "")), re.IGNORECASE) is not None
+def contract_tech(contract: dict, *, report: bool = False) -> str:
+    """Ext technology backing a contract ('' when unbound).
+
+    The contract's `ext_ref` (ydk:ext:<ns>/<name>) decides; one naming no loaded ydk:ext
+    leaves the contract unbound. Without it, the first ext technology named in the
+    description binds it (deprecated). `report` emits the warnings (one generator only).
+    """
+    cid = str(contract.get("id", ""))
+    ref = str(contract.get("ext_ref") or "")
+    if ref:
+        if not ref.startswith("ydk:ext:"):
+            fail(f"{cid}: ext_ref {ref!r} must be a ydk:ext:<ns>/<name> id")
+        if ref in {str(e.get("id", "")) for e in load("ext")}:
+            return ext_tech({"id": ref})
+        if report:
+            warn(f"{cid}: ext_ref {ref!r} names no ydk:ext component; generating the stub only")
+        return ""
+    description = str(contract.get("description", ""))
+    for tech in ext_technologies():
+        if re.search(rf"\b{re.escape(tech)}\b", description, re.IGNORECASE):
+            if report:
+                warn(
+                    f"{cid} is bound to {tech!r} because its description names it, which is deprecated; "
+                    f"set ext_ref: ydk:ext:{tech}/<name>"
+                )
+            return tech
+    return ""
+
+
+def _tags(component: dict) -> list[str]:
+    tags = component.get("tags")
+    return [str(t) for t in tags] if isinstance(tags, list) else []
+
+
+def tagged(
+    components: list[dict], tag: str, legacy: Callable[[str], bool], field: str, *, report: bool = True
+) -> list[dict]:
+    """Components whose `kind` is `tag` or whose `tags` list holds it.
+
+    When none is marked explicitly, components whose id matches `legacy` are returned
+    instead with a deprecation warning naming `field`, the field to set (when `report`).
+    """
+    explicit = [c for c in components if c.get("kind") == tag or tag in _tags(c)]
+    if explicit:
+        return explicit
+    fallback = [c for c in components if legacy(str(c.get("id", "")))]
+    for c in fallback if report else []:
+        hint = f"kind: {tag}" if field == "kind" else f"tags: [{tag}]"
+        warn(f"{c.get('id')} is selected as {tag!r} by its id, which is deprecated; set {hint}")
+    return fallback
 
 
 def render(template: str, **context: object) -> str:

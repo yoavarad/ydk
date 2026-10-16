@@ -1,5 +1,6 @@
 $schema: ydk:schema:contract
 id: ydk:contract:messaging/Publisher
+ext_ref: ydk:ext:kafka/cluster
 description: |
   Go interface (port) used by the send handler to publish a filtered message. Implemented by
   the Kafka adapter on franz-go. Faked in handler unit tests; this is the only faked boundary.
