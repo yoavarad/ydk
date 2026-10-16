@@ -138,7 +138,7 @@ If no template applies, skip this step and hand-write everything.
 
 ### 4. Implement TODOs (TDD)
 
-Write code using strict Red-Green-Refactor cycles. When the task has assigned TODOs (from ignition), implement the business logic that replaces each `NotImplementedError` placeholder. Read `aspects/testing-strategy.md` for the full testing protocol.
+Write code using strict Red-Green-Refactor cycles. When the task has assigned TODOs (from ignition), implement the business logic that replaces each unimplemented placeholder (Python `NotImplementedError`, Go `panic("not implemented")`). Read `aspects/testing-strategy.md` for the full testing protocol.
 
 **TDD is now enforced by the guard system** — the `tdd-guard` (installed via `ydk init`) blocks writes to source files (`src/`, `app/`) when no corresponding test exists. The TDD state machine (`red → green → refactor → red`) is tracked in `.ydk/tdd-state.json` and resets on `git commit`. You cannot bypass this guard.
 
@@ -147,7 +147,7 @@ Write code using strict Red-Green-Refactor cycles. When the task has assigned TO
 - You MUST run tests and verify they FAIL before implementing
 - You MUST write MINIMUM code to make tests pass (Green)
 - You MUST refactor only when tests pass (Refactor)
-- You MUST resolve all assigned TODOs by replacing `NotImplementedError` with real business logic
+- You MUST resolve all assigned TODOs by replacing the unimplemented placeholder with real business logic
 - You MUST run `ydk todo show <todo-id>` to understand each TODO's context before implementing
 - You MUST post progress updates at key milestones via `ydk task comment`
 - Unit tests MUST mirror the source structure: `src/X/Y/Z.py` → `tests/unit/X/Y/test_Z.py`
@@ -271,7 +271,7 @@ Run `ydk task done` to finalize: verify everything, create PR, post proof.
 - You MAY use `ydk verify run --pr <URL>` to post verification results to an existing PR
 
 **What `ydk task done` does:**
-1. Checks that all assigned TODOs are resolved (no remaining `NotImplementedError` for assigned TODO IDs)
+1. Checks that all assigned TODOs are resolved (no remaining placeholder for assigned TODO IDs)
 2. Runs `ydk verify run --trigger pre-push` (all layers, all plugins)
 3. If any fail → exits with error, prints first 3 lines of failure output per failing check, posts failure to issue
 4. If all pass → commits, pushes branch
@@ -345,7 +345,7 @@ When a human leaves review comments on a PR, the watch system (`ydk watch`) dete
 **When addressing PR review comments:**
 1. Read the comment carefully
 2. Make the change (or verify it's already done)
-3. Run verification (`ruff check`, `pytest`)
+3. Run verification (the stack's lint and test commands, e.g. `ruff check` + `pytest`, or `go vet` + `go test`)
 4. Commit and push
 5. Reply to each comment on the PR with this format:
 
@@ -361,7 +361,7 @@ Changed files:
 <details>
 <summary>Verification</summary>
 
-<paste actual ruff + pytest output>
+<paste actual lint + test output>
 
 </details>
 

@@ -9,6 +9,8 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 After your spec passes the Stage 01 quality gate, ignition generates a runnable project skeleton from your component manifests. This guide walks through the complete ignition process.
 
+Examples below use the Python stack (`NotImplementedError` placeholders, `ruff`, `pytest`). Other stacks use their own placeholders and tooling: Go uses `panic("not implemented")`, `gofmt`, `go vet` and `go test`. See the [Go stack guide](/docs/guide/go-stack).
+
 ## Prerequisites
 
 Before running ignition, you need:
@@ -54,12 +56,12 @@ ruff check src/ tests/
 # Formatting passes
 ruff format --check src/ tests/
 
-# Tests can be collected (they will all fail with NotImplementedError)
+# Tests can be collected (they will all fail on the unimplemented placeholders)
 pytest --collect-only tests/
 ```
 
 <Callout type="warn">
-Do not try to make tests pass at this stage. Every test should fail with `NotImplementedError` -- that is by design. The business logic implementation happens in Stage 03.
+Do not try to make tests pass at this stage. Every test should fail on the placeholder (`NotImplementedError` on Python) -- that is by design. The business logic implementation happens in Stage 03.
 </Callout>
 
 ## Step 4: Review TODOs
@@ -77,7 +79,7 @@ ydk todo coverage
 ydk todo show YDK-TODO-001
 ```
 
-Each TODO corresponds to a `NotImplementedError` placeholder in the generated code. The TODO ID, file path, line number, and a brief description of what business logic is needed are all captured.
+Each TODO corresponds to an unimplemented placeholder in the generated code. The TODO ID, file path, line number, and a brief description of what business logic is needed are all captured.
 
 ## Step 5: Commit and PR
 
@@ -96,7 +98,7 @@ The PR should include all generated files and the TODO registry (`.ydk/todos.yam
 After the ignition PR is merged:
 
 1. **Stage 02**: Decompose the remaining work into tasks. Use `ydk todo assign` to link TODOs to tasks. Tasks are scoped to business logic only -- no boilerplate.
-2. **Stage 03**: Agents implement each task by replacing `NotImplementedError` with real code. `ydk task done` auto-verifies that all assigned TODOs are resolved.
+2. **Stage 03**: Agents implement each task by replacing placeholders with real code. `ydk task done` auto-verifies that all assigned TODOs are resolved.
 
 ## Re-Running Ignition
 

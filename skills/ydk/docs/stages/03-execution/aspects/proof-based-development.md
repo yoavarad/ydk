@@ -11,8 +11,8 @@ Every claim an agent makes must be backed by verifiable evidence. This is what m
 
 | Claim | Required Proof |
 |---|---|
-| "Tests pass" | Actual pytest output showing test count and pass status |
-| "Code is clean" | Actual ruff output showing no violations |
+| "Tests pass" | Actual test runner output (pytest / `go test` / `dotnet test`) showing test count and pass status |
+| "Code is clean" | Actual linter output (ruff / `go vet` / `dotnet format`) showing no violations |
 | "Types check" | Actual ty/mypy output showing no errors |
 | "Matches spec" | Spec alignment report with 6 dimension scores |
 | "No security issues" | Security review agent report |
@@ -26,8 +26,8 @@ Every verification produces a proof artifact stored in `.ydk/proofs/<task-id>/`:
 ```
 .ydk/proofs/T-a1b2c3d4/
 ├── verification.json     # Full verification results
-├── test-output.txt       # Raw pytest output
-├── lint-output.txt       # Raw ruff output
+├── test-output.txt       # Raw test runner output (pytest, go test, dotnet test)
+├── lint-output.txt       # Raw linter output (ruff, go vet, ...)
 ├── types-output.txt      # Raw ty output
 ├── spec-alignment.json   # 6-dimension spec alignment report
 ├── review.json           # AI review agent findings
@@ -201,7 +201,7 @@ When an agent runs `ydk task done`, proof files are captured deterministically �
 ### The Flow
 
 1. The **subagent** runs `ydk task done --summary "Agent narrative here"` **in its own worktree** — the subagent owns the full lifecycle from implementation through PR creation
-2. `ProofCapture` runs each quality gate (`ruff check`, `ruff format --check`, `ty check`, `pytest`) via `capture_command()` and saves raw stdout+stderr to `.ydk/proofs/<task-id>/`
+2. `ProofCapture` runs each quality gate of the project's stack (Python: `ruff check`, `ruff format --check`, `ty check`, `pytest`; Go: `gofmt`, `go vet`, `go test -race` with the coverage gate) via `capture_command()` and saves raw stdout+stderr to `.ydk/proofs/<task-id>/`
 3. The agent's `--summary` flag writes `summary.md` — the **only** agent-authored content
 4. `PRBodyBuilder` assembles the PR body from a deterministic template + proof files + agent summary
 5. The PR is created with this assembled body — proof sections reflect **actual command output**, not agent claims

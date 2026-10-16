@@ -33,7 +33,7 @@ Spec evolution is also managed here. When requirements change after the initial 
 
 ## Stage 01.5: Ignition
 
-Stage 01.5 bridges design and implementation with a single command: `ydk ignite`. Given an installed ignition pack (from the catalog) and validated component manifests, ignition generates a complete runnable skeleton -- domain models, repository interfaces, API routes, test stubs, and migration files. Every piece of business logic that cannot be derived from the manifest is left as a `NotImplementedError` placeholder, registered as a tracked TODO with an `YDK-TODO-NNN` identifier.
+Stage 01.5 bridges design and implementation with a single command: `ydk ignite`. Given an installed ignition pack (from the catalog) and validated component manifests, ignition generates a complete runnable skeleton -- domain models, repository interfaces, API routes, test stubs, and migration files. Every piece of business logic that cannot be derived from the manifest is left as a stack-specific placeholder (`NotImplementedError`, `NotImplementedException` or `panic("not implemented")`), registered as a tracked TODO with an `YDK-TODO-NNN` identifier.
 
 The catalog system (`ydk catalog search/install`) provides ignition packs. Each pack declares which component types it consumes and what code it generates. The `hexagonal-architecture` pack, for example, consumes entity, route, error, contract, and external-dep manifests and produces a FastAPI + SQLAlchemy hexagonal layout.
 

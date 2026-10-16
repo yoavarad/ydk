@@ -42,7 +42,7 @@ A named trigger that determines when verification plugins run: `git:pre-commit` 
 
 ## Auto-Fix
 
-`ydk verify run --auto-fix` runs `ruff --fix` before checking, automatically resolving common formatting and lint issues before verification evaluates them.
+`ydk verify run --auto-fix` runs the stack's auto-fixer before checking (Python: `ruff --fix`), automatically resolving common formatting and lint issues before verification evaluates them.
 
 ## Auto-Repair Loop
 

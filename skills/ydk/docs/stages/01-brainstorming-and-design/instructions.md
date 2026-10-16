@@ -37,6 +37,7 @@ Before brainstorming, check the catalog for ignition packs that match the projec
 > # Results:
 > #   hexagonal-architecture — FastAPI + SQLAlchemy hexagonal layout with ports/adapters
 > #   python-quality — ruff, ty, pytest verification plugins
+> #   go-quality — gofmt, go vet, go test -race + coverage gate (Go stacks)
 >
 > ydk catalog install hexagonal-architecture
 > ydk catalog info hexagonal-architecture
@@ -180,8 +181,8 @@ Propose the complete technology stack. Lock it — not revisited during implemen
 > HTTP:     httpx (async, for Binance API calls)
 > Schemas:  Pydantic v2
 > Packages: uv
-> Tests:    pytest + pytest-asyncio, httpx AsyncClient for E2E
-> Linting:  ruff + ty
+> Tests:    pytest + pytest-asyncio, httpx AsyncClient for E2E   (Go: go test; dotnet: dotnet test)
+> Linting:  ruff + ty   (Go: gofmt + go vet; dotnet: dotnet format)
 > Deploy:   Docker Compose (FastAPI + PostgreSQL + nginx)
 > Frontend: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui
 > ```

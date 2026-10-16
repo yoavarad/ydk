@@ -1,0 +1,148 @@
+---
+title: Go Stack
+description: Use YDK on a Go project, from init to ignition, task done and CI
+---
+
+# Go Stack
+
+YDK is stack-neutral. The workflow (brainstorm, ignite, tasks, verified `task done`) is the same for every stack. The `go` stack swaps in Go tooling for verification, TDD enforcement, ignition and CI.
+
+| Concern | Python | dotnet | Go |
+|---|---|---|---|
+| Format / lint | `ruff` | `dotnet format`, `dotnet build` | `gofmt`, `go vet` |
+| Tests | `pytest` | `dotnet test` | `go test -race` |
+| Unimplemented placeholder | `NotImplementedError` | `NotImplementedException` | `panic("not implemented")` |
+| Verification set | `python-quality` | `dotnet-*` plugins | `go-quality` |
+| Ignition pack | `hexagonal-architecture` | `dotnet-webapi-clean` | `go-http-service` |
+
+## 1. Init
+
+```bash
+ydk init --name my-service --stack go
+```
+
+`--stack` accepts `python-fastapi`, `python-cli`, `nextjs-fsd`, `terraform`, `dotnet` and `go`. Add `--remote github` or `--remote gitlab` for the issue and PR backend (default `local`).
+
+The `go` stack enables these verification plugins: `go-fmt`, `go-vet`, `go-test`, `go-vendor`, `helm-lint`, `spec-alignment`, `pr-body-validation`, `ai-code-review`, `tdd-guard`, `tdd-guard-cmd` and the guard plugins. It also writes Go defaults to `.ydk/config.yaml`:
+
+```yaml
+verification:
+  tdd:
+    source_globs: ["**/*.go"]
+    test_globs: ["**/*_test.go"]
+    exempt_globs: ["vendor/**", "test/**"]
+    test_for: same-dir-suffix      # foo.go is covered by foo_test.go in the same directory
+    test_suffix: _test.go
+tdd:
+  test_commands: ['\bgo test\b', '\bmake test\b']
+guards:
+  code_dirs: [cmd, internal, pkg, charts, scripts, test, tests]
+testing:
+  test_globs: ["**/*_test.go"]
+```
+
+## 2. Brainstorm and ignite
+
+Brainstorm as usual (`ydk spec verify` must pass), then install the Go pack and its verification set:
+
+```bash
+ydk catalog install go-http-service
+ydk catalog install go-quality
+ydk ignite
+```
+
+`go-http-service` generates a stdlib-first `net/http` service from your component manifests: `cmd/<app>/main.go` (slog, graceful shutdown), `internal/httpapi/` (Go 1.22 `ServeMux` routes, JSON errors, `/healthz`, `/readyz`), `internal/<ns>/` types and contract stubs, a franz-go Kafka adapter when a `ydk:ext:kafka/*` component exists, a multi-stage `Dockerfile`, a Helm chart under `charts/<app>/`, and a `Makefile` whose targets (`lint`, `test`, `build`, `scan`, `e2e`, `smoke`, ...) run `scripts/<target>.sh`.
+
+Every unimplemented handler or stub is `panic("not implemented") // <component id>: <description>`, and ignition registers each one as a `YDK-TODO-NNN`. Post-generation, ignition runs `go mod tidy`, `go mod vendor`, `gofmt -w`, `go build ./...` and `go vet ./...`. The skeleton builds and serves `/healthz`; a panic from a TODO becomes a JSON 500.
+
+See the pack README (`ydk catalog info go-http-service`) for the full layout and the ops phase.
+
+## 3. TDD layout
+
+Tests live next to the code they cover, as `*_test.go` in the same package directory (`test_for: same-dir-suffix`). `tdd-guard` blocks edits to `**/*.go` source files until a test exists for them. Files under `vendor/` and `test/` are exempt. `tdd-guard-cmd` tracks `go test` and `make test` runs (`tdd.test_commands`) for the red/green state machine.
+
+Generate failing test stubs from `ydk:test` manifests:
+
+```bash
+ydk test generate --from ydk:test:orders/create-order --lang go --output internal/orders/create_order_test.go
+```
+
+The stub has one `t.Run("<case name>", ...)` per case, each failing with `t.Fatal("YDK-TODO: implement")`. An existing file is never overwritten; the command lists the cases still missing instead. `--lang go` is only supported for `ydk:test` manifests. Tests with `level: e2e` become `test/e2e/<name>.sh` through the ignition env phase.
+
+## 4. Verification and coverage gate
+
+`ydk task done` runs the Go plugins and captures their output as proof.
+
+| Plugin | Runs |
+|---|---|
+| `go-fmt` | `gofmt` check |
+| `go-vet` | `go vet ./...` |
+| `go-test` | `go test [-race] [-tags ...] -coverprofile ./...` with the coverage gate |
+| `go-vendor` | vendor directory is in sync with `go.mod` |
+| `helm-lint` | `helm lint` on configured charts |
+
+Configure them under `verification.go` in `.ydk/config.yaml`:
+
+```yaml
+verification:
+  go:
+    coverage_min: 80          # percent per package, 0 = gate off (default)
+    coverage_packages:        # globs over module-relative or import paths; empty = whole module
+      - "internal/..."
+    test_tags: []             # extra -tags for go test
+    race: true                # go test -race (default)
+    skip_patterns: [...]      # regexes failing task done on un-reasoned t.Skip added by the task
+  helm:
+    charts: [charts/my-service]
+    values_files: []
+    require_schema: false
+```
+
+Go 1.22+ reports packages without tests as 0.0%, so with `coverage_packages` empty a package like `cmd/...` fails the gate. Scope the gate to the packages you test. Plugins skip when no Go-relevant file changed, the `go` toolchain is missing, or there is no `go.mod`.
+
+## 5. Command plugins and guards
+
+Besides file-checking plugins, YDK has command plugins that fire on `guard:command`, before a shell command runs: `tdd-guard-cmd` (tracks test runs) and `guard-stage-gate-cmd` (blocks YDK commands that do not fit the current stage). They are installed in `.claude/hooks/guard.py` by `ydk init`. The guard also treats `cmd/`, `internal/`, `pkg/` and `charts/` as code directories for a `go` project.
+
+## 6. ydk:test traceability
+
+A `ydk:test` manifest lists cases. `ydk test coverage` marks a case implemented when the test code contains either:
+
+- the marker `ydk:test:<id>#<case>` (for example in a comment or `t.Run` name), or
+- a `func Test<Target>...` whose body has `t.Run("<case>", ...)`, which is exactly what `ydk test generate --lang go` emits.
+
+```bash
+ydk test coverage
+```
+
+The e2e shell scripts from ignition carry `# ydk:test:<id> case=<name>` markers for the same purpose.
+
+## 7. Task done
+
+```bash
+ydk todo list
+ydk task start <task-id>
+# red: write the failing test, green: replace the panic("not implemented") stub
+ydk task done <task-id> --summary "..."
+```
+
+`task done` checks that assigned TODOs no longer contain the placeholder, runs verification, writes the proof under `.ydk/proofs/<task-id>/` and opens the PR.
+
+## 8. CI generation
+
+```bash
+ydk ci init             # .github/workflows/ci.yml (+ other generated workflows) and the PR template
+ydk ci init --gitlab    # .gitlab-ci.yml instead
+ydk ci init --force     # overwrite existing generated files
+```
+
+For the `go` stack, CI runs `make` targets, default `lint` and `test`, then `ydk verify run --trigger git:pre-push` (AI review and spec-alignment are skipped in CI). GitHub uses `actions/setup-go` with `go-version-file: go.mod`. Pipeline logic stays in the `Makefile`.
+
+```yaml
+ci:
+  make_targets: [lint, test, build]   # empty = stack default (lint, test)
+  gitlab:
+    image: golang:1.22                # empty = runner default image (a warning is printed)
+```
+
+`--gitlab` writes a `.gitlab-ci.yml` that runs only make targets. YDK warns when the root `Makefile` is missing or lacks a target CI runs. The `go-http-service` pack generates a `Makefile` with `lint`, `test` and `build`.

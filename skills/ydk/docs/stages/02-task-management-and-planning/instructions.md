@@ -176,7 +176,7 @@ Find natural boundaries. Each should be one agent, one session, one PR.
 
 #### 4C. Assign TODOs to Tasks
 
-After ignition (Stage 01.5), every `NotImplementedError` placeholder is registered as a TODO with an `YDK-TODO-NNN` ID. Link these TODOs to tasks so that `ydk task done` can verify resolution.
+After ignition (Stage 01.5), every unimplemented placeholder (Python `NotImplementedError`, Go `panic("not implemented")`) is registered as a TODO with an `YDK-TODO-NNN` ID. Link these TODOs to tasks so that `ydk task done` can verify resolution.
 
 **Constraints:**
 - You MUST run `ydk todo list` to see all registered TODOs

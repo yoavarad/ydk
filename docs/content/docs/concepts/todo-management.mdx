@@ -1,17 +1,17 @@
 ---
 title: TODO Management
-description: Tracked NotImplementedError placeholders and their lifecycle from ignition to resolution
+description: Tracked unimplemented placeholders and their lifecycle from ignition to resolution
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 # TODO Management
 
-TODOs in YDK are not comments. They are tracked `NotImplementedError` placeholders generated during ignition, each with a unique identifier, a known file location, and a lifecycle that connects code generation to task execution.
+TODOs in YDK are not comments. They are tracked unimplemented placeholders (Python `NotImplementedError`, dotnet `NotImplementedException`, Go `panic("not implemented")`) generated during ignition, each with a unique identifier, a known file location, and a lifecycle that connects code generation to task execution.
 
 ## What TODOs Are
 
-When ignition runs generators against your component manifests, the generated code contains method stubs where business logic belongs. Each stub raises `NotImplementedError` with a comment referencing its TODO ID:
+When ignition runs generators against your component manifests, the generated code contains method stubs where business logic belongs. Each stub fails with the stack's placeholder and a comment referencing its TODO ID (Python shown; Go uses `panic("not implemented")`, dotnet `throw new NotImplementedException()`):
 
 ```python
 def create_user(self, data: CreateUserRequest) -> User:
@@ -41,7 +41,7 @@ Ignition registers TODOs --> Stage 02 assigns TODOs to tasks --> Stage 03 resolv
 
 ### 1. Registration (Stage 01.5 - Ignition)
 
-When `ydk ignite` runs, every `NotImplementedError` in generated code is registered in `.ydk/todos.yaml` with status `open`. The TODO count depends on how many method stubs the generators produce -- typically one per business logic method per entity and route.
+When `ydk ignite` runs, every unimplemented placeholder in generated code is registered in `.ydk/todos.yaml` with status `open`. The TODO count depends on how many method stubs the generators produce -- typically one per business logic method per entity and route.
 
 ### 2. Assignment (Stage 02 - Decomposition)
 
@@ -49,10 +49,10 @@ During task decomposition, each TODO is assigned to a task using `ydk todo assig
 
 ### 3. Resolution (Stage 03 - Execution)
 
-When an agent runs `ydk task done`, the system checks all TODOs assigned to that task. For each one, it performs AST-based verification on the file and line window to confirm the `NotImplementedError` has been replaced with actual implementation.
+When an agent runs `ydk task done`, the system checks all TODOs assigned to that task. For each one, it verifies the file and line window (AST-based for Python, marker match for Go and dotnet) to confirm the placeholder has been replaced with actual implementation.
 
 <Callout type="warn">
-`ydk task done` will fail if any assigned TODO still contains a `NotImplementedError`. The agent must implement all assigned business logic before marking the task complete.
+`ydk task done` will fail if any assigned TODO still contains its placeholder. The agent must implement all assigned business logic before marking the task complete.
 </Callout>
 
 ## How verify_done Works
@@ -62,7 +62,7 @@ The verification is AST-based, not text-based. When checking whether a TODO is r
 1. Parse the source file into an AST
 2. Locate the function/method at the registered line window
 3. Walk the AST nodes within that function
-4. Check for any `Raise` node where the exception is `NotImplementedError`
+4. Check for any `Raise` node where the exception is `NotImplementedError` (Python; Go and dotnet match the `panic("not implemented")` / `NotImplementedException` marker instead)
 5. If found, the TODO is unresolved. If not found, it is resolved.
 
 This approach is robust against formatting changes, comment modifications, and line number drift from edits elsewhere in the file.
