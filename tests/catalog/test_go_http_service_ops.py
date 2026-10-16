@@ -228,6 +228,22 @@ class TestVariants:
         assert "terminationGracePeriodSeconds: 15" in deployment  # default 10 s shutdown + 5
 
 
+class TestShutdownNfrByTag:
+    def test_grace_period_from_tagged_nfr(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        components = _copy_samples(tmp_path, ("nfr/system/shutdown-time.yaml",))
+        nfr = {
+            "$schema": "ydk:schema:nfr",
+            "id": "ydk:nfr:system/stop-budget",
+            "tags": ["shutdown"],
+            "description": "d",
+            "category": "reliability",
+            "target": "exits <= 8 s; terminationGracePeriodSeconds 20",
+        }
+        (components / "nfr" / "system" / "stop-budget.yaml").write_text(yaml.safe_dump(nfr), encoding="utf-8")
+        project, _ = _ignite(tmp_path, monkeypatch, components)
+        assert "terminationGracePeriodSeconds: 20" in _read(project, f"{CHART}/templates/deployment.yaml")
+
+
 def _write_crosscut(components: Path, rows: list[str]) -> None:
     table = "\n".join(["| Env var | Helm value | Required | Default | Rule |", "|---|---|---|---|---|", *rows])
     data = {"$schema": "ydk:schema:crosscut", "id": "ydk:crosscut:ops/zz-extra", "specification": table + "\n"}

@@ -1,5 +1,6 @@
 $schema: ydk:schema:crosscut
 id: ydk:crosscut:system/error-format
+kind: error-format
 description: "One JSON error body for every non-2xx HTTP response."
 specification: |
   Every 4xx/5xx response has Content-Type application/json; charset=utf-8 and body

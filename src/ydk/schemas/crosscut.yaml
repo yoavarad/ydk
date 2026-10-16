@@ -11,6 +11,9 @@ fields:
     type: text
     required: true
     description: "What this cross-cutting concern defines"
+  kind:
+    type: string
+    description: "What kind of concern this is, for generators to select it by (e.g. error-format)"
   specification:
     type: text
     required: true

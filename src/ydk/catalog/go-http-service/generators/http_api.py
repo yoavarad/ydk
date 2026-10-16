@@ -2,7 +2,7 @@
 """Generator: http-api.
 
 internal/httpapi: ServeMux routes from ydk:route, JSON error helper and messages from
-ydk:error (+ ydk:crosscut error-format), panic recovery, JSON 404/405, /healthz and /readyz.
+ydk:error (+ the ydk:crosscut of kind error-format), panic recovery, JSON 404/405, /healthz and /readyz.
 Business handlers are panic TODOs; health, readiness and ydk:page routes are implemented.
 """
 
@@ -26,6 +26,7 @@ from _go_common import (
     module_path,
     render,
     split_id,
+    tagged,
 )
 from _go_common import message as full_message
 from _routing import conflicts, parse_path
@@ -197,7 +198,7 @@ def main() -> None:
         "msg_503": by_id.get(ready_ref) or _const_for(503, consts, force_default=True),
     }
     error_format = next(
-        (str(c["id"]) for c in load("crosscut") if str(c.get("id", "")).endswith("/error-format")),
+        (str(c["id"]) for c in tagged(load("crosscut"), "error-format", lambda i: i.endswith("/error-format"), "kind")),
         "",
     )
     deps, domain_imports = _deps()

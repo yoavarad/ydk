@@ -617,3 +617,196 @@ class TestExtTechnologies:
         shutil.copytree(_ext_project(tmp_path, "rabbitmq"), project / ".ydk" / "components")
         result = IgnitionEngine(project).ignite()
         assert result.errors == [], result.errors
+
+
+SCHEMAS = Path(__file__).resolve().parents[2] / "src" / "ydk" / "schemas"
+
+
+def _deprecations(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if "deprecated" in r.getMessage()]
+
+
+def _load(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _bound_project(tmp_path: Path, tech: str) -> Path:
+    """_ext_project with the Sender bound by ext_ref and a description that names no technology."""
+    components = _ext_project(tmp_path, tech)
+    contract = _load(components / "contract/queue/Sender.yaml")
+    contract["description"] = "Port for outgoing messages"
+    contract["ext_ref"] = f"ydk:ext:{tech}/broker"
+    _component(components, "contract/queue/Sender.yaml", contract)
+    return components
+
+
+MIN_APP = _load(MINIMAL / "config" / "ops" / "app.yaml")["title"]
+
+
+class TestExplicitExtBinding:
+    """Contracts bind to an ext via ext_ref; the description regex is a deprecated fallback."""
+
+    def test_contract_schema_declares_ext_ref(self) -> None:
+        field = _load(SCHEMAS / "contract.yaml")["fields"]["ext_ref"]
+        assert field["type"] == "ref"
+        assert field["ref_type"] == "ext"
+        assert not field.get("required", False)
+
+    def test_ext_ref_binds_without_description_text(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        project, result = _ignite(tmp_path, monkeypatch, _bound_project(tmp_path, "kafka"))
+        assert [e for e in result.errors if "enerator" in e] == []
+        assert _deprecations(caplog) == []
+        assert "var _ queue.Sender = (*Sender)(nil)" in _read(project, "internal/adapters/kafka/kafka.go")
+        assert "type FakeSender struct" in _read(project, "internal/queue/fakes.go")
+
+    def test_description_fallback_still_binds_and_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        project, _ = _ignite(tmp_path, monkeypatch, _ext_project(tmp_path, "kafka"))
+        assert "var _ queue.Sender = (*Sender)(nil)" in _read(project, "internal/adapters/kafka/kafka.go")
+        msgs = _deprecations(caplog)
+        assert len(msgs) == 1
+        assert "ydk:contract:queue/Sender" in msgs[0]
+        assert "ext_ref" in msgs[0]
+
+    def test_ext_ref_overrides_description(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        components = _bound_project(tmp_path, "rabbitmq")
+        _component(components, "ext/kafka/cluster.yaml", {"id": "ydk:ext:kafka/cluster", "description": "d"})
+        contract = _load(components / "contract/queue/Sender.yaml")
+        contract["description"] = "Not the kafka adapter"
+        _component(components, "contract/queue/Sender.yaml", contract)
+        project, _ = _ignite(tmp_path, monkeypatch, components)
+        assert "Sender" not in _read(project, "internal/adapters/kafka/kafka.go")
+        assert "type FakeSender struct" in _read(project, "internal/queue/fakes.go")
+
+    def _with_ref(self, tmp_path: Path, ref: str) -> Path:
+        components = _bound_project(tmp_path, "kafka")
+        contract = _load(components / "contract/queue/Sender.yaml")
+        contract["ext_ref"] = ref
+        _component(components, "contract/queue/Sender.yaml", contract)
+        return components
+
+    def test_dangling_ext_ref_warns_and_stays_unbound(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        project, result = _ignite(tmp_path, monkeypatch, self._with_ref(tmp_path, "ydk:ext:kafka/missing"))
+        assert [e for e in result.errors if "enerator" in e] == []
+        msgs = [r.getMessage() for r in caplog.records if "ydk:ext:kafka/missing" in r.getMessage()]
+        assert len(msgs) == 1
+        assert "ydk:contract:queue/Sender" in msgs[0]
+        assert "Sender: queue.NewSender()," in _read(project, f"cmd/{MIN_APP}/main.go")
+        assert not (project / "internal/queue/fakes.go").exists()
+
+    def test_non_ext_ref_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _, result = _ignite(tmp_path, monkeypatch, self._with_ref(tmp_path, "ydk:entity:items/Item"))
+        errors = "\n".join(result.errors)
+        assert "ydk:contract:queue/Sender" in errors
+        assert "ydk:entity:items/Item" in errors
+
+    def test_samples_bind_explicitly_without_deprecations(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        assert _load(SAMPLES / "contract/messaging/Publisher.yaml")["ext_ref"] == "ydk:ext:kafka/cluster"
+        _ignite(tmp_path, monkeypatch)
+        assert _deprecations(caplog) == []
+
+
+class TestMainWiring:
+    """main.go wires the generated adapter per bound ext when its tech has a template, else the stub."""
+
+    def test_samples_wire_kafka_publisher(self, ignited: tuple[Path, object]) -> None:
+        project, _ = ignited
+        main = _read(project, f"cmd/{APP}/main.go")
+        assert f'kafkaadapter "{APP}/internal/adapters/kafka"' in main
+        assert "kafkaClient, err := kafkaadapter.Connect()" in main
+        assert "defer kafkaClient.Close()" in main
+        assert "Publisher: kafkaadapter.NewPublisher(kafkaClient)," in main
+        assert "Store: messaging.NewStore()," in main
+        assert "func Connect() (*kgo.Client, error)" in _read(project, "internal/adapters/kafka/kafka.go")
+
+    def test_supported_tech_wires_adapter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        project, _ = _ignite(tmp_path, monkeypatch, _bound_project(tmp_path, "kafka"))
+        assert "Sender: kafkaadapter.NewSender(kafkaClient)," in _read(project, f"cmd/{MIN_APP}/main.go")
+
+    def test_unsupported_tech_falls_back_to_stub(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        project, _ = _ignite(tmp_path, monkeypatch, _bound_project(tmp_path, "rabbitmq"))
+        main = _read(project, f"cmd/{MIN_APP}/main.go")
+        assert "Sender: queue.NewSender()," in main
+        assert "internal/adapters" not in main
+
+    def test_no_ext_has_no_adapter_wiring(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        project, _ = _ignite(tmp_path, monkeypatch, _copy_samples(tmp_path, ("ext",)))
+        main = _read(project, f"cmd/{APP}/main.go")
+        assert "Publisher: messaging.NewPublisher()," in main
+        assert "internal/adapters" not in main
+
+    @pytest.mark.skipif(shutil.which("go") is None, reason="go toolchain not on PATH")
+    def test_wired_service_builds_and_vets(self, tmp_path: Path) -> None:
+        project = tmp_path / "project"
+        shutil.copytree(PACK_DIR, project / ".ydk" / "ignition-packs" / "go-http-service")
+        shutil.copytree(_bound_project(tmp_path, "kafka"), project / ".ydk" / "components")
+        result = IgnitionEngine(project).ignite()
+        assert result.errors == [], result.errors
+        for cmd in (["go", "build", "./..."], ["go", "vet", "./..."]):
+            proc = subprocess.run(cmd, cwd=project, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            assert proc.returncode == 0, f"{cmd}: {proc.stdout}{proc.stderr}"
+
+
+class TestSelectionByKindAndTags:
+    """error-format crosscut and shutdown nfr are picked by kind/tags; id matching is a deprecated fallback."""
+
+    def test_schemas_declare_kind_and_tags(self) -> None:
+        assert _load(SCHEMAS / "crosscut.yaml")["fields"]["kind"]["type"] == "string"
+        assert _load(SCHEMAS / "nfr.yaml")["fields"]["tags"]["type"] == "list"
+
+    def test_samples_use_explicit_fields(self) -> None:
+        assert _load(SAMPLES / "crosscut/system/error-format.yaml")["kind"] == "error-format"
+        assert "shutdown" in _load(SAMPLES / "nfr/system/shutdown-time.yaml")["tags"]
+
+    def test_error_format_by_kind_and_shutdown_by_tag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        components = _copy_samples(tmp_path, ("crosscut/system/error-format.yaml", "nfr/system/shutdown-time.yaml"))
+        crosscut = {"id": "ydk:crosscut:system/json-bodies", "kind": "error-format", "description": "d"}
+        _component(components, "crosscut/system/json-bodies.yaml", {**crosscut, "specification": "s"})
+        nfr = {"id": "ydk:nfr:system/stop-budget", "tags": ["shutdown"], "description": "d", "target": "exits <= 7 s"}
+        _component(components, "nfr/system/stop-budget.yaml", nfr)
+        project, _ = _ignite(tmp_path, monkeypatch, components)
+        assert "(ydk:crosscut:system/json-bodies)" in _read(project, "internal/httpapi/errors.go")
+        main = _read(project, f"cmd/{APP}/main.go")
+        assert "7 * time.Second" in main
+        assert "ydk:nfr:system/stop-budget" in main
+        assert _deprecations(caplog) == []
+
+    def test_untagged_ids_are_ignored_when_explicit_fields_exist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        components = _copy_samples(tmp_path, ())
+        nfr = {"id": "ydk:nfr:system/a-shutdown", "description": "d", "target": "3 s"}
+        _component(components, "nfr/system/a-shutdown.yaml", nfr)
+        project, _ = _ignite(tmp_path, monkeypatch, components)
+        assert "10 * time.Second" in _read(project, f"cmd/{APP}/main.go")
+
+    def test_legacy_id_fallback_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        components = _copy_samples(tmp_path, ())
+        for rel, key in (("crosscut/system/error-format.yaml", "kind"), ("nfr/system/shutdown-time.yaml", "tags")):
+            data = _load(components / rel)
+            del data[key]
+            _component(components, rel, data)
+        project, _ = _ignite(tmp_path, monkeypatch, components)
+        assert "(ydk:crosscut:system/error-format)" in _read(project, "internal/httpapi/errors.go")
+        assert "10 * time.Second" in _read(project, f"cmd/{APP}/main.go")
+        msgs = _deprecations(caplog)
+        assert len([m for m in msgs if "ydk:crosscut:system/error-format" in m and "kind: error-format" in m]) == 1
+        assert len([m for m in msgs if "ydk:nfr:system/shutdown-time" in m and "tags: [shutdown]" in m]) == 1
+
+    def test_tags_must_be_a_list(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        components = _copy_samples(tmp_path, ("nfr/system/shutdown-time.yaml",))
+        nfr = {"id": "ydk:nfr:system/stop-budget", "tags": "no-shutdown", "description": "d", "target": "7 s"}
+        _component(components, "nfr/system/stop-budget.yaml", nfr)
+        project, _ = _ignite(tmp_path, monkeypatch, components)
+        assert "10 * time.Second" in _read(project, f"cmd/{APP}/main.go")

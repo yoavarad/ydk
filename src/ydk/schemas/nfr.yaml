@@ -16,6 +16,9 @@ fields:
     values: [performance, scalability, reliability, security, observability]
     required: true
     description: "NFR category"
+  tags:
+    type: list
+    description: "Labels for generators to select this NFR by (e.g. [shutdown])"
   target:
     type: string
     required: true

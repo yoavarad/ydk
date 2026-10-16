@@ -17,15 +17,14 @@ from _go_common import (
     check_unique,
     comment,
     contract_methods,
+    contract_tech,
     emit,
     entity_names_by_ns,
-    ext_technologies,
     go_ident,
     go_pkg,
     go_string,
     go_type,
     imports_for,
-    is_ext_backed,
     load,
     message,
     render,
@@ -86,7 +85,7 @@ def _contracts(known: dict[str, set[str]]) -> dict[str, list[dict]]:
                 "description": comment(contract.get("description")),
                 "methods": contract_methods(contract, known.get(pkg, set())),
                 "raises": _raises(contract),
-                "raw": contract,
+                "tech": contract_tech(contract, report=True),
             }
         )
     return by_pkg
@@ -119,7 +118,7 @@ def _errors(packages: set[str], contracts: dict[str, list[dict]]) -> dict[str, l
     }
 
 
-def _contract_files(pkg: str, items: list[dict], techs: list[str]) -> list[dict]:
+def _contract_files(pkg: str, items: list[dict]) -> list[dict]:
     base = f"internal/{pkg}"
     imports = imports_for([t for c in items for m in c["methods"] for t in m["types"]])
     ctx = {"pkg": pkg, "contracts": items, "imports": imports, "todo": TODO_STMT}
@@ -127,7 +126,7 @@ def _contract_files(pkg: str, items: list[dict], techs: list[str]) -> list[dict]
         {"path": f"{base}/contracts.go", "content": render("domain/contracts.go.j2", **ctx)},
         {"path": f"{base}/stubs.go", "content": render("domain/stubs.go.j2", **ctx)},
     ]
-    backed = [c for c in items if any(is_ext_backed(c["raw"], t) for t in techs)]
+    backed = [c for c in items if c["tech"]]
     if backed:
         imports = imports_for([t for c in backed for m in c["methods"] for t in m["types"]])
         content = render("domain/fakes.go.j2", pkg=pkg, contracts=backed, imports=imports)
@@ -135,7 +134,7 @@ def _contract_files(pkg: str, items: list[dict], techs: list[str]) -> list[dict]
     return files
 
 
-def _check_names(pkg: str, entities: list[dict], contracts: list[dict], errors: list[dict], techs: list[str]) -> None:
+def _check_names(pkg: str, entities: list[dict], contracts: list[dict], errors: list[dict]) -> None:
     """Fail on any Go identifier generated twice in one package, struct or interface."""
     entries: list[tuple[str, str]] = []
     for e in entities:
@@ -143,7 +142,7 @@ def _check_names(pkg: str, entities: list[dict], contracts: list[dict], errors: 
         check_unique(f"struct {e['name']} ({e['id']})", [(f["name"], f"field {f['json']!r}") for f in e["fields"]])
     for c in contracts:
         entries += [(c["name"], c["id"]), ("New" + c["name"], c["id"]), (c["stub"], c["id"])]
-        if any(is_ext_backed(c["raw"], t) for t in techs):
+        if c["tech"]:
             entries.append(("Fake" + c["name"], c["id"]))
         check_unique(
             f"interface {c['name']} ({c['id']})", [(m["name"], f"method {m['raw_name']!r}") for m in c["methods"]]
@@ -157,9 +156,8 @@ def main() -> None:
     entities = _entities(known)
     contracts = _contracts(known)
     errors = _errors(set(entities) | set(contracts), contracts)
-    techs = ext_technologies()
     for pkg in sorted(set(entities) | set(contracts) | set(errors)):
-        _check_names(pkg, entities.get(pkg, []), contracts.get(pkg, []), errors.get(pkg, []), techs)
+        _check_names(pkg, entities.get(pkg, []), contracts.get(pkg, []), errors.get(pkg, []))
     files = []
     for pkg in sorted(set(entities) | set(contracts) | set(errors)):
         if pkg in entities:
@@ -167,7 +165,7 @@ def main() -> None:
             content = render("domain/types.go.j2", pkg=pkg, entities=entities[pkg], imports=imports_for(types))
             files.append({"path": f"internal/{pkg}/types.go", "content": content})
         if pkg in contracts:
-            files.extend(_contract_files(pkg, contracts[pkg], techs))
+            files.extend(_contract_files(pkg, contracts[pkg]))
         if pkg in errors:
             content = render("domain/errors.go.j2", pkg=pkg, errors=errors[pkg])
             files.append({"path": f"internal/{pkg}/errors.go", "content": content})
