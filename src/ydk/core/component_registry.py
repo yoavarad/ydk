@@ -268,5 +268,5 @@ class ComponentRegistry:
             elif field_def.type == "any":
                 manifest[field_name] = None
 
-        path.write_text(yaml.dump(manifest, default_flow_style=False, sort_keys=False))
+        path.write_text(yaml.dump(manifest, default_flow_style=False, sort_keys=False), encoding="utf-8")
         return path
