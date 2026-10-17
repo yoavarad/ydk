@@ -365,3 +365,27 @@ def test_reconcile_unknown_method_different_text_on_same_line_gets_new_id(mgr: T
     mgr.reconcile("a.go", [_marker(5, "<unknown>", "second")])
     assert mgr.get(old).status == TodoStatus.DONE
     assert len(mgr.list_todos()) == 2
+
+
+def test_reconcile_new_marker_records_component_refs(mgr: TodoManager) -> None:
+    mgr.reconcile("a.go", [{**_marker(4, "Svc.Run"), "component_refs": ["ydk:contract:orders/Svc"]}])
+    assert mgr.list_todos()[0].component_refs == ["ydk:contract:orders/Svc"]
+
+
+def test_reconcile_matched_marker_updates_component_refs(mgr: TodoManager) -> None:
+    todo_id = mgr.register(file="a.go", line=4, method="Svc.Run")
+    mgr.reconcile("a.go", [{**_marker(4, "Svc.Run"), "component_refs": ["ydk:contract:orders/Svc"]}])
+    assert mgr.get(todo_id).component_refs == ["ydk:contract:orders/Svc"]
+
+
+def test_reconcile_empty_marker_refs_keep_existing(mgr: TodoManager) -> None:
+    todo_id = mgr.register(file="a.go", line=4, method="Svc.Run", component_refs=["ydk:contract:orders/Manual"])
+    mgr.reconcile("a.go", [_marker(4, "Svc.Run")])
+    mgr.reconcile("a.go", [{**_marker(4, "Svc.Run"), "component_refs": []}])
+    assert mgr.get(todo_id).component_refs == ["ydk:contract:orders/Manual"]
+
+
+def test_reconcile_non_empty_marker_refs_replace_existing(mgr: TodoManager) -> None:
+    todo_id = mgr.register(file="a.go", line=4, method="Svc.Run", component_refs=["ydk:contract:orders/Old"])
+    mgr.reconcile("a.go", [{**_marker(4, "Svc.Run"), "component_refs": ["ydk:contract:orders/New"]}])
+    assert mgr.get(todo_id).component_refs == ["ydk:contract:orders/New"]

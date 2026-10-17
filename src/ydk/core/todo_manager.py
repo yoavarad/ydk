@@ -110,7 +110,8 @@ class TodoManager:
     def reconcile(self, file: str, markers: list[dict]) -> None:
         """Sync a file's open TODOs with the markers currently in it.
 
-        Each marker is a dict with line, method and description. Open or in-progress
+        Each marker is a dict with line, method, description and optional component_refs
+        (a non-empty value overwrites a matched entry's refs; empty keeps them). Open or in-progress
         entries are matched to markers by (line, method), then (method, description),
         then line alone. Line-based matches need agreeing identity (same method, or same
         text if either lacks one). A matched entry moves to the marker's line. Unmatched markers
@@ -137,6 +138,8 @@ class TodoManager:
                     todo.line = marker["line"]
                     todo.method = marker["method"]
                     todo.description = marker["description"]
+                    if marker.get("component_refs"):
+                        todo.component_refs = list(marker["component_refs"])
                     pending.remove(marker)
                     active.remove(todo)
         for todo in active:
@@ -148,6 +151,7 @@ class TodoManager:
                 file=file,
                 line=marker["line"],
                 method=marker["method"],
+                component_refs=list(marker.get("component_refs") or []),
                 description=marker["description"],
             )
             registry.next_id += 1

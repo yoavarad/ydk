@@ -282,6 +282,55 @@ class TestRegisterTodos:
         assert [t.id for t in todos] == before
         assert todos[0].method == "Run"
 
+    def test_go_contract_stub_records_component_ref(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        content = (
+            "package orders\n\n"
+            "func (*OrderServiceStub) Create(ctx context.Context) error {\n"
+            '\tpanic("not implemented") // ydk:contract:orders/OrderService.Create: create an order\n}\n\n'
+            "func Get(w http.ResponseWriter, r *http.Request) {\n"
+            '\tpanic("not implemented") // ydk:route:orders/get-order: GET /orders/{id}\n}\n'
+        )
+        engine = IgnitionEngine(tmp_path)
+        engine._register_todos([GeneratedFile(path="orders/stubs.go", content=content)])
+        engine._register_todos([GeneratedFile(path="orders/stubs.go", content=content)])
+        refs = sorted(t.component_refs for t in TodoManager(tmp_path).list_todos())
+        assert refs == [["ydk:contract:orders/OrderService"], ["ydk:route:orders/get-order"]]
+
+    def test_csharp_and_python_markers_record_component_ref(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        files = [
+            GeneratedFile(
+                path="Services/OrderService.cs",
+                content=(
+                    "public class OrderService {\n    public void Run() {\n"
+                    "        throw new NotImplementedException(); // ydk:contract:orders/OrderService.Run\n"
+                    "    }\n}\n"
+                ),
+            ),
+            GeneratedFile(
+                path="app/svc.py",
+                content=(
+                    "class Svc:\n    def run(self):\n"
+                    "        raise NotImplementedError  # ydk:contract:orders/Svc.Run: do it\n"
+                ),
+            ),
+            GeneratedFile(path="app/plain.py", content="def run():\n    raise NotImplementedError\n"),
+        ]
+        engine = IgnitionEngine(tmp_path)
+        engine._register_todos(files)
+        ids = [t.id for t in TodoManager(tmp_path).list_todos()]
+        assert engine._register_todos(files) == 0
+        assert [t.id for t in TodoManager(tmp_path).list_todos()] == ids
+        refs = {t.file: t.component_refs for t in TodoManager(tmp_path).list_todos()}
+        assert refs == {
+            "Services/OrderService.cs": ["ydk:contract:orders/OrderService"],
+            "app/svc.py": ["ydk:contract:orders/Svc"],
+            "app/plain.py": [],
+        }
+
     def test_reignite_moved_marker_leaves_one_entry(self, tmp_path: Path) -> None:
         from ydk.core.todo_manager import TodoManager
 
@@ -1397,3 +1446,21 @@ class TestLineEndings:
         data = (tmp_path / "app" / "models" / "strategy.py").read_bytes()
         assert b"\n" in data
         assert b"\r\n" not in data
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        ("ydk:contract:orders/OrderService.Create: make one", ["ydk:contract:orders/OrderService"]),
+        ("ydk:route:orders/get-order: GET /orders", ["ydk:route:orders/get-order"]),
+        ("ydk:ext:pay/Stripe", ["ydk:ext:pay/Stripe"]),
+        ("ydk:contract:x/Y.", ["ydk:contract:x/Y"]),
+        ("ydk:route:api/v1.list: GET", ["ydk:route:api/v1.list"]),
+        ("YDK-TODO-001: impl", []),
+        ("", []),
+    ],
+)
+def test_component_refs_parses_leading_id(description: str, expected: list[str]) -> None:
+    from ydk.core.ignition import _component_refs
+
+    assert _component_refs(description) == expected

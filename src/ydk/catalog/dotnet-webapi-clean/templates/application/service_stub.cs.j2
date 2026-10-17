@@ -18,7 +18,7 @@ public class {{ service_name }} : I{{ service_name }}
 
     public {{ method.task_return }} {{ method.name }}({% for p in method.params %}{{ p.type }} {{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %})
     {
-        throw new NotImplementedException();
+        throw new NotImplementedException();{{ " // " ~ component_id ~ "." ~ method.name if component_id else "" }}
     }
 {% endfor %}
 }

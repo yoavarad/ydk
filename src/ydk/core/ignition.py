@@ -5,20 +5,44 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
 from ydk.core.scaffold_state import ScaffoldState
 from ydk.models.ignition import GeneratedFile, IgnitionResult
 
+if TYPE_CHECKING:
+    from ydk.core.todo_manager import TodoManager
+
 logger = logging.getLogger("ydk.ignition")
 
 _TODO_PATTERN = "raise NotImplementedError"
+# Leading component ID in a TODO comment, minus a trailing ".Method" (e.g. "ydk:contract:ns/Svc.Run: ...").
+_COMPONENT_REF_RE = re.compile(
+    r"^(ydk:[a-z][a-z0-9_-]*:[A-Za-z0-9_./-]*?[A-Za-z0-9_-])(?:\.[A-Z]\w*)?(?=\.?(?:[:\s]|$))"
+)
+
+
+def _component_refs(description: str) -> list[str]:
+    """Component IDs named at the start of a TODO marker comment."""
+    match = _COMPONENT_REF_RE.match(description)
+    return [match.group(1)] if match else []
+
+
+def _reconcile(todo_mgr: TodoManager, path: str, markers: list[dict]) -> None:
+    """Attach component refs parsed from each marker's comment, then reconcile the file."""
+    for marker in markers:
+        marker["component_refs"] = _component_refs(marker["description"])
+    todo_mgr.reconcile(path, markers)
+
+
 _GENERATOR_TIMEOUT = 120
 
 
@@ -578,7 +602,7 @@ class IgnitionEngine:
                             comment = stripped.split(comment_prefix, 1)[1].strip()
                         method = go_enclosing_func(content_lines, i) if gf.path.endswith(".go") else "<unknown>"
                         markers.append({"line": i, "method": method, "description": comment})
-                todo_mgr.reconcile(gf.path, markers)
+                _reconcile(todo_mgr, gf.path, markers)
                 continue
             if not gf.path.endswith(".py"):
                 continue
@@ -630,7 +654,7 @@ class IgnitionEngine:
                         if not comment:
                             comment = self._extract_implement_comment(lines, i)
                         markers.append({"line": i, "method": method, "description": comment})
-            todo_mgr.reconcile(gf.path, markers)
+            _reconcile(todo_mgr, gf.path, markers)
         # reconcile() keeps existing entries for moved markers; count only new ones.
         return len({t.id for t in todo_mgr.list_todos()} - existing)
 
