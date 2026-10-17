@@ -143,3 +143,10 @@ def test_loads_state_without_formatted_section(tmp_path: Path) -> None:
     state.record_formatted("main.go", "x")
     state.save()
     assert "formatted" in (tmp_path / "state.yaml").read_text()
+
+
+def test_has_hash_after_update(tmp_path: Path) -> None:
+    state = ScaffoldState(tmp_path / "state.yaml")
+    assert not state.has_hash("a.txt")
+    state.update("a.txt", "x")
+    assert state.has_hash("a.txt")
