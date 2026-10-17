@@ -31,6 +31,19 @@ TODO_MARKERS: dict[str, tuple[tuple[str, ...], str]] = {
 }
 
 
+_GO_FUNC_RE = re.compile(r"^func\s+(?:\(\s*(?:\w+\s+)?\*?\s*(\w+)(?:\[[^\]]*\])?\s*\)\s*)?(\w+)")
+
+
+def go_enclosing_func(lines: list[str], line_no: int) -> str:
+    """Return 'Recv.Name' / 'Name' of the Go func enclosing 1-based line_no, else '<unknown>'."""
+    for idx in range(min(line_no, len(lines)) - 1, -1, -1):
+        match = _GO_FUNC_RE.match(lines[idx])
+        if match:
+            recv, name = match.groups()
+            return f"{recv}.{name}" if recv else name
+    return "<unknown>"
+
+
 def markers_for(path: str) -> tuple[tuple[str, ...], str] | None:
     """Return (statement prefixes, comment prefix) for a file path, or None if unsupported."""
     for ext, markers in TODO_MARKERS.items():
@@ -110,6 +123,8 @@ class TodoManager:
             lambda t, m: (t.line, t.method) == (m["line"], m["method"]) and _same_identity(t, m),
             lambda t, m: (t.method, t.description) == (m["method"], m["description"]),
             lambda t, m: t.line == m["line"] and _same_identity(t, m),
+            # Legacy entries recorded with no method adopt the marker's method by description.
+            lambda t, m: t.method in ("", "<unknown>") and t.description == m["description"],
         )
         for same in passes:
             for todo in list(active):
