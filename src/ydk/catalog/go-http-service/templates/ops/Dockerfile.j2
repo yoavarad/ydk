@@ -17,7 +17,9 @@ RUN --network=none go build -mod=vendor -trimpath -ldflags "-s -w -X main.versio
 
 FROM ${RUNTIME_IMAGE}
 [% if runtime_image == "scratch" %]
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# CA roots go to a private path (never /etc/ssl/certs, which a swapped RUNTIME_IMAGE owns).
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/ydk/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/ydk/ca-certificates.crt
 [% endif %]
 COPY --from=build --chown=1001:0 /out/[[ app ]] /usr/local/bin/[[ app ]]
 USER 1001
