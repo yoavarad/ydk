@@ -200,7 +200,7 @@ class SpecEvolutionEngine:
 
     def _load_change_info(self, yaml_path: Path, expected_status: ChangeStatus) -> ChangeInfo:
         """Load a ChangeInfo from a .change.yaml file."""
-        data = yaml.safe_load(yaml_path.read_text())
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         return ChangeInfo(
             name=data.get("name", yaml_path.parent.name),
             mode=ChangeMode(data.get("mode", "small")),

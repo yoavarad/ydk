@@ -18,7 +18,7 @@ def main():
         print("[]")
         return
 
-    adata = yaml.safe_load(Path(adapters_path).read_text()) or {}
+    adata = yaml.safe_load(Path(adapters_path).read_text(encoding="utf-8")) or {}
     adapters = adata.get("adapters", [])
 
     lines = [

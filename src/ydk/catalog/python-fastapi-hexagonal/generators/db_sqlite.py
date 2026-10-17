@@ -74,7 +74,7 @@ def main():
     if not dm_path or not Path(dm_path).exists():
         print("[]")
         return
-    data = yaml.safe_load(Path(dm_path).read_text()) or {}
+    data = yaml.safe_load(Path(dm_path).read_text(encoding="utf-8")) or {}
     entities = data if isinstance(data, list) else []
     output = [
         {"path": "connection.py", "content": generate_sqlite_connection()},

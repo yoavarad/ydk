@@ -108,7 +108,7 @@ def load_reviewer(yaml_path: Path) -> ReviewerConfig:
     Reads the YAML, compiles inline tool code, and returns a
     fully-initialised ``ReviewerConfig``.
     """
-    raw = yaml.safe_load(yaml_path.read_text())
+    raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
 
     tools = []
     for tool_def in raw.get("tools", []):

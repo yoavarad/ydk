@@ -1436,7 +1436,9 @@ class TestGoReigniteAfterGofmt:
         def run(cmd, **kw):
             if cmd[0] == "gofmt":  # simulate gofmt rewriting the file
                 for f in cmd[2:]:
-                    Path(f).write_text('package main\n\nfunc main() {\n\tpanic("not implemented")\n}\n')
+                    Path(f).write_text(
+                        'package main\n\nfunc main() {\n\tpanic("not implemented")\n}\n', encoding="utf-8"
+                    )
                 return _fake_run()
             if cmd[:2] == ["go", "get"]:  # simulate go get adding a require line to go.mod
                 with (tmp_path / "go.mod").open("a") as fh:

@@ -2337,13 +2337,10 @@ def scaffold_batch(
 
     stories = []
     tasks = []
-    story_idx = 1
-    task_idx = 1
-
-    for svc_name, todos in sorted(service_groups.items()):
+    for idx, (svc_name, todos) in enumerate(sorted(service_groups.items()), start=1):
         # Convert snake_case to PascalCase for display
         pascal = "".join(w.capitalize() for w in svc_name.split("_"))
-        story_id = f"S-{story_idx:03d}"
+        story_id = f"S-{idx:03d}"
         stories.append(
             {
                 "id": story_id,
@@ -2353,7 +2350,7 @@ def scaffold_batch(
             }
         )
 
-        task_id = f"T-{task_idx:03d}"
+        task_id = f"T-{idx:03d}"
         tasks.append(
             {
                 "id": task_id,
@@ -2367,9 +2364,6 @@ def scaffold_batch(
                 ],
             }
         )
-
-        story_idx += 1
-        task_idx += 1
 
     # Add final verification task that depends on all other tasks; criteria come from the stack's language profile
     from ydk.core.config import find_project_root, load_config

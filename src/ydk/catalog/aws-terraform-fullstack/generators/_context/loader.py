@@ -47,7 +47,7 @@ def load_artifact(artifact_name: str = "infrastructure") -> dict:
     ydk_key = f"YDK_COMPONENTS_{artifact_name.upper().replace('-', '_')}"
     ydk_path = os.environ.get(ydk_key)
     if ydk_path and Path(ydk_path).exists():
-        raw = yaml.safe_load(Path(ydk_path).read_text())
+        raw = yaml.safe_load(Path(ydk_path).read_text(encoding="utf-8"))
         if isinstance(raw, list):
             merged: dict = {}
             for item in raw:

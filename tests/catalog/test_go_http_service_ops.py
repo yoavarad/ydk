@@ -89,6 +89,10 @@ class TestDockerfile:
         assert "ARG BUILDER_IMAGE=golang:1\n" in text
         assert "ARG RUNTIME_IMAGE=scratch\n" in text  # neutral default; no registry
         assert "/etc/ssl/certs/ca-certificates.crt" in text  # scratch gets CA roots from the builder
+        # a --build-arg RUNTIME_IMAGE swap must never have /etc/ssl/certs written in the runtime stage
+        runtime = text[text.rindex("FROM ") :]
+        assert "ca-certificates.crt /etc/ssl/certs" not in runtime
+        assert "ENV SSL_CERT_FILE=/etc/ssl/ydk/ca-certificates.crt" in runtime
         assert "CGO_ENABLED=0" in text
         assert "-mod=vendor" in text
         assert "GOPROXY=off" in text

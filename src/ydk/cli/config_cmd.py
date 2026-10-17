@@ -42,7 +42,7 @@ def get(
         typer.echo("Error: no config found. Run 'ydk init' first.", err=True)
         raise typer.Exit(code=1)
 
-    raw = yaml.safe_load(CONFIG_PATH.read_text())
+    raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
     value = get_config_value(raw, key)
     if value is None:
         typer.echo(f"Key not found: {key}", err=True)
@@ -60,7 +60,7 @@ def set_value(
         typer.echo("Error: no config found. Run 'ydk init' first.", err=True)
         raise typer.Exit(code=1)
 
-    raw = yaml.safe_load(CONFIG_PATH.read_text())
+    raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
     try:
         updated = set_config_value(raw, key, value)
     except ValidationError as exc:

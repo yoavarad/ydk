@@ -800,7 +800,7 @@ class TestCacheKey:
 
     @staticmethod
     def _count(runs: Path) -> int:
-        return len(runs.read_text()) if runs.exists() else 0
+        return len(runs.read_text(encoding="utf-8")) if runs.exists() else 0
 
     def test_identical_inputs_hit_cache(self, tmp_path: Path) -> None:
         v, repo, runs = self._setup(tmp_path, git=True)

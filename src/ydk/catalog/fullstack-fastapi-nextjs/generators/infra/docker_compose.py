@@ -14,7 +14,7 @@ import yaml
 config_path = os.environ.get("YDK_COMPONENT_CONFIG", "")
 config = {}
 if config_path:
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
 # Read init answers for project name fallback
