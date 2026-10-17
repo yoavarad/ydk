@@ -42,9 +42,9 @@ class VerificationCache:
         if not path.exists():
             return None
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             return CheckResult(**data)
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError):
             # Corrupt entry -- treat as miss.
             path.unlink(missing_ok=True)
             return None
@@ -53,7 +53,7 @@ class VerificationCache:
         """Persist a verification result under the composite content hash."""
         path = self._entry_path(plugin_name, file_hashes)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(result.model_dump_json(indent=2))
+        path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
 
     def invalidate(self, plugin_name: str | None = None) -> None:
         """Clear cached entries -- all plugins or a specific one."""

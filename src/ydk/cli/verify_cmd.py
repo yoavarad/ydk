@@ -315,7 +315,7 @@ def create_plugin(
     }
     if command:
         manifest["command"] = command
-    (plugin_dir / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False))
+    (plugin_dir / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False), encoding="utf-8")
     if command:
         console.print(f"[green]Created command plugin at {plugin_dir}[/green]")
         return
@@ -352,7 +352,7 @@ if __name__ == "__main__":
     main()
 '''
 
-    (plugin_dir / "check.py").write_text(check_template)
+    (plugin_dir / "check.py").write_text(check_template, encoding="utf-8")
     console.print(f"[green]Created plugin at {plugin_dir}[/green]")
     console.print(f"  Edit {plugin_dir / 'check.py'} to implement your check.")
 

@@ -287,7 +287,7 @@ class IgnitionEngine:
                 self._pack_dir = subdirs[0]
                 manifest_path = self._pack_dir / "manifest.yaml"
                 if manifest_path.exists():
-                    data = yaml.safe_load(manifest_path.read_text())
+                    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                     if isinstance(data, dict):
                         return data
 
@@ -297,7 +297,7 @@ class IgnitionEngine:
             self._pack_dir = legacy_dir
             manifest_path = legacy_dir / "manifest.yaml"
             if manifest_path.exists():
-                data = yaml.safe_load(manifest_path.read_text())
+                data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return data
 
@@ -387,7 +387,7 @@ class IgnitionEngine:
                 if ref_pack_dir is None:
                     errors.append(f"Phase '{phase_id}': referenced pack '{phase['pack_ref']}' not found")
                     continue
-                ref_manifest = yaml.safe_load((ref_pack_dir / "manifest.yaml").read_text())
+                ref_manifest = yaml.safe_load((ref_pack_dir / "manifest.yaml").read_text(encoding="utf-8"))
                 phase_generators = ref_manifest.get("generators", [])
                 generator_base = ref_pack_dir
             else:

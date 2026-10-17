@@ -140,17 +140,17 @@ class ScaffoldEngine:
             "description": description,
             "variables": {"module_name": "Python module name (snake_case)"},
         }
-        (folder / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False))
+        (folder / "manifest.yaml").write_text(yaml.dump(manifest, default_flow_style=False), encoding="utf-8")
 
         # Create a sample template file
         sample = folder / "{{module_name}}.py.j2"
-        sample.write_text('"""{{ module_name }} module."""\n')
+        sample.write_text('"""{{ module_name }} module."""\n', encoding="utf-8")
 
         return folder
 
     def _load_manifest(self, manifest_path: Path) -> TemplateManifest:
         """Load a manifest.yaml file into a TemplateManifest."""
-        data = yaml.safe_load(manifest_path.read_text())
+        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         return TemplateManifest(
             name=data["name"],
             description=data.get("description", ""),
