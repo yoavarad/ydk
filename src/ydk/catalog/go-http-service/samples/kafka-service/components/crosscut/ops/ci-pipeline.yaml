@@ -11,7 +11,7 @@ specification: |
   4. scan: trivy image + chart config, fail on HIGH/CRITICAL; runs when SCAN_ENABLED=true (GitHub true, GitLab false until DB mirror).
   5. e2e: env-up, install both releases, run e2e script, env-down.
   6. publish: image + chart (OCI) to GHCR (GitHub) or GitLab registry (GitLab).
-  7. deploy: helm upgrade --install --atomic --wait.
+  7. deploy: helm upgrade --install --rollback-on-failure --wait (--atomic on Helm 3).
   8. smoke: readiness 200 + one round trip.
   Triggers: 1-5 on every push/PR/MR; 6-8 on main merge (env dev) and tag vX.Y.Z (env prod,
   manual approval). Environments dev and prod only; GitHub deploy/smoke target an ephemeral

@@ -5,10 +5,22 @@ cd "$(dirname "$0")/.."
 . scripts/env.sh
 
 require helm
+
+# Helm 4 replaced --atomic with --rollback-on-failure; pick by major version (override with ROLLBACK_FLAG).
+if [ -z "${ROLLBACK_FLAG:-}" ]; then
+  helm_version=$(helm version --template '{% raw %}{{.Version}}{% endraw %}' 2>/dev/null || true)
+  helm_major=${helm_version#v}
+  helm_major=${helm_major%%.*}
+  case "$helm_major" in
+    ''|*[!0-9]*) die "cannot detect Helm major version (got '$helm_version'); set ROLLBACK_FLAG" ;;
+  esac
+  if [ "$helm_major" -ge 4 ]; then ROLLBACK_FLAG=--rollback-on-failure; else ROLLBACK_FLAG=--atomic; fi
+fi
+
 [ -d "$CHART_DIR" ] || die "chart not found at $CHART_DIR (set CHART_DIR)"
 {% for r in env.releases %}
 
-helm upgrade --install {{ r.name }} "$CHART_DIR" --namespace "$NAMESPACE" --create-namespace --atomic --wait \
+helm upgrade --install {{ r.name }} "$CHART_DIR" --namespace "$NAMESPACE" --create-namespace $ROLLBACK_FLAG --wait \
 {% for s in r.sets %}
   {{ s }}{{ " \\" if not loop.last else "" }}
 {% endfor %}

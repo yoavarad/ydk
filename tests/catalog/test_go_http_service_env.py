@@ -231,7 +231,7 @@ class TestEnvGenerator:
             '--set-string image.tag="$VERSION"',
             '--set-string ingress.className="nginx"',
             "--set openshift.enabled=false",
-            "--atomic --wait",
+            "$ROLLBACK_FLAG --wait",
         ):
             assert expected in deploy, expected
         for line in deploy.splitlines():
@@ -239,8 +239,40 @@ class TestEnvGenerator:
                 value = line.split("--set-string ", 1)[1].split("=", 1)[1].rstrip(" \\")
                 assert value.startswith('"'), line
                 assert value.endswith('"'), line
+        assert "ROLLBACK_FLAG=--rollback-on-failure" in deploy
+        assert "ROLLBACK_FLAG=--atomic" in deploy
         assert "-kafka-bootstrap.${NAMESPACE}.svc:9093" in deploy
         assert "-kafka-bootstrap.${NAMESPACE}.svc:9092" in deploy
+
+    @pytest.mark.skipif(SH is None, reason="sh not on PATH")
+    @pytest.mark.parametrize(
+        ("version", "flag"),
+        [("v3.16.0", "--atomic"), ("v4.3.0", "--rollback-on-failure")],
+    )
+    def test_deploy_picks_rollback_flag_by_helm_major(
+        self, ignited: tuple[Path, object], tmp_path: Path, version: str, flag: str
+    ) -> None:
+        project, _ = ignited
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        helm = bindir / "helm"
+        helm.write_text(
+            f'#!/bin/sh\nif [ "$1" = version ]; then echo {version}; exit 0; fi\necho "helm $*"\n',
+            encoding="utf-8",
+        )
+        helm.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}"}
+        env.pop("ROLLBACK_FLAG", None)
+        (project / "charts" / APP).mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [SH, "scripts/deploy.sh"], cwd=project, env=env, capture_output=True, text=True, check=False
+        )
+        assert proc.returncode == 0, proc.stderr
+        upgrades = [line for line in proc.stdout.splitlines() if line.startswith("helm upgrade")]
+        assert len(upgrades) == 2
+        for line in upgrades:
+            assert f"{flag} --wait" in line
+            assert "--set-string" in line
 
     def test_env_up_installs_strimzi_and_credentials(self, ignited: tuple[Path, object]) -> None:
         project, _ = ignited
