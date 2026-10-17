@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import Annotated
 
 import typer
 import yaml
@@ -104,6 +105,7 @@ def validate_components(ctx: typer.Context) -> None:
     registry = _make_registry()
 
     schema_errors = registry.validate_all()
+    schema_warnings = registry.warn_all()
     error_count = sum(len(e) for e in schema_errors.values())
 
     specs_dir = Path(load_config().project.spec_location)
@@ -112,6 +114,7 @@ def validate_components(ctx: typer.Context) -> None:
 
     data = {
         "schema_errors": schema_errors,
+        "schema_warnings": schema_warnings,
         "linker": linker_result.model_dump(),
     }
     if format_or_echo(ctx, data):
@@ -126,6 +129,11 @@ def validate_components(ctx: typer.Context) -> None:
     else:
         total = len(registry.list_components())
         console.print(f"  {total} components validated, 0 errors")
+
+    for cid, warns in sorted(schema_warnings.items()):
+        console.print(f"  [yellow]WARNING: {cid}[/yellow]")
+        for warn in warns:
+            console.print(f"    - {warn}")
 
     console.print("\n[bold]Deterministic Linker:[/bold]")
     if linker_result.undefined_refs:
@@ -195,7 +203,12 @@ def show_schema(
 
 
 @component_app.command("init-schemas")
-def init_schemas() -> None:
+def init_schemas(
+    upgrade: Annotated[
+        bool, typer.Option("--upgrade", help="Overwrite local schemas that differ from bundled")
+    ] = False,
+    force: Annotated[bool, typer.Option("--force", help="Overwrite all local schemas with bundled")] = False,
+) -> None:
     """Copy default schemas to project's .ydk/schemas/ directory."""
     target_dir = Path(".ydk") / "schemas"
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -208,6 +221,11 @@ def init_schemas() -> None:
     for schema_file in sorted(_DEFAULT_SCHEMAS_DIR.glob("*.yaml")):
         dest = target_dir / schema_file.name
         if dest.exists():
+            if force or (upgrade and dest.read_bytes() != schema_file.read_bytes()):
+                shutil.copy2(schema_file, dest)
+                console.print(f"  [green]Upgraded: {schema_file.name}[/green]")
+                copied += 1
+                continue
             console.print(f"  [yellow]Skipping (exists): {schema_file.name}[/yellow]")
             continue
         shutil.copy2(schema_file, dest)

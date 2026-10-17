@@ -1,6 +1,6 @@
 name: crosscut
 description: "A cross-cutting concern that applies uniformly across the system"
-version: 1
+version: 2
 fields:
   id:
     type: string

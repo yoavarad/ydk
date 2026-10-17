@@ -141,6 +141,41 @@ class ComponentRegistry:
         )
         return errors
 
+    def warn_undeclared_fields(self, component_id: str) -> list[str]:
+        """Return warnings for manifest keys the schema does not declare."""
+        path = self.resolve_id(component_id)
+        if not path.exists():
+            return []
+        data = yaml.safe_load(path.read_text())
+        if not isinstance(data, dict):
+            return []
+        schema_ref = data.get("$schema")
+        if not isinstance(schema_ref, str):
+            return []
+        schema = self.load_schemas().get(schema_ref.removeprefix("ydk:schema:"))
+        if schema is None:
+            return []
+        return [
+            f"Field '{key}' is not declared by schema '{schema.name}' (v{schema.version}) in {path}; "
+            "run 'ydk component init-schemas --upgrade' if your local schema is stale"
+            for key in data
+            if key != "$schema" and key not in schema.fields
+        ]
+
+    def warn_all(self) -> dict[str, list[str]]:
+        """Undeclared-field warnings for every component, keyed by component id."""
+        results: dict[str, list[str]] = {}
+        if not self._components_dir.is_dir():
+            return results
+        for yaml_file in self._components_dir.rglob("*.yaml"):
+            data = yaml.safe_load(yaml_file.read_text())
+            if not isinstance(data, dict) or not data.get("id"):
+                continue
+            warnings = self.warn_undeclared_fields(data["id"])
+            if warnings:
+                results[data["id"]] = warnings
+        return results
+
     def _validate_fields(self, data: dict[str, Any], schema: SchemaDefinition, path: str) -> list[str]:
         """Validate manifest fields against schema definition."""
         errors: list[str] = []
