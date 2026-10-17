@@ -130,7 +130,7 @@ class IgnitionEngine:
                 full = self._root / gf.path
                 full.parent.mkdir(parents=True, exist_ok=True)
                 content = gf.content
-                full.write_text(content, encoding="utf-8")
+                full.write_text(content, encoding="utf-8", newline="\n")
                 state.update(gf.path, content)
                 written_paths.append(full)
             state.save()
