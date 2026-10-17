@@ -34,12 +34,23 @@ def _validate_component_refs_cli(refs: list[str], project_root: Path) -> None:
             raise typer.BadParameter(err)
 
 
+def _spec_location() -> str:
+    """Return configured spec_location, falling back to docs/specs."""
+    from ydk.core.config import load_config
+
+    try:
+        return load_config().project.spec_location
+    except Exception:
+        return "docs/specs"
+
+
 def _validate_spec_refs_cli(refs: list[str], project_root: Path) -> None:
-    """Validate each spec ref exists, or raise BadParameter."""
+    """Validate each spec ref resolves via project root then spec_location, or raise BadParameter."""
     from ydk.core.task_validator import validate_spec_ref
 
+    spec_location = _spec_location()
     for ref in refs:
-        err = validate_spec_ref(ref, project_root)
+        err = validate_spec_ref(ref, project_root, spec_location)
         if err:
             raise typer.BadParameter(err)
 
@@ -391,13 +402,9 @@ def _validate_batch_yaml(
 
     # Validate spec_refs exist on disk (when project_root is provided)
     if project_root is not None:
-        from ydk.core.config import load_config as _load_cfg
+        from ydk.core.task_validator import validate_spec_ref
 
-        try:
-            cfg = _load_cfg()
-            spec_location = cfg.project.spec_location
-        except Exception:
-            spec_location = "docs/specs"
+        spec_location = _spec_location()
 
         for entity_type in ("epics", "stories", "tasks"):
             raw_items = data.get(entity_type, [])
@@ -407,13 +414,11 @@ def _validate_batch_yaml(
                     continue
                 item_map = cast("dict[str, object]", item)
                 item_id = item_map.get("id", "?")
-                for ref in _normalize_refs(item_map.get("spec_refs")):
-                    spec_path = project_root / ref
-                    if not spec_path.is_file():
-                        # Also try relative to spec_location
-                        alt_path = project_root / spec_location / ref
-                        if not alt_path.is_file():
-                            errors.append(f"Task '{item_id}': spec_ref '{ref}' not found at {spec_path}")
+                errors.extend(
+                    f"Task '{item_id}': spec_ref '{ref}' not found at {project_root / ref}"
+                    for ref in _normalize_refs(item_map.get("spec_refs"))
+                    if validate_spec_ref(ref, project_root, spec_location)
+                )
 
     # Validate we have at least one entity
     has_epics = bool(data.get("epics"))

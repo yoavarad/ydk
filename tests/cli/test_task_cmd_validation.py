@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -395,3 +396,42 @@ class TestCoverageFromBatch:
 
         assert result.exit_code != 0
         assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Consistent spec_ref resolution across single-item and batch paths
+# ---------------------------------------------------------------------------
+
+
+class TestSpecRefConsistency:
+    def test_cli_helper_accepts_bare_name_full_path_and_adr(self, tmp_path: Path, monkeypatch: object) -> None:
+        import typer
+
+        from ydk.cli.task_cmd import _validate_spec_refs_cli
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        (tmp_path / "docs" / "specs").mkdir(parents=True)
+        (tmp_path / "docs" / "specs" / "orders.md").write_text("# O", encoding="utf-8")
+        (tmp_path / "docs" / "adrs").mkdir(parents=True)
+        (tmp_path / "docs" / "adrs" / "0001-x.md").write_text("# A", encoding="utf-8")
+
+        _validate_spec_refs_cli(["orders.md", "docs/specs/orders.md", "docs/adrs/0001-x.md"], tmp_path)
+
+        with pytest.raises(typer.BadParameter, match=r"missing.md"):
+            _validate_spec_refs_cli(["missing.md"], tmp_path)
+
+    def test_batch_dry_run_accepts_bare_and_adr_refs(self, tmp_path: Path, monkeypatch: object) -> None:
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        (tmp_path / "docs" / "specs").mkdir(parents=True)
+        (tmp_path / "docs" / "specs" / "orders.md").write_text("# O", encoding="utf-8")
+        (tmp_path / "docs" / "adrs").mkdir(parents=True)
+        (tmp_path / "docs" / "adrs" / "0001-x.md").write_text("# A", encoding="utf-8")
+        batch_file = tmp_path / "batch.yaml"
+        batch_file.write_text(
+            yaml.dump({"tasks": [{"id": "t1", "title": "T", "spec_refs": ["orders.md", "docs/adrs/0001-x.md"]}]}),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
+
+        assert result.exit_code == 0
