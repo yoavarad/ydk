@@ -19,6 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from ydk.core.config import load_config
+from ydk.core.scaffold_state import ScaffoldState
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -46,6 +47,10 @@ Closes #
 WRITTEN = "written"
 OVERWRITTEN = "overwritten"
 SKIPPED = "skipped (exists)"
+SKIPPED_MODIFIED = "skipped (modified by hand; use --force)"
+STALE = "stale (config changed), re-run with --force"
+SKIP_ACTIONS = (SKIPPED, SKIPPED_MODIFIED, STALE)
+SCAFFOLD_STATE_PATH = Path(".ydk") / "scaffold-state.yaml"
 
 
 class CiConfigError(Exception):
@@ -246,7 +251,7 @@ class CiInitResult:
     @property
     def skipped(self) -> list[str]:
         """Paths left untouched because they already existed."""
-        return [f.path for f in self.files if f.action == SKIPPED]
+        return [f.path for f in self.files if f.action in SKIP_ACTIONS]
 
 
 def is_release_version(version: str) -> bool:
@@ -268,14 +273,22 @@ def render(template_text: str, ctx: CiContext, extra: Mapping[str, str] | None =
     return HEADER.format(version=ctx.version) + body
 
 
-def _write(root: Path, rel: Path, content: str, purpose: str, *, force: bool) -> CiFileResult:
+def _write(root: Path, rel: Path, content: str, purpose: str, *, force: bool, state: ScaffoldState) -> CiFileResult:
     target = root / rel
+    key = rel.as_posix()
     existed = target.exists()
     if existed and not force:
-        return CiFileResult(rel.as_posix(), SKIPPED, purpose)
+        if target.read_bytes().decode("utf-8", errors="replace").replace("\r\n", "\n") == content:
+            state.update(key, content)
+            return CiFileResult(key, SKIPPED, purpose)
+        if state.is_developer_owned(key, root):
+            return CiFileResult(key, SKIPPED_MODIFIED, purpose)
+        if not state.has_hash(key):
+            return CiFileResult(key, STALE, purpose)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8", newline="\n")
-    return CiFileResult(rel.as_posix(), OVERWRITTEN if existed else WRITTEN, purpose)
+    state.update(key, content)
+    return CiFileResult(key, OVERWRITTEN if existed else WRITTEN, purpose)
 
 
 def generate_ci(
@@ -313,6 +326,7 @@ def generate_ci(
             stack_target = MAKE_CI
         targets = [*CI_TARGETS, *([stack_target] if stack_target else [])]
     tdir = templates_dir or TEMPLATES_DIR
+    state = ScaffoldState(root / SCAFFOLD_STATE_PATH)
     files: list[CiFileResult] = []
     warnings: list[str] = []
     for t in targets:
@@ -334,10 +348,11 @@ def generate_ci(
             extra = {"MAKE_STEPS": render_make_steps(make_targets)}
             warnings.extend(makefile_warnings(root, make_targets))
         content = render((tdir / t.template).read_text(encoding="utf-8"), ctx, extra)
-        files.append(_write(root, WORKFLOWS_DIR / t.output, content, t.purpose, force=force))
+        files.append(_write(root, WORKFLOWS_DIR / t.output, content, t.purpose, force=force, state=state))
         if t is PYTHON_CI and not (root / "uv.lock").is_file():
             warnings.append(UV_LOCK_WARNING)
-    files.append(_write(root, PR_TEMPLATE_PATH, PR_TEMPLATE, "Pull request template", force=force))
+    files.append(_write(root, PR_TEMPLATE_PATH, PR_TEMPLATE, "Pull request template", force=force, state=state))
+    state.save()
     return CiInitResult(version=ctx.version, files=files, warnings=warnings)
 
 
@@ -382,5 +397,7 @@ def generate_gitlab_ci(
     content = env.get_template(GITLAB_TEMPLATE).render(version=version, targets=targets, image=image)
     warnings = [GITLAB_IMAGE_WARNING] if not image else []
     warnings.extend(makefile_warnings(root, targets))
-    file = _write(root, GITLAB_CI_PATH, content, "GitLab CI (make targets)", force=force)
+    state = ScaffoldState(root / SCAFFOLD_STATE_PATH)
+    file = _write(root, GITLAB_CI_PATH, content, "GitLab CI (make targets)", force=force, state=state)
+    state.save()
     return CiInitResult(version=version, files=[file], warnings=warnings)
