@@ -484,5 +484,5 @@ class TestDotnetTargetContext:
             "coverage_min": 80.0,
             "coverage_packages": ["internal/censor"],
             "test_tags": [],
-            "race": True,
+            "race": "auto",
         }

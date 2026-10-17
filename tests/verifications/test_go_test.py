@@ -153,13 +153,43 @@ class TestBelowThreshold:
 
 
 class TestBuildCommand:
-    def test_defaults_include_race_and_coverprofile(self) -> None:
-        cmd = _load()._build_command("go", {}, "cover.out")
+    def test_race_true_includes_race_and_coverprofile(self) -> None:
+        cmd = _load()._build_command("go", {}, "cover.out", True)
         assert cmd == ["go", "test", "-race", "-coverprofile=cover.out", "./..."]
 
     def test_race_off_and_tags(self) -> None:
         cmd = _load()._build_command("go", {"race": False, "test_tags": ["integration"]}, "c.out")
         assert cmd == ["go", "test", "-tags", "integration", "-coverprofile=c.out", "./..."]
+
+
+class TestRaceEnabled:
+    def _resolve(self, race: object, env_out: str, which: str | None, rc: int = 0) -> tuple[bool, str | None]:
+        mod = _load()
+        with (
+            patch.object(mod.subprocess, "run", return_value=_completed(rc, stdout=env_out)),
+            patch.object(mod.shutil, "which", return_value=which),
+        ):
+            return mod._race_enabled("go", race, Path("."))
+
+    def test_auto_with_cgo_and_cc(self) -> None:
+        assert self._resolve("auto", "1\ngcc\n", "/usr/bin/gcc") == (True, None)
+
+    def test_auto_cgo_disabled(self) -> None:
+        ok, warn = self._resolve("auto", "0\ngcc\n", "/usr/bin/gcc")
+        assert ok is False
+        assert warn == "-race skipped: cgo/C compiler unavailable"
+
+    def test_auto_cc_missing(self) -> None:
+        ok, warn = self._resolve("auto", "1\ngcc\n", None)
+        assert ok is False
+        assert warn is not None
+
+    def test_auto_go_env_fails(self) -> None:
+        assert self._resolve("auto", "", None, rc=1)[0] is False
+
+    def test_true_is_strict_and_false_never(self) -> None:
+        assert self._resolve(True, "0\n\n", None) == (True, None)
+        assert self._resolve(False, "1\ngcc\n", "gcc") == (False, None)
 
 
 class TestMain:
@@ -222,10 +252,31 @@ class TestMain:
         _go_module(tmp_path)
         run = Mock(return_value=_completed(1, stdout=DATA_RACE_OUTPUT))
         with patch.object(mod.shutil, "which", return_value="go"), patch.object(mod.subprocess, "run", run):
-            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+            data = _run_main(mod, tmp_path, monkeypatch, capsys, go_config={"race": True})
         assert data["passed"] is False
         assert "DATA RACE" in data["output"]
         assert "-race" in run.call_args.args[0]
+
+    def test_auto_default_without_cgo_warns_and_drops_race(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        mod = _load()
+        _go_module(tmp_path)
+        run = Mock(side_effect=[_completed(0, stdout="0\ngcc\n"), _completed(0, stdout=FIXTURE_OUTPUT)])
+        with patch.object(mod.shutil, "which", return_value="go"), patch.object(mod.subprocess, "run", run):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert "-race" not in run.call_args.args[0]
+        assert data["detail"]["warnings"] == ["-race skipped: cgo/C compiler unavailable"]
+        assert "-race skipped" in data["output"]
+
+    def test_auto_default_with_cgo_adds_race(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        mod = _load()
+        _go_module(tmp_path)
+        run = Mock(side_effect=[_completed(0, stdout="1\ngcc\n"), _completed(0, stdout=FIXTURE_OUTPUT)])
+        with patch.object(mod.shutil, "which", return_value="go"), patch.object(mod.subprocess, "run", run):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert "-race" in run.call_args.args[0]
+        assert data["detail"]["warnings"] == []
 
     def test_no_config_runs_without_gate(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
         mod = _load()
@@ -308,6 +359,6 @@ def test_main_reports_summary_with_total_from_profile(tmp_path: Path, monkeypatc
         return _completed(0, stdout="ok  \texample.com/m/a\t0.1s\tcoverage: 75.0% of statements\n")
 
     with patch.object(mod.shutil, "which", return_value="go"), patch.object(mod.subprocess, "run", fake_run):
-        data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        data = _run_main(mod, tmp_path, monkeypatch, capsys, go_config={"race": False})
     assert data["detail"]["coverage_total"] == pytest.approx(87.5)
     assert data["detail"]["summary"] == "1 package(s) ok, 0 FAIL, total coverage 87.5%"

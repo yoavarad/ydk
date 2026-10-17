@@ -156,7 +156,7 @@ def test_done_runs_verifications(
                 "spec_check": {
                     "thresholds": {"architecture": 8},
                 },
-                "go": {"coverage_min": 0.0, "coverage_packages": [], "test_tags": [], "race": True},
+                "go": {"coverage_min": 0.0, "coverage_packages": [], "test_tags": [], "race": "auto"},
             },
             "task_scope": {"title": "Test task", "description": "", "acceptance_criteria": []},
         },
