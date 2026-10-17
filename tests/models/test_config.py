@@ -105,7 +105,7 @@ class TestGoVerificationConfig:
         assert go.coverage_min == 0.0
         assert go.coverage_packages == []
         assert go.test_tags == []
-        assert go.race is True
+        assert go.race == "auto"
 
     def test_values_set(self) -> None:
         cfg = YdkConfig.model_validate(
