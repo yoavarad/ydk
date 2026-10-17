@@ -9,6 +9,7 @@ so these tests exercise the real generator contract, not just internal helpers.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -136,7 +137,9 @@ class TestServiceStubs:
         # This exact string is what IgnitionEngine._register_todos scans for.
         for line in stub.splitlines():
             if "NotImplementedException" in line:
-                assert line.strip() == "throw new NotImplementedException();"
+                assert re.fullmatch(
+                    r"throw new NotImplementedException\(\); // ydk:contract:orders/OrderService\.\w+", line.strip()
+                )
         assert stub.count("throw new NotImplementedException();") == 3
 
     def test_method_signatures_map_types_and_names(self, contract_env: dict[str, str]) -> None:
