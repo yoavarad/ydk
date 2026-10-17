@@ -90,7 +90,7 @@ verification:
     coverage_packages:        # globs over module-relative or import paths; empty = whole module
       - "internal/..."
     test_tags: []             # extra -tags for go test
-    race: true                # go test -race (default)
+    race: auto                # auto (default): -race only if cgo + C compiler available; true/false force
     skip_patterns: [...]      # regexes failing task done on un-reasoned t.Skip added by the task
   helm:
     charts: [charts/my-service]

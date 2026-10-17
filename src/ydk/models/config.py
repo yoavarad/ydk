@@ -214,7 +214,7 @@ class GoVerificationConfig(BaseModel):
     coverage_min: float = Field(default=0.0, ge=0.0, le=100.0)
     coverage_packages: list[str] = Field(default_factory=list)
     test_tags: list[str] = Field(default_factory=list)
-    race: bool = True
+    race: bool | Literal["auto"] = "auto"
     # Regexes that fail ``task done`` on lines a task adds to Go tests (comments and string contents are
     # blanked first; matched across the whole file so calls may span lines). Default: un-reasoned skips --
     # Skip()/Skip("")/Skipf("")/SkipNow() on any receiver (t, b, tb, f, s.T(), custom helpers).
@@ -381,6 +381,25 @@ class DoctorConfig(BaseModel):
         return v
 
 
+class IgnitionConfig(BaseModel):
+    """``ydk ignite`` settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Pack init answers (e.g. go_module, runtime_image); `ydk ignite --answer` overrides per key.
+    init_answers: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("init_answers", mode="before")
+    @classmethod
+    def _numbers_to_str(cls, v: object) -> object:
+        if isinstance(v, dict):
+            return {
+                k: str(val) if isinstance(val, int | float) and not isinstance(val, bool) else val
+                for k, val in v.items()
+            }
+        return v
+
+
 class YdkConfig(BaseModel):
     """Top-level YDK configuration aggregating all sub-configs."""
 
@@ -403,3 +422,4 @@ class YdkConfig(BaseModel):
     tdd: TddConfig = TddConfig()
     ci: CiConfig = CiConfig()
     doctor: DoctorConfig = DoctorConfig()
+    ignition: IgnitionConfig = IgnitionConfig()

@@ -1,5 +1,5 @@
 name: go-test
-description: Run go test -race with coverage, enforcing verification.go.coverage_min
+description: Run go test (-race when cgo available) with coverage, enforcing verification.go.coverage_min
 trigger: git:pre-push
 parallel: false
 timeout: 600

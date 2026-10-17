@@ -132,9 +132,34 @@ def _below_threshold(
     return sorted(failures)
 
 
-def _build_command(go_bin: str, go_config: dict, profile: str) -> list[str]:
+def _race_enabled(go_bin: str, race: object, root: Path) -> tuple[bool, str | None]:
+    """Resolve the ``race`` setting to (use -race, warning). ``auto`` needs cgo and a C compiler on PATH."""
+    if race == "auto":
+        try:
+            proc = subprocess.run(
+                [go_bin, "env", "CGO_ENABLED", "CC"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(root),
+                timeout=30,
+                check=False,
+            )
+            lines = proc.stdout.strip().splitlines() if proc.returncode == 0 else []
+        except (subprocess.TimeoutExpired, OSError):
+            lines = []
+        cgo = lines[0].strip() if lines else ""
+        cc = lines[1].split() if len(lines) > 1 else []
+        if cgo == "1" and cc and shutil.which(cc[0]):
+            return True, None
+        return False, "-race skipped: cgo/C compiler unavailable"
+    return bool(race), None
+
+
+def _build_command(go_bin: str, go_config: dict, profile: str, race: bool = False) -> list[str]:
     cmd = [go_bin, "test"]
-    if go_config.get("race", True):
+    if race:
         cmd.append("-race")
     tags = go_config.get("test_tags") or []
     if tags:
@@ -162,8 +187,9 @@ def main() -> None:
         _emit(_result(True, "No go.mod found — skipped (non-Go project?)", start))
         return
 
+    use_race, race_warning = _race_enabled(go_bin, go_config.get("race", "auto"), root)
     with tempfile.TemporaryDirectory() as tmp:
-        cmd = _build_command(go_bin, go_config, str(Path(tmp) / "coverage.out"))
+        cmd = _build_command(go_bin, go_config, str(Path(tmp) / "coverage.out"), use_race)
         try:
             proc = subprocess.run(
                 cmd,
@@ -197,6 +223,8 @@ def main() -> None:
         output += f"\n\nCoverage below {minimum:.1f}%:\n{listing}"
     if unmatched:
         output += f"\n\nWarning: coverage_packages pattern(s) matched no packages: {', '.join(unmatched)}"
+    if race_warning:
+        output += f"\n\nWarning: {race_warning}"
     passed = proc.returncode == 0 and not failures
     detail = {
         "command": cmd,
@@ -206,6 +234,7 @@ def main() -> None:
         "unmatched_patterns": unmatched,
         "coverage_total": total,
         "summary": _summary(proc.stdout, total),
+        "warnings": [race_warning] if race_warning else [],
     }
     _emit(_result(passed, output, start, detail))
 
