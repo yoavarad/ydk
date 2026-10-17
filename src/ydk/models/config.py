@@ -381,6 +381,25 @@ class DoctorConfig(BaseModel):
         return v
 
 
+class IgnitionConfig(BaseModel):
+    """``ydk ignite`` settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Pack init answers (e.g. go_module, runtime_image); `ydk ignite --answer` overrides per key.
+    init_answers: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("init_answers", mode="before")
+    @classmethod
+    def _numbers_to_str(cls, v: object) -> object:
+        if isinstance(v, dict):
+            return {
+                k: str(val) if isinstance(val, int | float) and not isinstance(val, bool) else val
+                for k, val in v.items()
+            }
+        return v
+
+
 class YdkConfig(BaseModel):
     """Top-level YDK configuration aggregating all sub-configs."""
 
@@ -403,3 +422,4 @@ class YdkConfig(BaseModel):
     tdd: TddConfig = TddConfig()
     ci: CiConfig = CiConfig()
     doctor: DoctorConfig = DoctorConfig()
+    ignition: IgnitionConfig = IgnitionConfig()
