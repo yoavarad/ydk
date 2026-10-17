@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
+import yaml
 from rich.table import Table
 
+from ydk.core.config import load_config
 from ydk.core.ignition import IgnitionEngine, IgnitionError
 from ydk.output.console import console
 
@@ -17,9 +20,24 @@ def ignite_command(
     skip_verify: bool = typer.Option(
         False, "--skip-verify", help="Skip spec verification gate (for brownfield/inherited specs)"
     ),
+    answer: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--answer",
+            help="Pack init answer KEY=VALUE (repeatable); overrides ignition.init_answers in config",
+        ),
+    ] = None,
 ) -> None:
     """Generate project skeleton from installed ignition pack and YDK components."""
     project_root = Path.cwd()
+
+    cli_answers: dict[str, str] = {}
+    for item in answer or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            console.print(f"[red]Invalid --answer {item!r}: expected KEY=VALUE[/red]")
+            raise typer.Exit(1)
+        cli_answers[key.strip()] = value
 
     # --- Precondition checks ---
     from ydk.core.state import ProjectState
@@ -53,10 +71,17 @@ def ignite_command(
                 )
                 raise typer.Exit(1)
 
+    try:
+        config_answers = load_config(project_root / ".ydk" / "config.yaml").ignition.init_answers
+    except (ValueError, yaml.YAMLError) as exc:
+        console.print(f"[red]Invalid .ydk/config.yaml: {exc}[/red]")
+        raise typer.Exit(1) from None
+    init_answers = {**config_answers, **cli_answers}
+
     engine = IgnitionEngine(project_root)
 
     try:
-        result = engine.ignite(dry_run=dry_run, force=force)
+        result = engine.ignite(init_answers=init_answers, dry_run=dry_run, force=force)
     except IgnitionError as exc:
         console.print(f"[red]Ignition failed: {exc}[/red]")
         raise typer.Exit(code=1) from None
