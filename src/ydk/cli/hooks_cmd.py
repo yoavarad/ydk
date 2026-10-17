@@ -27,7 +27,7 @@ VERIFIED_TTL_SECONDS = 300
 @hooks_app.command("commit-msg")
 def commit_msg(file: str = typer.Argument(..., help="Path to the commit message file")) -> None:
     """Validate a commit message file against conventional-commit format (git commit-msg hook)."""
-    with open(file) as fh:
+    with open(file, encoding="utf-8") as fh:
         message = fh.read()
 
     if not validate_commit_message(message):
@@ -51,7 +51,7 @@ def pre_push() -> None:
     """
     if VERIFIED_FLAG.is_file():
         try:
-            verified_ts = float(VERIFIED_FLAG.read_text().strip())
+            verified_ts = float(VERIFIED_FLAG.read_text(encoding="utf-8").strip())
         except (OSError, ValueError):
             verified_ts = None
         VERIFIED_FLAG.unlink(missing_ok=True)

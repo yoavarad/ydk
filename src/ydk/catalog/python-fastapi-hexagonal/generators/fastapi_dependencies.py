@@ -426,10 +426,16 @@ def main() -> None:
     route_path = os.environ.get("YDK_COMPONENTS_ROUTE", "")
     ext_path = os.environ.get("YDK_COMPONENTS_EXT", "")
 
-    adata = yaml.safe_load(Path(adapters_path).read_text()) if adapters_path and Path(adapters_path).exists() else {}
-    uc_data = yaml.safe_load(Path(uc_path).read_text()) if uc_path and Path(uc_path).exists() else {}
-    dm_data = yaml.safe_load(Path(dm_path).read_text()) if dm_path and Path(dm_path).exists() else {}
-    ext_data = yaml.safe_load(Path(ext_path).read_text()) if ext_path and Path(ext_path).exists() else []
+    adata = (
+        yaml.safe_load(Path(adapters_path).read_text(encoding="utf-8"))
+        if adapters_path and Path(adapters_path).exists()
+        else {}
+    )
+    uc_data = yaml.safe_load(Path(uc_path).read_text(encoding="utf-8")) if uc_path and Path(uc_path).exists() else {}
+    dm_data = yaml.safe_load(Path(dm_path).read_text(encoding="utf-8")) if dm_path and Path(dm_path).exists() else {}
+    ext_data = (
+        yaml.safe_load(Path(ext_path).read_text(encoding="utf-8")) if ext_path and Path(ext_path).exists() else []
+    )
     if not isinstance(ext_data, list):
         ext_data = [ext_data] if ext_data else []
 
@@ -502,7 +508,7 @@ def main() -> None:
     # Infer domain services from routes + entities (if not already covered by contracts)
     route_data = []
     if route_path and Path(route_path).exists():
-        route_data = yaml.safe_load(Path(route_path).read_text()) or []
+        route_data = yaml.safe_load(Path(route_path).read_text(encoding="utf-8")) or []
         if not isinstance(route_data, list):
             route_data = []
     entity_list = dm_data if isinstance(dm_data, list) else []

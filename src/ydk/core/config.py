@@ -48,7 +48,7 @@ def load_config(config_path: Path = Path(".ydk/config.yaml")) -> YdkConfig:
     if not config_path.is_file():
         return YdkConfig.model_validate(DEFAULT_CONFIG)
 
-    raw = yaml.safe_load(config_path.read_text())
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     return YdkConfig.model_validate(raw)
 
 
@@ -73,7 +73,7 @@ def find_project_root(start: Path | None = None) -> Path:
 def save_config(config: dict[str, Any], config_path: Path = Path(".ydk/config.yaml")) -> None:
     """Save config dict to YAML."""
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+    config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False), encoding="utf-8")
 
 
 def init_config(

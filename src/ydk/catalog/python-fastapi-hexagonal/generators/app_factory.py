@@ -29,7 +29,7 @@ def load_artifact(env_var: str) -> dict:
     if not path or not Path(path).exists():
         print(f"Error: {env_var} not set or file not found", file=sys.stderr)
         sys.exit(1)
-    return yaml.safe_load(Path(path).read_text()) or {}
+    return yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
 
 
 def _normalize_database(db: dict) -> dict:

@@ -174,12 +174,12 @@ def main():
 
     entities = []
     if dm_path and Path(dm_path).exists():
-        entities = yaml.safe_load(Path(dm_path).read_text()) or {}
+        entities = yaml.safe_load(Path(dm_path).read_text(encoding="utf-8")) or {}
         entities = entities if isinstance(entities, list) else []
 
     ports_map = {}
     if ports_path and Path(ports_path).exists():
-        pdata = yaml.safe_load(Path(ports_path).read_text()) or {}
+        pdata = yaml.safe_load(Path(ports_path).read_text(encoding="utf-8")) or {}
         contracts_list = pdata if isinstance(pdata, list) else []
         all_ports = [port for c in contracts_list for port in c.get("ports", [])]
         ports_map = {p["name"]: p for p in all_ports}
@@ -190,7 +190,7 @@ def main():
     ]
 
     if adapters_path and Path(adapters_path).exists():
-        adata = yaml.safe_load(Path(adapters_path).read_text()) or {}
+        adata = yaml.safe_load(Path(adapters_path).read_text(encoding="utf-8")) or {}
         for adapter in adata.get("adapters", []):
             tech = adapter.get("technology", "")
             if "postgres" in tech.lower() or "sql" in tech.lower() or not tech:

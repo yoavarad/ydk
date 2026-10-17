@@ -60,7 +60,7 @@ def main() -> None:
         sys.exit(1)
 
     msg_file = sys.argv[1]
-    with open(msg_file) as fh:
+    with open(msg_file, encoding="utf-8") as fh:
         message = fh.read()
 
     if not validate_commit_message(message):

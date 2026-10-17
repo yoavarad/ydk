@@ -141,7 +141,7 @@ def assign_batch(
         if not mapping_path.is_file():
             console.print(f"[red]File not found: {mapping}[/red]")
             raise typer.Exit(1)
-        data = yaml.safe_load(mapping_path.read_text())
+        data = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or "assignments" not in data:
             console.print("[red]YAML must contain an 'assignments' key mapping task IDs to TODO lists.[/red]")
             raise typer.Exit(1)

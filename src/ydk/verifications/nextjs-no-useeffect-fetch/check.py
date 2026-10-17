@@ -13,7 +13,7 @@ FETCH_PATTERN = re.compile(r"fetch\s*\(|\.get\s*\(|\.post\s*\(|getApi[A-Z]|postA
 def check_file(filepath: Path) -> list[str]:
     """Check a single file for useEffect fetch patterns using depth tracking."""
     try:
-        content = filepath.read_text()
+        content = filepath.read_text(encoding="utf-8")
     except OSError:
         return []
 
