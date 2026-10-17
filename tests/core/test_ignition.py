@@ -1352,3 +1352,19 @@ class TestGoMissingToolchain:
             out = engine._install_go_deps({"runtime_dependencies": {"go": ["a/b@v1.0.0"]}}, warnings)
         assert out == []
         assert warnings
+
+
+class TestLineEndings:
+    def test_generated_files_written_with_lf(self, tmp_path: Path) -> None:
+        _setup_pack(
+            tmp_path,
+            generators=[{"script": "gen.py"}],
+            generator_scripts={"gen.py": _SIMPLE_GENERATOR},
+        )
+        _setup_components(tmp_path, {"entity": [{"name": "Strategy"}]})
+
+        IgnitionEngine(tmp_path).ignite()
+
+        data = (tmp_path / "app" / "models" / "strategy.py").read_bytes()
+        assert b"\n" in data
+        assert b"\r\n" not in data

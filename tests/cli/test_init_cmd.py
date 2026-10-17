@@ -447,3 +447,20 @@ def test_init_unknown_stack_exits_2(tmp_path: Path, monkeypatch: object) -> None
     assert "go" in result.output
     assert "python-fastapi" in result.output
     assert not (tmp_path / ".ydk" / "config.yaml").exists()
+
+
+def test_init_hook_scripts_written_with_lf(tmp_path: Path, monkeypatch: object) -> None:
+    """Hook/guard scripts must not contain CRLF (breaks sh/dash on Windows)."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    runner.invoke(app, ["init", "--name", "myproject"])
+
+    for rel in (
+        ".ydk/hooks/pre-commit",
+        ".ydk/hooks/pre-push",
+        ".ydk/hooks/commit-msg",
+        ".claude/hooks/guard.py",
+        ".claude/hooks/check-task-complete.sh",
+    ):
+        path = tmp_path / rel
+        if path.exists():
+            assert b"\r\n" not in path.read_bytes(), rel
