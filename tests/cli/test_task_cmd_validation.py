@@ -9,7 +9,7 @@ import yaml
 from typer.testing import CliRunner
 
 from ydk.cli import app
-from ydk.models.pm import TaskDetail, TaskSummary
+from ydk.models.pm import EpicDetail, StoryDetail, TaskDetail, TaskSummary
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -395,3 +395,48 @@ class TestCoverageFromBatch:
 
         assert result.exit_code != 0
         assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# validate-dag hierarchy check with GitHub-shaped details (id == "", number set)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateDagGithubHierarchy:
+    @staticmethod
+    def _run(epics: list[EpicDetail], stories: list[StoryDetail]) -> str:
+        task_repo = MagicMock()
+        task_repo.list_tasks.return_value = [TaskSummary(id="T-001", title="T", status="open")]
+        task_repo.get_task.return_value = TaskDetail(id="T-001", title="T", status="open", dependencies=[])
+        story_repo = MagicMock()
+        story_repo.list_stories.return_value = stories
+        epic_repo = MagicMock()
+        epic_repo.list_epics.return_value = epics
+        with (
+            patch("ydk.cli.task_cmd._get_repo", return_value=task_repo),
+            patch("ydk.repositories.factory.get_story_repository", return_value=story_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=epic_repo),
+        ):
+            result = runner.invoke(app, ["task", "validate-dag"])
+        return result.output
+
+    def test_linked_epic_not_reported(self) -> None:
+        out = self._run(
+            [EpicDetail(number=6, id="", title="E")],
+            [StoryDetail(number=9, id="", title="S", epic_id="#6")],
+        )
+        assert "has no stories" not in out
+
+    def test_unlinked_epic_reported_with_number(self) -> None:
+        out = self._run(
+            [EpicDetail(number=7, id="", title="E")],
+            [StoryDetail(number=9, id="", title="S", epic_id="#6")],
+        )
+        assert "Epic #7 has no stories" in out
+
+    def test_orphan_story_shows_number(self) -> None:
+        out = self._run(
+            [EpicDetail(number=6, id="", title="E")],
+            [StoryDetail(number=9, id="", title="S", epic_id=None)],
+        )
+        assert "Story #9 has no epic_id" in out

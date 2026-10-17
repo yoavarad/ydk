@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os.path
+import re
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING, cast
 
@@ -244,6 +245,18 @@ def check_component_coverage(
 # ---------------------------------------------------------------------------
 
 
+_HIERARCHY_REF = re.compile(r"^(?:[Ee]-)?#?0*(\d+)$")
+
+
+def normalize_hierarchy_ref(ref: str) -> str:
+    """Normalize an epic/story reference so '6', '#6' and 'E-006' compare equal.
+
+    Non-numeric references fall back to identity.
+    """
+    m = _HIERARCHY_REF.match(ref.strip())
+    return m.group(1) if m else ref
+
+
 def check_hierarchy(
     tasks: list[TaskSummary],
     stories: list[StorySummary],
@@ -267,8 +280,8 @@ def check_hierarchy(
     )
 
     # Epics with no stories
-    story_epic_ids = {s.epic_id for s in stories if getattr(s, "epic_id", None)}
-    warnings.extend(f"Epic {e.id} has no stories" for e in epics if e.id not in story_epic_ids)
+    story_epic_ids = {normalize_hierarchy_ref(s.epic_id) for s in stories if getattr(s, "epic_id", None)}
+    warnings.extend(f"Epic {e.id} has no stories" for e in epics if normalize_hierarchy_ref(e.id) not in story_epic_ids)
 
     return sorted(warnings)
 

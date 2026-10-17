@@ -1,6 +1,6 @@
 """Tests for ydk.core.task_validator — DAG validation and coverage checking."""
 
-from ydk.core.task_validator import check_coverage, validate_dag
+from ydk.core.task_validator import check_coverage, check_hierarchy, validate_dag
 from ydk.models.task import Task
 
 
@@ -189,3 +189,32 @@ class TestCheckCoverage:
         spec_sections = {"auth": ["login"]}
         story_refs = {"auth": set()}
         assert check_coverage(spec_sections, story_refs) == ["auth"]
+
+
+class TestCheckHierarchyNormalization:
+    @staticmethod
+    def _warnings(epic_id: str, story_epic_id: str) -> list[str]:
+        from ydk.models.pm import EpicSummary, StorySummary
+
+        epics = [EpicSummary(id=epic_id, title="E")]
+        stories = [StorySummary(id="#9", title="S", epic_id=story_epic_id)]
+        return check_hierarchy([], stories, epics)
+
+    def test_hash_epic_matches_hash_story_ref(self) -> None:
+        assert self._warnings("#6", "#6") == []
+
+    def test_bare_number_matches_hash(self) -> None:
+        assert self._warnings("6", "#6") == []
+
+    def test_local_padded_id_matches_hash(self) -> None:
+        assert self._warnings("E-006", "#6") == []
+
+    def test_local_ids_unchanged(self) -> None:
+        assert self._warnings("E-001", "E-001") == []
+
+    def test_unlinked_epic_still_reported_with_id(self) -> None:
+        assert self._warnings("#7", "#6") == ["Epic #7 has no stories"]
+
+    def test_non_numeric_ids_use_identity(self) -> None:
+        assert self._warnings("alpha", "alpha") == []
+        assert self._warnings("alpha", "beta") == ["Epic alpha has no stories"]
