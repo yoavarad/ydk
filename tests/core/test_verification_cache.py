@@ -117,6 +117,30 @@ class TestVerificationCacheUnit:
         # Different hash should miss
         assert cache.get_cached("lint", {"a.py": "hash2"}) is None
 
+    def test_non_ascii_roundtrip_is_utf8(self, tmp_path: Path) -> None:
+        cache = VerificationCache(tmp_path / "cache")
+        result = CheckResult(name="lint", passed=True, output="café ✓", duration_seconds=0.1)
+        hashes = {"a.py": "abc123"}
+
+        cache.store("lint", hashes, result)
+
+        entry = next((tmp_path / "cache").rglob("*.json"))
+        assert "café ✓" in entry.read_bytes().decode("utf-8")
+        cached = cache.get_cached("lint", hashes)
+        assert cached is not None
+        assert cached.output == "café ✓"
+
+    def test_undecodable_entry_is_miss(self, tmp_path: Path) -> None:
+        cache = VerificationCache(tmp_path / "cache")
+        result = CheckResult(name="lint", passed=True, output="ok", duration_seconds=0.1)
+        hashes = {"a.py": "abc123"}
+        cache.store("lint", hashes, result)
+        entry = next((tmp_path / "cache").rglob("*.json"))
+        entry.write_bytes(bytes([0xFF, 0xFE, 0x80]) + b" not utf-8")
+
+        assert cache.get_cached("lint", hashes) is None
+        assert not entry.exists()
+
     def test_invalidate_specific_plugin(self, tmp_path: Path) -> None:
         cache = VerificationCache(tmp_path / "cache")
         r1 = CheckResult(name="lint", passed=True, output="ok", duration_seconds=0.1)

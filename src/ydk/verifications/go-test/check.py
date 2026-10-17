@@ -4,7 +4,8 @@
 Runs ``go test [-race] [-tags ...] -coverprofile=<tmp> ./...`` and parses
 per-package coverage from its output. When ``verification.go.coverage_min``
 is above zero, every package matching ``verification.go.coverage_packages``
-(globs over module-relative or full import paths; empty = whole module)
+(globs or Go-style ``X/...`` over module-relative or full import paths; empty =
+whole module; patterns matching no package produce a warning)
 must reach it. Note: Go 1.22+ reports packages without tests as 0.0%, so
 with an empty package list such packages (e.g. ``cmd/...``) fail the gate.
 
@@ -92,6 +93,29 @@ def _relative(pkg: str, module: str | None) -> str:
     return pkg
 
 
+def _matches(rel: str, pkg: str, pattern: str) -> bool:
+    """Glob match on module-relative or full path; ``X/...`` (Go style) matches X and its subtree."""
+    if pattern.startswith("./"):
+        pattern = pattern[2:]
+    if pattern == "...":
+        return True
+    if pattern.endswith("/..."):
+        prefix = pattern[:-4]
+        return any(fnmatch.fnmatchcase(p, prefix) or fnmatch.fnmatchcase(p, prefix + "/*") for p in (rel, pkg))
+    return fnmatch.fnmatchcase(rel, pattern) or fnmatch.fnmatchcase(pkg, pattern)
+
+
+_NO_TESTS_RE = re.compile(r"^\?[ \t]+(\S+)[ \t]+\[no test files\]", re.MULTILINE)
+
+
+def _unmatched_patterns(
+    coverage: dict[str, float], module: str | None, patterns: list[str], output: str = ""
+) -> list[str]:
+    """Patterns matching none of the listed packages (incl. test-less ones); likely typos or dead config."""
+    pkgs = [*coverage, *_NO_TESTS_RE.findall(output)]
+    return [p for p in patterns if not any(_matches(_relative(pkg, module), pkg, p) for pkg in pkgs)]
+
+
 def _below_threshold(
     coverage: dict[str, float], module: str | None, minimum: float, patterns: list[str]
 ) -> list[tuple[str, float]]:
@@ -101,16 +125,41 @@ def _below_threshold(
     failures = []
     for pkg, pct in coverage.items():
         rel = _relative(pkg, module)
-        if patterns and not any(fnmatch.fnmatchcase(rel, p) or fnmatch.fnmatchcase(pkg, p) for p in patterns):
+        if patterns and not any(_matches(rel, pkg, p) for p in patterns):
             continue
         if pct < minimum:
             failures.append((rel, pct))
     return sorted(failures)
 
 
-def _build_command(go_bin: str, go_config: dict, profile: str) -> list[str]:
+def _race_enabled(go_bin: str, race: object, root: Path) -> tuple[bool, str | None]:
+    """Resolve the ``race`` setting to (use -race, warning). ``auto`` needs cgo and a C compiler on PATH."""
+    if race == "auto":
+        try:
+            proc = subprocess.run(
+                [go_bin, "env", "CGO_ENABLED", "CC"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(root),
+                timeout=30,
+                check=False,
+            )
+            lines = proc.stdout.strip().splitlines() if proc.returncode == 0 else []
+        except (subprocess.TimeoutExpired, OSError):
+            lines = []
+        cgo = lines[0].strip() if lines else ""
+        cc = lines[1].split() if len(lines) > 1 else []
+        if cgo == "1" and cc and shutil.which(cc[0]):
+            return True, None
+        return False, "-race skipped: cgo/C compiler unavailable"
+    return bool(race), None
+
+
+def _build_command(go_bin: str, go_config: dict, profile: str, race: bool = False) -> list[str]:
     cmd = [go_bin, "test"]
-    if go_config.get("race", True):
+    if race:
         cmd.append("-race")
     tags = go_config.get("test_tags") or []
     if tags:
@@ -138,8 +187,9 @@ def main() -> None:
         _emit(_result(True, "No go.mod found — skipped (non-Go project?)", start))
         return
 
+    use_race, race_warning = _race_enabled(go_bin, go_config.get("race", "auto"), root)
     with tempfile.TemporaryDirectory() as tmp:
-        cmd = _build_command(go_bin, go_config, str(Path(tmp) / "coverage.out"))
+        cmd = _build_command(go_bin, go_config, str(Path(tmp) / "coverage.out"), use_race)
         try:
             proc = subprocess.run(
                 cmd,
@@ -163,19 +213,28 @@ def main() -> None:
     output = (proc.stdout + ("\n" + proc.stderr if proc.stderr else "")).strip()
     coverage = _parse_coverage(proc.stdout)
     minimum = float(go_config.get("coverage_min") or 0.0)
-    failures = _below_threshold(coverage, _module_path(root), minimum, go_config.get("coverage_packages") or [])
+    module = _module_path(root)
+    patterns = go_config.get("coverage_packages") or []
+    failures = _below_threshold(coverage, module, minimum, patterns)
+    unmatched = _unmatched_patterns(coverage, module, patterns, proc.stdout) if minimum > 0 else []
 
     if failures:
         listing = "\n".join(f"  {pkg}: {pct:.1f}%" for pkg, pct in failures)
         output += f"\n\nCoverage below {minimum:.1f}%:\n{listing}"
+    if unmatched:
+        output += f"\n\nWarning: coverage_packages pattern(s) matched no packages: {', '.join(unmatched)}"
+    if race_warning:
+        output += f"\n\nWarning: {race_warning}"
     passed = proc.returncode == 0 and not failures
     detail = {
         "command": cmd,
         "coverage": coverage,
         "coverage_min": minimum,
         "below_threshold": dict(failures),
+        "unmatched_patterns": unmatched,
         "coverage_total": total,
         "summary": _summary(proc.stdout, total),
+        "warnings": [race_warning] if race_warning else [],
     }
     _emit(_result(passed, output, start, detail))
 

@@ -57,8 +57,8 @@ def _load_manifest(item_dir: Path) -> CatalogManifest | None:
     if not manifest_path.exists():
         return None
     try:
-        data = yaml.safe_load(manifest_path.read_text())
-    except yaml.YAMLError:
+        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, UnicodeDecodeError):
         return None
     if not isinstance(data, dict):
         return None

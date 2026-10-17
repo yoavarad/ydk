@@ -255,6 +255,33 @@ class TestRegisterTodos:
         todo = TodoManager(tmp_path).list_todos()[0]
         assert (todo.file, todo.line) == ("svc/svc.go", 4)
 
+    def test_go_marker_records_enclosing_func_and_receiver(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        engine = IgnitionEngine(tmp_path)
+        content = (
+            "package svc\n\n"
+            'func Run() {\n\tpanic("not implemented") // YDK-TODO-001: a\n}\n\n'
+            'func (s *Svc) Handle(x int) error {\n\tpanic("not implemented") // YDK-TODO-002: b\n}\n\n'
+            'func (Svc) Plain() {\n\tpanic("not implemented") // YDK-TODO-003: c\n}\n'
+            'func (s Repo[T]) Get() {\n\tpanic("not implemented") // YDK-TODO-004: d\n}\n'
+        )
+        engine._register_todos([GeneratedFile(path="svc/svc.go", content=content)])
+        methods = sorted(t.method for t in TodoManager(tmp_path).list_todos())
+        assert methods == ["Repo.Get", "Run", "Svc.Handle", "Svc.Plain"]
+
+    def test_go_legacy_unknown_entry_survives_shift(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        mgr = TodoManager(tmp_path)
+        mgr.reconcile("svc/svc.go", [{"line": 4, "method": "<unknown>", "description": "YDK-TODO-001: impl"}])
+        before = [t.id for t in mgr.list_todos()]
+        content = 'package svc\n\n// c\n// c\nfunc Run() {\n\tpanic("not implemented") // YDK-TODO-001: impl\n}\n'
+        IgnitionEngine(tmp_path)._register_todos([GeneratedFile(path="svc/svc.go", content=content)])
+        todos = mgr.list_todos()
+        assert [t.id for t in todos] == before
+        assert todos[0].method == "Run"
+
     def test_reignite_moved_marker_leaves_one_entry(self, tmp_path: Path) -> None:
         from ydk.core.todo_manager import TodoManager
 
@@ -1352,3 +1379,19 @@ class TestGoMissingToolchain:
             out = engine._install_go_deps({"runtime_dependencies": {"go": ["a/b@v1.0.0"]}}, warnings)
         assert out == []
         assert warnings
+
+
+class TestLineEndings:
+    def test_generated_files_written_with_lf(self, tmp_path: Path) -> None:
+        _setup_pack(
+            tmp_path,
+            generators=[{"script": "gen.py"}],
+            generator_scripts={"gen.py": _SIMPLE_GENERATOR},
+        )
+        _setup_components(tmp_path, {"entity": [{"name": "Strategy"}]})
+
+        IgnitionEngine(tmp_path).ignite()
+
+        data = (tmp_path / "app" / "models" / "strategy.py").read_bytes()
+        assert b"\n" in data
+        assert b"\r\n" not in data

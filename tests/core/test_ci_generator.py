@@ -136,7 +136,7 @@ def test_second_run_skips_and_leaves_files_untouched(tmp_path: Path) -> None:
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (wf, pr)}
     result = generate_ci(tmp_path, force=False, version="1.6.0", targets=[DEMO], templates_dir=tdir)
     assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (wf, pr)} == before
-    assert [f.action for f in result.files] == ["skipped (exists)", "skipped (exists)"]
+    assert [f.action for f in result.files] == ["skipped (modified by hand; use --force)", "skipped (exists)"]
     assert result.written == []
     assert result.skipped == [".github/workflows/demo.yml", ".github/PULL_REQUEST_TEMPLATE.md"]
 
@@ -708,3 +708,55 @@ def test_gitlab_hostile_image_round_trips(tmp_path: Path) -> None:
     extra = yaml.safe_dump({"ci": {"make_targets": ["lint"], "gitlab": {"image": image}}})
     parsed = _gitlab(tmp_path, extra=extra)
     assert parsed["default"]["image"] == image
+
+
+def _set_make_targets(root: Path, targets: list[str]) -> None:
+    cfg = root / ".ydk" / "config.yaml"
+    cfg.write_text(cfg.read_text(encoding="utf-8") + f"ci:\n  make_targets: {targets}\n", encoding="utf-8")
+
+
+def test_config_change_updates_unmodified_generated_file(tmp_path: Path) -> None:
+    _write_config(tmp_path, stack="go")
+    (tmp_path / "Makefile").write_text("lint:\n\ttrue\ntest:\n\ttrue\nbuild:\n\ttrue\n", encoding="utf-8")
+    generate_ci(tmp_path, force=False, version="1.5.0")
+    ci = tmp_path / ".github" / "workflows" / "ci.yml"
+    assert "make build" not in ci.read_text(encoding="utf-8")
+    _set_make_targets(tmp_path, ["lint", "build"])
+    result = generate_ci(tmp_path, force=False, version="1.5.0")
+    assert "make build" in ci.read_text(encoding="utf-8")
+    assert ".github/workflows/ci.yml" in result.written
+
+
+def test_hand_edited_generated_file_skipped_with_message(tmp_path: Path) -> None:
+    _write_config(tmp_path)
+    tdir = _templates(tmp_path)
+    generate_ci(tmp_path, force=False, version="1.5.0", targets=[DEMO], templates_dir=tdir)
+    wf = tmp_path / ".github" / "workflows" / "demo.yml"
+    wf.write_text("mine", encoding="utf-8")
+    result = generate_ci(tmp_path, force=False, version="1.6.0", targets=[DEMO], templates_dir=tdir)
+    assert wf.read_text(encoding="utf-8") == "mine"
+    row = next(f for f in result.files if f.path == ".github/workflows/demo.yml")
+    assert row.action == "skipped (modified by hand; use --force)"
+    assert row.path in result.skipped
+
+
+def test_untracked_differing_file_reported_stale(tmp_path: Path) -> None:
+    _write_config(tmp_path)
+    tdir = _templates(tmp_path)
+    wf = tmp_path / ".github" / "workflows" / "demo.yml"
+    wf.parent.mkdir(parents=True)
+    wf.write_text("old", encoding="utf-8")
+    result = generate_ci(tmp_path, force=False, version="1.5.0", targets=[DEMO], templates_dir=tdir)
+    assert wf.read_text(encoding="utf-8") == "old"
+    row = next(f for f in result.files if f.path == ".github/workflows/demo.yml")
+    assert row.action == "stale (config changed), re-run with --force"
+    assert row.path in result.skipped
+
+
+def test_identical_untracked_file_skipped_exists(tmp_path: Path) -> None:
+    _write_config(tmp_path)
+    tdir = _templates(tmp_path)
+    generate_ci(tmp_path, force=False, version="1.5.0", targets=[DEMO], templates_dir=tdir)
+    (tmp_path / ".ydk" / "scaffold-state.yaml").unlink()
+    result = generate_ci(tmp_path, force=False, version="1.5.0", targets=[DEMO], templates_dir=tdir)
+    assert [f.action for f in result.files] == ["skipped (exists)", "skipped (exists)"]

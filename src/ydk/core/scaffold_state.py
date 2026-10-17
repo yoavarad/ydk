@@ -48,6 +48,10 @@ class ScaffoldState:
         self._hashes[file_path] = self._compute_hash(content)
         self._formatted.pop(file_path, None)
 
+    def has_hash(self, file_path: str) -> bool:
+        """True when a generated-content hash is recorded for *file_path*."""
+        return file_path in self._hashes
+
     def record_formatted(self, file_path: str, content: str) -> None:
         """Record on-disk content after a formatter rewrote the generated file.
 
@@ -71,7 +75,7 @@ class ScaffoldState:
         if stored is None:
             # Never tracked — not developer-owned (first generation)
             return False
-        current_hash = self._compute_hash(full.read_text())
+        current_hash = self._compute_hash(full.read_text(encoding="utf-8"))
         return current_hash != stored
 
     @staticmethod

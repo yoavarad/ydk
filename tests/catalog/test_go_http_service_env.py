@@ -13,7 +13,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -144,11 +143,6 @@ class TestEnvGenerator:
             proc = subprocess.run([DASH, "-n", str(copy)], capture_output=True, text=True)
             assert proc.returncode == 0, f"{path}: {proc.stderr}"
 
-    @pytest.mark.xfail(
-        sys.platform == "win32",
-        strict=True,
-        reason="IgnitionEngine writes with Path.write_text, which translates \\n to \\r\\n on Windows",
-    )
     def test_generated_files_are_lf_on_disk(self, ignited: tuple[Path, object]) -> None:
         project, _ = ignited
         for path in [project / "Makefile", *_shell_files(project), *(project / "deploy" / "local").glob("*.yaml")]:

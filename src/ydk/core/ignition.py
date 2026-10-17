@@ -130,7 +130,7 @@ class IgnitionEngine:
                 full = self._root / gf.path
                 full.parent.mkdir(parents=True, exist_ok=True)
                 content = gf.content
-                full.write_text(content, encoding="utf-8")
+                full.write_text(content, encoding="utf-8", newline="\n")
                 state.update(gf.path, content)
                 written_paths.append(full)
             state.save()
@@ -287,7 +287,7 @@ class IgnitionEngine:
                 self._pack_dir = subdirs[0]
                 manifest_path = self._pack_dir / "manifest.yaml"
                 if manifest_path.exists():
-                    data = yaml.safe_load(manifest_path.read_text())
+                    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                     if isinstance(data, dict):
                         return data
 
@@ -297,7 +297,7 @@ class IgnitionEngine:
             self._pack_dir = legacy_dir
             manifest_path = legacy_dir / "manifest.yaml"
             if manifest_path.exists():
-                data = yaml.safe_load(manifest_path.read_text())
+                data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return data
 
@@ -387,7 +387,7 @@ class IgnitionEngine:
                 if ref_pack_dir is None:
                     errors.append(f"Phase '{phase_id}': referenced pack '{phase['pack_ref']}' not found")
                     continue
-                ref_manifest = yaml.safe_load((ref_pack_dir / "manifest.yaml").read_text())
+                ref_manifest = yaml.safe_load((ref_pack_dir / "manifest.yaml").read_text(encoding="utf-8"))
                 phase_generators = ref_manifest.get("generators", [])
                 generator_base = ref_pack_dir
             else:
@@ -558,7 +558,7 @@ class IgnitionEngine:
         """
         import ast
 
-        from ydk.core.todo_manager import TodoManager, markers_for
+        from ydk.core.todo_manager import TodoManager, go_enclosing_func, markers_for
 
         todo_mgr = TodoManager(self._root)
         existing = {t.id for t in todo_mgr.list_todos()}
@@ -567,13 +567,15 @@ class IgnitionEngine:
             found = markers_for(gf.path)
             if found and not gf.path.endswith(".py"):
                 stmts, comment_prefix = found
-                for i, line in enumerate(gf.content.splitlines(), start=1):
+                content_lines = gf.content.splitlines()
+                for i, line in enumerate(content_lines, start=1):
                     stripped = line.strip()
                     if stripped.startswith(stmts):
                         comment = ""
                         if comment_prefix in stripped:
                             comment = stripped.split(comment_prefix, 1)[1].strip()
-                        markers.append({"line": i, "method": "<unknown>", "description": comment})
+                        method = go_enclosing_func(content_lines, i) if gf.path.endswith(".go") else "<unknown>"
+                        markers.append({"line": i, "method": method, "description": comment})
                 todo_mgr.reconcile(gf.path, markers)
                 continue
             if not gf.path.endswith(".py"):

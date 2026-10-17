@@ -485,3 +485,20 @@ def test_init_twice_does_not_duplicate_entry(tmp_path: Path, monkeypatch: object
     assert result.exit_code == 0
     lines = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert lines.count(".ydk/cache/") == 1
+
+
+def test_init_hook_scripts_written_with_lf(tmp_path: Path, monkeypatch: object) -> None:
+    """Hook/guard scripts must not contain CRLF (breaks sh/dash on Windows)."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    runner.invoke(app, ["init", "--name", "myproject"])
+
+    for rel in (
+        ".ydk/hooks/pre-commit",
+        ".ydk/hooks/pre-push",
+        ".ydk/hooks/commit-msg",
+        ".claude/hooks/guard.py",
+        ".claude/hooks/check-task-complete.sh",
+    ):
+        path = tmp_path / rel
+        if path.exists():
+            assert b"\r\n" not in path.read_bytes(), rel

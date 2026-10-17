@@ -223,3 +223,63 @@ class TestComponentInitSchemas:
         assert schemas_dir.is_dir()
         schema_files = list(schemas_dir.glob("*.yaml"))
         assert len(schema_files) == 14
+
+
+class TestComponentInitSchemasUpgrade:
+    def _stale(self, tmp_path):
+        schemas_dir = tmp_path / ".ydk" / "schemas"
+        schemas_dir.mkdir(parents=True)
+        stale = schemas_dir / "contract.yaml"
+        stale.write_text("name: contract\ndescription: old\nversion: 1\nfields: {}\n")
+        return stale
+
+    def test_default_skips_existing(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        stale = self._stale(tmp_path)
+        result = runner.invoke(app, ["component", "init-schemas"])
+        assert result.exit_code == 0
+        assert "description: old" in stale.read_text()
+
+    def test_upgrade_replaces_stale(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        stale = self._stale(tmp_path)
+        result = runner.invoke(app, ["component", "init-schemas", "--upgrade"])
+        assert result.exit_code == 0
+        assert "ext_ref" in stale.read_text()
+
+    def test_force_replaces_stale(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        stale = self._stale(tmp_path)
+        result = runner.invoke(app, ["component", "init-schemas", "--force"])
+        assert result.exit_code == 0
+        assert "ext_ref" in stale.read_text()
+
+    def test_upgrade_leaves_identical_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["component", "init-schemas"])
+        result = runner.invoke(app, ["component", "init-schemas", "--upgrade"])
+        assert result.exit_code == 0
+        assert "Upgraded" not in result.output
+
+
+class TestComponentValidateWarnings:
+    def test_prints_undeclared_field_warning(self, monkeypatch):
+        from ydk.core import component_linker
+
+        monkeypatch.setattr("ydk.cli.component_cmd.ComponentRegistry.validate_all", lambda self: {})
+        monkeypatch.setattr(
+            "ydk.cli.component_cmd.ComponentRegistry.warn_all",
+            lambda self: {"ydk:contract:ns/A": ["Field 'ext_ref' is not declared"]},
+        )
+        monkeypatch.setattr(
+            "ydk.cli.component_cmd.ComponentRegistry.list_components", lambda self, type_filter=None: []
+        )
+        monkeypatch.setattr(
+            component_linker.ComponentLinker,
+            "validate_references",
+            lambda self: LinkerResult(undefined_refs=[], orphaned_components=[], broken_cross_refs=[], valid_refs=[]),
+        )
+        result = runner.invoke(app, ["component", "validate"])
+        assert result.exit_code == 0
+        assert "WARNING: ydk:contract:ns/A" in result.output
+        assert "ext_ref" in result.output

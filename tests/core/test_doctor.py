@@ -331,7 +331,7 @@ class TestRunAll:
         (config_dir / "config.yaml").write_text("project:\n  name: test\n")
         doc = Doctor(project_root=tmp_path)
         results = doc.run_all()
-        assert len(results) == 17
+        assert len(results) == 18
         assert all(isinstance(r, CheckResult) for r in results)
 
 
@@ -478,3 +478,29 @@ class TestHasWarnings:
             CheckResult("b", CheckSeverity.warning, "meh"),
         ]
         assert doc.has_warnings(results) is True
+
+
+class TestCheckSchemaVersions:
+    def test_ok_when_no_local_schemas(self, tmp_path: Path) -> None:
+        result = Doctor(project_root=tmp_path)._check_schema_versions()
+        assert result.severity == CheckSeverity.ok
+
+    def test_warns_when_local_older(self, tmp_path: Path) -> None:
+        schemas = tmp_path / ".ydk" / "schemas"
+        schemas.mkdir(parents=True)
+        (schemas / "contract.yaml").write_text("name: contract\ndescription: old\nversion: 0\nfields: {}\n")
+        result = Doctor(project_root=tmp_path)._check_schema_versions()
+        assert result.severity == CheckSeverity.warning
+        assert "contract" in (result.detail or "")
+        assert "--upgrade" in (result.detail or "")
+
+    def test_ok_when_local_matches_bundled(self, tmp_path: Path) -> None:
+        import shutil
+
+        from ydk.core.doctor import _BUNDLED_SCHEMAS_DIR
+
+        schemas = tmp_path / ".ydk" / "schemas"
+        schemas.mkdir(parents=True)
+        shutil.copy2(_BUNDLED_SCHEMAS_DIR / "contract.yaml", schemas / "contract.yaml")
+        result = Doctor(project_root=tmp_path)._check_schema_versions()
+        assert result.severity == CheckSeverity.ok

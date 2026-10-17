@@ -16,6 +16,17 @@ This ignition pack generates a stdlib-first Go `net/http` service from YDK compo
 | `Dockerfile`, `.dockerignore` | phase `ops`; `ydk:config` title | Multi-stage build: `golang` builder, `CGO_ENABLED=0`, `-mod=vendor`, `GOPROXY=off`, `RUN --network=none`, `-ldflags "-X main.version=${VERSION}"`; runtime from the `runtime_image` init answer (default `scratch` plus CA roots), builder from `builder_image` (default `golang:1`), `USER 1001`, group-0 ownership |
 | `charts/<app>/` | phase `ops`; `ydk:crosscut` env table (`Helm value` column), `ydk:nfr` cpu/memory/shutdown, `ydk:req` single-replica | Helm chart v2: `values.schema.json` closed at every level (`additionalProperties: false`), Deployment, Service, optional Route (`openshift.enabled=true`) or Ingress (`ingress.enabled`), optional NetworkPolicy |
 
+## Init answers
+
+The pack reads these init answers: `app_name`, `go_module`, `http_port`, `builder_image` and `runtime_image`. Set them in `.ydk/config.yaml` so every ignite uses them, or per run with `ydk ignite --answer KEY=VALUE` (repeatable). A CLI answer overrides the config answer with the same key.
+
+```yaml
+ignition:
+  init_answers:
+    go_module: example.com/acme/svc
+    runtime_image: registry.access.redhat.com/ubi9/ubi-micro
+```
+
 ## Conventions
 
 - **TODOs:** every unimplemented handler, stub method and adapter method has the body `panic("not implemented") // <component id>: <description>`. Ignition registers each of these lines as a YDK TODO. The panic recovery middleware turns a TODO panic into a JSON 500, so the app still builds and serves `/healthz`.

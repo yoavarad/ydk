@@ -356,14 +356,16 @@ def _install_claude_hooks() -> None:
         'echo "  3. Run: ydk task done <task-id>"\n'
         'echo ""\n'
         'echo "The session cannot end until the task is properly completed with a PR."\n'
-        "exit 2\n"
+        "exit 2\n",
+        encoding="utf-8",
+        newline="\n",
     )
     if os.name != "nt":
         check_script.chmod(0o755)
 
     # Unified PreToolUse guard script
     guard_script = hooks_dir / "guard.py"
-    guard_script.write_text(_GUARD_SCRIPT, encoding="utf-8")
+    guard_script.write_text(_GUARD_SCRIPT, encoding="utf-8", newline="\n")
     if os.name != "nt":
         guard_script.chmod(0o755)
 
@@ -435,15 +437,15 @@ def _install_hooks() -> None:
     # no project `.venv` on disk (GitHub issue #264). `ydk` is already the
     # resolved entry point, so no interpreter lookup is needed here.
     pre_commit = hooks_dir / "pre-commit"
-    pre_commit.write_text("#!/bin/sh\nydk verify run --trigger pre-commit\n", encoding="utf-8")
+    pre_commit.write_text("#!/bin/sh\nydk verify run --trigger pre-commit\n", encoding="utf-8", newline="\n")
     _make_executable(pre_commit)
 
     pre_push = hooks_dir / "pre-push"
-    pre_push.write_text("#!/bin/sh\nydk hooks pre-push\n", encoding="utf-8")
+    pre_push.write_text("#!/bin/sh\nydk hooks pre-push\n", encoding="utf-8", newline="\n")
     _make_executable(pre_push)
 
     commit_msg = hooks_dir / "commit-msg"
-    commit_msg.write_text('#!/bin/sh\nydk hooks commit-msg "$1"\n', encoding="utf-8")
+    commit_msg.write_text('#!/bin/sh\nydk hooks commit-msg "$1"\n', encoding="utf-8", newline="\n")
     _make_executable(commit_msg)
 
     subprocess.run(

@@ -63,6 +63,9 @@ class CheckSeverity(StrEnum):
     error = "error"
 
 
+_BUNDLED_SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas"
+
+
 @dataclass
 class CheckResult:
     """Outcome of a single doctor health check."""
@@ -100,6 +103,7 @@ class Doctor:
             self._check_jinja2,
             self._check_task_pr_drift,
             self._check_epic_retros,
+            self._check_schema_versions,
         ]
 
     def run_all(self) -> list[CheckResult]:
@@ -454,6 +458,32 @@ class Doctor:
             CheckSeverity.warning,
             f"{len(drifted)} task(s) with merged PRs not marked done",
             detail="\n".join(drifted),
+        )
+
+    def _check_schema_versions(self) -> CheckResult:
+        """Warn when local .ydk/schemas versions lag the bundled ones."""
+        local_dir = self._root / ".ydk" / "schemas"
+        if not local_dir.is_dir():
+            return CheckResult("Schema versions", CheckSeverity.ok, "No local schemas")
+        stale: list[str] = []
+        for bundled in sorted(_BUNDLED_SCHEMAS_DIR.glob("*.yaml")):
+            local = local_dir / bundled.name
+            if not local.is_file():
+                continue
+            try:
+                local_v = int(yaml.safe_load(local.read_text()).get("version", 1))
+                bundled_v = int(yaml.safe_load(bundled.read_text()).get("version", 1))
+            except (yaml.YAMLError, AttributeError, TypeError, ValueError):
+                continue
+            if local_v < bundled_v:
+                stale.append(f"{bundled.stem} (v{local_v} < v{bundled_v})")
+        if not stale:
+            return CheckResult("Schema versions", CheckSeverity.ok, "Local schemas up to date")
+        return CheckResult(
+            "Schema versions",
+            CheckSeverity.warning,
+            f"{len(stale)} outdated local schema(s)",
+            detail=f"{', '.join(stale)}. Run 'ydk component init-schemas --upgrade'",
         )
 
     def _check_epic_retros(self) -> CheckResult:

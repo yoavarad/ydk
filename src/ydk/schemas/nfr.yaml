@@ -1,6 +1,6 @@
 name: nfr
 description: "A non-functional requirement with quantified target and measurement method"
-version: 1
+version: 2
 fields:
   id:
     type: string

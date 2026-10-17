@@ -105,7 +105,7 @@ class TestGoVerificationConfig:
         assert go.coverage_min == 0.0
         assert go.coverage_packages == []
         assert go.test_tags == []
-        assert go.race is True
+        assert go.race == "auto"
 
     def test_values_set(self) -> None:
         cfg = YdkConfig.model_validate(
@@ -258,3 +258,23 @@ class TestCiConfig:
     def test_unknown_key_rejected(self) -> None:
         with pytest.raises(ValidationError, match="bogus"):
             YdkConfig.model_validate({"project": {"name": "x"}, "ci": {"bogus": 1}})
+
+
+class TestIgnitionConfig:
+    def test_defaults(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}})
+        assert cfg.ignition.init_answers == {}
+
+    def test_init_answers_parse(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {"project": {"name": "x"}, "ignition": {"init_answers": {"go_module": "example.com/svc"}}}
+        )
+        assert cfg.ignition.init_answers == {"go_module": "example.com/svc"}
+
+    def test_numeric_answer_coerced_to_str(self) -> None:
+        cfg = YdkConfig.model_validate({"project": {"name": "x"}, "ignition": {"init_answers": {"http_port": 9090}}})
+        assert cfg.ignition.init_answers == {"http_port": "9090"}
+
+    def test_unknown_key_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="bogus"):
+            YdkConfig.model_validate({"project": {"name": "x"}, "ignition": {"bogus": 1}})
