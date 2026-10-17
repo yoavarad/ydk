@@ -6,7 +6,7 @@ This ignition pack generates a stdlib-first Go `net/http` service from YDK compo
 
 | Path | Source manifests | Contents |
 |---|---|---|
-| `go.mod` | `ydk:config` title, or the `go_module` / `app_name` init answers | Module, Go 1.22 (method-aware `ServeMux`) |
+| `go.mod` | `ydk:config` title, or the `go_module` / `app_name` / `go_version` init answers | Module, `go` directive from the `go_version` init answer (default 1.22, the floor for the method-aware `ServeMux`) |
 | `cmd/<app>/main.go` | `ydk:contract`, `ydk:nfr` (`tags: [shutdown]`) | Config load, slog JSON logger (`LOG_LEVEL`), `http.Server` on port 8080 (or the `http_port` init answer), bound to `LISTEN_HOST` (default: all interfaces), graceful shutdown on SIGTERM/SIGINT; each contract bound to a supported ext is wired to its generated adapter (client from `<tech>adapter.Connect()`), every other contract to its `New<Contract>()` stub |
 | `internal/config/config.go` | `ydk:crosscut` with an `Env var` markdown table | Typed `Config`, `Load()`; required vars fail with `ErrInvalidConfig` |
 | `internal/httpapi/` | `ydk:route`, `ydk:error`, `ydk:crosscut` with `kind: error-format`, `ydk:page` | `ServeMux` routes (one handler per route), `writeError` JSON helper, message constants, panic recovery (JSON 500), JSON 404/405 wrapper, `/healthz`, `/readyz` |
@@ -18,7 +18,7 @@ This ignition pack generates a stdlib-first Go `net/http` service from YDK compo
 
 ## Init answers
 
-The pack reads these init answers: `app_name`, `go_module`, `http_port`, `builder_image` and `runtime_image`. Set them in `.ydk/config.yaml` so every ignite uses them, or per run with `ydk ignite --answer KEY=VALUE` (repeatable). A CLI answer overrides the config answer with the same key.
+The pack reads these init answers: `app_name`, `go_module`, `go_version`, `http_port`, `builder_image` and `runtime_image`. Set them in `.ydk/config.yaml` so every ignite uses them, or per run with `ydk ignite --answer KEY=VALUE` (repeatable). A CLI answer overrides the config answer with the same key.
 
 ```yaml
 ignition:
@@ -26,6 +26,8 @@ ignition:
     go_module: example.com/acme/svc
     runtime_image: registry.access.redhat.com/ubi9/ubi-micro
 ```
+
+**Go version:** `go.mod` starts at `go 1.22` (or the `go_version` answer, for example `1.24`); it never follows the local toolchain. Dependencies can raise it: `go get` lifts the directive to the highest `go` line among them (franz-go v1.22.1 needs `go 1.26.0`). Ignite warns when that happens, and also when a `builder_image` with a numeric `golang` tag is older than the final directive, because the Dockerfile sets `GOTOOLCHAIN=local` and cannot download a newer Go.
 
 ## Conventions
 

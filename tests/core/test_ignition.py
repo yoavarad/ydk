@@ -1284,6 +1284,110 @@ class TestGoRuntimeDeps:
         assert "boom" in warnings[0]
 
 
+class TestGoDirectiveWarnings:
+    def _raising_run(self, go_mod: Path, raised: str):
+        def run(cmd, **kwargs):
+            if cmd[:2] == ["go", "get"]:
+                go_mod.write_text(go_mod.read_text().replace("go 1.22", f"go {raised}"))
+            return _fake_run()
+
+        return run
+
+    def test_warns_when_deps_raise_go_directive(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module x\n\ngo 1.22\n\nrequire github.com/twmb/franz-go v1.22.1\n")
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run", side_effect=self._raising_run(go_mod, "1.26.0")):
+            engine._install_go_deps({}, warnings)
+        assert len(warnings) == 1
+        assert "1.22" in warnings[0]
+        assert "1.26.0" in warnings[0]
+        assert "github.com/twmb/franz-go@v1.22.1" in warnings[0]
+
+    def test_raise_reported_when_later_step_fails(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module x\n\ngo 1.22\n\nrequire a/b v1.0.0\n")
+        raise_run = self._raising_run(go_mod, "1.26.0")
+
+        def run(cmd, **kwargs):
+            raise_run(cmd)
+            return _fake_run(1, stderr="tidy boom") if cmd[:3] == ["go", "mod", "tidy"] else _fake_run()
+
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run", side_effect=run):
+            assert engine._install_go_deps({}, warnings) == []
+        assert any("tidy boom" in w for w in warnings)
+        assert any("1.26.0" in w for w in warnings)
+
+    def test_no_warning_when_directive_unchanged(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n\ngo 1.22\n\nrequire a/b v1.0.0\n")
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run()):
+            engine._install_go_deps({}, warnings)
+        assert warnings == []
+
+    def test_builder_image_older_than_directive_warns(self, tmp_path: Path) -> None:
+        (tmp_path / "go.mod").write_text("module x\n\ngo 1.26.0\n")
+        warnings: list[str] = []
+        IgnitionEngine(tmp_path)._check_go_builder_image({"builder_image": "golang:1.25"}, warnings)
+        assert len(warnings) == 1
+        assert "golang:1.25" in warnings[0]
+        assert "1.26.0" in warnings[0]
+
+    def test_builder_image_variant_tag_older_than_directive_warns(self, tmp_path: Path) -> None:
+        (tmp_path / "go.mod").write_text("module x\n\ngo 1.26.0\n")
+        warnings: list[str] = []
+        IgnitionEngine(tmp_path)._check_go_builder_image(
+            {"builder_image": "registry.example.com:5000/golang:1.25.3-alpine@sha256:0abc"}, warnings
+        )
+        assert len(warnings) == 1
+
+    @pytest.mark.parametrize(
+        "image",
+        [
+            "golang:1.26",
+            "golang:1",
+            "golang:1.27-alpine",
+            "golang",
+            "golang:latest",
+            "golang@sha256:0abc",
+            "mycorp/builder:1.20",
+        ],
+    )
+    def test_builder_image_satisfying_or_unversioned_is_silent(self, tmp_path: Path, image: str) -> None:
+        (tmp_path / "go.mod").write_text("module x\n\ngo 1.26.0\n")
+        warnings: list[str] = []
+        IgnitionEngine(tmp_path)._check_go_builder_image({"builder_image": image}, warnings)
+        assert warnings == []
+
+    def test_no_builder_answer_or_go_mod_is_silent(self, tmp_path: Path) -> None:
+        warnings: list[str] = []
+        engine = IgnitionEngine(tmp_path)
+        engine._check_go_builder_image({"builder_image": "golang:1.25"}, warnings)
+        (tmp_path / "go.mod").write_text("module x\n\ngo 1.26.0\n")
+        engine._check_go_builder_image({}, warnings)
+        assert warnings == []
+
+    def test_go_post_steps_check_builder_image(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        (tmp_path / "go.mod").write_text("module x\n\ngo 1.26.0\n")
+        engine = IgnitionEngine(tmp_path)
+        warnings: list[str] = []
+        with patch("ydk.core.ignition.subprocess.run", return_value=_fake_run()):
+            engine._run_post_steps({"stack": {"language": "go"}}, [], warnings, {"builder_image": "golang:1.25"})
+        assert any("golang:1.25" in w for w in warnings)
+
+
 class TestGoIgniteDispatch:
     def test_go_pack_skips_python_steps(self, tmp_path: Path) -> None:
         from unittest.mock import patch
