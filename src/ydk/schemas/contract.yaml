@@ -1,6 +1,6 @@
 name: contract
 description: "An interface or protocol contract that defines method signatures for a service"
-version: 1
+version: 2
 fields:
   id:
     type: string

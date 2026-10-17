@@ -285,3 +285,34 @@ class TestCreateComponent:
         reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=components_dir)
         with pytest.raises(ComponentRegistryError, match="already exists"):
             reg.create_component("route", "orders/create")
+
+
+class TestUndeclaredFieldWarnings:
+    def test_warns_on_undeclared_key(self, tmp_path: Path) -> None:
+        schemas_dir = tmp_path / "schemas"
+        components_dir = tmp_path / "components"
+        _write_schema(schemas_dir, "contract")
+        _write_component(components_dir, "contract", "ns", "A", extra={"ext_ref": "ydk:ext:x/y"})
+        registry = ComponentRegistry(schemas_dir, components_dir)
+        assert registry.validate_component("ydk:contract:ns/A") == []
+        warnings = registry.warn_undeclared_fields("ydk:contract:ns/A")
+        assert len(warnings) == 1
+        assert "ext_ref" in warnings[0]
+
+    def test_no_warning_for_declared_keys(self, tmp_path: Path) -> None:
+        schemas_dir = tmp_path / "schemas"
+        components_dir = tmp_path / "components"
+        _write_schema(schemas_dir, "contract")
+        _write_component(components_dir, "contract", "ns", "A")
+        registry = ComponentRegistry(schemas_dir, components_dir)
+        assert registry.warn_undeclared_fields("ydk:contract:ns/A") == []
+
+    def test_warn_all_keyed_by_component(self, tmp_path: Path) -> None:
+        schemas_dir = tmp_path / "schemas"
+        components_dir = tmp_path / "components"
+        _write_schema(schemas_dir, "contract")
+        _write_component(components_dir, "contract", "ns", "A", extra={"bogus": 1})
+        _write_component(components_dir, "contract", "ns", "B")
+        registry = ComponentRegistry(schemas_dir, components_dir)
+        result = registry.warn_all()
+        assert list(result) == ["ydk:contract:ns/A"]
