@@ -558,7 +558,7 @@ class IgnitionEngine:
         """
         import ast
 
-        from ydk.core.todo_manager import TodoManager, markers_for
+        from ydk.core.todo_manager import TodoManager, go_enclosing_func, markers_for
 
         todo_mgr = TodoManager(self._root)
         existing = {t.id for t in todo_mgr.list_todos()}
@@ -567,13 +567,15 @@ class IgnitionEngine:
             found = markers_for(gf.path)
             if found and not gf.path.endswith(".py"):
                 stmts, comment_prefix = found
-                for i, line in enumerate(gf.content.splitlines(), start=1):
+                content_lines = gf.content.splitlines()
+                for i, line in enumerate(content_lines, start=1):
                     stripped = line.strip()
                     if stripped.startswith(stmts):
                         comment = ""
                         if comment_prefix in stripped:
                             comment = stripped.split(comment_prefix, 1)[1].strip()
-                        markers.append({"line": i, "method": "<unknown>", "description": comment})
+                        method = go_enclosing_func(content_lines, i) if gf.path.endswith(".go") else "<unknown>"
+                        markers.append({"line": i, "method": method, "description": comment})
                 todo_mgr.reconcile(gf.path, markers)
                 continue
             if not gf.path.endswith(".py"):
