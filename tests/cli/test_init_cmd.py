@@ -447,3 +447,41 @@ def test_init_unknown_stack_exits_2(tmp_path: Path, monkeypatch: object) -> None
     assert "go" in result.output
     assert "python-fastapi" in result.output
     assert not (tmp_path / ".ydk" / "config.yaml").exists()
+
+
+def test_init_creates_gitignore_with_cache_entry(tmp_path: Path, monkeypatch: object) -> None:
+    """Fresh init creates .gitignore containing .ydk/cache/."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    result = runner.invoke(app, ["init", "--name", "myproject"])
+    assert result.exit_code == 0
+    lines = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert lines.count(".ydk/cache/") == 1
+
+
+def test_init_appends_cache_entry_preserving_content(tmp_path: Path, monkeypatch: object) -> None:
+    """Existing .gitignore content is preserved; entry appended once."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    (tmp_path / ".gitignore").write_text("node_modules/\n*.log", encoding="utf-8")
+    result = runner.invoke(app, ["init", "--name", "myproject"])
+    assert result.exit_code == 0
+    content = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert content == "node_modules/\n*.log\n.ydk/cache/\n"
+
+
+def test_init_does_not_duplicate_existing_cache_entry(tmp_path: Path, monkeypatch: object) -> None:
+    """Equivalent existing entry (with or without leading slash) is not duplicated."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    (tmp_path / ".gitignore").write_text("/.ydk/cache\n", encoding="utf-8")
+    result = runner.invoke(app, ["init", "--name", "myproject"])
+    assert result.exit_code == 0
+    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == "/.ydk/cache\n"
+
+
+def test_init_twice_does_not_duplicate_entry(tmp_path: Path, monkeypatch: object) -> None:
+    """Re-running init --force leaves exactly one entry."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    runner.invoke(app, ["init", "--name", "myproject"])
+    result = runner.invoke(app, ["init", "--name", "myproject", "--force"])
+    assert result.exit_code == 0
+    lines = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert lines.count(".ydk/cache/") == 1

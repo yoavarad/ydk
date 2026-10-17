@@ -41,6 +41,20 @@ def _make_executable(path: Path) -> None:
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 
+_CACHE_IGNORE_EQUIVALENTS = {".ydk/cache", ".ydk/cache/", "/.ydk/cache", "/.ydk/cache/"}
+
+
+def _ensure_gitignore(entry: str = ".ydk/cache/") -> None:
+    """Ensure .gitignore exists and contains ``entry``, preserving existing content."""
+    path = Path(".gitignore")
+    existing = path.read_bytes().decode("utf-8-sig", errors="replace") if path.exists() else ""
+    if any(line.strip() in _CACHE_IGNORE_EQUIVALENTS for line in existing.splitlines()):
+        return
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    path.write_bytes((existing + entry + "\n").encode("utf-8"))
+
+
 def _print_api_key_status() -> None:
     """Print whether ANTHROPIC_API_KEY is set, with setup instructions if not.
 
@@ -500,6 +514,9 @@ def init_command(
 
     # Install GitHub templates
     _install_github_templates()
+
+    # Keep verification cache out of version control
+    _ensure_gitignore()
 
     # Create required GitHub labels if remote is github
     # Generate CI workflows for github remotes; never overwrite, even with `init --force`
