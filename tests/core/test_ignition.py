@@ -1288,7 +1288,9 @@ class TestGoDirectiveWarnings:
     def _raising_run(self, go_mod: Path, raised: str):
         def run(cmd, **kwargs):
             if cmd[:2] == ["go", "get"]:
-                go_mod.write_text(go_mod.read_text().replace("go 1.22", f"go {raised}"))
+                go_mod.write_text(
+                    go_mod.read_text(encoding="utf-8").replace("go 1.22", f"go {raised}"), encoding="utf-8"
+                )
             return _fake_run()
 
         return run
