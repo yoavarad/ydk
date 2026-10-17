@@ -123,6 +123,47 @@ COVERAGE = {
 }
 
 
+class TestEllipsisPatterns:
+    def test_ellipsis_matches_subtree(self) -> None:
+        result = _load()._below_threshold(COVERAGE, "example.com/m", 80.0, ["internal/..."])
+        assert result == [("internal/censor", 62.5), ("internal/util", 10.0)]
+
+    def test_ellipsis_matches_prefix_package_itself(self) -> None:
+        result = _load()._below_threshold({"example.com/m/internal": 5.0}, "example.com/m", 80.0, ["internal/..."])
+        assert result == [("internal", 5.0)]
+
+    def test_ellipsis_does_not_match_sibling_prefix(self) -> None:
+        result = _load()._below_threshold({"example.com/m/internals": 5.0}, "example.com/m", 80.0, ["internal/..."])
+        assert result == []
+
+    def test_dot_slash_ellipsis_matches_everything(self) -> None:
+        result = _load()._below_threshold(COVERAGE, "example.com/m", 80.0, ["./..."])
+        assert result == [("internal/censor", 62.5), ("internal/util", 10.0)]
+
+    def test_full_import_path_ellipsis(self) -> None:
+        result = _load()._below_threshold(COVERAGE, "example.com/m", 80.0, ["example.com/m/internal/..."])
+        assert result == [("internal/censor", 62.5), ("internal/util", 10.0)]
+
+
+class TestEllipsisGlobPrefix:
+    def test_glob_in_prefix(self) -> None:
+        result = _load()._below_threshold(COVERAGE, "example.com/m", 80.0, ["*/censor/..."])
+        assert result == [("internal/censor", 62.5)]
+
+    def test_no_test_files_package_counts_as_matched(self) -> None:
+        out = "?   \texample.com/m/internal/gen\t[no test files]\n"
+        assert _load()._unmatched_patterns({}, "example.com/m", ["internal/gen/..."], out) == []
+
+
+class TestUnmatchedPatterns:
+    def test_reports_patterns_matching_nothing(self) -> None:
+        result = _load()._unmatched_patterns(COVERAGE, "example.com/m", ["internal/...", "pkg/...", "nope"])
+        assert result == ["pkg/...", "nope"]
+
+    def test_all_matched_returns_empty(self) -> None:
+        assert _load()._unmatched_patterns(COVERAGE, "example.com/m", ["internal/*"]) == []
+
+
 class TestBelowThreshold:
     def test_gate_off_when_min_zero(self) -> None:
         assert _load()._below_threshold(COVERAGE, "example.com/m", 0.0, []) == []
@@ -232,6 +273,22 @@ class TestMain:
         assert "internal/censor" in data["output"]
         assert "62.5%" in data["output"]
         assert data["detail"]["below_threshold"] == {"internal/censor": 62.5}
+
+    def test_zero_match_pattern_warns_in_output_and_detail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        mod = _load()
+        _go_module(tmp_path)
+        cfg = {"coverage_min": 80, "coverage_packages": ["internal/store", "pkg/..."]}
+        with (
+            patch.object(mod.shutil, "which", return_value="go"),
+            patch.object(mod.subprocess, "run", return_value=_completed(0, stdout=FIXTURE_OUTPUT)),
+        ):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys, go_config=cfg)
+        assert data["passed"] is True
+        assert "matched no packages" in data["output"]
+        assert "pkg/..." in data["output"]
+        assert data["detail"]["unmatched_patterns"] == ["pkg/..."]
 
     def test_package_outside_list_below_min_does_not_fail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
