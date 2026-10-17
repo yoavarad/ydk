@@ -39,7 +39,7 @@ def main() -> None:
         print("Error: YDK_COMPONENTS_ENTITY not set or file not found", file=sys.stderr)
         sys.exit(1)
 
-    data = yaml.safe_load(Path(artifact_path).read_text())
+    data = yaml.safe_load(Path(artifact_path).read_text(encoding="utf-8"))
     entities = data if isinstance(data, list) else []
 
     # Set up Jinja2

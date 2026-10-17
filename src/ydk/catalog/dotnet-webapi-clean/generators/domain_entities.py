@@ -55,7 +55,7 @@ def main() -> None:
         print("Error: YDK_COMPONENTS_ENTITY not set or file not found", file=sys.stderr)
         sys.exit(1)
 
-    entities = yaml.safe_load(Path(entity_path).read_text())
+    entities = yaml.safe_load(Path(entity_path).read_text(encoding="utf-8"))
     if not isinstance(entities, list):
         entities = []
 

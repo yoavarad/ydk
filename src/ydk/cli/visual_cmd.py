@@ -66,7 +66,7 @@ def push(
     content_str = content
     content_path = Path(content)
     if content_path.exists() and content_path.is_file():
-        content_str = content_path.read_text()
+        content_str = content_path.read_text(encoding="utf-8")
 
     try:
         path = engine.push_content(sid, content_str, filename)

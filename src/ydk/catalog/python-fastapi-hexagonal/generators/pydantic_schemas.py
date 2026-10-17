@@ -418,18 +418,18 @@ def main() -> None:
         print("[]")
         return
 
-    raw_contracts = yaml.safe_load(Path(contracts_path).read_text())
+    raw_contracts = yaml.safe_load(Path(contracts_path).read_text(encoding="utf-8"))
     contracts = raw_contracts if isinstance(raw_contracts, list) else []
     entities = {}
     if datamodel_path and Path(datamodel_path).exists():
-        raw_entities = yaml.safe_load(Path(datamodel_path).read_text())
+        raw_entities = yaml.safe_load(Path(datamodel_path).read_text(encoding="utf-8"))
         entity_list = raw_entities if isinstance(raw_entities, list) else []
         entities = {derive_name(e): e for e in entity_list}
 
     # Load contracts indexed by name for per-endpoint schema derivation
     services: dict[str, dict] = {}
     if services_path and Path(services_path).exists():
-        raw_services = yaml.safe_load(Path(services_path).read_text())
+        raw_services = yaml.safe_load(Path(services_path).read_text(encoding="utf-8"))
         svc_list = raw_services if isinstance(raw_services, list) else []
         for svc in svc_list:
             services[derive_name(svc)] = svc

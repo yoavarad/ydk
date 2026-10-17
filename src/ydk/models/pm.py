@@ -85,7 +85,6 @@ class TaskCreate(BaseModel):
     story_id: str | None = None
     component_refs: list[str] = Field(default_factory=list)
     spec_refs: list[str] = Field(default_factory=list)
-    component_refs: list[str] = Field(default_factory=list)
     dependencies: list[str | Dependency] = Field(default_factory=list)
     test_strategy: str = ""
     description: str = ""

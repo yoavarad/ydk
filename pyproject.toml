@@ -43,6 +43,8 @@ line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]
+preview = true
+explicit-preview-rules = true
 select = [
   "ANN001",   # Missing type annotation for function argument
   "ANN002",   # Missing type annotation for *args
@@ -63,6 +65,7 @@ select = [
   "E",        # pycodestyle errors
   "F",        # pyflakes
   "I",        # isort
+  "PLW1514",  # unspecified-encoding
 ]
 
 [tool.ruff.lint.per-file-ignores]

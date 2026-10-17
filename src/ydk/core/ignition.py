@@ -464,7 +464,7 @@ class IgnitionEngine:
                 fd, tmp_str = tempfile.mkstemp(suffix=".yaml", prefix=f"ydk_{comp_type}_")
                 os.close(fd)
                 tmp = Path(tmp_str)
-                tmp.write_text(yaml.dump(components, default_flow_style=False, sort_keys=False))
+                tmp.write_text(yaml.dump(components, default_flow_style=False, sort_keys=False), encoding="utf-8")
                 temp_files.append(tmp)
                 env_key = f"YDK_COMPONENTS_{comp_type.upper()}"
                 env_vars[env_key] = str(tmp)
@@ -475,7 +475,9 @@ class IgnitionEngine:
                     fd2, tmp_str2 = tempfile.mkstemp(suffix=".yaml", prefix=f"ydk_{comp_type}_singular_")
                     os.close(fd2)
                     tmp2 = Path(tmp_str2)
-                    tmp2.write_text(yaml.dump(components[0], default_flow_style=False, sort_keys=False))
+                    tmp2.write_text(
+                        yaml.dump(components[0], default_flow_style=False, sort_keys=False), encoding="utf-8"
+                    )
                     temp_files.append(tmp2)
                     env_vars[singular_key] = str(tmp2)
 
