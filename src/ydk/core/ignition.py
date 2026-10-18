@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import yaml
 
+from ydk.core.doctor import _GO_DIRECTIVE_RE
 from ydk.core.scaffold_state import ScaffoldState
 from ydk.models.ignition import GeneratedFile, IgnitionResult
 
@@ -20,10 +22,24 @@ logger = logging.getLogger("ydk.ignition")
 
 _TODO_PATTERN = "raise NotImplementedError"
 _GENERATOR_TIMEOUT = 120
+# Numeric version leading a golang image tag: reg:5000/golang:1.25.3-alpine -> 1.25.3.
+_IMAGE_TAG_VERSION_RE = re.compile(r"(?:^|/)golang:(\d+(?:\.\d+)*)[^:/]*$")
 
 
 class IgnitionError(Exception):
     """Raised when ignition fails fatally."""
+
+
+def _go_directive(go_mod: Path) -> str | None:
+    """The `go` directive of a go.mod file, or None if the file or directive is missing."""
+    if not go_mod.is_file():
+        return None
+    match = _GO_DIRECTIVE_RE.search(go_mod.read_text(encoding="utf-8", errors="replace"))
+    return match.group(1) if match else None
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
 
 
 def _go_mod_requires(text: str) -> list[str]:
@@ -141,7 +157,7 @@ class IgnitionEngine:
         # 7-8. Post-generation checks + runtime dependencies (per pack language)
         dependencies_installed: list[str] = []
         if not dry_run:
-            post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings)
+            post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings, answers)
             errors.extend(post_errors)
             # Post-steps rewrite files in place (gofmt -w, ruff format, go get/tidy on go.mod); record
             # the rewritten content so a re-ignite does not mistake it for a developer edit.
@@ -167,13 +183,18 @@ class IgnitionEngine:
         )
 
     def _run_post_steps(
-        self, pack: dict, written_paths: list[Path], warnings: list[str]
+        self,
+        pack: dict,
+        written_paths: list[Path],
+        warnings: list[str],
+        answers: dict[str, str] | None = None,
     ) -> tuple[list[str], list[str]]:
         """Run language-specific post-generation steps. Returns (errors, installed deps)."""
         language = str(pack.get("stack", {}).get("language", "python")).lower()
         if language == "go":
             # Deps first: go mod tidy / go build need modules resolved.
             installed = self._install_go_deps(pack, warnings)
+            self._check_go_builder_image(answers or {}, warnings)
             return self._post_generate_go(written_paths), installed
         errors = self._post_generate(written_paths) if written_paths else []
         return errors, self._install_runtime_deps(pack, warnings)
@@ -196,6 +217,18 @@ class IgnitionEngine:
         if not go_mod.exists():
             warnings.append("Cannot install runtime deps: no go.mod found")
             return []
+        rendered = _go_directive(go_mod)
+        installed = self._run_go_dep_steps(deps, warnings)
+        resolved = _go_directive(go_mod)
+        if rendered and resolved and _version_tuple(resolved) > _version_tuple(rendered):
+            warnings.append(
+                f"go.mod go directive raised from {rendered} to {resolved} by one of the dependencies "
+                f"({', '.join(deps)}); building needs Go >= {resolved}"
+            )
+        return installed
+
+    def _run_go_dep_steps(self, deps: list[str], warnings: list[str]) -> list[str]:
+        """go get the deps, then go mod tidy + go mod vendor. Returns deps, or [] on failure."""
         for cmd in (["go", "get", *deps], ["go", "mod", "tidy"], ["go", "mod", "vendor"]):
             try:
                 result = subprocess.run(
@@ -213,6 +246,24 @@ class IgnitionEngine:
                 warnings.append(f"Failed to install deps ({' '.join(cmd)}): {result.stderr[:200]}")
                 return []
         return list(deps)
+
+    def _check_go_builder_image(self, answers: dict[str, str], warnings: list[str]) -> None:
+        """Warn when the builder_image answer pins a numeric Go tag older than the go.mod directive.
+
+        The generated Dockerfile sets GOTOOLCHAIN=local, so the builder cannot download a newer Go.
+        """
+        image = str(answers.get("builder_image") or "").strip()
+        reference = image.split("@", 1)[0]  # a digest (@sha256:...) is not a tag
+        directive = _go_directive(self._root / "go.mod")
+        match = _IMAGE_TAG_VERSION_RE.search(reference)
+        if not match or not directive:
+            return
+        tag = _version_tuple(match.group(1))
+        if tag < _version_tuple(directive)[: len(tag)]:
+            warnings.append(
+                f"builder_image {image} is older than go.mod go {directive}; the Dockerfile sets GOTOOLCHAIN=local, "
+                "so the build will fail. Use a builder with Go >= " + directive
+            )
 
     def _post_generate_go(self, written_files: list[Path]) -> list[str]:
         """gofmt generated .go files, then go build + go vet. Returns list of errors."""
