@@ -473,6 +473,14 @@ class TestDotnetTargetContext:
         ctx = self._run_with_dump_plugin(monkeypatch, tmp_path, "project:\n  name: x\n")
         assert "dotnet" not in ctx["config"]
 
+    def test_dotnet_stack_language_reaches_context_config(self, monkeypatch, tmp_path: Path) -> None:
+        ctx = self._run_with_dump_plugin(monkeypatch, tmp_path, "project:\n  name: x\n  stack: dotnet-webapi-clean\n")
+        assert ctx["config"]["language"] == "dotnet"
+
+    def test_python_stack_language_reaches_context_config(self, monkeypatch, tmp_path: Path) -> None:
+        ctx = self._run_with_dump_plugin(monkeypatch, tmp_path, "project:\n  name: x\n  stack: python-typer-cli\n")
+        assert ctx["config"]["language"] == "python"
+
     def test_go_config_reaches_context_config(self, monkeypatch, tmp_path: Path) -> None:
         ctx = self._run_with_dump_plugin(
             monkeypatch,

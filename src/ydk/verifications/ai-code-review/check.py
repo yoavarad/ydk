@@ -50,6 +50,21 @@ there are any "critical" findings. If no issues found, return an empty
 findings list and passed=true.
 """
 
+# Stack-specific review checklists, keyed by the language from
+# ``ydk.core.stack_profile`` (passed as ``config.language``). Stacks without
+# an entry get only the generic SYSTEM_PROMPT.
+CHECKLISTS_DIR = Path(__file__).resolve().parent / "checklists"
+STACK_CHECKLISTS = {"dotnet": "dotnet.md"}
+
+
+def _stack_checklist(language: object) -> str:
+    """Return the review checklist for *language*, or "" when the stack has none."""
+    filename = STACK_CHECKLISTS.get(language) if isinstance(language, str) else None
+    if filename is None:
+        return ""
+    return (CHECKLISTS_DIR / filename).read_text(encoding="utf-8")
+
+
 REVIEW_TOOL_SPEC = {
     "name": "submit_review",
     "description": "Submit the structured code review result",
@@ -238,6 +253,9 @@ def run_check(context: dict) -> dict:
         git_diff = _read_files(project_root, changed_files)
 
     system_blocks: list[dict] = [{"type": "text", "text": SYSTEM_PROMPT}]
+    checklist = _stack_checklist(config.get("language"))
+    if checklist:
+        system_blocks.append({"type": "text", "text": checklist})
     if spec_refs:
         spec_content = _read_files(project_root, spec_refs)
         if spec_content:

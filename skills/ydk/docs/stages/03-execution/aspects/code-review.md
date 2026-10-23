@@ -33,6 +33,16 @@ Focus: Is the code well-written?
 - Error handling (are errors handled, not swallowed?)
 - Consistency with existing codebase patterns
 
+## Stack-Specific Checklists
+
+The `ai-code-review` verification plugin adds a stack-specific checklist to its review prompt when one exists for the project's language (derived from `project.stack` via `ydk.core.stack_profile`). Checklists live in `src/ydk/verifications/ai-code-review/checklists/`.
+
+| Language | Checklist | Content |
+|----------|-----------|---------|
+| dotnet (e.g. `dotnet-webapi-clean`) | `dotnet.md` | C#/.NET guardrails, pull request checklist, definition of done |
+
+Other stacks get only the generic review prompt.
+
 ## Review Configuration
 
 In `.ydk/config.yaml`:
