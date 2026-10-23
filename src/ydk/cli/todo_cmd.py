@@ -179,7 +179,11 @@ def assign_batch(
 def auto_assign(
     dry_run: bool = typer.Option(True, "--dry-run/--apply", help="Preview assignments without applying"),
 ) -> None:
-    """Auto-assign TODOs to tasks by matching file paths to task component_refs."""
+    """Auto-assign TODOs to tasks.
+
+    Matches first on component_refs intersection (TODO refs vs task refs), then falls back
+    to a file-path heuristic (entity name as snake_case or lowercase without separators).
+    """
     import re as _re
 
     mgr = _manager()
@@ -235,14 +239,22 @@ def auto_assign(
     for todo in unassigned:
         file_lower = todo.file.lower()
         best_match: str | None = None
-        for task_id, refs in task_component_map.items():
-            for ref in refs:
-                entity_snake = _extract_entity_snake(ref)
-                if entity_snake and entity_snake in file_lower:
+        todo_refs = set(todo.component_refs)
+        if todo_refs:
+            for task_id, refs in task_component_map.items():
+                if todo_refs & set(refs):
                     best_match = task_id
                     break
-            if best_match:
-                break
+        if best_match is None:
+            for task_id, refs in task_component_map.items():
+                for ref in refs:
+                    entity_snake = _extract_entity_snake(ref)
+                    candidates = {entity_snake, entity_snake.replace("_", "")}
+                    if any(c and c in file_lower for c in candidates):
+                        best_match = task_id
+                        break
+                if best_match:
+                    break
         if best_match:
             assignments.append((todo.id, best_match))
 
