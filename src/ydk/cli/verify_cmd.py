@@ -8,6 +8,7 @@ import yaml
 
 from ydk.cli._helpers import format_or_echo
 from ydk.core.config import load_config
+from ydk.core.stack_profile import profile_for
 from ydk.core.verifier import Verifier
 from ydk.output.console import console
 
@@ -48,6 +49,8 @@ def run(
         "config": {
             "anthropic": {"api_key_env": config.anthropic.api_key_env},
             "ai": {"model_tiers": config.ai.model_tiers},
+            # Stack language lets ai-code-review add a stack-specific checklist (e.g. dotnet).
+            "language": profile_for(config).name,
             "spec_check": {
                 "thresholds": {"architecture": config.spec_check.thresholds.architecture},
             },

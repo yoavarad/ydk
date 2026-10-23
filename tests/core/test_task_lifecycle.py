@@ -157,6 +157,7 @@ def test_done_runs_verifications(
                     "thresholds": {"architecture": 8},
                 },
                 "go": {"coverage_min": 0.0, "coverage_packages": [], "test_tags": [], "race": "auto"},
+                "language": "python",
             },
             "task_scope": {"title": "Test task", "description": "", "acceptance_criteria": []},
         },
@@ -1560,6 +1561,42 @@ def test_done_passes_go_config_to_verification_context(
 
     ctx = mock_verifier.run_all.call_args.kwargs["context"]
     assert ctx["config"]["go"] == {"coverage_min": 80.0, "coverage_packages": [], "test_tags": [], "race": False}
+
+
+@pytest.mark.parametrize(
+    ("stack", "language"),
+    [("dotnet-webapi-clean", "dotnet"), ("python-typer-cli", "python"), ("", "python")],
+)
+@patch("shutil.which", return_value=None)
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_done_passes_stack_language_to_verification_context(
+    mock_subprocess: MagicMock,
+    mock_which: MagicMock,
+    lifecycle: TaskLifecycle,
+    mock_verifier: MagicMock,
+    mock_worktree: MagicMock,
+    tmp_path: Path,
+    stack: str,
+    language: str,
+) -> None:
+    """done() carries the project's stack language into context["config"] for stack-aware review."""
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text(f"project:\n  name: x\n  stack: '{stack}'\n")
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0)],
+        all_passed=True,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+    mock_verifier.save_proof.return_value = Path("/tmp/proof.json")
+    mock_worktree.get_worktree_path.return_value = tmp_path
+    mock_subprocess.run.return_value.returncode = 0
+
+    lifecycle.done("T-001")
+
+    ctx = mock_verifier.run_all.call_args.kwargs["context"]
+    assert ctx["config"]["language"] == language
 
 
 @patch("shutil.which", return_value=None)

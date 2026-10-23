@@ -519,6 +519,55 @@ class TestTaskScopeGrading:
         assert "not applicable" not in user_message.lower()
 
 
+class TestStackChecklist:
+    """ai-code-review appends a stack-specific review checklist only for dotnet projects."""
+
+    def _system_text(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, language: object) -> str:
+        mod = _load_check_module(AI_CODE_REVIEW_PATH, f"ai_code_review_stack_{language}")
+        _write_file(tmp_path, "src/Program.cs", "public class Program {}")
+        ctx = _make_context(tmp_path, changed_files=["src/Program.cs"])
+        if language is not None:
+            ctx["config"]["language"] = language
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _mock_tool_use_response(_CLEAN_REVIEW)
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            result = mod.run_check(ctx)
+
+        assert result["passed"] is True
+        system = mock_client.messages.create.call_args.kwargs["system"]
+        return "\n".join(block["text"] for block in system)
+
+    def test_dotnet_project_gets_dotnet_checklist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        text = self._system_text(tmp_path, monkeypatch, "dotnet")
+
+        assert "=== .NET REVIEW CHECKLIST ===" in text
+        for heading in (
+            "## C#/.NET guardrails",
+            "## Pull request checklist",
+            "### Correctness and errors",
+            "### Logging and diagnostics",
+            "### Async and concurrency",
+            "### Contracts and data",
+            "### Configuration and resources",
+            "### Tests and maintainability",
+            "## Definition of done",
+        ):
+            assert heading in text
+        assert "CancellationToken" in text
+        assert "IHttpClientFactory" in text
+
+    @pytest.mark.parametrize("language", ["python", "go", "unknown", 42, None])
+    def test_non_dotnet_project_gets_no_checklist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, language: object
+    ) -> None:
+        text = self._system_text(tmp_path, monkeypatch, language)
+
+        assert "REVIEW CHECKLIST" not in text
+        assert "CancellationToken" not in text
+
+
 # ---------------------------------------------------------------------------
 # Malformed tool output (task 297)
 # ---------------------------------------------------------------------------

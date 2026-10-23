@@ -259,6 +259,7 @@ class TaskLifecycle:
         # spec-alignment) get real credential/model settings instead of
         # silently skipping.
         from ydk.core.config import load_config
+        from ydk.core.stack_profile import profile_for
 
         config = load_config(scan_root / ".ydk" / "config.yaml")
 
@@ -269,6 +270,8 @@ class TaskLifecycle:
             "config": {
                 "anthropic": {"api_key_env": config.anthropic.api_key_env},
                 "ai": {"model_tiers": config.ai.model_tiers},
+                # Stack language lets ai-code-review add a stack-specific checklist (e.g. dotnet).
+                "language": profile_for(config).name,
                 "spec_check": {
                     "thresholds": {"architecture": config.spec_check.thresholds.architecture},
                 },
