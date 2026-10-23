@@ -104,6 +104,7 @@ class Doctor:
             self._check_task_pr_drift,
             self._check_epic_retros,
             self._check_schema_versions,
+            self._check_skill_versions,
         ]
 
     def run_all(self) -> list[CheckResult]:
@@ -484,6 +485,30 @@ class Doctor:
             CheckSeverity.warning,
             f"{len(stale)} outdated local schema(s)",
             detail=f"{', '.join(stale)}. Run 'ydk component init-schemas --upgrade'",
+        )
+
+    def _check_skill_versions(self) -> CheckResult:
+        """Warn when synced Claude skills are stamped with a different version than the CLI."""
+        import importlib.metadata
+
+        from ydk.core.skills_sync import bundled_skills_dir, claude_config_dir, skill_status
+
+        try:
+            version = importlib.metadata.version("ydk")
+            statuses = skill_status(bundled_skills_dir(), claude_config_dir())
+        except (importlib.metadata.PackageNotFoundError, OSError, UnicodeDecodeError) as exc:
+            return CheckResult("Skill versions", CheckSeverity.warning, "Could not check skill versions", str(exc))
+        stamps = [(name, stamp) for name, stamp in statuses if stamp]
+        if not stamps:
+            return CheckResult("Skill versions", CheckSeverity.ok, "No synced skills (run 'ydk skills sync')")
+        drifted = [f"{name} ({stamp})" for name, stamp in stamps if stamp != version]
+        if not drifted:
+            return CheckResult("Skill versions", CheckSeverity.ok, f"Synced skills match ydk {version}")
+        return CheckResult(
+            "Skill versions",
+            CheckSeverity.warning,
+            f"{len(drifted)} skill(s) out of sync with ydk {version}",
+            detail=f"{', '.join(drifted)}. Run 'ydk skills sync'",
         )
 
     def _check_epic_retros(self) -> CheckResult:

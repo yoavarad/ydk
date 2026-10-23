@@ -16,6 +16,7 @@ from ydk.cli.init_cmd import init_command
 from ydk.cli.main import app
 from ydk.cli.memory_cmd import memory_app
 from ydk.cli.scaffold_cmd import scaffold_app
+from ydk.cli.skills_cmd import skills_app
 from ydk.cli.spec_cmd import spec_app
 from ydk.cli.task_cmd import task_app
 from ydk.cli.test_cmd import test_app
@@ -46,6 +47,7 @@ app.add_typer(docs_app, name="docs")
 app.add_typer(hooks_app, name="hooks")
 app.add_typer(memory_app, name="memory")
 app.add_typer(scaffold_app, name="scaffold")
+app.add_typer(skills_app, name="skills")
 app.add_typer(spec_app, name="spec")
 app.add_typer(task_app, name="task")
 app.add_typer(test_app, name="test")

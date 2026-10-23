@@ -20,6 +20,12 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_claude_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point ``CLAUDE_CONFIG_DIR`` at a tmp dir so no test reads or writes the real ``~/.claude``."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_default_branch(monkeypatch: pytest.MonkeyPatch):
     """Keep ``default_branch`` off the network: stub the ``gh`` boundary, clear the cache.
 

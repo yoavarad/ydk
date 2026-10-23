@@ -115,5 +115,8 @@ version_files = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/ydk"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "ydk/_skills"
+
 [tool.ty.src]
 exclude = ["src/ydk/catalog/*/generators/"]
