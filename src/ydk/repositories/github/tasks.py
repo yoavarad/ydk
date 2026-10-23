@@ -333,13 +333,14 @@ class GitHubTaskRepository:
             return False
 
     def check_dependencies(self, task_id: str) -> _list[DependencyStatus]:
-        """Check dependency status by reading the issue body for Dependencies field."""
+        """Report status of blocking dependencies from the issue body (non-blocking types ignored)."""
 
         issue_number = _extract_issue_number(task_id)
         task = self.get(issue_number)
-        deps = task.dependencies or []
         results: _list[DependencyStatus] = []
-        for dep in deps:
+        for dep in task.dependencies or []:
+            if not is_blocking_dependency(dep):
+                continue
             dep_id = dep.task_id if isinstance(dep, Dependency) else dep
             try:
                 dep_number = _extract_issue_number(dep_id)
