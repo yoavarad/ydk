@@ -1045,6 +1045,22 @@ def test_derive_test_files_maps_services_to_unit(lifecycle: TaskLifecycle) -> No
     assert "tests/unit/test_strategy_service.py" in result
 
 
+def test_derive_test_files_dotnet_does_not_emit_python_paths(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
+) -> None:
+    """Dotnet layout never maps .cs sources onto python test paths."""
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: p\n  stack: dotnet\n", encoding="utf-8")
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=EventBus(),
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+    assert lc._derive_test_files(["src/Application/Services/FooService.cs"]) == []
+
+
 @patch("shutil.which", return_value=None)
 @patch("ydk.core.task_lifecycle.subprocess")
 def test_done_removes_active_task_file(

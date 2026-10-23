@@ -545,6 +545,10 @@ class TaskLifecycle:
             )
             return list(dict.fromkeys(derived))
 
+        if profile.test_layout == "dotnet-tests-project":
+            # Tests live in a separate *.Tests project; no path mapping from source.
+            return []
+
         test_files: list[str] = []
         seen: set[str] = set()
 

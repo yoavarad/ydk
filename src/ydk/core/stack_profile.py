@@ -63,6 +63,23 @@ PROFILES: dict[str, LanguageProfile] = {
         tfinal_test_strategy="Run go test ./... and go vet ./..., verify gofmt -l is empty and no un-reasoned t.Skip",
         tfinal_summary="verifies zero un-reasoned t.Skip",
     ),
+    "dotnet": LanguageProfile(
+        name="dotnet",
+        test_layout="dotnet-tests-project",
+        test_suffix="Tests.cs",
+        skip_label="xUnit [Fact(Skip=...)] without a reason",
+        tfinal_title="Final verification: all tests pass, zero un-reasoned skips",
+        tfinal_criteria=(
+            "Zero xUnit Skip without a reason in test suite",
+            "Zero throw new NotImplementedException() in code",
+            "dotnet test passes",
+            "dotnet format --verify-no-changes clean",
+        ),
+        tfinal_test_strategy=(
+            "Run dotnet test and dotnet format --verify-no-changes, verify no un-reasoned xUnit Skip remaining"
+        ),
+        tfinal_summary="verifies zero un-reasoned xUnit Skip",
+    ),
 }
 
 
