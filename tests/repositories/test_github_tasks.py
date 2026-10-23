@@ -652,3 +652,37 @@ class TestListTasksDependencyTypes:
         with caplog.at_level(logging.WARNING, logger="ydk.repositories.github.tasks"):
             assert _deps_met(fake)["2"] is False
         assert any("#2" in r.getMessage() and "QD-abc123" in r.getMessage() for r in caplog.records)
+
+
+class _FakeGhView:
+    """gh CLI boundary stand-in serving ``issue view`` by issue number."""
+
+    def __init__(self, issues: list[dict[str, object]]) -> None:
+        self.issues = {int(str(i["number"])): i for i in issues}
+
+    def __call__(self, cmd: list[str], *args: object, **kwargs: object) -> MagicMock:
+        return _fake_run(stdout=json.dumps(self.issues[int(cmd[3])]))
+
+
+def _dep_status(fake: _FakeGhView, task_id: str) -> dict[str, bool]:
+    with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake):
+        return {d.task_id: d.resolved for d in GitHubTaskRepository().check_dependencies(task_id)}
+
+
+class TestCheckDependenciesTypes:
+    @pytest.mark.parametrize("dep_type", ["related", "validates", "caused-by", "supersedes"])
+    def test_non_blocking_open_dependency_not_reported(self, dep_type: str) -> None:
+        fake = _FakeGhView([_issue(1), _issue(2, f"#1 ({dep_type})")])
+        assert _dep_status(fake, "2") == {}
+
+    def test_open_blocks_dependency_unresolved(self) -> None:
+        fake = _FakeGhView([_issue(1), _issue(2, "#1")])
+        assert _dep_status(fake, "2") == {"#1": False}
+
+    def test_closed_blocks_dependency_resolved(self) -> None:
+        fake = _FakeGhView([_issue(1, state="CLOSED"), _issue(2, "#1 (waits-for)")])
+        assert _dep_status(fake, "2") == {"#1": True}
+
+    def test_unresolvable_blocking_dependency_reported_unresolved(self) -> None:
+        fake = _FakeGhView([_issue(2, "T-5e9dbd18")])
+        assert _dep_status(fake, "2") == {"T-5e9dbd18": False}
