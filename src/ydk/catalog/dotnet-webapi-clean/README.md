@@ -30,7 +30,7 @@ services either way.
 
 ## Generators
 
-See `manifest.yaml` for the full execution order. All 13 generators:
+See `manifest.yaml` for the full execution order. All 14 generators:
 
 - **solution_scaffold** -- .sln/.csproj files and Domain/Application/Infrastructure/Api project skeleton
 - **program_and_config** -- `Program.cs` bootstrap, `appsettings.json`, minimal API host wiring
@@ -45,6 +45,7 @@ See `manifest.yaml` for the full execution order. All 13 generators:
 - **unit_test_stubs** -- xUnit unit test scaffolding for services
 - **endpoint_test_stubs** -- xUnit integration test scaffolding for API endpoints
 - **entity_test_stubs** -- xUnit unit test scaffolding for domain entities
+- **agent_skills** -- vendors the `csharp-development-best-practices` agent skill into `.claude/skills/`
 
 ## Verification Sets
 

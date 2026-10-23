@@ -38,3 +38,6 @@ generators:
   - id: entity-test-stubs
     script: generators/entity_test_stubs.py
     inputs: [entity]
+  - id: agent-skills
+    script: generators/agent_skills.py
+    inputs: []
