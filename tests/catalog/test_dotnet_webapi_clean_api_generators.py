@@ -236,9 +236,9 @@ class TestApiEndpointsContent:
         assert ".WithTags(" in endpoints_content
 
     def test_handlers_delegate_to_injected_service(self, endpoints_content: str) -> None:
-        assert "await orderService.ListOrders()" in endpoints_content
-        assert "await orderService.GetOrder(orderId)" in endpoints_content
-        assert "await orderService.CreateOrder(request.Total)" in endpoints_content
+        assert "await orderService.ListOrdersAsync()" in endpoints_content
+        assert "await orderService.GetOrderAsync(orderId)" in endpoints_content
+        assert "await orderService.CreateOrderAsync(request.Total)" in endpoints_content
 
     def test_path_param_is_typed_from_declaration(self, endpoints_content: str) -> None:
         assert 'app.MapGet("/orders/{orderId}", async (Guid orderId, IOrderService orderService) =>' in (
@@ -255,7 +255,7 @@ class TestApiEndpointsContent:
 
     def test_unclaimed_contract_param_on_body_method_joins_request_record(self, endpoints_content: str) -> None:
         assert "public sealed record CancelOrderRequest(string Reason);" in endpoints_content
-        assert "await orderService.CancelOrder(id, request.Reason);" in endpoints_content
+        assert "await orderService.CancelOrderAsync(id, request.Reason);" in endpoints_content
 
     def test_status_code_results(self, endpoints_content: str) -> None:
         # nullable return on GET-by-id -> 404 branch
@@ -265,8 +265,8 @@ class TestApiEndpointsContent:
         assert "return Results.NoContent();" in endpoints_content
 
     def test_void_method_is_awaited_without_result(self, endpoints_content: str) -> None:
-        assert "await orderService.CancelOrder(id, request.Reason);" in endpoints_content
-        assert "var result = await orderService.CancelOrder" not in endpoints_content
+        assert "await orderService.CancelOrderAsync(id, request.Reason);" in endpoints_content
+        assert "var result = await orderService.CancelOrderAsync" not in endpoints_content
 
     def test_declared_body_field_absent_from_contract_stays_in_record_but_is_not_passed(self, tmp_path: Path) -> None:
         route = {
@@ -275,7 +275,7 @@ class TestApiEndpointsContent:
         }
         content = _endpoints_file(tmp_path, [route], [SAMPLE_CONTRACT])
         assert "public sealed record CreateOrderRequest(string Note, decimal Total);" in content
-        assert "await orderService.CreateOrder(request.Total);" in content
+        assert "await orderService.CreateOrderAsync(request.Total);" in content
 
     def test_snake_case_route_params_become_camel_case(self, tmp_path: Path) -> None:
         route = {**SAMPLE_ROUTES[1], "path": "/orders/{order_id}/lines/{line_id}"}
@@ -299,35 +299,35 @@ class TestApiEndpointsInference:
         route = {"id": "ydk:route:orders/get", "method": "GET", "path": "/orders/{order_id}"}
         content = _endpoints_file(tmp_path, [route], [SAMPLE_CONTRACT])
         assert "IOrderService orderService" in content
-        assert "await orderService.GetOrder(orderId)" in content
+        assert "await orderService.GetOrderAsync(orderId)" in content
 
     def test_infers_list_method_from_plural_contract_method(self, tmp_path: Path) -> None:
         route = {"id": "ydk:route:orders/list", "method": "GET", "path": "/orders"}
         content = _endpoints_file(tmp_path, [route], [SAMPLE_CONTRACT])
-        assert "await orderService.ListOrders()" in content
+        assert "await orderService.ListOrdersAsync()" in content
 
     def test_falls_back_to_convention_when_contract_lacks_method(self, tmp_path: Path) -> None:
         route = {"id": "ydk:route:orders/delete", "method": "DELETE", "path": "/orders/{id}"}
         content = _endpoints_file(tmp_path, [route], [SAMPLE_CONTRACT])
-        assert "await orderService.DeleteOrder(id)" in content
+        assert "await orderService.DeleteOrderAsync(id)" in content
         assert "return Results.NoContent();" in content
 
     def test_works_without_contract_input(self, tmp_path: Path) -> None:
         route = {"id": "ydk:route:orders/get", "method": "GET", "path": "/orders/{id}"}
         content = _endpoints_file(tmp_path, [route], None)
         assert "IOrderService orderService" in content
-        assert "await orderService.GetOrder(id)" in content
+        assert "await orderService.GetOrderAsync(id)" in content
 
     def test_maps_to_without_method_infers_method_from_http_verb(self, tmp_path: Path) -> None:
         route = {"id": "ydk:route:purchases/list", "method": "GET", "path": "/purchases", "maps_to": "OrderService"}
         content = _endpoints_file(tmp_path, [route], [SAMPLE_CONTRACT])
-        assert "await orderService.ListOrders()" in content
+        assert "await orderService.ListOrdersAsync()" in content
 
     def test_single_contract_is_used_when_tag_has_no_matching_service(self, tmp_path: Path) -> None:
         route = {"id": "ydk:route:purchases/list", "method": "GET", "path": "/purchases"}
         content = _endpoints_file(tmp_path, [route], [SAMPLE_CONTRACT])
         assert "IOrderService orderService" in content
-        assert "await orderService.ListOrders()" in content
+        assert "await orderService.ListOrdersAsync()" in content
 
 
 def _di_env(tmp_path: Path, entities: list[dict], contracts: list[dict]) -> dict[str, str]:

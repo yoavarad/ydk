@@ -21,6 +21,22 @@ dotnet_style_qualification_for_property = false:suggestion
 dotnet_style_qualification_for_method = false:suggestion
 dotnet_style_require_accessibility_modifiers = always:suggestion
 
+# Analyzer guardrails from csharp-development-best-practices (ADR 0003).
+# Warnings become build errors while YdkAnalyzersAsErrors=true (Directory.Build.props).
+# Async (section 4): no sync-over-async, forward CancellationToken.
+dotnet_diagnostic.CA1849.severity = warning
+dotnet_diagnostic.VSTHRD002.severity = warning
+dotnet_diagnostic.CA2016.severity = warning
+# Logging (section 3): structured message templates, LoggerMessage delegates.
+dotnet_diagnostic.CA1848.severity = warning
+dotnet_diagnostic.CA2254.severity = warning
+# ConfigureAwait(false) is only required in library projects (see below).
+dotnet_diagnostic.CA2007.severity = none
+
+# Library projects (no app host or test framework): require ConfigureAwait(false).
+[{Domain,Application,Infrastructure}/**.cs]
+dotnet_diagnostic.CA2007.severity = warning
+
 [*.{json,yml,yaml}]
 indent_size = 2
 

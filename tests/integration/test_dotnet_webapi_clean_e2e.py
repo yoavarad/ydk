@@ -296,3 +296,68 @@ class TestDotnetBuildAndTest:
         assert result.returncode == 0, (
             f"dotnet test failed (exit {result.returncode}):\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         )
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not _dotnet_available(), reason=".NET SDK not available")
+class TestAnalyzerEnforcement:
+    """#519: the generated solution builds clean with analyzers as errors, passes
+    `dotnet format --verify-no-changes`, and the YdkAnalyzersAsErrors toggle
+    really flips a library-only analyzer violation between error and warning."""
+
+    VIOLATION = (
+        "namespace WebApiClean.Application;\n"
+        "\n"
+        "public static class AnalyzerProbe\n"
+        "{\n"
+        "    public static async Task ProbeAsync(CancellationToken cancellationToken)\n"
+        "    {\n"
+        "        await Task.Delay(1, cancellationToken);\n"
+        "    }\n"
+        "}\n"
+    )
+
+    @pytest.fixture
+    def violating_project(self, generated_project: Path, tmp_path: Path) -> Path:
+        dest = tmp_path / "violating"
+        shutil.copytree(generated_project, dest, ignore=shutil.ignore_patterns("bin", "obj"))
+        (dest / "Application" / "AnalyzerProbe.cs").write_text(self.VIOLATION, encoding="utf-8")
+        return dest
+
+    def test_dotnet_format_verify_no_changes(self, generated_project: Path) -> None:
+        result = subprocess.run(
+            ["dotnet", "format", str(generated_project / "WebApiClean.sln"), "--verify-no-changes"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        assert result.returncode == 0, f"dotnet format failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+    def test_library_violation_fails_build_by_default(self, violating_project: Path) -> None:
+        result = subprocess.run(
+            ["dotnet", "build", str(violating_project / "WebApiClean.sln"), "--nologo"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        assert result.returncode != 0
+        assert "error CA2007" in result.stdout
+
+    def test_toggle_off_downgrades_violation_to_warning(self, violating_project: Path) -> None:
+        result = subprocess.run(
+            [
+                "dotnet",
+                "build",
+                str(violating_project / "WebApiClean.sln"),
+                "--nologo",
+                "-p:YdkAnalyzersAsErrors=false",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        assert result.returncode == 0, f"warn-only build failed:\nSTDOUT:\n{result.stdout}"
+        assert "warning CA2007" in result.stdout

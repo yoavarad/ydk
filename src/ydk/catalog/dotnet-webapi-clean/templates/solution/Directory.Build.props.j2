@@ -8,4 +8,30 @@
     <RootNamespace>{{ root_namespace }}</RootNamespace>
   </PropertyGroup>
 
+  <!--
+    Analyzer enforcement (see docs/adrs/0003-dotnet-webapi-clean-analyzer-enforcement.md in YDK).
+    Rule severities live in .editorconfig. YdkAnalyzersAsErrors is the single switch that turns
+    analyzer/compiler warnings into build errors; set it to false (here, or per build with
+    `dotnet build -p:YdkAnalyzersAsErrors=false`) to run warn-only while retrofitting.
+    Only the exact value `true` enables warnings-as-errors.
+  -->
+  <PropertyGroup>
+    <YdkAnalyzersAsErrors Condition="'$(YdkAnalyzersAsErrors)' == ''">true</YdkAnalyzersAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(YdkAnalyzersAsErrors)' == 'true'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.14.15">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
 </Project>

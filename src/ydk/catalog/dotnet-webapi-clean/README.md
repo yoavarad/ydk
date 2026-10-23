@@ -47,6 +47,19 @@ See `manifest.yaml` for the full execution order. All 14 generators:
 - **entity_test_stubs** -- xUnit unit test scaffolding for domain entities
 - **agent_skills** -- vendors the `csharp-development-best-practices` agent skill into `.claude/skills/`
 
+## Analyzer enforcement
+
+The generated `Directory.Build.props` enables the .NET analyzers at `latest-recommended`,
+`EnforceCodeStyleInBuild`, and `Microsoft.VisualStudio.Threading.Analyzers`; `.editorconfig` raises
+the async (CA1849, VSTHRD002, CA2016, CA2007 for library projects) and logging (CA1848, CA2254) rules
+to warnings. See `docs/adrs/0003-dotnet-webapi-clean-analyzer-enforcement.md` in the YDK repo.
+
+Warnings-as-errors is controlled by a single MSBuild property, `YdkAnalyzersAsErrors`
+(default `true`; the value must be exactly `true` or `false`). To adopt the analyzers gradually on an existing codebase, run warn-only:
+
+- per build: `dotnet build -p:YdkAnalyzersAsErrors=false`
+- permanently: set `<YdkAnalyzersAsErrors>false</YdkAnalyzersAsErrors>` in `Directory.Build.props`
+
 ## Verification Sets
 
 - `dotnet-quality` -- `dotnet build`, `dotnet format` checks

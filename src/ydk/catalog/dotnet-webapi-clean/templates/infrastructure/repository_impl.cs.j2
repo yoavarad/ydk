@@ -19,34 +19,34 @@ public class {{ name }}Repository : I{{ name }}Repository
 
     public async Task<{{ name }}?> GetByIdAsync({{ pk_type }} id)
     {
-        return await _context.{{ dbset_name }}.FindAsync(id);
+        return await _context.{{ dbset_name }}.FindAsync(id).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<{{ name }}>> ListAsync()
     {
-        return await _context.{{ dbset_name }}.ToListAsync();
+        return await _context.{{ dbset_name }}.ToListAsync().ConfigureAwait(false);
     }
 
     public async Task<{{ name }}> AddAsync({{ name }} entity)
     {
-        await _context.{{ dbset_name }}.AddAsync(entity);
-        await _context.SaveChangesAsync();
+        await _context.{{ dbset_name }}.AddAsync(entity).ConfigureAwait(false);
+        await _context.SaveChangesAsync().ConfigureAwait(false);
         return entity;
     }
 
     public async Task UpdateAsync({{ name }} entity)
     {
         _context.{{ dbset_name }}.Update(entity);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync().ConfigureAwait(false);
     }
 
     public async Task DeleteAsync({{ pk_type }} id)
     {
-        var entity = await _context.{{ dbset_name }}.FindAsync(id);
+        var entity = await _context.{{ dbset_name }}.FindAsync(id).ConfigureAwait(false);
         if (entity is not null)
         {
             _context.{{ dbset_name }}.Remove(entity);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync().ConfigureAwait(false);
         }
     }
 }

@@ -1,5 +1,5 @@
 name: dotnet-webapi-clean
-version: 1.0.0
+version: 1.1.0
 tags: [ignition-pack, dotnet, aspnetcore, clean-architecture, efcore, xunit]
 
 inputs:
