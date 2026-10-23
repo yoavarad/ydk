@@ -320,10 +320,46 @@ def _normalize_refs(value: object) -> list[str]:
     if value is None:
         return []
     if isinstance(value, str):
-        return [value]
+        return _split_csv(value)
     if isinstance(value, list):
-        return [str(v) for v in value]
+        return [str(v) for v in value if v is not None]
     return [str(value)]
+
+
+def _split_csv(value: str) -> list[str]:
+    """Split a comma-separated string, stripping whitespace and dropping empties."""
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _normalize_list(value: object) -> list[Any]:
+    """Normalize acceptance: str -> [str], list -> [str(x)], None -> []; other -> ValueError."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list):
+        return [str(v) for v in value if v is not None]
+    raise ValueError(f"expected string or list, got {type(value).__name__}")
+
+
+def _normalize_deps(value: object) -> list[str]:
+    """Normalize depends_on: comma-separated str or list -> list of str."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return _split_csv(value)
+    if isinstance(value, list):
+        return [str(v) for v in value if v is not None]
+    raise ValueError(f"expected string or list, got {type(value).__name__}")
+
+
+def _check_list_fields(entity: dict[str, object], label: str, fields: tuple[str, ...]) -> list[str]:
+    """Return errors for fields that are neither str, list, nor absent."""
+    return [
+        f"{label}: '{field}' must be a string or list, got {type(entity[field]).__name__}"
+        for field in fields
+        if entity.get(field) is not None and not isinstance(entity[field], (str, list))
+    ]
 
 
 def _validate_batch_yaml(
@@ -356,6 +392,7 @@ def _validate_batch_yaml(
             errors.append(f"Epic '{eid}' missing 'title'")
         if eid:
             defined_ids.add(eid)
+        errors.extend(_check_list_fields(epic, f"Epic '{eid}'", ("spec_refs",)))
 
     for story in data.get("stories", []) or []:  # ty: ignore[not-iterable]
         if not isinstance(story, dict):
@@ -368,6 +405,7 @@ def _validate_batch_yaml(
             errors.append(f"Story '{sid}' missing 'title'")
         if sid:
             defined_ids.add(sid)
+        errors.extend(_check_list_fields(story, f"Story '{sid}'", ("spec_refs", "component_refs", "acceptance")))
         # Validate epic reference
         epic_ref = story.get("epic", "")
         if epic_ref and epic_ref not in defined_ids:
@@ -384,6 +422,9 @@ def _validate_batch_yaml(
             errors.append(f"Task '{tid}' missing 'title'")
         if tid:
             defined_ids.add(tid)
+        errors.extend(
+            _check_list_fields(task, f"Task '{tid}'", ("spec_refs", "component_refs", "acceptance", "depends_on"))
+        )
 
     story_ids = {str(s["id"]) for s in data.get("stories", []) or [] if isinstance(s, dict) and s.get("id")}  # ty: ignore[not-iterable]
 
@@ -395,7 +436,10 @@ def _validate_batch_yaml(
         story_ref = task.get("story", "")
         if story_ref and str(story_ref) not in story_ids and str(story_ref) not in (existing_ids or set()):
             errors.append(f"Task '{tid}' references undefined story '{story_ref}'")
-        for dep in task.get("depends_on", []) or []:
+        raw_task_deps = task.get("depends_on")
+        if raw_task_deps is not None and not isinstance(raw_task_deps, (str, list)):
+            continue  # type error already reported above
+        for dep in _normalize_deps(raw_task_deps):
             parts = str(dep).split(":")
             dep_ref = parts[0]
             dep_type = parts[1] if len(parts) > 1 else "blocks"
@@ -565,7 +609,7 @@ def create_batch(
                 description=str(story_defn.get("description", "")),
                 spec_refs=_normalize_refs(story_defn.get("spec_refs")),
                 component_refs=_normalize_refs(story_defn.get("component_refs")),
-                acceptance_criteria=list(story_defn.get("acceptance") or []),
+                acceptance_criteria=_normalize_list(story_defn.get("acceptance")),
             )
             detail = story_repo.create_story(story)
             real_id = detail.id or f"#{detail.number}"
@@ -581,15 +625,15 @@ def create_batch(
             raw_story = str(task_defn.get("story", ""))
             resolved_story = id_map.get(raw_story, raw_story) if raw_story else None
             # Parse depends_on but don't resolve yet -- just store raw for creation
-            raw_deps = task_defn.get("depends_on") or []
-            parsed_deps = _parse_depends_on_arg([str(d) for d in raw_deps])
+            raw_deps = _normalize_deps(task_defn.get("depends_on"))
+            parsed_deps = _parse_depends_on_arg(raw_deps)
             task = TaskCreate(
                 title=str(task_defn["title"]),
                 story_id=resolved_story,
                 description=str(task_defn.get("description", "")),
                 component_refs=_normalize_refs(task_defn.get("component_refs")),
                 spec_refs=_normalize_refs(task_defn.get("spec_refs")),
-                acceptance_criteria=list(task_defn.get("acceptance") or []),
+                acceptance_criteria=_normalize_list(task_defn.get("acceptance")),
                 dependencies=parsed_deps,
                 test_strategy=str(task_defn.get("test_strategy", "")),
             )
@@ -611,7 +655,7 @@ def create_batch(
     # --- Pass 2: Update task dependencies with resolved IDs ---
     for task_defn in data.get("tasks", []) or []:
         placeholder = str(task_defn["id"])
-        raw_deps = task_defn.get("depends_on") or []
+        raw_deps = _normalize_deps(task_defn.get("depends_on"))
         if not raw_deps:
             continue
         real_task_id = id_map.get(placeholder)
