@@ -195,3 +195,75 @@ def test_assign_batch_resolves_mapped_placeholders(
 
     assert result.exit_code == 0, result.output
     assert TodoManager(project).list_todos()[0].task_id == expected
+
+
+# --- auto-assign (component_refs intersection, then path heuristic) ---
+
+
+def _auto_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, task_refs: list[list[str]]) -> list[str]:
+    from ydk.models.pm import TaskCreate
+    from ydk.repositories.local.tasks import LocalTaskRepository
+
+    (tmp_path / ".ydk").mkdir()
+    monkeypatch.chdir(tmp_path)
+    repo = LocalTaskRepository(tmp_path / ".ydk")
+    return [repo.create_task(TaskCreate(title=f"t{i}", component_refs=r)).id for i, r in enumerate(task_refs)]
+
+
+def _auto_assign_result(tmp_path: Path) -> dict[str, str | None]:
+    from ydk.core.todo_manager import TodoManager
+
+    result = runner.invoke(app, ["todo", "auto-assign", "--apply"])
+    assert result.exit_code == 0, result.output
+    return {t.id: t.task_id for t in TodoManager(tmp_path).list_todos()}
+
+
+def test_auto_assign_matches_component_refs_intersection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ydk.core.todo_manager import TodoManager
+
+    ids = _auto_project(tmp_path, monkeypatch, [["ydk:contract:other/Thing"], ["ydk:contract:messaging/Publisher"]])
+    tid = TodoManager(tmp_path).register(
+        file="internal/messaging/stubs.go",
+        line=3,
+        method="Publish",
+        component_refs=["ydk:contract:messaging/Publisher"],
+    )
+    assert _auto_assign_result(tmp_path)[tid] == ids[1]
+
+
+def test_auto_assign_same_file_different_refs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ydk.core.todo_manager import TodoManager
+
+    ids = _auto_project(tmp_path, monkeypatch, [["ydk:contract:m/A"], ["ydk:contract:m/B"]])
+    mgr = TodoManager(tmp_path)
+    t1 = mgr.register(file="internal/stubs.go", line=1, method="A", component_refs=["ydk:contract:m/B"])
+    t2 = mgr.register(file="internal/stubs.go", line=9, method="B", component_refs=["ydk:contract:m/A"])
+    res = _auto_assign_result(tmp_path)
+    assert res[t1] == ids[1]
+    assert res[t2] == ids[0]
+
+
+def test_auto_assign_empty_refs_snake_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ydk.core.todo_manager import TodoManager
+
+    ids = _auto_project(tmp_path, monkeypatch, [["ydk:contract:strategy/StrategyService"]])
+    tid = TodoManager(tmp_path).register(file="src/strategy_service.py", line=1, method="x")
+    assert _auto_assign_result(tmp_path)[tid] == ids[0]
+
+
+def test_auto_assign_go_path_no_separators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ydk.core.todo_manager import TodoManager
+
+    ids = _auto_project(tmp_path, monkeypatch, [["ydk:contract:orders/OrderService"]])
+    tid = TodoManager(tmp_path).register(file="internal/orderservice/x.go", line=1, method="x")
+    assert _auto_assign_result(tmp_path)[tid] == ids[0]
+
+
+def test_auto_assign_ref_beats_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ydk.core.todo_manager import TodoManager
+
+    ids = _auto_project(tmp_path, monkeypatch, [["ydk:contract:x/OrderService"], ["ydk:contract:y/Billing"]])
+    tid = TodoManager(tmp_path).register(
+        file="internal/order_service/x.go", line=1, method="x", component_refs=["ydk:contract:y/Billing"]
+    )
+    assert _auto_assign_result(tmp_path)[tid] == ids[1]
