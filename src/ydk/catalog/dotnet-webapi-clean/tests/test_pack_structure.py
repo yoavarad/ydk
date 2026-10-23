@@ -26,6 +26,7 @@ EXPECTED_GENERATORS = [
     "unit_test_stubs.py",
     "endpoint_test_stubs.py",
     "entity_test_stubs.py",
+    "agent_skills.py",
 ]
 
 EXPECTED_CONTEXT_MODULES = [
@@ -56,6 +57,8 @@ EXPECTED_TEMPLATES = [
     "solution/infrastructure.csproj.j2",
     "solution/tests.csproj.j2",
     "solution/webapiclean.sln.j2",
+    "skills/csharp-development-best-practices/SKILL.md",
+    "skills/csharp-development-best-practices/references/csharp-development-best-practices.md",
     "tests/endpoint_test.cs.j2",
     "tests/entity_test.cs.j2",
     "tests/fake_repository.cs.j2",
@@ -135,6 +138,7 @@ def test_manifest_yaml_valid() -> None:
     assert "unit-test-stubs" in generator_ids
     assert "endpoint-test-stubs" in generator_ids
     assert "entity-test-stubs" in generator_ids
+    assert "agent-skills" in generator_ids
 
 
 def test_manifest_generator_scripts_exist() -> None:

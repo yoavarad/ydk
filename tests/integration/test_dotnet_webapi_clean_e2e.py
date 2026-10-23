@@ -251,6 +251,15 @@ class TestGeneratedLayout:
             rel = f.relative_to(generated_project)
             assert rel.parts[0] in PROJECT_DIRS, f"{rel} is not under a scaffolded project directory"
 
+    def test_csharp_best_practices_skill_emitted(self, generated_project: Path) -> None:
+        skill_dir = generated_project / ".claude" / "skills" / "csharp-development-best-practices"
+        skill_md = skill_dir / "SKILL.md"
+        reference = skill_dir / "references" / "csharp-development-best-practices.md"
+        assert skill_md.is_file(), "Missing vendored SKILL.md"
+        assert reference.is_file(), "Missing vendored skill reference"
+        assert "name: csharp-development-best-practices" in skill_md.read_text(encoding="utf-8")
+        assert "## 16. Pull request checklist" in reference.read_text(encoding="utf-8")
+
     def test_solution_file_references_every_project(self, generated_project: Path) -> None:
         sln = (generated_project / "WebApiClean.sln").read_text().replace("\\", "/")
         for project_dir in PROJECT_DIRS:
