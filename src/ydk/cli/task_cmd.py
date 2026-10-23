@@ -322,7 +322,7 @@ def _normalize_refs(value: object) -> list[str]:
     if isinstance(value, str):
         return _split_csv(value)
     if isinstance(value, list):
-        return [str(v) for v in value]
+        return [str(v) for v in value if v is not None]
     return [str(value)]
 
 
@@ -338,7 +338,7 @@ def _normalize_list(value: object) -> list[Any]:
     if isinstance(value, str):
         return [value] if value.strip() else []
     if isinstance(value, list):
-        return [str(v) for v in value]
+        return [str(v) for v in value if v is not None]
     raise ValueError(f"expected string or list, got {type(value).__name__}")
 
 
@@ -349,7 +349,7 @@ def _normalize_deps(value: object) -> list[str]:
     if isinstance(value, str):
         return _split_csv(value)
     if isinstance(value, list):
-        return [str(v) for v in value]
+        return [str(v) for v in value if v is not None]
     raise ValueError(f"expected string or list, got {type(value).__name__}")
 
 

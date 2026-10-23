@@ -62,6 +62,8 @@ tasks:
       - "T-order-model:blocks"
 ```
 
+`component_refs`, `spec_refs` and `depends_on` accept either a comma-separated string or a YAML list. `acceptance` accepts a string (one criterion) or a list. Use the list form for a path that contains a comma.
+
 ```bash
 # Validate without creating issues
 ydk task create-batch --from batch.yaml --dry-run

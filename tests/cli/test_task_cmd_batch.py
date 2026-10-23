@@ -854,98 +854,111 @@ def _setup_local_repo() -> tuple:  # type: ignore[type-arg]
 # -- Issue 504: string-form refs / acceptance / depends_on ----------------------
 
 
-def _run_batch(tmp_path: Path, data: dict, extra: list[str] | None = None):  # type: ignore[no-untyped-def,type-arg]
+def _real_batch(tmp_path: Path, monkeypatch, data: dict, extra: list[str] | None = None):  # type: ignore[no-untyped-def,type-arg]
+    """Run create-batch against a real local repository in tmp_path."""
+    from ydk.repositories.factory import get_task_repository
+
+    monkeypatch.chdir(tmp_path)
     batch_file = tmp_path / "batch504.yaml"
     batch_file.write_text(yaml.dump(data), encoding="utf-8")
-    task_repo = MagicMock()
-    task_repo.create_task.side_effect = [
-        TaskDetail(id="T-001", title="A", status="open"),
-        TaskDetail(id="T-002", title="B", status="open"),
-    ]
-    story_repo = MagicMock()
-    story_repo.create_story.return_value = StoryDetail(id="S-001", number=1, title="S")
-    with (
-        patch("ydk.cli.task_cmd._get_repo", return_value=task_repo),
-        patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-        patch("ydk.repositories.factory.get_story_repository", return_value=story_repo),
-        patch("ydk.cli.task_cmd._ensure_labels"),
-        patch("pathlib.Path.write_text", autospec=True),
-        patch("ydk.core.task_validator.validate_component_ref", return_value=None),
-        patch("ydk.core.task_validator.validate_spec_ref", return_value=None),
-    ):
-        result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), *(extra or [])])
-    return result, task_repo, story_repo
+    result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), *(extra or [])])
+    repo = get_task_repository()
+    tasks = {}
+    for item in repo.list_tasks(state="all"):
+        tasks[item.title] = repo.get_task(item.id)
+    return result, tasks
 
 
 class TestStringFormBatchFields:
-    def test_string_refs_and_acceptance_normalized(self, tmp_path: Path) -> None:
+    def test_string_forms_created_on_local_backend(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        _make_manifest(tmp_path, "crosscut/config", "settings")
+        _make_manifest(tmp_path, "contract/data", "Session")
+        (tmp_path / "docs" / "specs").mkdir(parents=True)
+        (tmp_path / "docs" / "specs" / "a.md").write_text("# a", encoding="utf-8")
+        (tmp_path / "docs" / "specs" / "b.md").write_text("# b", encoding="utf-8")
         data = {
-            "stories": [
-                {"id": "s1", "title": "S", "component_refs": "a, b", "acceptance": "one criterion"},
-            ],
             "tasks": [
                 {
                     "id": "t1",
                     "title": "A",
-                    "component_refs": "x,y,,",
-                    "spec_refs": "p, q",
+                    "component_refs": "ydk:crosscut:config/settings, ydk:contract:data/Session",
+                    "spec_refs": "a.md, b.md",
                     "acceptance": "do the thing, really",
                 },
-            ],
-        }
-        result, task_repo, story_repo = _run_batch(tmp_path, data)
-        assert result.exit_code == 0, result.output
-        t = task_repo.create_task.call_args[0][0]
-        assert t.component_refs == ["x", "y"]
-        assert t.spec_refs == ["p", "q"]
-        assert t.acceptance_criteria == ["do the thing, really"]
-        s = story_repo.create_story.call_args[0][0]
-        assert s.component_refs == ["a", "b"]
-        assert s.acceptance_criteria == ["one criterion"]
-
-    def test_string_depends_on_not_split_per_char(self, tmp_path: Path) -> None:
-        data = {
-            "tasks": [
-                {"id": "t1", "title": "A"},
                 {"id": "t2", "title": "B", "depends_on": "t1, t1:related"},
             ],
         }
-        result, task_repo, _ = _run_batch(tmp_path, data)
+        result, tasks = _real_batch(tmp_path, monkeypatch, data)
         assert result.exit_code == 0, result.output
-        deps = task_repo.create_task.call_args_list[1][0][0].dependencies
-        assert len(deps) == 2
-        frontmatter = task_repo.update_frontmatter.call_args[0][1]["dependencies"]
-        assert len(frontmatter) == 2
+        t1 = tasks["A"]
+        assert t1.component_refs == ["ydk:crosscut:config/settings", "ydk:contract:data/Session"]
+        assert t1.spec_refs == ["a.md", "b.md"]
+        assert [getattr(c, "text", c) for c in t1.acceptance_criteria] == ["do the thing, really"]
+        t2 = tasks["B"]
+        assert len(t2.dependencies) == 2
+
+    def test_list_forms_still_work_and_drop_null_items(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        data = {
+            "tasks": [
+                {"id": "t1", "title": "A", "acceptance": ["one", None, "two"]},
+                {"id": "t2", "title": "B", "depends_on": [None, "t1"], "acceptance": [None]},
+            ],
+        }
+        result, tasks = _real_batch(tmp_path, monkeypatch, data)
+        assert result.exit_code == 0, result.output
+        assert [getattr(c, "text", c) for c in tasks["A"].acceptance_criteria] == ["one", "two"]
+        t2 = tasks["B"]
+        assert t2.acceptance_criteria == []
+        assert len(t2.dependencies) == 1
+
+    def test_whitespace_only_acceptance_is_empty(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        data = {"tasks": [{"id": "t1", "title": "A", "acceptance": "   "}]}
+        result, tasks = _real_batch(tmp_path, monkeypatch, data)
+        assert result.exit_code == 0, result.output
+        assert tasks["A"].acceptance_criteria == []
+
+    def test_dry_run_rejects_invalid_types(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        data = {"tasks": [{"id": "t1", "title": "A", "acceptance": 7}]}
+        result, _ = _real_batch(tmp_path, monkeypatch, data, ["--dry-run"])
+        assert result.exit_code == 1
+        assert "acceptance" in result.output
+
+    def test_missing_string_spec_ref_reported_on_disk_check(self, tmp_path: Path) -> None:
+        data = {"tasks": [{"id": "t1", "title": "A", "spec_refs": "nope.md, also-nope.md"}]}
+        errors = _validate_batch_yaml(data, project_root=tmp_path)
+        assert sum("spec_ref" in e for e in errors) == 2
+
+    def test_comma_split_spec_refs_valid_when_present(self, tmp_path: Path) -> None:
+        (tmp_path / "a.md").write_text("# a", encoding="utf-8")
+        (tmp_path / "b.md").write_text("# b", encoding="utf-8")
+        data = {"tasks": [{"id": "t1", "title": "A", "spec_refs": "a.md,b.md"}]}
+        assert _validate_batch_yaml(data, project_root=tmp_path) == []
+
+    def test_list_form_spec_ref_with_comma_kept_whole(self, tmp_path: Path) -> None:
+        (tmp_path / "a,b.md").write_text("# ab", encoding="utf-8")
+        data = {"tasks": [{"id": "t1", "title": "A", "spec_refs": ["a,b.md"]}]}
+        assert _validate_batch_yaml(data, project_root=tmp_path) == []
 
     def test_validation_rejects_non_str_list(self) -> None:
         data = {
+            "epics": [{"id": "e1", "title": "E", "spec_refs": 5}],
+            "stories": [{"id": "s1", "title": "S", "acceptance": 1, "component_refs": {"a": 1}}],
             "tasks": [
-                {
-                    "id": "t1",
-                    "title": "A",
-                    "component_refs": 5,
-                    "spec_refs": {"a": 1},
-                    "acceptance": 7,
-                    "depends_on": 3,
-                },
+                {"id": "t1", "title": "A", "component_refs": 5, "spec_refs": {"a": 1}, "acceptance": 7, "depends_on": 3}
             ],
         }
         errors = _validate_batch_yaml(data)
+        assert any("Epic 'e1'" in e and "spec_refs" in e for e in errors)
+        assert any("Story 's1'" in e and "acceptance" in e for e in errors)
+        assert any("Story 's1'" in e and "component_refs" in e for e in errors)
         for field in ("component_refs", "spec_refs", "acceptance", "depends_on"):
-            assert any(field in e for e in errors), (field, errors)
+            assert any("Task 't1'" in e and field in e for e in errors), (field, errors)
 
     def test_validation_accepts_string_forms(self) -> None:
         data = {
             "tasks": [
                 {"id": "t1", "title": "A"},
-                {"id": "t2", "title": "B", "depends_on": "t1", "acceptance": "x", "component_refs": "a,b"},
+                {"id": "t2", "title": "B", "depends_on": "t1", "acceptance": "x"},
             ],
         }
         assert _validate_batch_yaml(data) == []
-
-    def test_dry_run_reports_invalid_type(self, tmp_path: Path) -> None:
-        batch_file = tmp_path / "bad.yaml"
-        batch_file.write_text(yaml.dump({"tasks": [{"id": "t1", "title": "A", "acceptance": 7}]}), encoding="utf-8")
-        result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
-        assert result.exit_code != 0
-        assert "acceptance" in result.output
