@@ -28,14 +28,19 @@ APP = yaml.safe_load((SAMPLES / "config" / "ops" / "app.yaml").read_text(encodin
 TODO_LINE = re.compile(r'^\s*panic\("not implemented"\)', re.MULTILINE)
 
 
-def _ignite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, components: Path = SAMPLES) -> tuple[Path, object]:
+def _ignite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    components: Path = SAMPLES,
+    answers: dict[str, str] | None = None,
+) -> tuple[Path, object]:
     project = tmp_path / "project"
     shutil.copytree(PACK_DIR, project / ".ydk" / "ignition-packs" / "go-http-service")
     shutil.copytree(components, project / ".ydk" / "components")
     empty_bin = tmp_path / "nobin"
     empty_bin.mkdir()
     monkeypatch.setenv("PATH", str(empty_bin))
-    result = IgnitionEngine(project).ignite()
+    result = IgnitionEngine(project).ignite(init_answers=answers)
     return project, result
 
 
@@ -240,6 +245,19 @@ class TestIgniteVariants:
         server = _read(project, "internal/httpapi/server.go")
         assert '"GET /healthz"' in server
         assert '"GET /readyz"' in server
+
+
+class TestGoVersionAnswer:
+    def test_go_version_answer_sets_directive(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        project, _ = _ignite(tmp_path, monkeypatch, MINIMAL, {"go_version": "1.24"})
+        assert "\ngo 1.24\n" in _read(project, "go.mod")
+
+    @pytest.mark.parametrize("answer", ["latest", "1.21", "1.3"])
+    def test_invalid_or_below_floor_go_version_falls_back_to_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: str
+    ) -> None:
+        project, _ = _ignite(tmp_path, monkeypatch, MINIMAL, {"go_version": answer})
+        assert "\ngo 1.22\n" in _read(project, "go.mod")
 
 
 class TestIgniteEdgeCases:

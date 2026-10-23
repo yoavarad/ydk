@@ -31,6 +31,7 @@ def build_contract_context(contract: dict) -> dict:
     service_name, entity_name = service_and_entity_name(contract)
     return {
         "service_name": service_name,
+        "component_id": contract.get("id", ""),
         "entity_name": entity_name,
         "repo_param": to_camel(f"{entity_name}Repository"),
         "methods": contract_methods(contract),

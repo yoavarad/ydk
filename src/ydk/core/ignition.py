@@ -5,25 +5,64 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
+from ydk.core.doctor import _GO_DIRECTIVE_RE
 from ydk.core.scaffold_state import ScaffoldState
 from ydk.models.ignition import GeneratedFile, IgnitionResult
+
+if TYPE_CHECKING:
+    from ydk.core.todo_manager import TodoManager
 
 logger = logging.getLogger("ydk.ignition")
 
 _TODO_PATTERN = "raise NotImplementedError"
+# Leading component ID in a TODO comment, minus a trailing ".Method" (e.g. "ydk:contract:ns/Svc.Run: ...").
+_COMPONENT_REF_RE = re.compile(
+    r"^(ydk:[a-z][a-z0-9_-]*:[A-Za-z0-9_./-]*?[A-Za-z0-9_-])(?:\.[A-Z]\w*)?(?=\.?(?:[:\s]|$))"
+)
+
+
+def _component_refs(description: str) -> list[str]:
+    """Component IDs named at the start of a TODO marker comment."""
+    match = _COMPONENT_REF_RE.match(description)
+    return [match.group(1)] if match else []
+
+
+def _reconcile(todo_mgr: TodoManager, path: str, markers: list[dict]) -> None:
+    """Attach component refs parsed from each marker's comment, then reconcile the file."""
+    for marker in markers:
+        marker["component_refs"] = _component_refs(marker["description"])
+    todo_mgr.reconcile(path, markers)
+
+
 _GENERATOR_TIMEOUT = 120
+# Numeric version leading a golang image tag: reg:5000/golang:1.25.3-alpine -> 1.25.3.
+_IMAGE_TAG_VERSION_RE = re.compile(r"(?:^|/)golang:(\d+(?:\.\d+)*)[^:/]*$")
 
 
 class IgnitionError(Exception):
     """Raised when ignition fails fatally."""
+
+
+def _go_directive(go_mod: Path) -> str | None:
+    """The `go` directive of a go.mod file, or None if the file or directive is missing."""
+    if not go_mod.is_file():
+        return None
+    match = _GO_DIRECTIVE_RE.search(go_mod.read_text(encoding="utf-8", errors="replace"))
+    return match.group(1) if match else None
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
 
 
 def _go_mod_requires(text: str) -> list[str]:
@@ -141,7 +180,7 @@ class IgnitionEngine:
         # 7-8. Post-generation checks + runtime dependencies (per pack language)
         dependencies_installed: list[str] = []
         if not dry_run:
-            post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings)
+            post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings, answers)
             errors.extend(post_errors)
             # Post-steps rewrite files in place (gofmt -w, ruff format, go get/tidy on go.mod); record
             # the rewritten content so a re-ignite does not mistake it for a developer edit.
@@ -167,13 +206,18 @@ class IgnitionEngine:
         )
 
     def _run_post_steps(
-        self, pack: dict, written_paths: list[Path], warnings: list[str]
+        self,
+        pack: dict,
+        written_paths: list[Path],
+        warnings: list[str],
+        answers: dict[str, str] | None = None,
     ) -> tuple[list[str], list[str]]:
         """Run language-specific post-generation steps. Returns (errors, installed deps)."""
         language = str(pack.get("stack", {}).get("language", "python")).lower()
         if language == "go":
             # Deps first: go mod tidy / go build need modules resolved.
             installed = self._install_go_deps(pack, warnings)
+            self._check_go_builder_image(answers or {}, warnings)
             return self._post_generate_go(written_paths), installed
         errors = self._post_generate(written_paths) if written_paths else []
         return errors, self._install_runtime_deps(pack, warnings)
@@ -196,6 +240,18 @@ class IgnitionEngine:
         if not go_mod.exists():
             warnings.append("Cannot install runtime deps: no go.mod found")
             return []
+        rendered = _go_directive(go_mod)
+        installed = self._run_go_dep_steps(deps, warnings)
+        resolved = _go_directive(go_mod)
+        if rendered and resolved and _version_tuple(resolved) > _version_tuple(rendered):
+            warnings.append(
+                f"go.mod go directive raised from {rendered} to {resolved} by one of the dependencies "
+                f"({', '.join(deps)}); building needs Go >= {resolved}"
+            )
+        return installed
+
+    def _run_go_dep_steps(self, deps: list[str], warnings: list[str]) -> list[str]:
+        """go get the deps, then go mod tidy + go mod vendor. Returns deps, or [] on failure."""
         for cmd in (["go", "get", *deps], ["go", "mod", "tidy"], ["go", "mod", "vendor"]):
             try:
                 result = subprocess.run(
@@ -213,6 +269,24 @@ class IgnitionEngine:
                 warnings.append(f"Failed to install deps ({' '.join(cmd)}): {result.stderr[:200]}")
                 return []
         return list(deps)
+
+    def _check_go_builder_image(self, answers: dict[str, str], warnings: list[str]) -> None:
+        """Warn when the builder_image answer pins a numeric Go tag older than the go.mod directive.
+
+        The generated Dockerfile sets GOTOOLCHAIN=local, so the builder cannot download a newer Go.
+        """
+        image = str(answers.get("builder_image") or "").strip()
+        reference = image.split("@", 1)[0]  # a digest (@sha256:...) is not a tag
+        directive = _go_directive(self._root / "go.mod")
+        match = _IMAGE_TAG_VERSION_RE.search(reference)
+        if not match or not directive:
+            return
+        tag = _version_tuple(match.group(1))
+        if tag < _version_tuple(directive)[: len(tag)]:
+            warnings.append(
+                f"builder_image {image} is older than go.mod go {directive}; the Dockerfile sets GOTOOLCHAIN=local, "
+                "so the build will fail. Use a builder with Go >= " + directive
+            )
 
     def _post_generate_go(self, written_files: list[Path]) -> list[str]:
         """gofmt generated .go files, then go build + go vet. Returns list of errors."""
@@ -578,7 +652,7 @@ class IgnitionEngine:
                             comment = stripped.split(comment_prefix, 1)[1].strip()
                         method = go_enclosing_func(content_lines, i) if gf.path.endswith(".go") else "<unknown>"
                         markers.append({"line": i, "method": method, "description": comment})
-                todo_mgr.reconcile(gf.path, markers)
+                _reconcile(todo_mgr, gf.path, markers)
                 continue
             if not gf.path.endswith(".py"):
                 continue
@@ -630,7 +704,7 @@ class IgnitionEngine:
                         if not comment:
                             comment = self._extract_implement_comment(lines, i)
                         markers.append({"line": i, "method": method, "description": comment})
-            todo_mgr.reconcile(gf.path, markers)
+            _reconcile(todo_mgr, gf.path, markers)
         # reconcile() keeps existing entries for moved markers; count only new ones.
         return len({t.id for t in todo_mgr.list_todos()} - existing)
 

@@ -1421,9 +1421,12 @@ def validate_dag_cmd(
             from ydk.repositories.factory import get_epic_repository, get_story_repository
 
             story_repo = get_story_repository()
-            story_list = list(story_repo.list_stories())
+            story_list = [
+                _StorySummary(id=st.id or f"#{st.number}", title=st.title, epic_id=st.epic_id or "")
+                for st in story_repo.list_stories()
+            ]
             epic_repo = get_epic_repository()
-            epic_list = [_EpicSummary(id=e.id, title=e.title) for e in epic_repo.list_epics()]
+            epic_list = [_EpicSummary(id=e.id or f"#{e.number}", title=e.title) for e in epic_repo.list_epics()]
         except Exception:
             pass
 
