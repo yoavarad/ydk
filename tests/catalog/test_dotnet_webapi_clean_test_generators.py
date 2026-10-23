@@ -151,7 +151,7 @@ class TestUnitTestStubs:
         content = files[0]["content"]
         assert content.count("[Fact]") == 3
         for method in ("GetOrder", "ListOrders", "CreateOrder"):
-            assert f"public async Task {method}_ThrowsNotImplemented()" in content
+            assert f"public async Task {method}AsyncThrowsNotImplemented()" in content
 
     def test_uses_fake_repository_and_asserts_current_stub_behavior(
         self, contract_and_entity_env: dict[str, str]

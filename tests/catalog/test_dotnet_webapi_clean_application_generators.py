@@ -112,7 +112,7 @@ class TestRepositoryImplementations:
         assert "private readonly AppDbContext _context;" in content
         assert "public OrderRepository(AppDbContext context)" in content
         assert "_context.Orders" in content
-        assert "await _context.SaveChangesAsync();" in content
+        assert "await _context.SaveChangesAsync().ConfigureAwait(false);" in content
 
 
 class TestServiceStubs:
@@ -145,6 +145,14 @@ class TestServiceStubs:
     def test_method_signatures_map_types_and_names(self, contract_env: dict[str, str]) -> None:
         files = _run_generator("service_stubs.py", contract_env)
         interface = next(f for f in files if f["path"] == "Application/Services/IOrderService.cs")["content"]
-        assert "Task<Order> GetOrder(Guid orderId);" in interface
-        assert "Task<IEnumerable<Order>> ListOrders();" in interface
-        assert "Task<Order> CreateOrder(decimal total);" in interface
+        assert "Task<Order> GetOrderAsync(Guid orderId);" in interface
+        assert "Task<IEnumerable<Order>> ListOrdersAsync();" in interface
+        assert "Task<Order> CreateOrderAsync(decimal total);" in interface
+
+    def test_async_suffix_not_doubled(self, tmp_path: Path) -> None:
+        contract = {**SAMPLE_CONTRACT, "methods": {"get_order_async": SAMPLE_CONTRACT["methods"]["get_order"]}}
+        env = {"YDK_COMPONENTS_CONTRACT": str(_write_component_yaml(tmp_path, "contract", [contract]))}
+        files = _run_generator("service_stubs.py", env)
+        interface = next(f for f in files if f["path"] == "Application/Services/IOrderService.cs")["content"]
+        assert "Task<Order> GetOrderAsync(Guid orderId);" in interface
+        assert "AsyncAsync" not in interface

@@ -12,13 +12,13 @@ public class {{ service_name }}Tests
 {
 {% for method in methods %}
     [Fact]
-    public async Task {{ method.name }}_ThrowsNotImplemented()
+    public async Task {{ method.async_name }}ThrowsNotImplemented()
     {
         var {{ repo_param }} = new {{ fake_repo_type }}();
         var service = new {{ service_name }}({{ repo_param }});
 
-        // TODO: replace with a real assertion once {{ service_name }}.{{ method.name }} is implemented.
-        await Assert.ThrowsAsync<NotImplementedException>(() => service.{{ method.name }}({{ method.args }}));
+        // TODO: replace with a real assertion once {{ service_name }}.{{ method.async_name }} is implemented.
+        await Assert.ThrowsAsync<NotImplementedException>(() => service.{{ method.async_name }}({{ method.args }}));
     }
 
 {% endfor %}

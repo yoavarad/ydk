@@ -28,7 +28,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
-from _dotnet_common import contract_methods, map_type, pluralize, service_and_entity_name, to_camel_param, to_pascal
+from _dotnet_common import (
+    async_method_name,
+    contract_methods,
+    map_type,
+    pluralize,
+    service_and_entity_name,
+    to_camel_param,
+    to_pascal,
+)
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 _PATH_PARAM_RE = re.compile(r"\{(\w+)((?::[^}]*)?)\}")
@@ -274,7 +282,7 @@ def build_route_context(ep: dict, tag: str, index: dict[str, dict], record_names
         "map_call": _MAP_CALLS.get(http_method, "MapGet"),
         "path": path,
         "params": ", ".join(lambda_params),
-        "invocation": f"{service_var}.{method_name}({', '.join(args)})",
+        "invocation": f"{service_var}.{async_method_name(method_name)}({', '.join(args)})",
         "returns_value": not is_void and status != 204,
         "return_lines": _return_lines(status, is_void=is_void, nullable=nullable),
     }

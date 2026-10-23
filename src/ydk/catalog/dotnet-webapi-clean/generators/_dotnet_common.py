@@ -213,10 +213,16 @@ def pk_field(entity: dict) -> tuple[str, str]:
     return "Id", "Guid"
 
 
+def async_method_name(name: str) -> str:
+    """C# name for an awaitable method: ``name`` with an ``Async`` suffix (VSTHRD200), never doubled."""
+    return name if name.endswith("Async") else f"{name}Async"
+
+
 def contract_methods(contract: dict) -> list[dict]:
     """Normalize a contract's ``methods`` map into a list of method contexts.
 
-    Each returned dict has: name (PascalCase), task_return (C# Task/Task<T>),
+    Each returned dict has: name (PascalCase), async_name (name with the
+    ``Async`` suffix used for the C# method), task_return (C# Task/Task<T>),
     is_void, params (list of {name, type}).
     """
     methods_raw = contract.get("methods", {})
@@ -247,6 +253,7 @@ def contract_methods(contract: dict) -> list[dict]:
         methods.append(
             {
                 "name": to_pascal(method_name),
+                "async_name": async_method_name(to_pascal(method_name)),
                 "task_return": task_return,
                 "is_void": is_void,
                 "params": params,

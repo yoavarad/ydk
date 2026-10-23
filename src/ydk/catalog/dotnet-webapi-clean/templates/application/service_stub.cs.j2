@@ -16,7 +16,7 @@ public class {{ service_name }} : I{{ service_name }}
     }
 {% for method in methods %}
 
-    public {{ method.task_return }} {{ method.name }}({% for p in method.params %}{{ p.type }} {{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %})
+    public {{ method.task_return }} {{ method.async_name }}({% for p in method.params %}{{ p.type }} {{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %})
     {
         throw new NotImplementedException();{{ " // " ~ component_id ~ "." ~ method.name if component_id else "" }}
     }

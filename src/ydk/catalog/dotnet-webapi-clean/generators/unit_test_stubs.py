@@ -67,7 +67,7 @@ def build_contract_context(contract: dict) -> dict:
     methods = []
     for method in contract_methods(contract):
         args = ", ".join(_sample_arg(p["type"]) for p in method["params"])
-        methods.append({"name": method["name"], "args": args})
+        methods.append({"async_name": method["async_name"], "args": args})
     return {
         "service_name": service_name,
         "repo_param": to_camel(f"{entity_name}Repository"),
