@@ -849,3 +849,103 @@ def _setup_local_repo() -> tuple:  # type: ignore[type-arg]
     )
     repo = LocalTaskRepository(ydk_dir)
     return repo, tmp
+
+
+# -- Issue 504: string-form refs / acceptance / depends_on ----------------------
+
+
+def _run_batch(tmp_path: Path, data: dict, extra: list[str] | None = None):  # type: ignore[no-untyped-def,type-arg]
+    batch_file = tmp_path / "batch504.yaml"
+    batch_file.write_text(yaml.dump(data), encoding="utf-8")
+    task_repo = MagicMock()
+    task_repo.create_task.side_effect = [
+        TaskDetail(id="T-001", title="A", status="open"),
+        TaskDetail(id="T-002", title="B", status="open"),
+    ]
+    story_repo = MagicMock()
+    story_repo.create_story.return_value = StoryDetail(id="S-001", number=1, title="S")
+    with (
+        patch("ydk.cli.task_cmd._get_repo", return_value=task_repo),
+        patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
+        patch("ydk.repositories.factory.get_story_repository", return_value=story_repo),
+        patch("ydk.cli.task_cmd._ensure_labels"),
+        patch("pathlib.Path.write_text", autospec=True),
+        patch("ydk.core.task_validator.validate_component_ref", return_value=None),
+        patch("ydk.core.task_validator.validate_spec_ref", return_value=None),
+    ):
+        result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), *(extra or [])])
+    return result, task_repo, story_repo
+
+
+class TestStringFormBatchFields:
+    def test_string_refs_and_acceptance_normalized(self, tmp_path: Path) -> None:
+        data = {
+            "stories": [
+                {"id": "s1", "title": "S", "component_refs": "a, b", "acceptance": "one criterion"},
+            ],
+            "tasks": [
+                {
+                    "id": "t1",
+                    "title": "A",
+                    "component_refs": "x,y,,",
+                    "spec_refs": "p, q",
+                    "acceptance": "do the thing, really",
+                },
+            ],
+        }
+        result, task_repo, story_repo = _run_batch(tmp_path, data)
+        assert result.exit_code == 0, result.output
+        t = task_repo.create_task.call_args[0][0]
+        assert t.component_refs == ["x", "y"]
+        assert t.spec_refs == ["p", "q"]
+        assert t.acceptance_criteria == ["do the thing, really"]
+        s = story_repo.create_story.call_args[0][0]
+        assert s.component_refs == ["a", "b"]
+        assert s.acceptance_criteria == ["one criterion"]
+
+    def test_string_depends_on_not_split_per_char(self, tmp_path: Path) -> None:
+        data = {
+            "tasks": [
+                {"id": "t1", "title": "A"},
+                {"id": "t2", "title": "B", "depends_on": "t1, t1:related"},
+            ],
+        }
+        result, task_repo, _ = _run_batch(tmp_path, data)
+        assert result.exit_code == 0, result.output
+        deps = task_repo.create_task.call_args_list[1][0][0].dependencies
+        assert len(deps) == 2
+        frontmatter = task_repo.update_frontmatter.call_args[0][1]["dependencies"]
+        assert len(frontmatter) == 2
+
+    def test_validation_rejects_non_str_list(self) -> None:
+        data = {
+            "tasks": [
+                {
+                    "id": "t1",
+                    "title": "A",
+                    "component_refs": 5,
+                    "spec_refs": {"a": 1},
+                    "acceptance": 7,
+                    "depends_on": 3,
+                },
+            ],
+        }
+        errors = _validate_batch_yaml(data)
+        for field in ("component_refs", "spec_refs", "acceptance", "depends_on"):
+            assert any(field in e for e in errors), (field, errors)
+
+    def test_validation_accepts_string_forms(self) -> None:
+        data = {
+            "tasks": [
+                {"id": "t1", "title": "A"},
+                {"id": "t2", "title": "B", "depends_on": "t1", "acceptance": "x", "component_refs": "a,b"},
+            ],
+        }
+        assert _validate_batch_yaml(data) == []
+
+    def test_dry_run_reports_invalid_type(self, tmp_path: Path) -> None:
+        batch_file = tmp_path / "bad.yaml"
+        batch_file.write_text(yaml.dump({"tasks": [{"id": "t1", "title": "A", "acceptance": 7}]}), encoding="utf-8")
+        result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
+        assert result.exit_code != 0
+        assert "acceptance" in result.output

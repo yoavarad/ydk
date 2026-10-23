@@ -30,8 +30,11 @@ class TestNormalizeRefs:
     def test_integer_wrapped_as_string(self) -> None:
         assert _normalize_refs(42) == ["42"]
 
-    def test_empty_string_returns_single_item(self) -> None:
-        assert _normalize_refs("") == [""]
+    def test_empty_string_returns_empty(self) -> None:
+        assert _normalize_refs("") == []
+
+    def test_comma_separated_string_split_and_stripped(self) -> None:
+        assert _normalize_refs("a, b ,,c") == ["a", "b", "c"]
 
     def test_empty_list_returns_empty(self) -> None:
         assert _normalize_refs([]) == []
