@@ -71,6 +71,28 @@ class TestValidateSpecRef:
         err = validate_spec_ref("docs/specs/01-core.md", tmp_path)
         assert err is None
 
+    def test_bare_name_resolves_via_spec_location(self, tmp_path: Path) -> None:
+        spec = tmp_path / "docs" / "specs" / "orders.md"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("# Orders", encoding="utf-8")
+
+        assert validate_spec_ref("orders.md", tmp_path) is None
+
+    def test_custom_spec_location(self, tmp_path: Path) -> None:
+        spec = tmp_path / "specs" / "orders.md"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("# Orders", encoding="utf-8")
+
+        assert validate_spec_ref("orders.md", tmp_path) is not None
+        assert validate_spec_ref("orders.md", tmp_path, spec_location="specs") is None
+
+    def test_adr_path_resolves_from_root(self, tmp_path: Path) -> None:
+        adr = tmp_path / "docs" / "adrs" / "0001-x.md"
+        adr.parent.mkdir(parents=True)
+        adr.write_text("# ADR", encoding="utf-8")
+
+        assert validate_spec_ref("docs/adrs/0001-x.md", tmp_path) is None
+
     def test_missing_file(self, tmp_path: Path) -> None:
         err = validate_spec_ref("docs/specs/missing.md", tmp_path)
         assert err is not None

@@ -347,15 +347,15 @@ def validate_component_ref(ref: str, components_dir: Path) -> str | None:
     return None
 
 
-def validate_spec_ref(ref: str, project_root: Path) -> str | None:
-    """Return an error message if *ref* does not exist relative to *project_root*.
+def validate_spec_ref(ref: str, project_root: Path, spec_location: str = "docs/specs") -> str | None:
+    """Return an error message if *ref* resolves nowhere.
 
+    Tries ``project_root / ref`` first, then ``project_root / spec_location / ref``.
     Returns ``None`` when valid.
     """
-    path = project_root / ref
-    if not path.is_file():
-        return f"Spec file {ref} not found"
-    return None
+    if (project_root / ref).is_file() or (project_root / spec_location / ref).is_file():
+        return None
+    return f"Spec file {ref} not found (tried {project_root / ref} and {project_root / spec_location / ref})"
 
 
 # ---------------------------------------------------------------------------
