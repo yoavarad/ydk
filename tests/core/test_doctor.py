@@ -12,6 +12,8 @@ from ydk.core.doctor import CheckResult, CheckSeverity, Doctor
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 
 class TestCheckPython:
     def test_passes_on_current_python(self) -> None:
@@ -331,7 +333,7 @@ class TestRunAll:
         (config_dir / "config.yaml").write_text("project:\n  name: test\n")
         doc = Doctor(project_root=tmp_path)
         results = doc.run_all()
-        assert len(results) == 18
+        assert len(results) == 19
         assert all(isinstance(r, CheckResult) for r in results)
 
 
@@ -503,4 +505,38 @@ class TestCheckSchemaVersions:
         schemas.mkdir(parents=True)
         shutil.copy2(_BUNDLED_SCHEMAS_DIR / "contract.yaml", schemas / "contract.yaml")
         result = Doctor(project_root=tmp_path)._check_schema_versions()
+        assert result.severity == CheckSeverity.ok
+
+
+class TestSkillVersions:
+    def _install(self, cfg: Path, stamp: str | None) -> None:
+        skill = cfg / "skills" / "ydk"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# ydk\n")
+        if stamp is not None:
+            (skill / ".ydk-version").write_text(stamp + "\n")
+
+    def test_warns_on_stamp_drift(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = tmp_path / "claude"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        self._install(cfg, "0.0.1")
+        result = Doctor(project_root=tmp_path)._check_skill_versions()
+        assert result.severity == CheckSeverity.warning
+        assert "ydk" in (result.detail or "")
+        assert "ydk skills sync" in (result.detail or "")
+
+    def test_ok_when_stamp_matches(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import importlib.metadata
+
+        cfg = tmp_path / "claude"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        self._install(cfg, importlib.metadata.version("ydk"))
+        result = Doctor(project_root=tmp_path)._check_skill_versions()
+        assert result.severity == CheckSeverity.ok
+
+    def test_ok_when_no_synced_skills(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = tmp_path / "claude"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        self._install(cfg, None)
+        result = Doctor(project_root=tmp_path)._check_skill_versions()
         assert result.severity == CheckSeverity.ok
