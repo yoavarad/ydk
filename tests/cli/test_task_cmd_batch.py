@@ -13,9 +13,15 @@ from typer.testing import CliRunner
 
 from ydk.cli import app
 from ydk.cli.task_cmd import _validate_batch_yaml
-from ydk.models.pm import EpicDetail, StoryDetail, TaskDetail, TaskSummary
+from ydk.models.pm import EpicDetail, StoryDetail, StorySummary, TaskDetail, TaskSummary
 
 runner = CliRunner()
+
+
+def _story_repo(*ids: str) -> MagicMock:
+    repo = MagicMock()
+    repo.list_stories.return_value = [StorySummary(id=i, title=i) for i in ids]
+    return repo
 
 
 # -- Issue 1: Two-pass batch creation with placeholder resolution ----------------
@@ -177,10 +183,13 @@ class TestFullBatchSchema:
             TaskDetail(id="T-002", title="Create database.py", status="open"),
         ]
 
+        mock_story_repo = MagicMock()
+        mock_story_repo.list_stories.return_value = [StorySummary(id="S-001", title="s")]
+
         with (
             patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
             patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=mock_story_repo),
             patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
@@ -202,7 +211,7 @@ class TestFullBatchSchema:
         with (
             patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
             patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=_story_repo("S-001", "S-002")),
             patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
@@ -323,6 +332,78 @@ class TestDryRunValidation:
         """_validate_batch_yaml catches missing titles."""
         errors = _validate_batch_yaml({"tasks": [{"id": "t1"}]})
         assert any("missing 'title'" in e for e in errors)
+
+
+def _make_manifest(root: Path, ref_dir: str = "entity/orders", name: str = "Order") -> None:
+    comp = root / ".ydk" / "components" / ref_dir
+    comp.mkdir(parents=True)
+    (comp / f"{name}.yaml").write_text("id: x", encoding="utf-8")
+
+
+class TestBatchRefValidation:
+    """component_refs and task->story refs are validated before any API call."""
+
+    def test_unknown_task_component_ref(self, tmp_path: Path) -> None:
+        data = {"tasks": [{"id": "t1", "title": "T1", "component_refs": ["ydk:entity:orders/Order"]}]}
+        errors = _validate_batch_yaml(data, project_root=tmp_path)
+        assert any("not found" in e and "ydk:entity:orders/Order" in e for e in errors)
+
+    def test_unknown_story_component_ref(self, tmp_path: Path) -> None:
+        data = {"stories": [{"id": "s1", "title": "S1", "component_refs": ["ydk:entity:orders/Order"]}]}
+        errors = _validate_batch_yaml(data, project_root=tmp_path)
+        assert any("s1" in e and "not found" in e for e in errors)
+
+    def test_valid_component_ref_with_manifest(self, tmp_path: Path) -> None:
+        _make_manifest(tmp_path)
+        data = {
+            "stories": [{"id": "s1", "title": "S1", "component_refs": ["ydk:entity:orders/Order"]}],
+            "tasks": [{"id": "t1", "title": "T1", "story": "s1", "component_refs": ["ydk:entity:orders/Order"]}],
+        }
+        assert _validate_batch_yaml(data, project_root=tmp_path) == []
+
+    def test_unknown_story_ref(self) -> None:
+        errors = _validate_batch_yaml({"tasks": [{"id": "t1", "title": "T1", "story": "S-999"}]})
+        assert any("S-999" in e and "undefined story" in e for e in errors)
+
+    def test_story_ref_defined_in_yaml(self) -> None:
+        data = {"stories": [{"id": "s1", "title": "S"}], "tasks": [{"id": "t1", "title": "T", "story": "s1"}]}
+        assert _validate_batch_yaml(data) == []
+
+    def test_story_ref_in_existing_ids(self) -> None:
+        data = {"tasks": [{"id": "t1", "title": "T", "story": "S-001"}]}
+        assert _validate_batch_yaml(data, existing_ids={"S-001"}) == []
+
+    def test_valid_dep_type(self) -> None:
+        data = {"tasks": [{"id": "a", "title": "A"}, {"id": "b", "title": "B", "depends_on": ["a:validates"]}]}
+        assert _validate_batch_yaml(data) == []
+
+    def test_non_mapping_entries(self) -> None:
+        errors = _validate_batch_yaml({"epics": ["x"], "stories": [42], "tasks": [None]})
+        assert len(errors) == 3
+        assert all("not a mapping" in e for e in errors)
+
+    def test_dry_run_exits_1_for_unknown_component_ref(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        batch_file = tmp_path / "batch.yaml"
+        batch_file.write_text(
+            yaml.dump({"tasks": [{"id": "t1", "title": "T1", "component_refs": ["ydk:entity:orders/Order"]}]}),
+            encoding="utf-8",
+        )
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = []
+        with patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo):
+            result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
+        assert result.exit_code == 1, result.output
+
+    def test_dry_run_exits_1_for_unknown_story(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        batch_file = tmp_path / "batch.yaml"
+        batch_file.write_text(yaml.dump({"tasks": [{"id": "t1", "title": "T1", "story": "S-9"}]}), encoding="utf-8")
+        mock_repo = MagicMock()
+        mock_repo.list_tasks.return_value = []
+        with patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo):
+            result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
+        assert result.exit_code == 1, result.output
 
 
 # -- Issue 12: --dry-run on individual create commands --------------------------
@@ -462,6 +543,8 @@ class TestCreateBatch:
         spec_dir.mkdir(parents=True)
         (spec_dir / "01-core-domain.md").write_text("# Core Domain", encoding="utf-8")
 
+        _make_manifest(tmp_path, "crosscut/config", "settings")
+        _make_manifest(tmp_path, "contract/data", "DatabaseSession")
         batch_file = tmp_path / "batch.yaml"
         batch_file.write_text(
             yaml.dump(
@@ -500,7 +583,7 @@ class TestCreateBatch:
         with (
             patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
             patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=_story_repo("S-001", "S-002")),
             patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])
@@ -548,7 +631,7 @@ class TestCreateBatch:
         with (
             patch("ydk.cli.task_cmd._get_repo", return_value=mock_repo),
             patch("ydk.repositories.factory.get_epic_repository", return_value=MagicMock()),
-            patch("ydk.repositories.factory.get_story_repository", return_value=MagicMock()),
+            patch("ydk.repositories.factory.get_story_repository", return_value=_story_repo("S-001", "S-002")),
             patch("ydk.cli.task_cmd._ensure_labels"),
         ):
             result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file)])

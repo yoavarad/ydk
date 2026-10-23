@@ -338,7 +338,8 @@ def _validate_batch_yaml(
     - All depends_on reference IDs that exist in the same YAML or in ``existing_ids``
     - All dependency types are valid
     - No self-dependencies
-    - spec_refs point to existing files (when project_root is provided)
+    - task ``story`` references a story defined in the YAML or in ``existing_ids``
+    - spec_refs and component_refs point to existing files (when project_root is provided)
     """
     errors: list[str] = []
 
@@ -384,11 +385,16 @@ def _validate_batch_yaml(
         if tid:
             defined_ids.add(tid)
 
-    # Second pass: validate task dependencies
+    story_ids = {str(s["id"]) for s in data.get("stories", []) or [] if isinstance(s, dict) and s.get("id")}  # ty: ignore[not-iterable]
+
+    # Second pass: validate task dependencies and story references
     for task in data.get("tasks", []) or []:  # ty: ignore[not-iterable]
         if not isinstance(task, dict):
             continue
         tid = task.get("id", "")
+        story_ref = task.get("story", "")
+        if story_ref and str(story_ref) not in story_ids and str(story_ref) not in (existing_ids or set()):
+            errors.append(f"Task '{tid}' references undefined story '{story_ref}'")
         for dep in task.get("depends_on", []) or []:
             parts = str(dep).split(":")
             dep_ref = parts[0]
@@ -402,9 +408,10 @@ def _validate_batch_yaml(
 
     # Validate spec_refs exist on disk (when project_root is provided)
     if project_root is not None:
-        from ydk.core.task_validator import validate_spec_ref
+        from ydk.core.task_validator import validate_component_ref, validate_spec_ref
 
         spec_location = _spec_location()
+        components_dir = project_root / ".ydk" / "components"
 
         for entity_type in ("epics", "stories", "tasks"):
             raw_items = data.get(entity_type, [])
@@ -419,6 +426,12 @@ def _validate_batch_yaml(
                     for ref in _normalize_refs(item_map.get("spec_refs"))
                     if validate_spec_ref(ref, project_root, spec_location)
                 )
+                if entity_type == "epics":
+                    continue
+                for ref in _normalize_refs(item_map.get("component_refs")):
+                    comp_err = validate_component_ref(ref, components_dir)
+                    if comp_err:
+                        errors.append(f"{entity_type[:-1].capitalize()} '{item_id}': {comp_err}")
 
     # Validate we have at least one entity
     has_epics = bool(data.get("epics"))
@@ -483,6 +496,12 @@ def create_batch(
         existing_ids = {t.id for t in _get_repo().list_tasks(state="all")}
     except Exception:
         existing_ids = set()
+    try:
+        from ydk.repositories.factory import get_story_repository
+
+        existing_ids |= {s.id for s in get_story_repository().list_stories()}
+    except Exception:
+        pass
     validation_errors = _validate_batch_yaml(data, project_root=project_root, existing_ids=existing_ids)
     if validation_errors:
         for err in validation_errors:
