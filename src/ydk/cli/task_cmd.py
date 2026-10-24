@@ -1047,8 +1047,14 @@ def done(
         console.print("[red]✗ Verification failed[/red]")
         report = result.get("report")
         if report:
+            from ydk.models.verification import is_skipped
+
             for check in report.checks:
-                status = "[green]✓[/green]" if check.passed else "[red]✗[/red]"
+                status = (
+                    "[yellow]-[/yellow]"
+                    if is_skipped(check)
+                    else ("[green]✓[/green]" if check.passed else "[red]✗[/red]")
+                )
                 console.print(f"  {status} {check.name} ({check.duration_seconds}s)")
                 if not check.passed:
                     lines = check.output.strip().splitlines()[:3]

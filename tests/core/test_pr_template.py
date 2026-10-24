@@ -498,3 +498,44 @@ class TestSkippedPluginRendering:
         ProofCapture(proof_dir).save_report(report, skipped_plugins=["flaky-e2e"])
         body = PRBodyBuilder().build("T-001", proof_dir)
         assert "1/2 verification checks passed, 1 skipped" in body
+
+
+class TestSelfSkippedRendering:
+    def test_self_skipped_dotnet_checks_render_skip_and_not_counted_passed(self, proof_dir: Path) -> None:
+        from ydk.core.proof_capture import ProofCapture
+        from ydk.models.verification import CheckResult, VerificationReport
+
+        skip = {"status": "SKIPPED", "skip_reason": "No .cs/.csproj/.sln files changed"}
+        checks = [
+            CheckResult(name="dotnet-build", passed=True, output="skipped", duration_seconds=0.1, detail=skip),
+            CheckResult(name="dotnet-format", passed=True, output="skipped", duration_seconds=0.1, detail=skip),
+            CheckResult(name="ai-code-review", passed=True, output="s", duration_seconds=0.1, detail={"skipped": True}),
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+        ]
+        report = VerificationReport(
+            task_id="T-001", timestamp="t", checks=checks, all_passed=True, total_duration_seconds=1.3
+        )
+        ProofCapture(proof_dir).save_report(report)
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "dotnet build — SKIP" in body
+        assert "dotnet format — SKIP" in body
+        assert "ai code review — SKIP" in body
+        assert "lint — PASS" in body
+        assert "1/4 verification checks passed, 3 skipped" in body
+
+    def test_legacy_skipped_flag_in_json_counted_skipped(self, proof_dir: Path) -> None:
+        import json
+
+        report_data = {
+            "task_id": "T-001",
+            "timestamp": "t",
+            "checks": [
+                {"name": "spec", "passed": True, "output": "s", "duration_seconds": 0.5, "detail": {"skipped": True}},
+                {"name": "pytest", "passed": True, "output": "ok", "duration_seconds": 3.0, "detail": None},
+            ],
+            "all_passed": True,
+            "total_duration_seconds": 3.5,
+        }
+        (proof_dir / "verification-report.json").write_text(json.dumps(report_data))
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert "1/2 verification checks passed, 1 skipped" in body

@@ -16,6 +16,12 @@ class CheckResult(BaseModel):
     detail: dict[str, Any] | None = None  # Extra data (test_count, etc.)
 
 
+def is_skipped(check: CheckResult) -> bool:
+    """True when a check self-reported a skip (detail.status SKIPPED or legacy detail.skipped)."""
+    detail = check.detail or {}
+    return detail.get("status") == "SKIPPED" or (check.passed and detail.get("skipped") is True)
+
+
 class VerificationReport(BaseModel):
     """Full verification report aggregating all check results."""
 
