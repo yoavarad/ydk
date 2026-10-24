@@ -480,3 +480,127 @@ class TestValidateDagGithubHierarchy:
             [StoryDetail(number=9, id="", title="S", epic_id=None)],
         )
         assert "Story #9 has no epic_id" in out
+
+
+# ---------------------------------------------------------------------------
+# --from batch.yaml
+# ---------------------------------------------------------------------------
+
+
+def _write_batch(path: Path, data: dict[str, object]) -> str:
+    path.write_text(yaml.dump(data), encoding="utf-8")
+    return str(path)
+
+
+class TestValidateDagFromBatch:
+    def test_cycle_reported_and_exits_nonzero(self, tmp_path: Path) -> None:
+        f = _write_batch(
+            tmp_path / "b.yaml",
+            {
+                "tasks": [
+                    {"id": "T-a", "title": "A", "depends_on": ["T-b"]},
+                    {"id": "T-b", "title": "B", "depends_on": ["T-a:blocks"]},
+                ]
+            },
+        )
+        result = runner.invoke(app, ["task", "validate-dag", "--from", f])
+        assert result.exit_code == 1
+        assert "cycle" in result.output.lower()
+        assert "T-a" in result.output
+        assert "T-b" in result.output
+
+    def test_no_cycle_valid(self, tmp_path: Path) -> None:
+        f = _write_batch(
+            tmp_path / "b.yaml",
+            {"tasks": [{"id": "T-a", "title": "A"}, {"id": "T-b", "title": "B", "depends_on": "T-a"}]},
+        )
+        result = runner.invoke(app, ["task", "validate-dag", "--from", f])
+        assert result.exit_code == 0
+        assert "DAG is valid" in result.output
+
+    def test_external_issue_dep_resolved(self, tmp_path: Path) -> None:
+        f = _write_batch(
+            tmp_path / "b.yaml",
+            {"tasks": [{"id": "T-a", "title": "A", "depends_on": ["#169"]}]},
+        )
+        result = runner.invoke(app, ["task", "validate-dag", "--from", f])
+        assert result.exit_code == 0, result.output
+        assert "DAG is valid" in result.output
+
+    def test_missing_file(self, tmp_path: Path) -> None:
+        result = runner.invoke(app, ["task", "validate-dag", "--from", str(tmp_path / "nope.yaml")])
+        assert result.exit_code == 1
+
+    def test_repo_mode_still_works(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ydk.models.pm import TaskCreate
+        from ydk.repositories.local.tasks import LocalTaskRepository
+
+        monkeypatch.chdir(tmp_path)
+        repo = LocalTaskRepository(tmp_path / "tasks")
+        repo.create_task(TaskCreate(title="Solo"))
+        with patch("ydk.cli.task_cmd._get_repo", return_value=repo):
+            result = runner.invoke(app, ["task", "validate-dag"])
+        assert result.exit_code == 0, result.output
+        assert "DAG is valid" in result.output
+
+
+class TestComponentCoverageFromBatch:
+    def _components(self, root: Path) -> None:
+        comp_dir = root / ".ydk" / "components" / "entity"
+        comp_dir.mkdir(parents=True)
+        (comp_dir / "Order.yaml").write_text(yaml.dump({"id": "ydk:entity:orders/Order"}))
+        (comp_dir / "User.yaml").write_text(yaml.dump({"id": "ydk:entity:users/User"}))
+
+    def test_uncovered_listed_and_strict_exits_1(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._components(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        f = _write_batch(
+            tmp_path / "b.yaml",
+            {"tasks": [{"id": "T-a", "title": "A", "component_refs": ["ydk:entity:orders/Order"]}]},
+        )
+        result = runner.invoke(app, ["task", "component-coverage", "--from", f])
+        assert result.exit_code == 0
+        assert "ydk:entity:users/User" in result.output
+        assert "ydk:entity:orders/Order" not in result.output
+        strict = runner.invoke(app, ["task", "component-coverage", "--from", f, "--strict"])
+        assert strict.exit_code == 1
+
+    def test_covered_by_task_and_story(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._components(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        f = _write_batch(
+            tmp_path / "b.yaml",
+            {
+                "stories": [{"id": "S-1", "title": "S", "component_refs": "ydk:entity:users/User"}],
+                "tasks": [{"id": "T-a", "title": "A", "component_refs": ["ydk:entity:orders/Order"]}],
+            },
+        )
+        result = runner.invoke(app, ["task", "component-coverage", "--from", f, "--strict"])
+        assert result.exit_code == 0
+        assert "All components are referenced" in result.output
+
+
+class TestValidateDagFromBatchEdges:
+    def test_non_blocking_loop_passes(self, tmp_path: Path) -> None:
+        f = _write_batch(
+            tmp_path / "b.yaml",
+            {
+                "tasks": [
+                    {"id": "T-a", "title": "A", "depends_on": ["T-b:related"]},
+                    {"id": "T-b", "title": "B", "depends_on": ["T-a:related"]},
+                ]
+            },
+        )
+        result = runner.invoke(app, ["task", "validate-dag", "--from", f])
+        assert result.exit_code == 0, result.output
+
+    def test_self_dependency_fails(self, tmp_path: Path) -> None:
+        f = _write_batch(tmp_path / "b.yaml", {"tasks": [{"id": "T-a", "title": "A", "depends_on": ["T-a"]}]})
+        result = runner.invoke(app, ["task", "validate-dag", "--from", f])
+        assert result.exit_code == 1
+
+    def test_non_mapping_yaml_fails(self, tmp_path: Path) -> None:
+        p = tmp_path / "b.yaml"
+        p.write_text("- a\n- b\n", encoding="utf-8")
+        result = runner.invoke(app, ["task", "validate-dag", "--from", str(p)])
+        assert result.exit_code == 1

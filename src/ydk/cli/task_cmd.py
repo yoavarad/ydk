@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from ydk.models.complexity import ComplexityScore
     from ydk.models.gate import Gate
     from ydk.models.pm import Dependency
+    from ydk.models.task import DagValidationResult
     from ydk.repositories.protocols import EpicRepository, LifecycleTaskRepository, StoryRepository
 
 
@@ -362,6 +363,69 @@ def _check_list_fields(entity: dict[str, object], label: str, fields: tuple[str,
     ]
 
 
+def _load_batch_file(from_file: str) -> dict[str, object]:
+    """Load a batch YAML file into a mapping; exit 1 on missing/unparseable/non-mapping."""
+    import yaml
+
+    path = Path(from_file)
+    if not path.is_file():
+        typer.echo(f"Error: file not found: {from_file}", err=True)
+        raise typer.Exit(code=1)
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        typer.echo(f"Error parsing YAML: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    if not isinstance(data, dict):
+        typer.echo("Error: YAML must be a mapping.", err=True)
+        raise typer.Exit(code=1)
+    return data
+
+
+def _batch_entries(data: dict[str, object], key: str) -> list[dict[str, object]]:
+    raw = data.get(key)
+    entries = cast("list[object]", raw) if isinstance(raw, list) else []
+    return [cast("dict[str, object]", e) for e in entries if isinstance(e, dict)]
+
+
+def _batch_dag_tasks(data: dict[str, object]) -> list[Task]:
+    """Build DAG nodes from a batch's tasks; deps outside the batch become resolved stub nodes."""
+    from ydk.models.pm import DependencyType
+    from ydk.models.task import TaskDependency
+
+    tasks: list[Task] = []
+    for entry in _batch_entries(data, "tasks"):
+        if not entry.get("id"):
+            continue
+        deps: list[str | TaskDependency] = []
+        try:
+            raw_deps = _normalize_deps(entry.get("depends_on"))
+        except ValueError:
+            raw_deps = []
+        for raw in raw_deps:
+            ref, _, dep_type = str(raw).partition(":")
+            try:
+                deps.append(TaskDependency(task_id=ref, type=DependencyType(dep_type or "blocks")))
+            except ValueError:
+                continue  # invalid dep type: reported by _validate_batch_yaml, not a graph edge
+        tasks.append(Task(id=str(entry.get("id", "")), title=str(entry.get("title", "")), depends_on=deps))
+    batch_ids = {t.id for t in tasks}
+    external = sorted({d for t in tasks for d in t.blocking_dep_ids()} - batch_ids)
+    tasks.extend(Task(id=ext, title="(existing)") for ext in external)
+    return tasks
+
+
+def _batch_component_refs(data: dict[str, object]) -> dict[str, list[str]]:
+    """Map story/task id -> normalized component_refs from a batch."""
+    refs: dict[str, list[str]] = {}
+    for key in ("stories", "tasks"):
+        for entry in _batch_entries(data, key):
+            ids = _normalize_refs(entry.get("component_refs"))
+            if ids and entry.get("id"):
+                refs[str(entry.get("id", ""))] = ids
+    return refs
+
+
 def _validate_batch_yaml(
     data: dict[str, object],
     project_root: Path | None = None,
@@ -554,6 +618,11 @@ def create_batch(
 
     # --- Dry run ---
     if dry_run:
+        dag = validate_dag(_batch_dag_tasks(data))
+        if not dag.valid:
+            for msg in dag.cycles or [dag.error or "invalid dependency graph"]:
+                console.print(f"  [red]ERROR[/red] {msg}")
+            raise typer.Exit(code=1)
         console.print("[yellow]Dry run -- no issues will be created[/yellow]")
         table = Table(title="Batch Dry Run Summary")
         table.add_column("Type", style="bold")
@@ -1395,11 +1464,34 @@ def _extract_dep_ids(deps: list) -> list[str]:  # type: ignore[type-arg]
     return result
 
 
+def _report_dag(result: DagValidationResult) -> None:
+    """Print a DAG validation result; exit 1 when invalid."""
+    if not result.valid:
+        if result.error:
+            typer.echo(f"DAG validation FAILED — {result.error}")
+        elif result.cycles:
+            typer.echo("DAG validation FAILED — cycle detected.")
+            for cycle in result.cycles:
+                typer.echo(f"  Cycle: {cycle}")
+        else:
+            typer.echo("DAG validation FAILED.")
+        raise typer.Exit(code=1)
+
+    typer.echo("DAG is valid.")
+    typer.echo(f"  Parallel waves: {len(result.parallel_sets)}")
+    typer.echo(f"  Critical path length (dependency-only): {result.critical_path_length}")
+    typer.echo(f"  Critical path (dependency-only): {' -> '.join(result.critical_path)}")
+
+
 @task_app.command("validate-dag")
 def validate_dag_cmd(
     label: str | None = typer.Option(None, "--label", "-l", help="Only validate tasks with this label"),
+    from_file: str | None = typer.Option(None, "--from", help="Validate a batch YAML file instead of the repository"),
 ) -> None:
-    """Validate task dependency graph (DAG) -- reads tasks from repository."""
+    """Validate task dependency graph (DAG) -- reads tasks from repository or a batch YAML (--from)."""
+    if from_file:
+        _report_dag(validate_dag(_batch_dag_tasks(_load_batch_file(from_file))))
+        return
     repo = _get_repo()
     summaries = repo.list_tasks(state="all")
 
@@ -1507,8 +1599,9 @@ def validate_dag_cmd(
 def component_coverage_cmd(
     exclude: list[str] = typer.Option([], "--exclude", help="Glob patterns to exclude (e.g. 'ydk:page:*')"),  # noqa: B008
     strict: bool = typer.Option(False, "--strict", help="Exit with code 1 if any uncovered components"),
+    from_file: str | None = typer.Option(None, "--from", help="Check a batch YAML file instead of the repository"),
 ) -> None:
-    """Check that every component manifest is referenced by at least one task."""
+    """Check that every component manifest is referenced by at least one task (or batch via --from)."""
     import fnmatch
 
     from ydk.core.task_validator import check_component_coverage
@@ -1519,18 +1612,19 @@ def component_coverage_cmd(
         typer.echo("No .ydk/components/ directory found.")
         return
 
-    repo = _get_repo()
-    summaries = repo.list_tasks(state="all")
-
     task_component_refs: dict[str, list[str]] = {}
-    for s in summaries:
-        try:
-            detail = repo.get_task(s.id)
-            refs = getattr(detail, "component_refs", None) or []
-            if refs:
-                task_component_refs[s.id] = list(refs)
-        except (FileNotFoundError, ValueError):
-            pass
+    if from_file:
+        task_component_refs = _batch_component_refs(_load_batch_file(from_file))
+    else:
+        repo = _get_repo()
+        for s in repo.list_tasks(state="all"):
+            try:
+                detail = repo.get_task(s.id)
+                refs = getattr(detail, "component_refs", None) or []
+                if refs:
+                    task_component_refs[s.id] = list(refs)
+            except (FileNotFoundError, ValueError):
+                pass
 
     uncovered = check_component_coverage(components_dir, task_component_refs)
 
