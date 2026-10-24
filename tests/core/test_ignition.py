@@ -1570,3 +1570,151 @@ def test_component_refs_parses_leading_id(description: str, expected: list[str])
     from ydk.core.ignition import _component_refs
 
     assert _component_refs(description) == expected
+
+
+class TestIgniteOnly:
+    """--only <glob>: run all generators but write only matching paths (retrofit mode)."""
+
+    def _setup(self, root: Path) -> IgnitionEngine:
+        _setup_pack(root, generators=[{"script": "gen.py"}], generator_scripts={"gen.py": _SIMPLE_GENERATOR})
+        _setup_components(root, {"entity": [{"name": "Strategy"}, {"name": "Trade"}]})
+        return IgnitionEngine(root)
+
+    def test_only_writes_matching_paths(self, tmp_path: Path) -> None:
+        from ydk.core.scaffold_state import ScaffoldState
+        from ydk.core.todo_manager import TodoManager
+
+        result = self._setup(tmp_path).ignite(only=["app/models/strategy.py"])
+
+        assert result.files_generated == 2
+        assert result.files_excluded == 1
+        assert result.files_written == 1
+        assert (tmp_path / "app" / "models" / "strategy.py").exists()
+        assert not (tmp_path / "app" / "models" / "trade.py").exists()
+        # Non-matching files get no TODOs and no scaffold-state entry.
+        assert result.todos_registered == 1
+        assert [t.file for t in TodoManager(tmp_path).list_todos()] == ["app/models/strategy.py"]
+        state = ScaffoldState(tmp_path / ".ydk" / "scaffold-state.yaml")
+        assert state.has_hash("app/models/strategy.py")
+        assert not state.has_hash("app/models/trade.py")
+
+    def test_only_glob_and_repeatable(self, tmp_path: Path) -> None:
+        result = self._setup(tmp_path).ignite(only=["nothing/*", "app/models/t*.py"])
+        assert result.files_written == 1
+        assert (tmp_path / "app" / "models" / "trade.py").exists()
+        assert not (tmp_path / "app" / "models" / "strategy.py").exists()
+
+    def test_only_leaves_other_generated_files_untouched(self, tmp_path: Path) -> None:
+        from ydk.core.todo_manager import TodoManager
+
+        engine = self._setup(tmp_path)
+        engine.ignite()
+        trade = tmp_path / "app" / "models" / "trade.py"
+        trade.unlink()
+        state_file = tmp_path / ".ydk" / "scaffold-state.yaml"
+        state_before = state_file.read_text()
+        todos_before = TodoManager(tmp_path).list_todos()
+
+        result = engine.ignite(only=["app/models/strategy.py"])
+
+        assert not trade.exists()  # a plain re-ignite would recreate it
+        assert result.files_written == 0
+        assert result.todos_registered == 0
+        assert state_file.read_text() == state_before
+        assert TodoManager(tmp_path).list_todos() == todos_before
+
+    def test_only_developer_owned_match_skipped_and_reported(self, tmp_path: Path) -> None:
+        engine = self._setup(tmp_path)
+        engine.ignite()
+        f = tmp_path / "app" / "models" / "strategy.py"
+        f.write_text("# mine\n")
+
+        result = engine.ignite(only=["app/models/*"])
+
+        assert f.read_text() == "# mine\n"
+        assert result.merge_manually == ["app/models/strategy.py"]
+        assert result.files_written == 0
+
+    def test_only_force_overwrites_developer_owned_match(self, tmp_path: Path) -> None:
+        engine = self._setup(tmp_path)
+        engine.ignite()
+        f = tmp_path / "app" / "models" / "strategy.py"
+        f.write_text("# mine\n")
+
+        result = engine.ignite(only=["app/models/strategy.py"], force=True)
+
+        assert "class Strategy" in f.read_text()
+        assert result.merge_manually == []
+        assert result.files_written == 1
+
+    def test_only_dry_run_writes_nothing(self, tmp_path: Path) -> None:
+        result = self._setup(tmp_path).ignite(only=["app/models/strategy.py"], dry_run=True)
+        assert result.files_written == 1
+        assert not (tmp_path / "app" / "models").exists()
+
+    def test_only_no_match_warns(self, tmp_path: Path) -> None:
+        result = self._setup(tmp_path).ignite(only=["nope/**"])
+        assert result.files_written == 0
+        assert any("--only matched no generated files" in w for w in result.warnings)
+
+    def test_only_untracked_existing_file_skipped_and_reported(self, tmp_path: Path) -> None:
+        engine = self._setup(tmp_path)
+        f = tmp_path / "app" / "models" / "strategy.py"
+        f.parent.mkdir(parents=True)
+        f.write_text("# hand-made before YDK tracked hashes\n")
+
+        result = engine.ignite(only=["app/models/*"])
+
+        assert f.read_text() == "# hand-made before YDK tracked hashes\n"
+        assert result.merge_manually == ["app/models/strategy.py"]
+        assert (tmp_path / "app" / "models" / "trade.py").exists()
+        assert engine.ignite(only=["app/models/strategy.py"], force=True).files_written == 1
+        assert "class Strategy" in f.read_text()
+
+    def test_only_non_matching_developer_owned_not_reported(self, tmp_path: Path) -> None:
+        engine = self._setup(tmp_path)
+        engine.ignite()
+        (tmp_path / "app" / "models" / "trade.py").write_text("# mine\n")
+        result = engine.ignite(only=["app/models/strategy.py"])
+        assert result.merge_manually == []
+
+    def test_only_star_crosses_slash_and_patterns_normalized(self, tmp_path: Path) -> None:
+        engine = self._setup(tmp_path)
+        assert engine.ignite(only=["app/*"], dry_run=True).files_written == 2
+        assert engine.ignite(only=[r".\app\models\trade.py"], dry_run=True).files_written == 1
+        assert engine.ignite(only=["./app/models/trade.py"], dry_run=True).files_written == 1
+        assert engine.ignite(only=["APP/*"], dry_run=True).files_written == 0  # case-sensitive
+
+    def test_only_skips_runtime_dependency_install(self, tmp_path: Path) -> None:
+        pack_dir = tmp_path / ".ydk" / "ignition-pack"
+        self._setup(tmp_path)
+        manifest = yaml.safe_load((pack_dir / "manifest.yaml").read_text())
+        manifest["runtime_dependencies"] = {"python": ["some-dep"]}
+        (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
+        engine = IgnitionEngine(tmp_path)
+
+        # No pyproject.toml: a full run tries to install and warns; --only never gets that far.
+        result = engine.ignite(only=["app/models/strategy.py"])
+        assert result.files_written == 1
+        assert result.dependencies_installed == []
+        assert not any("runtime deps" in w for w in result.warnings)
+        full = engine.ignite()
+        assert any("Cannot install runtime deps" in w for w in full.warnings)
+
+    def test_only_phased_pack_matches_prefixed_path(self, tmp_path: Path) -> None:
+        pack_dir = tmp_path / ".ydk" / "ignition-pack"
+        pack_dir.mkdir(parents=True)
+        manifest = {
+            "name": "phased",
+            "version": "0.1.0",
+            "phases": [{"id": "backend", "output_prefix": "backend/", "generators": [{"script": "gen.py"}]}],
+        }
+        (pack_dir / "manifest.yaml").write_text(yaml.dump(manifest))
+        (pack_dir / "gen.py").write_text(_SIMPLE_GENERATOR)
+        _setup_components(tmp_path, {"entity": [{"name": "Strategy"}, {"name": "Trade"}]})
+
+        result = IgnitionEngine(tmp_path).ignite(only=["backend/app/models/trade.py"])
+
+        assert result.files_written == 1
+        assert (tmp_path / "backend" / "app" / "models" / "trade.py").exists()
+        assert not (tmp_path / "backend" / "app" / "models" / "strategy.py").exists()

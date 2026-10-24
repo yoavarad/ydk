@@ -7,6 +7,7 @@ from typing import Annotated
 
 import typer
 import yaml
+from rich.markup import escape
 from rich.table import Table
 
 from ydk.core.config import load_config
@@ -25,6 +26,13 @@ def ignite_command(
         typer.Option(
             "--answer",
             help="Pack init answer KEY=VALUE (repeatable); overrides ignition.init_answers in config",
+        ),
+    ] = None,
+    only: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--only",
+            help="Write only generated paths matching this glob (repeatable); retrofit mode for existing repos",
         ),
     ] = None,
 ) -> None:
@@ -81,7 +89,7 @@ def ignite_command(
     engine = IgnitionEngine(project_root)
 
     try:
-        result = engine.ignite(init_answers=init_answers, dry_run=dry_run, force=force)
+        result = engine.ignite(init_answers=init_answers, dry_run=dry_run, force=force, only=only)
     except IgnitionError as exc:
         console.print(f"[red]Ignition failed: {exc}[/red]")
         raise typer.Exit(code=1) from None
@@ -96,12 +104,22 @@ def ignite_command(
     table.add_row("Files generated", str(result.files_generated))
     table.add_row("Files written", str(result.files_written))
     table.add_row("Files skipped", str(result.files_skipped))
+    if only:
+        table.add_row("Files excluded (--only)", str(result.files_excluded))
     table.add_row("TODOs registered", str(result.todos_registered))
     table.add_row("Duration", f"{result.duration_seconds}s")
     console.print(table)
 
     for warning in result.warnings:
         console.print(f"[yellow]⚠ {warning}[/yellow]")
+
+    for path in result.merge_manually:
+        safe = escape(path)
+        console.print(
+            f"[yellow]⚠ {safe}: skipped — merge manually. To diff, on a clean git tree run "
+            f"`ydk ignite --skip-verify --force --only {safe}`, then `git diff {safe}` "
+            f"and `git restore -p {safe}`[/yellow]"
+        )
 
     for error in result.errors:
         console.print(f"[red]✗ {error}[/red]")
@@ -111,6 +129,7 @@ def ignite_command(
     if result.errors and result.files_written == 0:
         raise typer.Exit(code=1)
 
-    # Advance state after successful ignition (non-dry-run)
-    if not dry_run:
+    # Advance state after successful ignition (non-dry-run). A targeted --only retrofit
+    # runs on a repo already past ignition, so it must not reset the stage.
+    if not dry_run and not only:
         state.update(stage="02")

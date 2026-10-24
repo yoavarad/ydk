@@ -1,27 +1,78 @@
 name: Release
 
+# Tag + GitHub Release are created on merge to main, only when the merge
+# changed [project].version in pyproject.toml. Pushing a tag from a branch
+# does nothing.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    paths: [pyproject.toml]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
-    name: Create GitHub Release
+    name: Tag and publish GitHub Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      # Future: uncomment to build and publish to PyPI when ready for public distribution
-      # - uses: astral-sh/setup-uv@v7
-      #   with:
-      #     enable-cache: true
-      # - name: Build
-      #   run: uv build --no-sources
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          # Future: attach dist/ artifacts once build step is enabled
-          # files: dist/*
+          fetch-depth: 0
+
+      - name: Detect version bump
+        id: bump
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          NEW=$(python3 .github/scripts/changelog_section.py version pyproject.toml)
+          OLD=""
+          if [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -qE '^0+$' && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            git show "$BEFORE:pyproject.toml" > "$RUNNER_TEMP/old-pyproject.toml" 2>/dev/null \
+              && OLD=$(python3 .github/scripts/changelog_section.py version "$RUNNER_TEMP/old-pyproject.toml" || true)
+          fi
+          if [ "$OLD" = "$NEW" ]; then
+            echo "version unchanged ($NEW); nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            if ! echo "$NEW" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$'; then
+              echo "::error::unexpected version format: $NEW"; exit 1
+            fi
+            echo "version bump: '$OLD' -> $NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract changelog notes
+        if: steps.bump.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: python3 .github/scripts/changelog_section.py section "$VERSION" CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+
+      - name: Create tag and release
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG"
+            if [ "$(git rev-list -n1 "$TAG")" != "$GITHUB_SHA" ]; then
+              echo "::error::tag $TAG exists but does not point at $GITHUB_SHA"; exit 1
+            fi
+            echo "tag $TAG already exists on this commit; skipping tag creation"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; skipping"
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi

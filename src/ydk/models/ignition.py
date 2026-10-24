@@ -27,3 +27,5 @@ class IgnitionResult(BaseModel):
     warnings: list[str]
     duration_seconds: float
     dependencies_installed: list[str] = []
+    files_excluded: int = 0  # generated but not matching --only
+    merge_manually: list[str] = []  # developer-owned paths matching --only, left for a manual merge

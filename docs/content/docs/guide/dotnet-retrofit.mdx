@@ -1,0 +1,95 @@
+---
+title: Upgrading an Existing dotnet Repo
+description: Bring the analyzer enforcement and vendored C# skill into a dotnet repo that was ignited before them
+---
+
+# Upgrading an Existing dotnet Repo
+
+Repos ignited from `dotnet-webapi-clean` before story #517 lack four things. Two of them are in the CLI and arrive when you upgrade YDK:
+
+- the dotnet `LanguageProfile`
+- the dotnet review checklist
+
+The other two are files that ignition generates, so they need a retrofit:
+
+- the vendored `csharp-development-best-practices` skill under `.claude/skills/`
+- the analyzer settings in `Directory.Build.props` and `.editorconfig` ([ADR 0003](https://github.com/yoavarad/ydk/blob/main/docs/adrs/0003-dotnet-webapi-clean-analyzer-enforcement.md))
+
+Do not run plain `ydk ignite` or `ydk ignite --force` for this. A plain run reruns every generator. It rewrites every unedited generated file whose output changed, recreates generated files you deleted, re-registers TODOs and resets the project stage to `02`. `--force` also overwrites the files you edited. Use `--only` instead.
+
+## How `--only` works
+
+`ydk ignite --only <glob>` runs every generator but writes only the generated paths that match the glob. You can pass `--only` more than once. Globs use `fnmatch` against the project-relative path with forward slashes, and `*` also matches `/`, so `.claude/skills/*` covers the whole skill tree. Matching is case-sensitive. Backslashes and a leading `./` in a pattern are normalized. In a phased pack, the glob must include the phase's output prefix (for example `backend/...`).
+
+- **Matching files** follow the normal rules. A new file is created. An unedited generated file is rewritten if the generator output changed. A file you edited (developer-owned) is skipped and reported as `skipped — merge manually`, together with a diff hint. The same applies to a file that already exists with different content but has no recorded hash, for example one created before YDK tracked hashes. Only `--force` overwrites these files.
+- **Non-matching files** are left alone. They are not written, they get no scaffold-state hash and no TODOs are registered for them.
+- **Runtime dependency installation** (`uv add`, `go get` / `go mod tidy`) is skipped, because it rewrites files outside the filter.
+- **Project stage** is not reset to `02`.
+
+## Steps
+
+### 1. Upgrade YDK and refresh the pack
+
+```bash
+uv tool upgrade ydk
+ydk catalog install dotnet-webapi-clean   # replaces .ydk/ignition-packs/dotnet-webapi-clean with the new generators
+```
+
+The reinstall discards any local edits to the pack's generators. Keep `ignition.init_answers` in `.ydk/config.yaml` the same as for the original ignite. Otherwise `Directory.Build.props` and `.editorconfig` regenerate with different values, for example a different root namespace.
+
+### 2. Preview
+
+Start from a clean git tree so every change shows up in `git diff`.
+
+```bash
+ydk ignite --dry-run --skip-verify \
+  --only '.claude/skills/*' \
+  --only Directory.Build.props \
+  --only .editorconfig
+```
+
+The report shows how many files would be written. `Files excluded (--only)` counts the generated files the filter leaves alone. Any file listed as `skipped — merge manually` is one you edited.
+
+### 3. Apply
+
+```bash
+ydk ignite --skip-verify \
+  --only '.claude/skills/*' \
+  --only Directory.Build.props \
+  --only .editorconfig
+```
+
+### 4. Merge developer-owned files by hand
+
+If `Directory.Build.props` or `.editorconfig` was reported as `skipped — merge manually`, take the generated version for that one file and keep your own changes. Commit or stash first: `--force` overwrites the file on disk.
+
+```bash
+ydk ignite --skip-verify --force --only Directory.Build.props
+git diff Directory.Build.props      # generated version compared with your committed one
+git restore -p Directory.Build.props  # put back the hunks you want to keep
+```
+
+`--force` combined with `--only` still writes only the matching path.
+
+### 5. Start warn-only
+
+Existing code will probably produce analyzer warnings. So that they do not fail the build straight away, set the toggle to `false` in `Directory.Build.props`:
+
+```xml
+<YdkAnalyzersAsErrors>false</YdkAnalyzersAsErrors>
+```
+
+To try it on a single build, pass `dotnet build -p:YdkAnalyzersAsErrors=false` instead.
+
+### 6. Fix the warnings
+
+```bash
+dotnet build
+dotnet format
+```
+
+Fix the CA1849/VSTHRD002 (sync-over-async), CA2016 (`CancellationToken` forwarding), CA1848/CA2254 (structured logging) and CA2007 (`ConfigureAwait`) warnings. You can split the fixes into YDK tasks if there are many.
+
+### 7. Flip to errors
+
+Once the build has no warnings, remove the `false` override. The generated default is `true`. Commit the change. From then on, any new analyzer warning fails the build.

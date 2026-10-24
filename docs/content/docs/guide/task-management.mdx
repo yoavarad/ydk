@@ -121,6 +121,8 @@ ydk task validate-dag
 The output shows cycle detection (fatal), parallel execution waves (how many agents you can run), the **critical path (dependency-only)** which is the minimum project duration assuming unlimited agents, and fan-out per task (which tasks are bottlenecks). Self-dependencies are detected and rejected. If cycles are detected, you must restructure dependencies before proceeding.
 
 <Callout type="info">
+Pass `--from batch.yaml` to check a batch file before creating it: `ydk task validate-dag --from batch.yaml` reports dependency cycles (non-zero exit), treating dependencies on existing issues (for example `#169`) as resolved. `ydk task create-batch --dry-run` runs the same cycle check and reports cycles as errors.
+
 `validate-dag` shows the **critical path** (dependency-only, ignoring resource limits). `plan-waves` shows the **critical chain** (resource-constrained, accounting for agent availability). These are different: a project with many parallel tasks may have a short critical path but a long critical chain when only a few agents are available.
 </Callout>
 
@@ -169,7 +171,7 @@ ydk task ready
 This lists tasks with all blocking dependencies resolved and all gates satisfied, ranked by fan-out -- the number of downstream tasks each one unblocks. Starting with the highest fan-out tasks maximizes throughput because each completed task unlocks the most new work.
 
 <Callout type="info">
-Use `ydk task coverage --spec-dir docs/specs` to verify that every spec section has at least one story covering it. Use `ydk task component-coverage --strict` to verify every component manifest is referenced by a task. Coverage gaps mean parts of your spec will not be implemented.
+Use `ydk task coverage --spec-dir docs/specs` to verify that every spec section has at least one story covering it. Use `ydk task component-coverage --strict` to verify every component manifest is referenced by a task. Coverage gaps mean parts of your spec will not be implemented. `ydk task component-coverage --from batch.yaml` checks a batch file's task and story `component_refs` instead of the repository.
 </Callout>
 
 ## Validation at Creation Time

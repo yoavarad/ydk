@@ -9,6 +9,7 @@
     "spec-evolution",
     "visual-companion",
     "quick-dev",
-    "go-stack"
+    "go-stack",
+    "dotnet-retrofit"
   ]
 }

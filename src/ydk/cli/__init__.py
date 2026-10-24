@@ -22,6 +22,7 @@ from ydk.cli.spec_cmd import spec_app
 from ydk.cli.task_cmd import task_app
 from ydk.cli.test_cmd import test_app
 from ydk.cli.todo_cmd import todo_app
+from ydk.cli.upgrade_cmd import upgrade_command
 from ydk.cli.verify_cmd import verify_app
 from ydk.cli.visual_cmd import visual_app
 from ydk.cli.watch_cmd import watch_app
@@ -57,6 +58,7 @@ app.command("doctor")(doctor_command)
 app.command("ignite")(ignite_command)
 app.command("init")(init_command)
 app.command("release")(release_command)
+app.command("upgrade")(upgrade_command)
 app.add_typer(verify_app, name="verify")
 app.add_typer(visual_app, name="visual")
 app.add_typer(watch_app, name="watch")
