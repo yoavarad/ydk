@@ -15,6 +15,7 @@ from ydk.cli.ignite_cmd import ignite_command
 from ydk.cli.init_cmd import init_command
 from ydk.cli.main import app
 from ydk.cli.memory_cmd import memory_app
+from ydk.cli.release_cmd import release_command
 from ydk.cli.scaffold_cmd import scaffold_app
 from ydk.cli.skills_cmd import skills_app
 from ydk.cli.spec_cmd import spec_app
@@ -56,6 +57,7 @@ app.add_typer(todo_app, name="todo")
 app.command("doctor")(doctor_command)
 app.command("ignite")(ignite_command)
 app.command("init")(init_command)
+app.command("release")(release_command)
 app.command("upgrade")(upgrade_command)
 app.add_typer(verify_app, name="verify")
 app.add_typer(visual_app, name="visual")
