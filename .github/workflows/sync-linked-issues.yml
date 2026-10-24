@@ -1,4 +1,6 @@
-name: Sync Linked Issues
+name: YDK Sync
+
+# Post-merge bookkeeping: sync task state and linked issues after changes land on main.
 
 on:
   push:
@@ -6,12 +8,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  issues: write
   contents: read
+  issues: write
+  pull-requests: read
+
+# Serialize syncs; never drop one.
+concurrency:
+  group: ydk-sync
+  cancel-in-progress: false
 
 jobs:
   sync:
-    name: Retire completed linked issues
+    name: Sync tasks and linked issues
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +28,11 @@ jobs:
           enable-cache: true
       - name: Install dependencies
         run: uv sync --locked
+      - name: Sync tasks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: uv run ydk task sync
       - name: Sync linked issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
