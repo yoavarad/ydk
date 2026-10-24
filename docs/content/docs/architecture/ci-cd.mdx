@@ -52,7 +52,7 @@ The version and changelog extraction lives in `.github/scripts/changelog_section
 `ydk release` automates the manual flow above from a clean, up-to-date `main`. It refuses to run if you are not on `main`, the working tree is dirty, or local `main` differs from `origin/main`.
 
 1. Computes the next version with `cz bump --get-next` (override with `--increment MAJOR|MINOR|PATCH`).
-2. Creates branch `release/vX.Y.Z`, runs `cz bump --yes` (no tag), and verifies the result is exactly one commit touching only `pyproject.toml`, `uv.lock`, and `CHANGELOG.md`.
+2. Creates branch `release/vX.Y.Z`, runs `cz bump --yes` (the `post_bump_hooks` entry removes the local tag), and verifies the result is exactly one commit touching only `pyproject.toml`, `uv.lock`, and `CHANGELOG.md`.
 3. Pushes the branch and opens a PR whose body (Summary, Test Plan, console block) satisfies `pr-body-check`. The URL is printed.
 
 ```console
@@ -61,7 +61,7 @@ Version: 0.9.0
 Branch: release/v0.9.0
 ```
 
-`--dry-run` prints the version, branch, and PR body without touching git. On failure the command prints the cleanup steps (delete the local and remote `release/vX.Y.Z` branch and any local tag). Merging the PR triggers `release.yml`, which tags and publishes as described above.
+`--dry-run` prints the version, branch, and PR body after fetching `origin/main`, without creating a branch or commit. If the bump, push, or PR step fails, the command prints cleanup steps (delete the local and remote `release/vX.Y.Z` branch and any local tag). Merging the PR triggers `release.yml`, which tags and publishes as described above.
 
 ### Upgrading: `ydk upgrade`
 
