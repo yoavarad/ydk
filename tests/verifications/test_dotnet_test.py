@@ -156,6 +156,8 @@ class TestMain:
             data = _run_main(mod, tmp_path, monkeypatch, capsys)
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"]
 
     def test_passes_when_muxer_present_but_no_sdk(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
@@ -168,6 +170,8 @@ class TestMain:
             data = _run_main(mod, tmp_path, monkeypatch, capsys)
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"]
 
     def test_passes_when_no_test_project_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
         mod = _load_check_module()
@@ -178,6 +182,8 @@ class TestMain:
             data = _run_main(mod, tmp_path, monkeypatch, capsys)
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"]
 
     def test_maps_dotnet_test_pass_to_passed_result(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
@@ -230,6 +236,8 @@ class TestChangedFilesScoping:
         mock_run.assert_not_called()
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"]
 
     def test_runs_normally_when_cs_file_changed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -242,6 +250,8 @@ class TestChangedFilesScoping:
             data = _run_main(mod, tmp_path, monkeypatch, capsys, changed_files=["src/Foo.cs"])
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"]
 
     def test_absent_changed_files_runs_unconditionally(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -254,6 +264,8 @@ class TestChangedFilesScoping:
             data = _run_main(mod, tmp_path, monkeypatch, capsys)
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"]
 
     def test_runs_normally_when_uppercase_cs_extension_changed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
