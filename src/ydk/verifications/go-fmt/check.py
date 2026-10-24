@@ -72,6 +72,10 @@ def _auto_fix(gofmt_bin: str, root: Path, files: list[str], start: float) -> dic
     return _result(True, f"gofmt -w reformatted {len(files)} file(s):\n{listing}", start, detail)
 
 
+def _skipped(reason: str, start: float) -> dict:
+    return _result(True, reason, start, {"status": "SKIPPED", "skip_reason": reason})
+
+
 def _emit(result: dict) -> None:
     json.dump(result, sys.stdout)
     sys.exit(0 if result["passed"] else 1)
@@ -85,15 +89,15 @@ def main() -> None:
 
     changed_files = context.get("changed_files")
     if changed_files and not any(_is_go_relevant(f) for f in changed_files):
-        _emit(_result(True, "No relevant files changed (*.go, go.mod, go.sum, vendor/) — skipped", start))
+        _emit(_skipped("No relevant files changed (*.go, go.mod, go.sum, vendor/) — skipped", start))
         return
 
     gofmt_bin = shutil.which("gofmt")
     if gofmt_bin is None:
-        _emit(_result(True, "gofmt not found — skipped (install Go from https://go.dev/dl/)", start))
+        _emit(_skipped("gofmt not found — skipped (install Go from https://go.dev/dl/)", start))
         return
     if not (root / "go.mod").is_file():
-        _emit(_result(True, "No go.mod found — skipped (non-Go project?)", start))
+        _emit(_skipped("No go.mod found — skipped (non-Go project?)", start))
         return
 
     try:

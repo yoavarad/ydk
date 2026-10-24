@@ -103,7 +103,7 @@ def main() -> None:
             "passed": True,
             "output": "pytest not found on PATH — skipped (non-Python project?)",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": {"status": "SKIPPED", "skip_reason": "pytest not found on PATH — skipped (non-Python project?)"},
         }
         json.dump(check_result, sys.stdout)
         sys.exit(0)
@@ -118,7 +118,10 @@ def main() -> None:
             "passed": True,
             "output": f"No '{test_dir}/' directory found — skipped (non-Python project?)",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": {
+                "status": "SKIPPED",
+                "skip_reason": f"No '{test_dir}/' directory found — skipped (non-Python project?)",
+            },
         }
         json.dump(check_result, sys.stdout)
         sys.exit(0)
@@ -137,7 +140,12 @@ def main() -> None:
                 "passed": True,
                 "output": "No test files match changed source files — skipped",
                 "duration_seconds": round(time.time() - start, 1),
-                "detail": {"level": "scoped", "changed_files": changed_files},
+                "detail": {
+                    "level": "scoped",
+                    "changed_files": changed_files,
+                    "status": "SKIPPED",
+                    "skip_reason": "No test files match changed source files — skipped",
+                },
             }
             json.dump(check_result, sys.stdout)
             sys.exit(0)

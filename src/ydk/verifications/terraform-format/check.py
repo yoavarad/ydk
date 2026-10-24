@@ -23,7 +23,7 @@ def main() -> None:
             "passed": True,
             "output": "SKIP: No infra/ directory found",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": {"status": "SKIPPED", "skip_reason": "SKIP: No infra/ directory found"},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)

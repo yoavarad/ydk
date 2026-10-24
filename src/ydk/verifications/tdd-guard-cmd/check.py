@@ -89,6 +89,7 @@ def main() -> None:
             "passed": True,
             "output": "SKIP: TDD guard not activated (no .ydk/tdd-state.json)",
             "duration_seconds": round(time.time() - start, 3),
+            "detail": {"status": "SKIPPED", "skip_reason": "SKIP: TDD guard not activated (no .ydk/tdd-state.json)"},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)

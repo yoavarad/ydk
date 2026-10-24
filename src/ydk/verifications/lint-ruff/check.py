@@ -127,7 +127,7 @@ def main() -> None:
             "passed": True,
             "output": "ruff not found on PATH — skipped (non-Python project?)",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": {"status": "SKIPPED", "skip_reason": "ruff not found on PATH — skipped (non-Python project?)"},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
@@ -143,7 +143,7 @@ def main() -> None:
                 "passed": True,
                 "output": "No Python files changed — skipped",
                 "duration_seconds": round(time.time() - start, 1),
-                "detail": None,
+                "detail": {"status": "SKIPPED", "skip_reason": "No Python files changed — skipped"},
             }
             json.dump(result, sys.stdout)
             sys.exit(0)

@@ -46,6 +46,7 @@ def test_skips_when_ty_not_on_path(tmp_path: Path) -> None:
     data = json.loads(result.stdout)
     assert data["passed"] is True
     assert "ty not found" in data["output"]
+    assert data["detail"]["status"] == "SKIPPED"
 
 
 class TestResolveTy:

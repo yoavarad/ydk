@@ -51,6 +51,7 @@ def test_skips_when_pytest_not_on_path(tmp_path: Path) -> None:
     data = _run_check(tmp_path, path_env="")
     assert data["passed"] is True
     assert "pytest not found" in data["output"]
+    assert data["detail"]["status"] == "SKIPPED"
 
 
 def test_skips_when_no_test_dir(tmp_path: Path) -> None:
@@ -67,6 +68,8 @@ def test_skips_when_no_test_dir(tmp_path: Path) -> None:
     assert data["passed"] is True
     assert "no" in data["output"].lower()
     assert "directory" in data["output"].lower()
+    assert data["detail"]["status"] == "SKIPPED"
+    assert data["detail"]["skip_reason"] == data["output"]
 
 
 class TestResolveTool:
