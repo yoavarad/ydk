@@ -31,7 +31,7 @@ Runs when a pull request is closed (`contents: write`). The `delete-branch` job 
 
 ## sync-linked-issues.yml: Issue Sync
 
-Runs on every push to main (and manually via `workflow_dispatch`) with `issues: write` and `contents: read`. It installs with `uv sync --locked` and runs `ydk task sync-issues`.
+Workflow name `YDK Sync`. Runs on every push to main (and manually via `workflow_dispatch`) with `issues: write`, `pull-requests: read` and `contents: read`, serialized by a `ydk-sync` concurrency group (`cancel-in-progress: false`). It installs with `uv sync --locked`, then runs `ydk task sync` followed by `ydk task sync-issues`.
 
 ## Versioning: manual `cz bump` + tag on merge
 
