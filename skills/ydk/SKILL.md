@@ -219,7 +219,10 @@ ydk ignite                                 # Generate runnable skeleton from ins
 ydk ignite --dry-run                       # Preview what would be generated without writing files
 ydk ignite --force                         # Regenerate even if hashes match (override idempotency)
 ydk ignite --skip-verify                   # Bypass spec verification gate (for inherited/brownfield specs)
+ydk ignite --only <glob>                   # Repeatable. Write only matching generated paths: non-matching untouched (no hash/TODOs), no stage change, no dep install
 ```
+
+**dotnet notes:** to retrofit a repo ignited before the analyzer enforcement and vendored C# skill existed, run `ydk catalog install dotnet-webapi-clean`, then `ydk ignite --dry-run --skip-verify --only '.claude/skills/*' --only Directory.Build.props --only .editorconfig`, then the same command without `--dry-run`. Developer-owned matches are reported as `skipped — merge manually`. Start with `YdkAnalyzersAsErrors=false`, fix the warnings, then flip to errors. Guide: `docs/content/docs/guide/dotnet-retrofit.mdx` ("Upgrading an Existing dotnet Repo").
 
 **What ignition does:**
 1. Reads installed ignition pack + YDK component manifests

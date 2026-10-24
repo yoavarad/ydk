@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
@@ -47,6 +48,20 @@ def _reconcile(todo_mgr: TodoManager, path: str, markers: list[dict]) -> None:
 _GENERATOR_TIMEOUT = 120
 # Numeric version leading a golang image tag: reg:5000/golang:1.25.3-alpine -> 1.25.3.
 _IMAGE_TAG_VERSION_RE = re.compile(r"(?:^|/)golang:(\d+(?:\.\d+)*)[^:/]*$")
+
+
+def _to_posix(path: str) -> str:
+    """Forward slashes, no leading './'."""
+    posix = path.replace("\\", "/")
+    while posix.startswith("./"):
+        posix = posix[2:]
+    return posix
+
+
+def _matches_any(path: str, patterns: list[str]) -> bool:
+    """True when *path* matches one of the fnmatch *patterns* (both normalized by _to_posix)."""
+    posix = _to_posix(path)
+    return any(fnmatch.fnmatchcase(posix, _to_posix(pattern)) for pattern in patterns)
 
 
 class IgnitionError(Exception):
@@ -108,8 +123,14 @@ class IgnitionEngine:
         init_answers: dict[str, str] | None = None,
         dry_run: bool = False,
         force: bool = False,
+        only: list[str] | None = None,
     ) -> IgnitionResult:
-        """Run the full ignition pipeline."""
+        """Run the full ignition pipeline.
+
+        *only* (glob patterns, matched with fnmatch against the project-relative POSIX path) runs
+        every generator but keeps only matching files: the rest are not written, hashed or scanned
+        for TODOs, and runtime dependency installation is skipped. Retrofit mode for existing repos.
+        """
         start = time.monotonic()
         errors: list[str] = []
         warnings: list[str] = []
@@ -157,10 +178,34 @@ class IgnitionEngine:
             all_generated = deduped
 
         files_generated = len(all_generated)
+        files_excluded = 0
+        if only:
+            matching = [gf for gf in all_generated if _matches_any(gf.path, only)]
+            files_excluded = len(all_generated) - len(matching)
+            all_generated = matching
+            if not matching:
+                warnings.append(f"--only matched no generated files: {', '.join(only)}")
 
         # 4. Track hashes for idempotency
         state = ScaffoldState(self._root / ".ydk" / "scaffold-state.yaml")
         to_write, skipped = self._filter_files(all_generated, state, force=force, warnings=warnings)
+        merge_manually: list[str] = []
+        if only and not force:
+            written = {gf.path for gf in to_write}
+            merge_manually = [
+                gf.path
+                for gf in all_generated
+                if gf.path not in written and state.is_developer_owned(gf.path, self._root)
+            ]
+            # Retrofit: a file already on disk with no recorded hash (hand-made, or ignited before
+            # hashes were tracked) and different content is treated as developer-owned too.
+            untracked = [gf for gf in to_write if self._is_untracked_edit(gf, state)]
+            for gf in untracked:
+                warnings.append(f"Skipped untracked existing file: {gf.path}")
+                merge_manually.append(gf.path)
+            untracked_paths = {gf.path for gf in untracked}
+            to_write = [gf for gf in to_write if gf.path not in untracked_paths]
+            skipped += len(untracked)
 
         # 5. Write files (unless dry-run)
         written_paths: list[Path] = []
@@ -180,7 +225,9 @@ class IgnitionEngine:
         # 7-8. Post-generation checks + runtime dependencies (per pack language)
         dependencies_installed: list[str] = []
         if not dry_run:
-            post_errors, dependencies_installed = self._run_post_steps(pack, written_paths, warnings, answers)
+            post_errors, dependencies_installed = self._run_post_steps(
+                pack, written_paths, warnings, answers, install_deps=not only
+            )
             errors.extend(post_errors)
             # Post-steps rewrite files in place (gofmt -w, ruff format, go get/tidy on go.mod); record
             # the rewritten content so a re-ignite does not mistake it for a developer edit.
@@ -203,6 +250,8 @@ class IgnitionEngine:
             warnings=warnings,
             duration_seconds=round(duration, 2),
             dependencies_installed=dependencies_installed,
+            files_excluded=files_excluded,
+            merge_manually=merge_manually,
         )
 
     def _run_post_steps(
@@ -211,9 +260,19 @@ class IgnitionEngine:
         written_paths: list[Path],
         warnings: list[str],
         answers: dict[str, str] | None = None,
+        *,
+        install_deps: bool = True,
     ) -> tuple[list[str], list[str]]:
-        """Run language-specific post-generation steps. Returns (errors, installed deps)."""
+        """Run language-specific post-generation steps. Returns (errors, installed deps).
+
+        install_deps=False (--only) skips dependency installation (uv add / go get + tidy + vendor), which
+        rewrites pyproject.toml/go.mod. The per-file checks (and go build/vet) still run.
+        """
         language = str(pack.get("stack", {}).get("language", "python")).lower()
+        if not install_deps:
+            if language == "go":
+                return self._post_generate_go(written_paths), []
+            return (self._post_generate(written_paths) if written_paths else []), []
         if language == "go":
             # Deps first: go mod tidy / go build need modules resolved.
             installed = self._install_go_deps(pack, warnings)
@@ -625,6 +684,13 @@ class IgnitionEngine:
             to_write.append(gf)
 
         return to_write, skipped
+
+    def _is_untracked_edit(self, gf: GeneratedFile, state: ScaffoldState) -> bool:
+        """True when *gf* exists on disk without a recorded hash and its content differs."""
+        full = self._root / gf.path
+        if state.has_hash(gf.path) or not full.is_file():
+            return False
+        return full.read_text(encoding="utf-8", errors="replace") != gf.content
 
     def _register_todos(self, files: list[GeneratedFile]) -> int:
         """Scan generated files for raise NotImplementedError, register with TodoManager.

@@ -250,3 +250,29 @@ def test_ignite_registered_as_top_level_command() -> None:
     if hasattr(app, "registered_commands"):
         command_names = [cmd.name or cmd.callback.__name__ for cmd in app.registered_commands if cmd.callback]
     assert "ignite" in command_names or "ignite_command" in command_names
+
+
+def test_ignite_only_writes_matching_and_reports_merge(tmp_path: Path, monkeypatch: object) -> None:
+    """--only writes matching paths only, reports developer-owned matches, keeps the stage."""
+    _setup_project(tmp_path)
+    comp_dir = tmp_path / ".ydk" / "components" / "entity"
+    (comp_dir / "trade.yaml").write_text(yaml.dump({"name": "Trade"}))
+    (tmp_path / ".ydk" / "state.json").write_text('{"stage": "03"}')
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+
+    result = runner.invoke(app, ["ignite", "--skip-verify", "--only", "app/models/strategy.py"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "app" / "models" / "strategy.py").exists()
+    assert not (tmp_path / "app" / "models" / "trade.py").exists()
+    assert "Files excluded (--only)" in result.output
+    # A retrofit must not reset the project stage.
+    import json
+
+    assert json.loads((tmp_path / ".ydk" / "state.json").read_text())["stage"] == "03"
+
+    (tmp_path / "app" / "models" / "strategy.py").write_text("# mine\n")
+    result = runner.invoke(app, ["ignite", "--only", "app/models/*", "--only", "other/*"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "app" / "models" / "strategy.py").read_text() == "# mine\n"
+    assert "skipped — merge manually" in result.output
+    assert "--skip-verify --force --only app/models/strategy.py" in " ".join(result.output.split())
