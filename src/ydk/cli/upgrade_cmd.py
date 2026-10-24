@@ -7,6 +7,8 @@ import json
 import re
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 
 import typer
 
@@ -32,6 +34,18 @@ def _is_editable() -> bool:
         return bool(json.loads(raw).get("dir_info", {}).get("editable"))
     except ValueError:
         return False
+
+
+def _tool_binary() -> str:
+    """Path to the uv-tool-installed ydk (via `uv tool dir --bin`); falls back to PATH lookup."""
+    out = _run(["uv", "tool", "dir", "--bin"])
+    bin_dir = out.stdout.strip()
+    if out.returncode == 0 and bin_dir:
+        for name in ("ydk.exe", "ydk"):
+            candidate = Path(bin_dir) / name
+            if candidate.is_file():
+                return str(candidate)
+    return shutil.which("ydk") or "ydk"
 
 
 def _tool_version() -> str:
@@ -63,10 +77,16 @@ def upgrade_command(
     result = _run(cmd)
     if result.returncode != 0:
         typer.echo(f"{' '.join(cmd)} failed:\n{result.stderr or result.stdout}", err=True)
+        if sys.platform == "win32":
+            typer.echo(
+                "If ydk.exe is locked by this running process, run "
+                f"'{' '.join(cmd)}' from a shell where ydk is not running, then 'ydk skills sync'.",
+                err=True,
+            )
         raise typer.Exit(code=1)
     new = _tool_version()
     typer.echo(f"ydk {old} -> {new}")
-    binary = shutil.which("ydk") or "ydk"
+    binary = _tool_binary()
     sync = _run([binary, "skills", "sync"])
     if sync.returncode != 0:
         typer.echo(f"skills sync failed:\n{sync.stderr or sync.stdout}", err=True)
