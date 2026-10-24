@@ -962,3 +962,23 @@ class TestStringFormBatchFields:
             ],
         }
         assert _validate_batch_yaml(data) == []
+
+
+class TestDryRunCycles:
+    def test_dry_run_reports_cycle_as_error(self, tmp_path: Path) -> None:
+        batch_file = tmp_path / "batch.yaml"
+        batch_file.write_text(
+            yaml.dump(
+                {
+                    "tasks": [
+                        {"id": "T-a", "title": "A", "depends_on": ["T-b"]},
+                        {"id": "T-b", "title": "B", "depends_on": ["T-a"]},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = runner.invoke(app, ["task", "create-batch", "--from", str(batch_file), "--dry-run"])
+        assert result.exit_code == 1
+        assert "ERROR" in result.output
+        assert "T-a" in result.output
