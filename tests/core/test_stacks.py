@@ -35,7 +35,6 @@ def test_dotnet_stack_verifications() -> None:
         "dotnet-build",
         "dotnet-format",
         "dotnet-test",
-        "dotnet-quality",
         "dotnet-tdd-guard",
     ]
 

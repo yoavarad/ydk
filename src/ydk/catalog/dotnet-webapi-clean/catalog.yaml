@@ -21,8 +21,6 @@ inputs:
     required: false
 
 verification_sets:
-  - name: dotnet-quality
-    version: ">=1.0.0"
   - name: dotnet-tdd-guard
     version: ">=1.0.0"
 

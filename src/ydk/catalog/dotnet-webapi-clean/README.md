@@ -62,5 +62,4 @@ Warnings-as-errors is controlled by a single MSBuild property, `YdkAnalyzersAsEr
 
 ## Verification Sets
 
-- `dotnet-quality` -- `dotnet build`, `dotnet format` checks
 - `dotnet-tdd-guard` -- `dotnet test` enforcement, test-first guardrails
