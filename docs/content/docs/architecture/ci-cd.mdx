@@ -47,6 +47,30 @@ The flow:
 
 The version and changelog extraction lives in `.github/scripts/changelog_section.py` (tested in `tests/ci/test_changelog_section.py`). The former `version-from-tag.yml` workflow was removed because nothing depends on branch tags anymore.
 
+### Cutting a release: `ydk release`
+
+`ydk release` automates the manual flow above from a clean, up-to-date `main`. It refuses to run if you are not on `main`, the working tree is dirty, or local `main` differs from `origin/main`.
+
+1. Computes the next version with `cz bump --get-next` (override with `--increment MAJOR|MINOR|PATCH`).
+2. Creates branch `release/vX.Y.Z`, runs `cz bump --yes` (no tag), and verifies the result is exactly one commit touching only `pyproject.toml`, `uv.lock`, and `CHANGELOG.md`.
+3. Pushes the branch and opens a PR whose body (Summary, Test Plan, console block) satisfies `pr-body-check`. The URL is printed.
+
+```console
+$ ydk release --dry-run
+Version: 0.9.0
+Branch: release/v0.9.0
+```
+
+`--dry-run` prints the version, branch, and PR body without touching git. On failure the command prints the cleanup steps (delete the local and remote `release/vX.Y.Z` branch and any local tag). Merging the PR triggers `release.yml`, which tags and publishes as described above.
+
+### Upgrading: `ydk upgrade`
+
+`ydk upgrade` updates the installed CLI with `uv tool upgrade ydk`, or `uv tool install --force ...@vX.Y.Z` when you pass `--version X.Y.Z`. It then runs `ydk skills sync` with the new binary and prints `ydk OLD -> NEW`. Editable/dev installs are refused: use `git pull` and `uv sync` instead. On Windows, if `ydk.exe` is locked by the running process, run the printed `uv tool` command from another shell, then `ydk skills sync`.
+
+### Skill sync: `ydk skills`
+
+The CLI bundles Claude skills and agents. `ydk skills sync` copies them into the Claude config directory (`<claude-config>/skills` and `<claude-config>/agents`) and stamps each with the CLI version; `--dry-run` previews the copies. `ydk skills status` compares each installed skill's version stamp to the CLI version and reports `ok`, `drift`, or `not installed`. After any CLI upgrade, run `ydk skills sync` (done automatically by `ydk upgrade`) so skills match the CLI.
+
 ## Generated CI for managed repos (`ydk ci init`)
 
 The workflows above are YDK's own. For projects that YDK manages, `ydk ci init` generates an equivalent set of workflows from templates shipped in the package (`src/ydk/templates/ci/`). Design: [CI workflow generation spec](https://github.com/yoavarad/ydk/blob/main/docs/specs/ci-workflow-generation.md) and [ADR 0002](https://github.com/yoavarad/ydk/blob/main/docs/adrs/0002-ci-workflow-generation.md).
