@@ -16,14 +16,18 @@ import time
 from pathlib import Path
 
 
-def _finish(passed: bool, output: str, start: float) -> None:
+def _skip_detail(reason: str) -> dict:
+    return {"status": "SKIPPED", "skip_reason": reason}
+
+
+def _finish(passed: bool, output: str, start: float, detail: dict | None = None) -> None:
     json.dump(
         {
             "name": "helm-lint",
             "passed": passed,
             "output": output,
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": detail,
         },
         sys.stdout,
     )
@@ -74,18 +78,33 @@ def main() -> None:
     start = time.time()
 
     if not shutil.which("helm"):
-        _finish(True, "helm not installed — skipped (install from https://helm.sh)", start)
+        _finish(
+            True,
+            "helm not installed — skipped (install from https://helm.sh)",
+            start,
+            _skip_detail("helm not installed — skipped (install from https://helm.sh)"),
+        )
 
     charts = [root / c for c in cfg["charts"]] if cfg.get("charts") else _discover_charts(root)
     charts = [c for c in charts if (c / "Chart.yaml").is_file()]
     if not charts:
-        _finish(True, "No Helm charts (Chart.yaml) found — skipped", start)
+        _finish(
+            True,
+            "No Helm charts (Chart.yaml) found — skipped",
+            start,
+            _skip_detail("No Helm charts (Chart.yaml) found — skipped"),
+        )
 
     changed_files = context.get("changed_files")
     if changed_files:
         charts = [c for c in charts if _chart_changed(c, root, changed_files)]
         if not charts:
-            _finish(True, "No Helm chart files changed — skipped", start)
+            _finish(
+                True,
+                "No Helm chart files changed — skipped",
+                start,
+                _skip_detail("No Helm chart files changed — skipped"),
+            )
 
     failures: list[str] = []
     for chart in charts:

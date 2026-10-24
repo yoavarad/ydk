@@ -82,6 +82,8 @@ def test_skipped_when_no_chart_files_changed(chart: Path, monkeypatch: pytest.Mo
     assert code == 0
     assert result["passed"] is True
     assert "skipped" in result["output"].lower()
+    assert result["detail"]["status"] == "SKIPPED"
+    assert result["detail"]["skip_reason"] == result["output"]
     assert calls == []
 
 
@@ -92,6 +94,7 @@ def test_skipped_when_helm_missing(chart: Path, monkeypatch: pytest.MonkeyPatch)
     assert code == 0
     assert result["passed"] is True
     assert "helm" in result["output"]
+    assert result["detail"]["status"] == "SKIPPED"
 
 
 def test_skipped_when_no_charts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,6 +103,7 @@ def test_skipped_when_no_charts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     result, code = _run(mod, monkeypatch, tmp_path)
     assert code == 0
     assert "no helm chart" in result["output"].lower()
+    assert result["detail"]["status"] == "SKIPPED"
 
 
 def test_pass_runs_strict_lint(chart: Path, monkeypatch: pytest.MonkeyPatch) -> None:

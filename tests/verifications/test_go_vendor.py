@@ -112,6 +112,8 @@ class TestMain:
             data = _run_main(mod, tmp_path, monkeypatch, capsys)
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"] == data["output"]
 
     def test_skips_when_no_vendor_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
         mod = _load()

@@ -50,6 +50,7 @@ def test_skips_when_ruff_not_on_path(tmp_path: Path) -> None:
     assert data["passed"] is True
     assert "skipped" in data["output"].lower()
     assert "ruff not found" in data["output"]
+    assert data["detail"]["status"] == "SKIPPED"
 
 
 class TestResolveRuff:
