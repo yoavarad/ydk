@@ -33,20 +33,19 @@ Runs when a pull request is closed (`contents: write`). The `delete-branch` job 
 
 Runs on every push to main (and manually via `workflow_dispatch`) with `issues: write` and `contents: read`. It installs with `uv sync --locked` and runs `ydk task sync-issues`.
 
-## Versioning: manual `cz bump` + tag-sync
+## Versioning: manual `cz bump` + tag on merge
 
 <Callout type="warn">
-There is no workflow that auto-bumps the version on merge to main. Version bumps are triggered manually, from a tag pushed on the feature branch, before the PR merges.
+Version bumps are still run manually on your feature branch, but tags and GitHub Releases are created by CI on merge to main. Branches never carry release tags, and pushing a tag from a branch publishes nothing.
 </Callout>
 
 The flow:
 
-1. On your feature branch, run `cz bump --yes` (or `cz bump --dry-run` to preview first). Commitizen reads the conventional commits since the last version tag / bump commit and determines the increment: `fix` → patch, `feat` → minor, `BREAKING CHANGE` → major. It updates `version` in `pyproject.toml`, regenerates `uv.lock` (`pre_bump_hooks`), and prepends the new release section to `CHANGELOG.md` (`update_changelog_on_bump`), all in one bump commit. Commitizen still creates a local `vX.Y.Z` tag, but a `post_bump_hooks` entry deletes it again: branch bumps leave no tag, because tagging moves to merge (story #526), so steps 2-4 below describe the legacy tag-driven flow until that lands.
-2. `git push origin <branch> --tags` (or `--follow-tags`) pushes both the branch and the new tag.
-3. **`version-from-tag.yml`** runs on PR open/sync/reopen. It checks whether a `vX.Y.Z` tag points at the PR's HEAD commit; if so, it rewrites `pyproject.toml:version` to match and commits `chore(release): set version to X from tag vX` back onto the PR branch, so the version bump is visible in the PR diff for review. It only runs for branches in this repository (not forks).
-4. **`release.yml`** fires independently, on any `v*` tag push — it doesn't wait for the PR to merge. It creates a GitHub Release with the tag name as the title and auto-generates release notes from the commits since the previous tag.
+1. On your feature branch, run `cz bump --yes` (or `cz bump --dry-run` to preview first). Commitizen reads the conventional commits since the last version and determines the increment: `fix` → patch, `feat` → minor, `BREAKING CHANGE` → major. It updates `version` in `pyproject.toml`, regenerates `uv.lock` (`pre_bump_hooks`), and prepends the new release section to `CHANGELOG.md` (`update_changelog_on_bump`), all in one bump commit. Commitizen still creates a local `vX.Y.Z` tag, but a `post_bump_hooks` entry deletes it again, so the branch carries no tag.
+2. Push the branch and merge the PR.
+3. **`release.yml`** runs on every push to `main` that touches `pyproject.toml`. It compares `[project].version` before and after the push (`github.event.before` vs the merge commit). If unchanged, it stops: no tag, no release. If changed, it creates the annotated tag `vX.Y.Z` on the merge commit and publishes a GitHub Release whose body is the `## vX.Y.Z` section of `CHANGELOG.md` (grouped Feat/Fix/... notes). Both steps are idempotent: an existing tag or release is skipped, so re-runs are safe.
 
-Because `release.yml` triggers on the tag push itself (step 2), the GitHub Release can go live *before* the PR merges. There is no automatic version management on push-to-main — every bump starts with a manually run `cz bump` on a branch.
+The version and changelog extraction lives in `.github/scripts/changelog_section.py` (tested in `tests/ci/test_changelog_section.py`). The former `version-from-tag.yml` workflow was removed because nothing depends on branch tags anymore.
 
 ## Generated CI for managed repos (`ydk ci init`)
 
