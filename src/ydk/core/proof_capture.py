@@ -10,11 +10,12 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from ydk.models.proof import ProofArtifacts, ProofStatus
+from ydk.models.verification import is_skipped
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ydk.models.verification import VerificationReport
+    from ydk.models.verification import CheckResult, VerificationReport
 
 
 SKIP_REASON = "skipped via --skip-plugin"
@@ -53,6 +54,13 @@ class ProofCapture:
     # High-level: save a full verification report
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_self_skip(check: CheckResult) -> CheckResult:
+        """Give legacy ``detail.skipped`` checks the canonical ``status: SKIPPED`` detail."""
+        if not is_skipped(check) or (check.detail or {}).get("status") == "SKIPPED":
+            return check
+        return check.model_copy(update={"detail": {**(check.detail or {}), "status": "SKIPPED"}})
+
     def save_report(self, report: VerificationReport, skipped_plugins: list[str] | None = None) -> ProofArtifacts:
         """Save the full verification report as proof files.
 
@@ -69,6 +77,9 @@ class ProofCapture:
             out_path = plugins_dir / f"{safe_name}.txt"
             if check.name in skipped:
                 content = f"SKIPPED ({check.duration_seconds}s)\n\n{SKIP_REASON}"
+            elif is_skipped(check):
+                reason = (check.detail or {}).get("skip_reason") or check.output
+                content = f"SKIPPED ({check.duration_seconds}s)\n\n{reason}"
             else:
                 status_line = f"{'PASSED' if check.passed else 'FAILED'} ({check.duration_seconds}s)"
                 content = f"{status_line}\n\n{check.output}"
@@ -90,7 +101,7 @@ class ProofCapture:
                         }
                     )
                     if c.name in skipped
-                    else c
+                    else self._normalize_self_skip(c)
                     for c in report.checks
                 ],
             }

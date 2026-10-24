@@ -10,6 +10,7 @@ from ydk.cli._helpers import format_or_echo
 from ydk.core.config import load_config
 from ydk.core.stack_profile import profile_for
 from ydk.core.verifier import Verifier
+from ydk.models.verification import is_skipped
 from ydk.output.console import console
 
 verify_app = typer.Typer(name="verify", help="Run verification checks")
@@ -128,6 +129,10 @@ def run(
     # Display results
     console.print("\n[bold]Verification Report[/bold]\n")
     for check in report.checks:
+        if is_skipped(check):
+            reason = (check.detail or {}).get("skip_reason") or check.output
+            console.print(f"  [yellow]-[/yellow] {check.name} (skipped: {reason})")
+            continue
         icon = "[green]✓[/green]" if check.passed else "[red]✗[/red]"
         console.print(f"  {icon} {check.name} ({check.duration_seconds}s)")
         if not check.passed:

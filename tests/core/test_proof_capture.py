@@ -365,3 +365,42 @@ class TestSkippedPlugins:
         status = ProofCapture.check_status(proof_dir)
         assert status.all_passed is False
         assert status.failed_checks == ["lint"]
+
+
+class TestSelfSkippedPlugins:
+    @pytest.mark.parametrize(
+        "detail",
+        [
+            {"status": "SKIPPED", "skip_reason": "No .cs files changed"},
+            {"skipped": True},
+        ],
+    )
+    def test_self_skip_written_as_skipped(self, proof_dir: Path, detail: dict) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [
+            CheckResult(name="dotnet-build", passed=True, output="nothing ran", duration_seconds=0.1, detail=detail)
+        ]
+        pc.save_report(_make_report(checks=checks))
+
+        text = (proof_dir / "plugins" / "dotnet-build.txt").read_text()
+        assert text.startswith("SKIPPED (0.1s)")
+        data = json.loads((proof_dir / "verification-report.json").read_text())
+        assert data["checks"][0]["detail"]["status"] == "SKIPPED"
+        assert data["all_passed"] is True
+
+    def test_self_skip_reason_in_proof_text(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        detail = {"status": "SKIPPED", "skip_reason": "dotnet SDK not found"}
+        checks = [
+            CheckResult(
+                name="dotnet-test", passed=True, output="dotnet SDK not found", duration_seconds=0.1, detail=detail
+            )
+        ]
+        pc.save_report(_make_report(checks=checks))
+        assert "dotnet SDK not found" in (proof_dir / "plugins" / "dotnet-test.txt").read_text()
+
+    def test_non_skipped_detail_stays_passed(self, proof_dir: Path) -> None:
+        pc = ProofCapture(proof_dir)
+        checks = [CheckResult(name="pytest", passed=True, output="ok", duration_seconds=0.1, detail={"test_count": 3})]
+        pc.save_report(_make_report(checks=checks))
+        assert (proof_dir / "plugins" / "pytest.txt").read_text().startswith("PASSED")

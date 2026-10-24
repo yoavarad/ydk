@@ -208,6 +208,8 @@ class TestMain:
         mock_run.assert_not_called()
         assert data["passed"] is True
         assert "skipped" in data["output"].lower()
+        assert data["detail"]["status"] == "SKIPPED"
+        assert data["detail"]["skip_reason"]
 
     def test_runs_normally_when_cs_file_changed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """changed_files present and includes a .cs file -> normal flow continues."""

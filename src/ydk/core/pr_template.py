@@ -239,8 +239,10 @@ class PRBodyBuilder:
             from ydk.models.verification import VerificationReport
 
             report = VerificationReport.model_validate_json(report_path.read_text(encoding="utf-8"))
-            skipped = sum(1 for c in report.checks if (c.detail or {}).get("status") == "SKIPPED")
-            passed = sum(1 for c in report.checks if c.passed)
+            from ydk.models.verification import is_skipped
+
+            skipped = sum(1 for c in report.checks if is_skipped(c))
+            passed = sum(1 for c in report.checks if c.passed and not is_skipped(c))
             total = len(report.checks)
             skip_note = f", {skipped} skipped" if skipped else ""
             return f"- {passed}/{total} verification checks passed{skip_note} ({report.total_duration_seconds:.1f}s)"

@@ -99,7 +99,7 @@ def main() -> None:
             "passed": True,
             "output": "No .cs/.csproj/.sln files changed — skipped",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": {"status": "SKIPPED", "skip_reason": "No .cs/.csproj/.sln files changed — skipped"},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
@@ -112,7 +112,10 @@ def main() -> None:
             "passed": True,
             "output": "dotnet SDK not found — skipped (install from https://aka.ms/dotnet/download)",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": {
+                "status": "SKIPPED",
+                "skip_reason": "dotnet SDK not found — skipped (install from https://aka.ms/dotnet/download)",
+            },
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
@@ -131,7 +134,7 @@ def main() -> None:
             "passed": True,
             "output": "No .sln/.csproj found — skipped (non-.NET project?)",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": None,
+            "detail": {"status": "SKIPPED", "skip_reason": "No .sln/.csproj found — skipped (non-.NET project?)"},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
