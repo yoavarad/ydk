@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-We're adding `dotnet-webapi-clean`, a new YDK catalog ignition pack scaffolding an ASP.NET Core Web API with Clean-style layering (Domain/Application/Infrastructure/Api). Verification plugins for dotnet (`dotnet-build`, `dotnet-test`, `dotnet-format`, `dotnet-quality`, `dotnet-tdd-guard`) already existed with no pack to generate against. We chose Minimal APIs over Controllers to mirror the thin-route-delegates-to-service style already used by `python-fastapi-hexagonal`, `net8.0` (LTS) as the default target framework with `net10.0` as a documented opt-in swap (rather than multi-targeting, which would require both SDKs installed locally for verification plugins to exercise both), SQLite as the default EF Core provider so `dotnet build`/`dotnet test` never require a live database out of the box, and xUnit as the test framework.
+We're adding `dotnet-webapi-clean`, a new YDK catalog ignition pack scaffolding an ASP.NET Core Web API with Clean-style layering (Domain/Application/Infrastructure/Api). Verification plugins for dotnet (`dotnet-build`, `dotnet-test`, `dotnet-format`, `dotnet-tdd-guard`) already existed with no pack to generate against. We chose Minimal APIs over Controllers to mirror the thin-route-delegates-to-service style already used by `python-fastapi-hexagonal`, `net8.0` (LTS) as the default target framework with `net10.0` as a documented opt-in swap (rather than multi-targeting, which would require both SDKs installed locally for verification plugins to exercise both), SQLite as the default EF Core provider so `dotnet build`/`dotnet test` never require a live database out of the box, and xUnit as the test framework.
 
 ## Considered options
 
