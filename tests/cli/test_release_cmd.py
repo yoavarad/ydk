@@ -91,6 +91,42 @@ class FakeProcs:
         return any(" ".join(c).startswith(prefix) for c in self.calls)
 
 
+@pytest.fixture(autouse=True)
+def _tools_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(release_cmd.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+
+def _hide(monkeypatch: pytest.MonkeyPatch, *missing: str) -> None:
+    monkeypatch.setattr(release_cmd.shutil, "which", lambda name: None if name in missing else f"/usr/bin/{name}")
+
+
+@pytest.mark.parametrize("tool", ["git", "cz", "gh"])
+def test_preflight_refuses_when_tool_missing(monkeypatch: pytest.MonkeyPatch, tool: str) -> None:
+    fake = _install(monkeypatch, FakeProcs())
+    _hide(monkeypatch, tool)
+    result = runner.invoke(app, ["release"])
+    assert result.exit_code == 1
+    assert not isinstance(result.exception, FileNotFoundError)
+    assert f"required tool '{tool}' not found on PATH" in result.output
+    assert fake.calls == []
+
+
+def test_preflight_dry_run_does_not_need_gh(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install(monkeypatch, FakeProcs())
+    _hide(monkeypatch, "gh")
+    result = runner.invoke(app, ["release", "--dry-run"])
+    assert result.exit_code == 0, result.output
+
+
+def test_preflight_dry_run_still_needs_cz(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs())
+    _hide(monkeypatch, "cz")
+    result = runner.invoke(app, ["release", "--dry-run"])
+    assert result.exit_code == 1
+    assert "'cz' not found" in result.output
+    assert fake.calls == []
+
+
 def _install(monkeypatch: pytest.MonkeyPatch, fake: FakeProcs) -> FakeProcs:
     monkeypatch.setattr(release_cmd.subprocess, "run", fake)
     return fake
