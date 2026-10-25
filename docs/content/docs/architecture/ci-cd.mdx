@@ -13,7 +13,7 @@ YDK's own repository uses six GitHub Actions workflows in `.github/workflows/` t
 
 This workflow runs on every pull request and every push to main. It has four jobs:
 
-**Branch name validation** (PRs only) ensures that branch names follow the convention `^(feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+$`. This is not cosmetic -- the branch naming convention feeds into the conventional commit system, which drives automatic versioning and changelog generation.
+**Branch name validation** (PRs only) ensures that branch names follow the convention `^((feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+|release/v[0-9]+\.[0-9]+\.[0-9]+)$`. Release branches `release/vX.Y.Z` (as created by `ydk release`) are also accepted. This is not cosmetic -- the branch naming convention feeds into the conventional commit system, which drives automatic versioning and changelog generation.
 
 **Commit message validation** (PRs only) runs `cz check --rev-range origin/main...HEAD` to validate that every commit follows the conventional commit format. Types are `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `perf`, and `release`. This validation catches malformed commits before they are merged, preventing versioning confusion.
 
@@ -49,7 +49,7 @@ The version and changelog extraction lives in `.github/scripts/changelog_section
 
 ### Cutting a release: `ydk release`
 
-`ydk release` automates the manual flow above from a clean, up-to-date `main`. It refuses to run if you are not on `main`, the working tree is dirty, or local `main` differs from `origin/main`.
+`ydk release` automates the manual flow above from any branch. It refuses to run only if the working tree is dirty, or if branch `release/vX.Y.Z` (local or remote) or tag `vX.Y.Z` already exists; in that case it prints the cleanup commands. It fetches `origin/main` and bases the release branch on it, detaching HEAD if local HEAD differs. All subprocesses run with `UV_NO_SYNC=1` so git and `cz` hooks never re-sync and rebuild the running `ydk.exe` on Windows: the `post_bump_hooks` entry uses `uv run --no-sync`, and the pre-push hook runs `uv lock --check` instead of `uv sync` when `UV_NO_SYNC` is set.
 
 1. Computes the next version with `cz bump --get-next` (override with `--increment MAJOR|MINOR|PATCH`).
 2. Creates branch `release/vX.Y.Z`, runs `cz bump --yes` (the `post_bump_hooks` entry removes the local tag), and verifies the result is exactly one commit touching only `pyproject.toml`, `uv.lock`, and `CHANGELOG.md`.
@@ -61,7 +61,7 @@ Version: 0.9.0
 Branch: release/v0.9.0
 ```
 
-`--dry-run` prints the version, branch, and PR body after fetching `origin/main`, without creating a branch or commit. If the bump, push, or PR step fails, the command prints cleanup steps (delete the local and remote `release/vX.Y.Z` branch and any local tag). Merging the PR triggers `release.yml`, which tags and publishes as described above.
+`--dry-run` works from any branch or detached HEAD, prints the version, branch, and PR body after fetching `origin/main`, and never mutates anything; it notes when previewing from something other than `origin/main`. If any step fails (bump, verification, push, PR), the command rolls back automatically: it resets, returns to the starting ref, and deletes its local branch, its local tag, and the remote branch if pushed, so a retry works. Merging the PR triggers `release.yml`, which tags and publishes as described above.
 
 ### Upgrading: `ydk upgrade`
 

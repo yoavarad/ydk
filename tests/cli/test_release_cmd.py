@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from typer.testing import CliRunner
 
 from ydk.cli import app, release_cmd
 from ydk.core.pr_body_check import run_pr_body_validation
-
-if TYPE_CHECKING:
-    import pytest
 
 runner = CliRunner()
 
@@ -44,7 +41,17 @@ class FakeProcs:
     def __init__(self, **overrides: tuple[int, str]) -> None:
         self.calls: list[list[str]] = []
         self.inputs: dict[str, str | None] = {}
+        self.envs: dict[str, object] = {}
+        self.bump_creates_tag = False
+        self.raises: dict[str, BaseException] = {}
         self.answers: dict[str, tuple[int, str]] = {
+            "git rev-parse --verify --quiet refs/heads/": (1, ""),
+            "git rev-parse --verify --quiet refs/tags/": (1, ""),
+            "git ls-remote --exit-code --heads origin": (2, ""),
+            "git checkout": (0, ""),
+            "git reset --hard": (0, ""),
+            "git branch -D": (0, ""),
+            "git tag -d": (0, ""),
             "git rev-parse --abbrev-ref HEAD": (0, "main\n"),
             "git status --porcelain --untracked-files=no": (0, ""),
             "git fetch origin main": (0, ""),
@@ -66,9 +73,17 @@ class FakeProcs:
         joined = " ".join(cmd)
         stdin = kwargs.get("input")
         self.inputs[joined] = stdin if isinstance(stdin, str) else None
+        self.envs[joined] = kwargs.get("env")
+        if self.bump_creates_tag and joined.startswith("cz bump --yes"):
+            self.answers["git rev-parse --verify --quiet refs/tags/"] = (0, "deadbeef\n")
+        for prefix, exc in self.raises.items():
+            if joined.startswith(prefix):
+                raise exc
         for prefix in sorted(self.answers, key=len, reverse=True):
             if joined.startswith(prefix):
                 rc, out = self.answers[prefix]
+                if rc == 0 and joined.startswith("git push -u"):
+                    self.answers["git ls-remote --exit-code --heads origin"] = (0, "")
                 return subprocess.CompletedProcess(cmd, rc, out, "boom" if rc else "")
         raise AssertionError(f"unexpected command: {joined}")
 
@@ -100,12 +115,28 @@ def test_dry_run_passes_increment_to_cz(monkeypatch: pytest.MonkeyPatch) -> None
     assert ["cz", "bump", "--get-next", "--increment", "MAJOR"] in fake.calls
 
 
-def test_refuses_on_non_main_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dry_run_works_from_feature_branch(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _install(monkeypatch, FakeProcs(**{"git rev-parse --abbrev-ref HEAD": (0, "feat/x\n")}))
     result = runner.invoke(app, ["release", "--dry-run"])
-    assert result.exit_code == 1
-    assert "main" in result.output
-    assert not fake.ran("cz")
+    assert result.exit_code == 0, result.output
+    assert "release/v1.7.0" in result.output
+    assert not fake.ran("git checkout")
+
+
+def test_dry_run_works_from_detached_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs(**{"git rev-parse --abbrev-ref HEAD": (0, "HEAD\n")}))
+    result = runner.invoke(app, ["release", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert ["git", "rev-parse", "HEAD"] in fake.calls
+    assert not fake.ran("git checkout")
+
+
+def test_dry_run_notes_when_head_differs_from_origin_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs(**{"git rev-parse origin/main": (0, "def456\n")}))
+    result = runner.invoke(app, ["release", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "Note: previewing from main, not origin/main" in result.output
+    assert not fake.ran("git checkout")
 
 
 def test_refuses_on_dirty_tree(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,12 +147,98 @@ def test_refuses_on_dirty_tree(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not fake.ran("cz")
 
 
-def test_refuses_when_main_behind_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stale_main_is_rebased_onto_origin_main_before_branching(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _install(monkeypatch, FakeProcs(**{"git rev-parse origin/main": (0, "def456\n")}))
     result = runner.invoke(app, ["release"])
+    assert result.exit_code == 0, result.output
+    joined = [" ".join(c) for c in fake.calls]
+    assert joined.index("git checkout --detach origin/main") < joined.index("git checkout -b release/v1.7.0")
+
+
+def test_subprocesses_run_with_uv_no_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs())
+    result = runner.invoke(app, ["release"])
+    assert result.exit_code == 0, result.output
+    for cmd in ("cz bump --yes", "git push -u origin release/v1.7.0"):
+        env = fake.envs[cmd]
+        assert isinstance(env, dict)
+        assert env["UV_NO_SYNC"] == "1"
+
+
+def test_precheck_refuses_when_local_branch_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs(**{"git rev-parse --verify --quiet refs/heads/": (0, "abc\n")}))
+    result = runner.invoke(app, ["release"])
     assert result.exit_code == 1
-    assert "origin/main" in result.output
-    assert not fake.ran("cz")
+    assert "git branch -D release/v1.7.0" in result.output
+    assert not fake.ran("cz bump --yes")
+    assert not fake.ran("git checkout -b")
+
+
+_FAILURES = {
+    "bump": ({"cz bump --yes": (1, "")}, False),
+    "wrong-files": ({"git show --name-only --format= HEAD": (0, "pyproject.toml\n")}, False),
+    "push": ({"git push -u": (1, "")}, False),
+    "gh": ({"gh pr create": (1, "")}, True),
+}
+
+
+@pytest.mark.parametrize("name", list(_FAILURES))
+def test_failure_rolls_back_and_retry_succeeds(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    overrides, pushed = _FAILURES[name]
+    fake = _install(monkeypatch, FakeProcs(**overrides))
+    result = runner.invoke(app, ["release"])
+    assert result.exit_code == 1
+    assert "Release aborted; rolled back to main." in result.output
+    assert fake.ran("git checkout main")
+    assert fake.ran("git branch -D release/v1.7.0")
+    assert fake.ran("git push origin --delete release/v1.7.0") is pushed
+    retry = _install(monkeypatch, FakeProcs())
+    again = runner.invoke(app, ["release"])
+    assert again.exit_code == 0, again.output
+    assert retry.ran("gh pr create")
+
+
+def test_missing_executable_still_rolls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs())
+    fake.raises["cz bump --yes"] = FileNotFoundError("cz")
+    result = runner.invoke(app, ["release"])
+    assert result.exit_code != 0
+    assert isinstance(result.exception, FileNotFoundError)
+    assert fake.ran("git checkout main")
+    assert fake.ran("git branch -D release/v1.7.0")
+
+
+def test_refuses_when_remote_check_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs(**{"git ls-remote --exit-code --heads origin": (128, "")}))
+    result = runner.invoke(app, ["release"])
+    assert result.exit_code == 1
+    assert "could not check origin for release/v1.7.0 (git ls-remote exit 128)" in result.output
+    assert not fake.ran("git checkout -b")
+
+
+def test_failed_bump_deletes_tag_it_created(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs(**{"cz bump --yes": (1, "")}))
+    fake.bump_creates_tag = True
+    result = runner.invoke(app, ["release"])
+    assert result.exit_code == 1
+    assert fake.ran("git tag -d v1.7.0")
+
+
+def test_rollback_without_tag_does_not_delete_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch, FakeProcs(**{"cz bump --yes": (1, "")}))
+    runner.invoke(app, ["release"])
+    assert not fake.ran("git tag -d")
+
+
+def test_dry_run_body_passes_pr_body_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install(monkeypatch, FakeProcs())
+    result = runner.invoke(app, ["release", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    body = result.output.split("PR title: release: v1.7.0\n", 1)[1].strip()
+    monkeypatch.undo()  # the validator spawns its own check script via the real subprocess.run
+    check = run_pr_body_validation(body, ["pyproject.toml", "uv.lock", "CHANGELOG.md"], PROJECT_ROOT)
+    assert check is not None
+    assert check.passed, check.output
 
 
 def test_full_release_runs_steps_in_order_and_prints_url(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -153,7 +270,7 @@ def test_aborts_before_push_when_bump_commit_has_wrong_files(monkeypatch: pytest
     result = runner.invoke(app, ["release"])
     assert result.exit_code == 1
     assert "got 1 commit(s) touching CHANGELOG.md, pyproject.toml" in result.output
-    assert "git branch -D release/v1.7.0" in result.output
+    assert fake.ran("git branch -D release/v1.7.0")
     assert not fake.ran("git push")
 
 

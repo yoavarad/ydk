@@ -58,7 +58,15 @@ def test_commit_messages_job() -> None:
 
 @pytest.mark.parametrize(
     ("branch", "ok"),
-    [("feat/add-x", True), ("task/276-y", True), ("main", False), ("feat/Bad_Name", False)],
+    [
+        ("feat/add-x", True),
+        ("task/276-y", True),
+        ("main", False),
+        ("feat/Bad_Name", False),
+        ("release/v1.7.0", True),
+        ("release/v1.7", False),
+        ("feat/v1.7.0", False),
+    ],
 )
 def test_branch_regex(branch: str, ok: bool) -> None:
     run = _workflow()["jobs"]["branch-name"]["steps"][0]["run"]
