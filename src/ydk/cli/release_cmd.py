@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import os
 import re
+import shutil
 import subprocess
 from typing import Annotated
 
@@ -46,6 +47,13 @@ def _refuse(message: str) -> None:
     raise typer.Exit(1)
 
 
+def _preflight(dry_run: bool) -> None:
+    """Refuse up front if a required executable is missing (gh is only needed for a real release)."""
+    for tool in ("git", "cz") if dry_run else ("git", "cz", "gh"):
+        if shutil.which(tool) is None:
+            _refuse(f"required tool '{tool}' not found on PATH; install it and retry")
+
+
 def changelog_section(changelog: str) -> str:
     """Return the body of the newest ``## vX.Y.Z`` section, without its heading."""
     match = re.search(r"^## .*?$\n(.*?)(?=^## |\Z)", changelog, re.MULTILINE | re.DOTALL)
@@ -78,6 +86,7 @@ def release_command(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Print version, branch, and PR body only")] = False,
 ) -> None:
     """Branch release/vX.Y.Z from main, run cz bump (no tag), push, and open the release PR."""
+    _preflight(dry_run)
     start = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).strip()
     if start == "HEAD":
         start = _run(["git", "rev-parse", "HEAD"]).strip()
