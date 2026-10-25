@@ -1,3 +1,45 @@
+## v1.7.0 (2026-10-25)
+
+### Feat
+
+- **release**: add ydk release command
+- **ignite**: add --only retrofit mode and dotnet upgrade guide
+- **task**: add --from batch.yaml to validate-dag and component-coverage
+- **cli**: add ydk upgrade (uv tool upgrade + skills re-sync)
+- **catalog**: analyzer enforcement in dotnet-webapi-clean templates
+- **release**: generate CHANGELOG.md and refresh uv.lock on cz bump
+- **skills**: bundle skills in wheel and add ydk skills sync/status
+- **catalog**: vendor csharp-development-best-practices skill into dotnet repos
+- **review**: dotnet code-review checklist for dotnet-stack projects
+- **ignite**: warn when go deps raise the go.mod go directive; add go_version answer
+- **ignite**: pass pack init answers via --answer and ignition.init_answers
+
+### Fix
+
+- **release**: roll back failed releases, avoid uv re-sync, allow release/vX.Y.Z
+- **verify**: report self-skips as SKIP across bundled plugins
+- **verify**: report plugin self-skips as SKIP, not PASS
+- **cli**: resolve uv tool bin for upgrade sync and add Windows locked-exe guidance
+- **task**: address review on create-batch normalization
+- **task**: normalize string-form refs and acceptance in create-batch
+- **task**: validate component_refs and story refs in create-batch
+- **task**: GitHub check_dependencies ignores non-blocking dependency types
+- **todo**: auto-assign matches component_refs intersection then path heuristic
+- **task**: resolve spec_refs consistently via project root then spec_location
+- **stack-profile**: add dotnet LanguageProfile
+- **todo**: record component_refs on TODOs during ignition reconcile
+- **catalog**: go-http-service deploy.sh select helm rollback flag by Helm major version
+- **task**: normalize epic/story IDs in validate-dag hierarchy check
+- **catalog**: go-http-service Dockerfile keeps CA roots out of /etc/ssl/certs
+- **verify**: support Go X/... patterns in go-test coverage_packages and warn on zero matches
+- **component**: upgrade path for stale .ydk/schemas and warn on undeclared manifest fields
+- **todo**: record enclosing Go func/receiver for Go TODO markers
+- **ci**: ydk ci init updates unmodified generated files after config changes
+- **ignite**: write generated files and init hook scripts with LF on all platforms
+- **verify**: go-test race auto default skips -race without cgo/C compiler
+- **core**: read/write component manifests and verification cache as UTF-8
+- **init**: ensure .gitignore contains .ydk/cache/
+
 ## v1.6.0 (2026-10-16)
 
 ### Feat
