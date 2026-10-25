@@ -47,6 +47,21 @@ def _run_pre_push(cwd: Path, path_env: str | None = None) -> subprocess.Complete
     )
 
 
+def test_accepts_release_branch_with_dotted_version(git_repo: Path) -> None:
+    subprocess.run(["git", "checkout", "-q", "-b", "release/v1.7.0"], cwd=git_repo, check=True)
+    result = _run_pre_push(git_repo, path_env=_GIT_ONLY_PATH)
+    assert result.returncode == 0
+    assert "does not follow convention" not in result.stdout
+
+
+@pytest.mark.parametrize("branch", ["release/v1.7", "feat/v1.7.0"])
+def test_rejects_malformed_dotted_branch(git_repo: Path, branch: str) -> None:
+    subprocess.run(["git", "checkout", "-q", "-b", branch], cwd=git_repo, check=True)
+    result = _run_pre_push(git_repo, path_env=_GIT_ONLY_PATH)
+    assert result.returncode != 0
+    assert "does not follow convention" in result.stdout
+
+
 def test_skips_unit_tests_when_uv_missing(git_repo: Path) -> None:
     """Hook does not crash when uv isn't on PATH — it skips the unit-tests step."""
     result = _run_pre_push(git_repo, path_env=_GIT_ONLY_PATH)

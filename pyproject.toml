@@ -117,8 +117,9 @@ changelog_incremental = true
 # uv.lock is not a version file, so refresh and stage it after cz bumps pyproject.toml.
 pre_bump_hooks = ["uv lock", "git add uv.lock"]
 # Branch bumps must not tag; release.yml tags the merge commit on main. cz always tags, so drop it.
+# --no-sync so uv never rebuilds the running ydk.exe.
 post_bump_hooks = [
-    "uv run python -c \"import os,subprocess;subprocess.run(['git','tag','-d',os.environ['CZ_POST_CURRENT_TAG_VERSION']],check=True)\"",
+    "uv run --no-sync python -c \"import os,subprocess;subprocess.run(['git','tag','-d',os.environ['CZ_POST_CURRENT_TAG_VERSION']],check=True)\"",
 ]
 
 [tool.hatch.build.targets.wheel]

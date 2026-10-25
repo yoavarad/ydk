@@ -214,6 +214,15 @@ class TestNoManualPr:
         )
         assert passed is True
 
+    def test_allows_ydk_release(self) -> None:
+        passed, _ = _run_guard_plugin(
+            "guard-no-manual-pr",
+            {
+                "command": "ydk release --increment PATCH",
+            },
+        )
+        assert passed is True
+
 
 class TestNoProofTamper:
     """Tests for the guard-no-proof-tamper plugin."""

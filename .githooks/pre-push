@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ydk pre-push hook — mirrors GitHub CI (ci.yml, pr-body-check.yml) locally."""
 
-import shutil, subprocess, sys, time
+import os, shutil, subprocess, sys, time
 from pathlib import Path
 
 RESET      = "\033[0m"
@@ -61,9 +61,9 @@ branch = result.stdout.strip()
 if branch == "main":
     step_fail(t0, "Direct push to main is not allowed. Open a PR instead.")
     finish_fail()
-pattern = r"^(feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+$|^(main|rewrite/.*)$"
+pattern = r"^(feat|fix|docs|chore|refactor|test|ci|perf|release|task)/[a-z0-9-]+$|^release/v[0-9]+\.[0-9]+\.[0-9]+$|^(main|rewrite/.*)$"
 if not re.match(pattern, branch):
-    step_fail(t0, f"Branch '{branch}' does not follow convention: type/description\nValid: feat fix docs chore refactor test ci perf release task")
+    step_fail(t0, f"Branch '{branch}' does not follow convention: type/description or release/vX.Y.Z\nValid: feat fix docs chore refactor test ci perf release task")
     finish_fail()
 step_pass(t0)
 
@@ -133,7 +133,10 @@ def uv_check(name, cmd):
     else:
         step_pass(t0)
 
-uv_check("lockfile + sync", ["uv", "sync", "--locked", "--all-extras", "--dev"])
+if os.environ.get("UV_NO_SYNC"):
+    uv_check("lockfile + sync", ["uv", "lock", "--check"])
+else:
+    uv_check("lockfile + sync", ["uv", "sync", "--locked", "--all-extras", "--dev"])
 if run(["git", "rev-parse", "--verify", "--quiet", "origin/main"]).returncode != 0:
     step("commit messages")
     step_skip("origin/main ref missing")
