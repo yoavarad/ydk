@@ -1,3 +1,9 @@
+## v1.7.1 (2026-10-26)
+
+### Fix
+
+- **release**: preflight check for git/cz/gh instead of FileNotFoundError traceback
+
 ## v1.7.0 (2026-10-25)
 
 ### Feat
