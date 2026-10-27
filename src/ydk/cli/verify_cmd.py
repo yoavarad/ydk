@@ -65,6 +65,7 @@ def run(
     context["config"]["go"] = config.verification.go.model_dump(exclude={"skip_patterns"})
 
     context["config"]["helm"] = config.verification.helm.model_dump()
+    context["config"]["file_length"] = config.verification.file_length.model_dump()
 
     effective_trigger = trigger or "manual"
     if effective_trigger == "pre-push":

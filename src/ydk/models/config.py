@@ -247,6 +247,15 @@ class HelmVerificationConfig(BaseModel):
     require_schema: bool = False
 
 
+class FileLengthVerificationConfig(BaseModel):
+    """Settings for the ``python-file-length`` verification plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    paths: list[str] = Field(default_factory=lambda: ["app", "src"], min_length=1)
+    limit: int = Field(default=300, gt=0)
+
+
 class VerificationFilterConfig(BaseModel):
     """Whitelist filter for which verification checks to run."""
 
@@ -258,6 +267,7 @@ class VerificationFilterConfig(BaseModel):
     tdd: TddVerificationConfig = Field(default_factory=TddVerificationConfig)
     go: GoVerificationConfig = Field(default_factory=GoVerificationConfig)
     helm: HelmVerificationConfig = Field(default_factory=HelmVerificationConfig)
+    file_length: FileLengthVerificationConfig = Field(default_factory=FileLengthVerificationConfig)
 
 
 class TddConfig(BaseModel):

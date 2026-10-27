@@ -278,3 +278,17 @@ class TestIgnitionConfig:
     def test_unknown_key_rejected(self) -> None:
         with pytest.raises(ValidationError, match="bogus"):
             YdkConfig.model_validate({"project": {"name": "x"}, "ignition": {"bogus": 1}})
+
+
+class TestFileLengthVerificationConfig:
+    def test_defaults(self) -> None:
+        fl = YdkConfig.model_validate({"project": {"name": "x"}}).verification.file_length
+        assert fl.paths == ["app", "src"]
+        assert fl.limit == 300
+
+    def test_override(self) -> None:
+        cfg = YdkConfig.model_validate(
+            {"project": {"name": "x"}, "verification": {"file_length": {"paths": ["lib"], "limit": 200}}}
+        )
+        assert cfg.verification.file_length.paths == ["lib"]
+        assert cfg.verification.file_length.limit == 200
