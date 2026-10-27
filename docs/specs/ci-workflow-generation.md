@@ -137,7 +137,7 @@ already-deleted/protected branches. No ydk install needed. No concurrency block 
 Trigger `pull_request` + `push` to default branch + `workflow_dispatch`; `permissions: contents: read`; common
 concurrency. Named `ci.yml` on purpose: a repo that already has hand-written CI gets it skipped, not duplicated.
 
-**python** (`python-fastapi`, `python-cli`), modeled on YDK's `ci.yml`. Jobs `lint` and `test`, each: checkout,
+**python** (`python-fastapi`, `python-cli`, `python-cli-basic`), modeled on YDK's `ci.yml`. Jobs `lint` and `test`, each: checkout,
 `astral-sh/setup-uv@v7` (`enable-cache: true`), `uv sync --locked --all-extras --dev`, then
 `lint`: `uv run ruff check .`, `uv run ruff format --check .`, `uv run ty check`;
 `test`: `uv run pytest -q --tb=short`. Tools resolve via the project's own dev dependencies and config (no paths
@@ -175,7 +175,7 @@ template for these stacks is follow-up work.
 
 ## Stack selection
 
-`project.stack` → template: `python-fastapi`, `python-cli` → B1 python; `dotnet` → B1 dotnet; anything else → B2.
+`project.stack` → template: `python-fastapi`, `python-cli`, `python-cli-basic` → B1 python; `dotnet` → B1 dotnet; anything else → B2.
 The summary row for `ci.yml` MUST state which one was chosen (`ci.yml — stack CI (python)` / `(fallback: verify run)`).
 
 ## Installing ydk in CI

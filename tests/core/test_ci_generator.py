@@ -161,7 +161,7 @@ def test_force_overwrites_targets_only(tmp_path: Path) -> None:
     assert result.written == [".github/workflows/demo.yml", ".github/PULL_REQUEST_TEMPLATE.md"]
 
 
-PYTHON_STACKS = ["python-fastapi", "python-cli"]
+PYTHON_STACKS = ["python-fastapi", "python-cli", "python-cli-basic"]
 
 
 def _load_workflow(path: Path) -> dict:

@@ -21,7 +21,7 @@ YDK is stack-neutral. The workflow (brainstorm, ignite, tasks, verified `task do
 ydk init --name my-service --stack go
 ```
 
-`--stack` accepts `python-fastapi`, `python-cli`, `nextjs-fsd`, `terraform`, `dotnet` and `go`. Add `--remote github` or `--remote gitlab` for the issue and PR backend (default `local`).
+`--stack` accepts `python-fastapi`, `python-cli`, `python-cli-basic`, `nextjs-fsd`, `terraform`, `dotnet` and `go`. Add `--remote github` or `--remote gitlab` for the issue and PR backend (default `local`).
 
 The `go` stack enables these verification plugins: `go-fmt`, `go-vet`, `go-test`, `go-vendor`, `helm-lint`, `spec-alignment`, `pr-body-validation`, `ai-code-review`, `tdd-guard`, `tdd-guard-cmd` and the guard plugins. It also writes Go defaults to `.ydk/config.yaml`:
 

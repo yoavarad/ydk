@@ -107,6 +107,7 @@ FALLBACK_CI = CiTarget(template="ci-fallback.yml", output="ci.yml", purpose="sta
 STACK_CI_TARGETS: dict[str, CiTarget] = {
     "python-fastapi": PYTHON_CI,
     "python-cli": PYTHON_CI,
+    "python-cli-basic": PYTHON_CI,
     "dotnet": DOTNET_CI,
     "go": GO_CI,
     "golang": GO_CI,
