@@ -231,8 +231,23 @@ def decision_history(
 def retrospective(
     sprint: str | None = typer.Option(None, help="Sprint/milestone to review"),
     epic: str | None = typer.Option(None, "--epic", help="Epic ID to review instead of a sprint"),
+    missing: bool = typer.Option(
+        False,
+        "--missing",
+        help="List finished epics without a retro (read-only query; ignores learning.require_epic_retro).",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="With --missing: print a JSON array of {epic_id, title}."),
 ) -> None:
     """Sprint or epic retrospective — aggregate learnings across tasks using LLM analysis."""
+    if as_json and not missing:
+        console.print("[red]--json is only valid with --missing.[/red]")
+        raise typer.Exit(code=1)
+    if missing:
+        if sprint or epic:
+            console.print("[red]--missing cannot be combined with --sprint or --epic.[/red]")
+            raise typer.Exit(code=1)
+        _list_missing_retros(as_json)
+        return
     if sprint and epic:
         console.print("[red]Pass only one of --sprint or --epic.[/red]")
         raise typer.Exit(code=1)
@@ -300,6 +315,25 @@ def retrospective(
         output_path = proofs_dir / f"retrospective-{sprint_label}.json"
         output_path.write_text(json.dumps(proposals, indent=2))
         console.print(f"\n  [dim]Saved to {output_path}[/dim]")
+
+
+def _list_missing_retros(as_json: bool) -> None:
+    """Print finished epics lacking a retro file (tab-separated, or JSON array)."""
+    from ydk.core.retro_gate import find_epics_missing_retro
+    from ydk.repositories.factory import get_epic_repository
+
+    try:
+        found = find_epics_missing_retro(get_epic_repository())
+    except Exception as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if as_json:
+        typer.echo(json.dumps([{"epic_id": m.epic_id, "title": m.title} for m in found]))
+    elif not found:
+        typer.echo("No epics missing a retrospective.")
+    else:
+        for m in found:
+            typer.echo(f"{m.epic_id}\t{' '.join(m.title.split())}")
 
 
 def _gather_epic_tasks(epic_id: str, task_repo: object) -> list:  # type: ignore[type-arg]
