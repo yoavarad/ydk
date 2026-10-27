@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
@@ -147,11 +148,31 @@ labels: epic
 _PR_TEMPLATE = PR_TEMPLATE
 
 
+def _existing_label_names() -> set[str]:
+    """Return names of labels already on the repo (empty set if gh fails)."""
+    result = subprocess.run(
+        ["gh", "label", "list", "--json", "name", "--limit", "1000"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        return set()
+    try:
+        return {item["name"] for item in json.loads(result.stdout)}
+    except (ValueError, KeyError, TypeError):
+        return set()
+
+
 def _create_github_labels() -> None:
     """Create required GitHub labels, skipping any that already exist."""
+    existing = _existing_label_names()
     for label_name, color, description in _REQUIRED_LABELS:
+        if label_name in existing:
+            continue
         subprocess.run(
-            ["gh", "label", "create", label_name, "--color", color, "--description", description, "--force"],
+            ["gh", "label", "create", label_name, "--color", color, "--description", description],
             capture_output=True,
         )
 
