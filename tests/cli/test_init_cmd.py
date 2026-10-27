@@ -504,20 +504,48 @@ def test_init_hook_scripts_written_with_lf(tmp_path: Path, monkeypatch: object) 
             assert b"\r\n" not in path.read_bytes(), rel
 
 
-def test_create_github_labels_creates_every_required_label_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_create_github_labels runs `gh label create` once per label ydk needs."""
-    from unittest.mock import MagicMock
+def _fake_gh(existing: list[str]):
+    """Fake subprocess.run at the gh boundary: `label list` returns existing, `label create` is recorded."""
+    import json
+    import subprocess as sp
 
+    created: list[list[str]] = []
+
+    def run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "label", "list"]:
+            out = json.dumps([{"name": n} for n in existing])
+            return sp.CompletedProcess(cmd, 0, stdout=out, stderr="")
+        created.append(list(cmd))
+        return sp.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    return run, created
+
+
+def test_create_github_labels_creates_every_required_label_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_create_github_labels creates each missing label once, without --force."""
     from ydk.cli import init_cmd
 
-    run = MagicMock()
+    run, calls = _fake_gh([])
     monkeypatch.setattr(init_cmd.subprocess, "run", run)
     init_cmd._create_github_labels()
-    created = [call.args[0][3] for call in run.call_args_list]
+    created = [c[3] for c in calls]
     expected = {
         "epic", "story", "task", "open", "ready", "in-progress",
         "in-review", "blocked", "done", "quick",
     }  # fmt: skip
     assert expected <= set(created)
     assert len(created) == len(set(created))
-    assert all("--force" in call.args[0] for call in run.call_args_list)
+    assert all("--force" not in c for c in calls)
+
+
+def test_create_github_labels_skips_existing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing labels are never recreated or overwritten."""
+    from ydk.cli import init_cmd
+
+    run, calls = _fake_gh(["epic", "task"])
+    monkeypatch.setattr(init_cmd.subprocess, "run", run)
+    init_cmd._create_github_labels()
+    created = {c[3] for c in calls}
+    assert "epic" not in created
+    assert "task" not in created
+    assert "story" in created

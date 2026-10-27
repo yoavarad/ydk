@@ -132,18 +132,19 @@ class TestLabelCreation:
     def test_create_github_labels_calls_gh(self, mock_run: MagicMock) -> None:
         from ydk.cli.init_cmd import _create_github_labels
 
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
         _create_github_labels()
-        # Should be called once per label
+        # One `label list` call, then one create per label
         from ydk.cli.init_cmd import _REQUIRED_LABELS
 
-        assert mock_run.call_count == len(_REQUIRED_LABELS)
+        assert mock_run.call_count == len(_REQUIRED_LABELS) + 1
         # Verify the first call uses 'gh label create'
-        first_call_args = mock_run.call_args_list[0]
+        first_call_args = mock_run.call_args_list[1]
         cmd = first_call_args[0][0]
         assert cmd[0] == "gh"
         assert cmd[1] == "label"
         assert cmd[2] == "create"
-        assert "--force" in cmd
+        assert "--force" not in cmd
 
 
 # ---------------------------------------------------------------------------
