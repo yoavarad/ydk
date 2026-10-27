@@ -333,7 +333,7 @@ def _list_missing_retros(as_json: bool) -> None:
         typer.echo("No epics missing a retrospective.")
     else:
         for m in found:
-            typer.echo(f"{m.epic_id}	{m.title}")
+            typer.echo(f"{m.epic_id}\t{' '.join(m.title.split())}")
 
 
 def _gather_epic_tasks(epic_id: str, task_repo: object) -> list:  # type: ignore[type-arg]

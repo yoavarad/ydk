@@ -443,7 +443,11 @@ def test_memory_retrospective_json_requires_missing() -> None:
     assert result.exit_code == 1
 
 
-@patch("ydk.repositories.factory.get_epic_repository", side_effect=RuntimeError("backend down"))
-def test_memory_retrospective_missing_backend_error_exit_1(_f: MagicMock) -> None:
+def test_memory_retrospective_missing_backend_error_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom() -> None:
+        raise RuntimeError("backend down")
+
+    monkeypatch.setattr("ydk.repositories.factory.get_epic_repository", boom)
     result = runner.invoke(app, ["memory", "retrospective", "--missing"])
     assert result.exit_code == 1
+    assert "backend down" in result.output
