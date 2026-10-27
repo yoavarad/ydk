@@ -82,6 +82,8 @@ def test_retire_comments_labels_closes_not_planned(fake_gh: FakeGh) -> None:
     assert "see #10" in fake_gh.wrote("issue", "comment")[0][-1]
     assert fake_gh.wrote("issue", "edit", "6", "--add-label", "superseded")
     assert fake_gh.wrote("issue", "close", "6", "--reason", "not planned")
+    # external issues never carry YDK status labels, so retire must not strip any
+    assert fake_gh.wrote("issue", "edit", "6", "--remove-label") == []
 
 
 def test_retire_rerun_is_idempotent(fake_gh: FakeGh) -> None:
