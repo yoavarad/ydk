@@ -47,7 +47,7 @@ class FakeGh:
     def __call__(self, cmd: list[str]) -> subprocess.CompletedProcess[str]:
         self.calls.append(cmd)
         head = cmd[:3]
-        if self.fail_once and head == ["gh", "issue", self.fail_once]:
+        if self.fail_once and head == ["gh", "issue", self.fail_once] and "--remove-label" not in cmd:
             self.fail_once = None
             return subprocess.CompletedProcess([], 1, "", "HTTP 502")
         if head == ["gh", "label", "create"]:
