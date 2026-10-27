@@ -21,8 +21,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 _dotnet_target = importlib.import_module("_dotnet_target")
 
-_DOTNET_EXTENSIONS = (".cs", ".csproj", ".sln", ".slnx")
-
 
 def _has_sdk(dotnet_bin: str) -> bool:
     """Check that an actual .NET SDK is installed, not just the dotnet muxer.
@@ -63,13 +61,13 @@ def main() -> None:
     start = time.time()
 
     changed_files = context.get("changed_files")
-    if changed_files and not any(f.lower().endswith(_DOTNET_EXTENSIONS) for f in changed_files):
+    if changed_files and not _dotnet_target.affects_dotnet_build(changed_files):
         result = {
             "name": "dotnet-test",
             "passed": True,
-            "output": "No .cs/.csproj/.sln/.slnx files changed — skipped",
+            "output": _dotnet_target.SKIP_MESSAGE,
             "duration_seconds": round(time.time() - start, 1),
-            "detail": {"status": "SKIPPED", "skip_reason": "No .cs/.csproj/.sln/.slnx files changed — skipped"},
+            "detail": {"status": "SKIPPED", "skip_reason": _dotnet_target.SKIP_MESSAGE},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)

@@ -375,3 +375,15 @@ class TestConfiguredTarget:
         data, calls = self._run(monkeypatch, tmp_path, "app.slnx")
         assert data["passed"] is True
         assert str((tmp_path / "app.slnx").resolve()) in calls[-1]
+
+
+@pytest.mark.parametrize("changed", [".editorconfig", "Directory.Build.props", "global.json", "nuget.config"])
+def test_build_affecting_non_cs_file_does_not_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str
+) -> None:
+    """Config files that change build results must not trigger the skip rule."""
+    mod = _load_check_module()
+    with patch("shutil.which", return_value=None):
+        data = _run_main(monkeypatch, mod, {"project_root": str(tmp_path), "changed_files": [changed]})
+    assert data["detail"].get("status") != "SKIPPED" or "not found" in data["output"].lower()
+    assert "No .NET build-affecting files changed" not in data["output"]

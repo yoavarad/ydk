@@ -11,6 +11,30 @@ from pathlib import Path
 EXCLUDED_DIR_PARTS = frozenset({"bin", "obj", ".git", ".ydk", ".vs", "node_modules", "third_party"})
 TEST_PROJECT_MARKERS = ("Test", "Tests")
 SLNX_MIN_SDK = (9, 0, 200)
+BUILD_AFFECTING_EXTENSIONS = (
+    ".cs",
+    ".csproj",
+    ".fsproj",
+    ".sln",
+    ".slnx",
+    ".props",
+    ".targets",
+    ".editorconfig",
+)
+BUILD_AFFECTING_NAMES = frozenset({"global.json", "nuget.config"})
+SKIP_MESSAGE = "No .NET build-affecting files changed — skipped"
+
+
+def affects_dotnet_build(changed_files: list[str]) -> bool:
+    """Return True when any changed file can alter .NET build, format or test results (case-insensitive)."""
+    for f in changed_files:
+        lower = f.lower()
+        if (
+            lower.endswith(BUILD_AFFECTING_EXTENSIONS)
+            or lower.replace("\\", "/").rsplit("/", 1)[-1] in BUILD_AFFECTING_NAMES
+        ):
+            return True
+    return False
 
 
 def configured_target(context: dict) -> str | None:
