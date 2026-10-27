@@ -216,7 +216,10 @@ class GitHubTaskRepository:
         num = str(issue_number)
         if status in ("closed", "done"):
             for lbl in ("in-review", "in-progress"):
-                run_gh(["gh", "issue", "edit", num, "--remove-label", lbl])
+                # rc deliberately ignored: a label the issue never had must not fail the close.
+                removal = run_gh(["gh", "issue", "edit", num, "--remove-label", lbl])
+                if removal.returncode != 0:
+                    logger.warning("Could not remove label %r from #%s: %s", lbl, num, removal.stderr.strip())
             cmd = ["gh", "issue", "close", num]
         elif status == "open":
             cmd = ["gh", "issue", "reopen", num]

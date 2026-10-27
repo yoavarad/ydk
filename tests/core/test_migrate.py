@@ -76,6 +76,9 @@ class FakeGh:
                 issue["body"] = cmd[cmd.index("--body") + 1]
             if "--add-label" in cmd:
                 issue["labels"].append({"name": cmd[cmd.index("--add-label") + 1]})
+            if "--remove-label" in cmd:
+                gone = cmd[cmd.index("--remove-label") + 1]
+                issue["labels"] = [lbl for lbl in issue["labels"] if lbl["name"] != gone]
             return self._ok()
         if head == ["gh", "issue", "close"]:
             self.issues[int(cmd[3].lstrip("#"))]["state"] = "CLOSED"
