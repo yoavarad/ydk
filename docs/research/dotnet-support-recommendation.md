@@ -18,8 +18,8 @@ Do the same for .NET:
 All three ended up on `git:pre-push`, not `git:pre-commit` — see §7. This was corrected after
 testing against a real SDK install; an earlier draft had build/format on pre-commit, which turned
 out to be actively harmful (see below).
-- `src/ydk/verifications/dotnet-quality/` — thin bundle plugin that runs build+format (test stays
-  separate since it's pre-push and slower, matching how `python-quality` excludes `tests-pytest`)
+- A build+format bundle plugin was proposed here but later removed as redundant with
+  `dotnet-build` + `dotnet-format`; enable those plugins directly.
 
 Port the three `check.py`/`manifest.yaml` pairs from ole-extractor's `.ydk/verifications/` almost
 verbatim — they're already fail-open and tested against a real project. Don't try to collapse them

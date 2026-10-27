@@ -93,3 +93,17 @@ Fix the CA1849/VSTHRD002 (sync-over-async), CA2016 (`CancellationToken` forwardi
 ### 7. Flip to errors
 
 Once the build has no warnings, remove the `false` override. The generated default is `true`. Commit the change. From then on, any new analyzer warning fails the build.
+
+## Verification plugins: target discovery and overrides
+
+The bundled `dotnet-build`, `dotnet-format` and `dotnet-test` plugins share one target discovery. It skips build-output directories and prefers, in order:
+
+1. the shallowest `.sln` under the project root;
+2. the shallowest `.slnx`, only when the SDK can build it (9.0.200 or later);
+3. otherwise every `.csproj`. For `dotnet-test` only projects whose name contains `Test` or `Tests` count.
+
+If nothing is found, the plugin reports SKIP.
+
+If the default pick is wrong, for example in a repo with several solutions, set `verification.dotnet.target` in your YDK config to a `.sln`, `.slnx` or `.csproj` path (relative to the project root, or absolute). When the check runs (SDK installed and .NET files changed), a missing path or a file of another type fails it with a clear message.
+
+Project-local copies or overrides of the dotnet plugins under `.ydk/verifications/` should no longer be needed, and the old combined build+format bundle plugin no longer exists. Delete vendored copies and remove any bundle entry from `verification.enabled`, so you get the current SKIP reporting and target handling.
