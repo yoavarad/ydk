@@ -27,11 +27,15 @@ Install note: `ydk-orchestrator` and `ydk-conflict-fixer` are agent defs, not sk
 
 1. `git fetch origin`
 2. Run `ydk task ready` — this is the fresh candidate list. Zero results prints "No tasks found." and exits clean; that's not an error, just report nothing new to start.
-3. Scan `.ydk/proofs/*/orchestrator-progress.md` for any task still `in-progress` (a previous orchestrator ran out of budget and documented state before stopping). These are resumable — treat them as part of the worklist even if they're not in the fresh `ydk task ready` output.
+3. **Missing epic retros (before any spawn).** `ydk task start` is gated on finished epics having a retro, so parallel orchestrators would all fail the gate at once. Run `uv run ydk memory retrospective --missing --json`.
+   - Empty: continue, and report "retros: none missing" in step 4.
+   - Non-empty: write them all in exactly one quick task / one PR, done inline in this dispatch session or by one `ydk-orchestrator` (S tag), never in parallel with the task orchestrators. `ydk task quick "retro: epics <ids>" --base origin/main`; in that worktree run `ydk memory retrospective --epic <id>` per epic, commit the `.ydk/retros/<id>.md` files (`docs(retro): ...`), and finish the quick-task PR. Then spawn the task orchestrators and report the retro PR URL in step 4.
+   - If `retrospective` fails (it needs LLM access), report it and stop. Do not bypass the gate.
+4. Scan `.ydk/proofs/*/orchestrator-progress.md` for any task still `in-progress` (a previous orchestrator ran out of budget and documented state before stopping). These are resumable — treat them as part of the worklist even if they're not in the fresh `ydk task ready` output.
 
 ## 2. Build the worklist
 
-Worklist = resumable in-progress tasks (from step 1.3) + fresh ready tasks (from step 1.2).
+Worklist = resumable in-progress tasks (from step 1.4) + fresh ready tasks (from step 1.2).
 
 Cap concurrency at **4** orchestrators running at once. If the worklist has more than 4 items, take the first 4, and report the rest as queued (don't spawn them yet).
 
@@ -58,6 +62,7 @@ Give each orchestrator this procedure:
 - Continue from where the progress file says work left off.
 
 **Every task, fresh or resumed:**
+- Never pass `--skip-retro-check` to `ydk task start` (or any command). A retro-gate failure means the dispatch pre-flight missed something: stop and report it.
 - `cd` into `.ydk/worktrees/<task-id>` for every subsequent git/build/`ydk` command. Never operate from the main repo root — doing so has produced empty PRs in the past (the commands ran against the wrong working tree).
 - **Plan**: self-plan for S-tagged tasks. For M/L, spawn `cavecrew-investigator` only when a lookup would otherwise pull large reads into the orchestrator's own context (e.g. "where is X" / "what calls Y" across files it doesn't need to hold in full).
 - **Build**: spawn `cavecrew-builder` with an explicit `model: sonnet` override if the change is a surgical 1-2 file edit and keeping the edit's context out of the orchestrator is worth the spawn (drop to `haiku` for a pure rename/typo). Otherwise do it directly — the orchestrator has full tool access, no need to force a scope-mismatched agent or spawn just to spawn.
@@ -66,9 +71,11 @@ Give each orchestrator this procedure:
 - Run `ydk task done <id>`.
 - Verify the result: `gh pr view <url> --json changedFiles,additions,deletions` and confirm the diff is non-trivial and matches the task's actual scope. Only fetch `--json files` too if the counts alone look wrong (e.g. 0 changed files, or a count that doesn't match the task's scope) — the full file list is the expensive part. If it looks empty or wrong, manually commit/push the real changes onto the PR branch and re-verify — don't just trust the tool's own "success" output.
 - Running tests: use `-q --tb=short` and read only the tail of the output (pass/fail summary + first failure), not the full scrollback.
-- **Checkpoint after each phase** (plan, build, review) — not "when budget runs low," since an agent can't reliably sense its own remaining budget: write/update `.ydk/proofs/<task-id>/orchestrator-progress.md` with what's done so far and what's next. On stop or if the task ends unfinished, also post `ydk task comment <id> "..."` with the same summary, so a fresh orchestrator can resume cleanly (see step 1.3 / the resuming-task branch above) instead of starting over.
+- **Checkpoint after each phase** (plan, build, review) — not "when budget runs low," since an agent can't reliably sense its own remaining budget: write/update `.ydk/proofs/<task-id>/orchestrator-progress.md` with what's done so far and what's next. On stop or if the task ends unfinished, also post `ydk task comment <id> "..."` with the same summary, so a fresh orchestrator can resume cleanly (see step 1.4 / the resuming-task branch above) instead of starting over.
 
 ## 4. Report back
+
+First line: the retro PR URL, or "retros: none missing".
 
 One-line summary per task: task id, S/M/L tag, PR URL (or "skipped: already in progress" / "queued: concurrency cap"), and whether it's fresh/resumed/still-in-progress-documented.
 
@@ -95,3 +102,4 @@ Root cause: `ydk task start`/`ydk task done` write shared bookkeeping (`.ydk/man
 - **`ydk task start`/`ydk task quick` default to branching off current HEAD, not a clean main.** Always pass `--base origin/main` explicitly on both commands.
 - **`.ydk/manifest.yaml` conflicts between parallel PRs.** Expected, not a bug to prevent — the `ydk-bookkeeping` merge driver resolves them deterministically once installed; see the cleanup sub-flow (step 5).
 - **`pr-body-validation` verification plugin can replay a stale FAIL.** Its cache key is a hash of `*.py` files project-wide, not the actual plugin input, so it can replay an old failure regardless of current PR content. If a plugin result looks stale/wrong, clear `.ydk/cache/verification/pr-body-validation/` and retry. To skip a genuinely-failing plugin, pass its real plugin name to `--skip-plugin` (e.g. `pr-body-validation`) — not a requirement-key string that appears inside its output (e.g. `screenshot_for_ui` is a requirement key, not the plugin's name, and won't work as a skip target).
+- **Retros need LLM access.** If `ydk memory retrospective` fails, report it and stop rather than bypassing the gate with `--skip-retro-check`.
