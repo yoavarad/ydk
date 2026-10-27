@@ -37,7 +37,7 @@ class ComponentLinker:
             return results
 
         for md_file in sorted(self._narratives_dir.rglob("*.md")):
-            content = md_file.read_text()
+            content = md_file.read_text(encoding="utf-8")
             refs: list[str] = []
             for match in _NARRATIVE_REF_PATTERN.finditer(content):
                 ref_id = match.group()[1:-1]
@@ -75,11 +75,11 @@ class ComponentLinker:
             return broken
 
         for yaml_file in self._registry._components_dir.rglob("*.yaml"):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if not data or not isinstance(data, dict):
                 continue
             component_id = data.get("id", "")
-            content = yaml_file.read_text()
+            content = yaml_file.read_text(encoding="utf-8")
             for match in _CROSS_REF_PATTERN.finditer(content):
                 ref_id = match.group()
                 if ref_id == component_id:
@@ -97,7 +97,7 @@ class ComponentLinker:
             return ids
 
         for yaml_file in self._registry._components_dir.rglob("*.yaml"):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if data and isinstance(data, dict) and "id" in data:
                 ids.add(data["id"])
         return ids
@@ -117,11 +117,11 @@ class ComponentLinker:
             return refs
 
         for yaml_file in self._registry._components_dir.rglob("*.yaml"):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if not data or not isinstance(data, dict):
                 continue
             component_id = data.get("id", "")
-            content = yaml_file.read_text()
+            content = yaml_file.read_text(encoding="utf-8")
             for match in _CROSS_REF_PATTERN.finditer(content):
                 ref_id = match.group()
                 if ref_id != component_id and not ref_id.startswith("ydk:schema:"):

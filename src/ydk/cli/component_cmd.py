@@ -76,7 +76,7 @@ def show_component(
     path = registry.resolve_id(component_id)
     console.print(f"\n[bold]{component_id}[/bold]")
     console.print(f"[dim]{path}[/dim]\n")
-    console.print(path.read_text())
+    console.print(path.read_text(encoding="utf-8"))
 
 
 @component_app.command("create")
@@ -238,7 +238,7 @@ def init_schemas(
     components_dir.mkdir(parents=True, exist_ok=True)
 
     for schema_file in sorted(_DEFAULT_SCHEMAS_DIR.glob("*.yaml")):
-        raw = yaml.safe_load(schema_file.read_text())
+        raw = yaml.safe_load(schema_file.read_text(encoding="utf-8"))
         if raw and isinstance(raw, dict) and "name" in raw:
             type_dir = components_dir / raw["name"]
             type_dir.mkdir(parents=True, exist_ok=True)

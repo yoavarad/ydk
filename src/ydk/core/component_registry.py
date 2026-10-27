@@ -44,7 +44,7 @@ class ComponentRegistry:
             return schemas
 
         for yaml_file in sorted(self._schemas_dir.glob("*.yaml")):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if not data or not isinstance(data, dict):
                 continue
             fields: dict[str, SchemaField] = {}
@@ -88,7 +88,7 @@ class ComponentRegistry:
             msg = f"Component file not found: {path} (id: {component_id})"
             raise ComponentRegistryError(msg)
 
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not data or not isinstance(data, dict):
             msg = f"Empty or invalid YAML in {path}"
             raise ComponentRegistryError(msg)
@@ -109,7 +109,7 @@ class ComponentRegistry:
         if not path.exists():
             return [f"Component file not found: {path}"]
 
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not data or not isinstance(data, dict):
             return [f"Empty or invalid YAML in {path}"]
 
@@ -146,7 +146,7 @@ class ComponentRegistry:
         path = self.resolve_id(component_id)
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return []
         schema_ref = data.get("$schema")
@@ -168,7 +168,7 @@ class ComponentRegistry:
         if not self._components_dir.is_dir():
             return results
         for yaml_file in self._components_dir.rglob("*.yaml"):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if not isinstance(data, dict) or not data.get("id"):
                 continue
             warnings = self.warn_undeclared_fields(data["id"])
@@ -220,7 +220,7 @@ class ComponentRegistry:
             return results
 
         for yaml_file in self._components_dir.rglob("*.yaml"):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if not data or not isinstance(data, dict):
                 continue
             component_id = data.get("id")
@@ -240,7 +240,7 @@ class ComponentRegistry:
             return components
 
         for yaml_file in sorted(self._components_dir.rglob("*.yaml")):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if not data or not isinstance(data, dict):
                 continue
             component_id = data.get("id")

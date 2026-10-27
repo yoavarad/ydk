@@ -316,3 +316,28 @@ class TestUndeclaredFieldWarnings:
         registry = ComponentRegistry(schemas_dir, components_dir)
         result = registry.warn_all()
         assert list(result) == ["ydk:contract:ns/A"]
+
+
+class TestUtf8Reading:
+    def test_validate_all_non_ascii_under_ascii_locale(self, tmp_path, monkeypatch):
+        schemas_dir = tmp_path / "schemas"
+        schema_path = _write_schema(schemas_dir, "route")
+        schema_path.write_text(
+            yaml.dump(
+                {**yaml.safe_load(schema_path.read_text(encoding="utf-8")), "description": "סכמה é"}, allow_unicode=True
+            ),
+            encoding="utf-8",
+        )
+        comp = _write_component(tmp_path / "components", "route", "ns", "a")
+        comp.write_text(
+            yaml.dump(
+                {"$schema": "ydk:schema:route", "id": "ydk:route:ns/a", "description": "תיאור é"},
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("io.text_encoding", lambda encoding, stacklevel=2: encoding or "ascii")
+
+        reg = ComponentRegistry(schemas_dir=schemas_dir, components_dir=tmp_path / "components")
+        assert reg.validate_all() == {}
