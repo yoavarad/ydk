@@ -160,7 +160,7 @@ YDK provides a CLI tool for automation. Install with `uv pip install -e ydk/` fr
 ### Initialization & Config
 
 ```bash
-ydk init --name <project> [--stack <s>] [--remote local|github|gitlab]  # --stack: python-fastapi, python-cli, nextjs-fsd, terraform, dotnet, go (sets verification plugins + config defaults).
+ydk init --name <project> [--stack <s>] [--remote local|github|gitlab]  # --stack: python-fastapi, python-cli, python-cli-basic, nextjs-fsd, terraform, dotnet, go (sets verification plugins + config defaults).
                                        # Initialize .ydk/ config, install hooks (pre-commit, commit-msg, pre-push), install guard hooks in .claude/settings.json
 ydk config show|get|set|validate       # Config management
 ```
