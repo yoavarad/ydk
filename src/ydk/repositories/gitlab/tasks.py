@@ -122,6 +122,9 @@ class GitLabTaskRepository:
     def update_status(self, issue_number: int, status: str) -> None:
         """Update task status via labels and/or close/reopen."""
         if status == "done":
+            # Best-effort (rc ignored, like the GitHub close path): drop stale status labels first.
+            stale = ",".join(f"status:{s}" for s in ("in-review", "in-progress"))
+            run_glab(["glab", "issue", "update", str(issue_number), "--unlabel", stale])
             cmd = ["glab", "issue", "close", str(issue_number)]
         elif status == "open":
             cmd = ["glab", "issue", "reopen", str(issue_number)]

@@ -218,6 +218,28 @@ class TestUpdateStatus:
         assert call_args == ["glab", "issue", "close", "42"]
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_close_removes_stale_status_labels_before_closing(self, mock_run: MagicMock) -> None:
+        repo = GitLabTaskRepository()
+        mock_run.return_value = _completed()
+
+        repo.update_status(42, "done")
+
+        calls = [c[0][0] for c in mock_run.call_args_list]
+        assert calls == [
+            ["glab", "issue", "update", "42", "--unlabel", "status:in-review,status:in-progress"],
+            ["glab", "issue", "close", "42"],
+        ]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_close_ignores_unlabel_failure(self, mock_run: MagicMock) -> None:
+        repo = GitLabTaskRepository()
+        mock_run.side_effect = [_completed(returncode=1, stderr="no such label"), _completed()]
+
+        repo.update_status(42, "done")
+
+        assert mock_run.call_args[0][0] == ["glab", "issue", "close", "42"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_reopen_issue(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed()

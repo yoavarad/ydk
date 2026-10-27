@@ -70,6 +70,8 @@ def retire(issue: int, pointer: str = "") -> bool:
     text = "Superseded by YDK tasks tracked separately; see the linking comment above."
     if pointer:
         text = f"{text}\n\n{pointer}"
+    # No in-review/in-progress cleanup here: retire() only touches external issues, and YDK never
+    # applies those status labels to them (it labels only its own task issues), so none can be stale.
     posted = False
     if _find_comment(issue, "retire") is None:
         _gh("issue", "comment", str(issue), "--body", f"{text}\n\n{_marker('retire', issue)}")
