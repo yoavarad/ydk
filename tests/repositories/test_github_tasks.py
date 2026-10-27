@@ -324,7 +324,7 @@ class TestUpdateStatus:
         assert ["gh", "issue", "edit", "42", "--remove-label", "in-progress"] in cmds
         assert cmds[-1] == ["gh", "issue", "close", "42"]
 
-    def test_remove_label_failure_does_not_raise(self) -> None:
+    def test_remove_label_failure_does_not_raise(self, caplog: pytest.LogCaptureFixture) -> None:
         repo = GitHubTaskRepository()
 
         def fake_gh(cmd: list[str], *args: object, **kwargs: object) -> object:
@@ -332,9 +332,13 @@ class TestUpdateStatus:
                 return _fake_run(returncode=1, stderr="label not found")
             return _fake_run()
 
-        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake_gh) as mock_run:
+        with (
+            patch("ydk.repositories.github.tasks.run_gh", side_effect=fake_gh) as mock_run,
+            caplog.at_level(logging.WARNING, logger="ydk.repositories.github.tasks"),
+        ):
             repo.update_status(42, "done")
         assert mock_run.call_args_list[-1][0][0] == ["gh", "issue", "close", "42"]
+        assert "label not found" in caplog.text
 
 
 # ---------------------------------------------------------------------------

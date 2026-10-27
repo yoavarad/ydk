@@ -541,3 +541,59 @@ class TestCloseActiveTaskPrune:
             result = runner.invoke(task_app, ["close", "T-001"])
         assert result.exit_code == 0
         assert f.exists()
+
+
+class TestCloseStripsStatusLabelsOnGitHub:
+    """`ydk task close` against the GitHub backend leaves neither in-review nor in-progress."""
+
+    def test_close_removes_in_review_and_in_progress_labels(self, tmp_path: Path) -> None:
+        import subprocess
+
+        import yaml
+
+        from ydk.cli import app
+        from ydk.core.config import DEFAULT_CONFIG
+
+        config = {**DEFAULT_CONFIG, "project": {**DEFAULT_CONFIG["project"], "remote": "github"}}
+        (tmp_path / ".ydk").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".ydk" / "config.yaml").write_text(yaml.dump(config), encoding="utf-8")
+
+        issue = {
+            "number": 7,
+            "title": "T",
+            "state": "OPEN",
+            "labels": [{"name": n} for n in ("task", "in-review", "in-progress")],
+            "body": "",
+            "url": "https://github.com/o/r/issues/7",
+        }
+
+        def fake_gh(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+            head = cmd[:3]
+            if head == ["gh", "issue", "view"]:
+                return subprocess.CompletedProcess(cmd, 0, json.dumps(issue), "")
+            if head == ["gh", "issue", "list"]:
+                return subprocess.CompletedProcess(cmd, 0, "[]", "")
+            if head == ["gh", "issue", "edit"] and "--remove-label" in cmd:
+                gone = cmd[cmd.index("--remove-label") + 1]
+                issue["labels"] = [lbl for lbl in issue["labels"] if lbl["name"] != gone]
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if head == ["gh", "issue", "close"]:
+                issue["state"] = "CLOSED"
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if head == ["gh", "issue", "comment"]:
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            raise AssertionError(f"unexpected gh call: {cmd}")
+
+        with (
+            patch("ydk.repositories.github.tasks.run_gh", side_effect=fake_gh),
+            patch("ydk.repositories.github.stories.run_gh", side_effect=fake_gh),
+            patch("ydk.repositories.github.epics.run_gh", side_effect=fake_gh),
+        ):
+            result = runner.invoke(app, ["task", "close", "7", "--reason", "dup"])
+
+        assert result.exit_code == 0, result.output
+        assert issue["state"] == "CLOSED"
+        names = {lbl["name"] for lbl in issue["labels"]}
+        assert "in-review" not in names
+        assert "in-progress" not in names
+        assert "task" in names
