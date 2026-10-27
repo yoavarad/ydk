@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Verification plugin: dotnet build.
 
-Builds the .NET solution (or the first project file found) via
-``dotnet build``. Skips gracefully when the .NET SDK or a
-solution/project file isn't present, mirroring the fail-open behavior
-of the built-in lint-ruff / tests-pytest plugins for non-matching
-project types.
+Builds the .NET solution (.sln, or .slnx when the SDK supports it) via
+``dotnet build``; with no solution, builds all discovered .csproj files.
+Skips gracefully when the .NET SDK or a solution/project file isn't
+present, mirroring the fail-open behavior of the built-in lint-ruff /
+tests-pytest plugins for non-matching project types.
 """
 
+import importlib
 import json
 import shutil
 import subprocess
@@ -15,8 +16,10 @@ import sys
 import time
 from pathlib import Path
 
-_EXCLUDED_DIR_PARTS = {"bin", "obj", ".git", ".ydk", ".vs", "node_modules"}
-_DOTNET_EXTENSIONS = (".cs", ".csproj", ".sln")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_dotnet_target = importlib.import_module("_dotnet_target")
+
+_DOTNET_EXTENSIONS = (".cs", ".csproj", ".sln", ".slnx")
 
 
 def _has_sdk(dotnet_bin: str) -> bool:
@@ -41,24 +44,6 @@ def _has_sdk(dotnet_bin: str) -> bool:
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
-def _configured_target(context: dict) -> str | None:
-    """Return ``verification.dotnet.target`` from the plugin context, resolved against project_root."""
-    target = ((context.get("config") or {}).get("dotnet") or {}).get("target")
-    if not target:
-        return None
-    return str((Path(context["project_root"]) / target).resolve()) if not Path(target).is_absolute() else target
-
-
-def _target_problem(target: str) -> str | None:
-    """Explain why a configured target is unusable, or None when it is a .sln/.csproj file."""
-    path = Path(target)
-    if not path.exists():
-        return f"verification.dotnet.target does not exist: {target}"
-    if not path.is_file() or path.suffix.lower() not in (".sln", ".csproj"):
-        return f"verification.dotnet.target must be a .sln or .csproj file: {target}"
-    return None
-
-
 def _invalid_target_result(name: str, target: str, problem: str, start: float) -> dict:
     return {
         "name": name,
@@ -67,24 +52,6 @@ def _invalid_target_result(name: str, target: str, problem: str, start: float) -
         "duration_seconds": round(time.time() - start, 1),
         "detail": {"target": target},
     }
-
-
-def _find_build_target(project_root: str) -> str | None:
-    """Find a .sln first, else the first .csproj, skipping build-output dirs.
-
-    Deliberately excludes ``.slnx`` (the newer XML solution format): the
-    .NET 8 SDK's ``dotnet build`` CLI doesn't understand it yet and fails
-    with "MSB4068: The element <Solution> is unrecognized" even though the
-    file itself is valid. Falling through to a ``.csproj`` avoids that.
-    """
-    root = Path(project_root)
-    matches = sorted(p for p in root.rglob("*.sln") if not _EXCLUDED_DIR_PARTS & set(p.parts))
-    if matches:
-        return str(matches[0])
-    matches = sorted(p for p in root.rglob("*.csproj") if not _EXCLUDED_DIR_PARTS & set(p.parts))
-    if matches:
-        return str(matches[0])
-    return None
 
 
 def main() -> None:
@@ -98,9 +65,9 @@ def main() -> None:
         result = {
             "name": "dotnet-build",
             "passed": True,
-            "output": "No .cs/.csproj/.sln files changed — skipped",
+            "output": "No .cs/.csproj/.sln/.slnx files changed — skipped",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": {"status": "SKIPPED", "skip_reason": "No .cs/.csproj/.sln files changed — skipped"},
+            "detail": {"status": "SKIPPED", "skip_reason": "No .cs/.csproj/.sln/.slnx files changed — skipped"},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
@@ -122,44 +89,60 @@ def main() -> None:
         sys.exit(0)
         return
 
-    configured = _configured_target(context)
-    problem = _target_problem(configured) if configured is not None else None
+    configured = _dotnet_target.configured_target(context)
+    problem = _dotnet_target.target_problem(configured) if configured is not None else None
     if configured is not None and problem is not None:
         json.dump(_invalid_target_result("dotnet-build", configured, problem, start), sys.stdout)
         sys.exit(1)
         return
-    target = configured or _find_build_target(project_root)
-    if target is None:
+    targets = [configured] if configured else _dotnet_target.find_targets(project_root, dotnet_bin)
+    if not targets:
         result = {
             "name": "dotnet-build",
             "passed": True,
-            "output": "No .sln/.csproj found — skipped (non-.NET project?)",
+            "output": "No .sln/.slnx/.csproj found — skipped (non-.NET project?)",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": {"status": "SKIPPED", "skip_reason": "No .sln/.csproj found — skipped (non-.NET project?)"},
+            "detail": {
+                "status": "SKIPPED",
+                "skip_reason": "No .sln/.slnx/.csproj found — skipped (non-.NET project?)",
+            },
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
         return
 
-    build_result = subprocess.run(
-        [dotnet_bin, "build", target, "--nologo"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd=project_root,
-        timeout=110,
-        check=False,
-    )
-    output = build_result.stdout + ("\n" + build_result.stderr if build_result.stderr else "")
-    passed = build_result.returncode == 0
+    outputs: list[str] = []
+    passed = True
+    deadline = start + 110
+    for target in targets:
+        try:
+            build_result = subprocess.run(
+                [dotnet_bin, "build", target, "--nologo"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=project_root,
+                timeout=max(1.0, deadline - time.time()),
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            outputs.append((f"== {target} ==\n" if len(targets) > 1 else "") + f"timed out after budget: {target}")
+            passed = False
+            break
+        output = build_result.stdout + ("\n" + build_result.stderr if build_result.stderr else "")
+        outputs.append((f"== {target} ==\n" if len(targets) > 1 else "") + output.strip())
+        passed = passed and build_result.returncode == 0
 
+    detail: dict = {"targets": targets}
+    if len(targets) == 1:
+        detail["target"] = targets[0]
     result = {
         "name": "dotnet-build",
         "passed": passed,
-        "output": output.strip(),
+        "output": "\n".join(outputs),
         "duration_seconds": round(time.time() - start, 1),
-        "detail": {"target": target},
+        "detail": detail,
     }
     json.dump(result, sys.stdout)
     sys.exit(0 if passed else 1)
