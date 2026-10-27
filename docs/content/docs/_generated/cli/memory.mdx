@@ -164,6 +164,9 @@ Try 'ydk memory --help' for help.
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --sprint        TEXT  Sprint/milestone to review                             │
 │ --epic          TEXT  Epic ID to review instead of a sprint                  │
+│ --missing             List finished epics without a retro (read-only query;  │
+│                       ignores learning.require_epic_retro).                  │
+│ --json                With --missing: print a JSON array of {epic_id, title}.│
 │ --help                Show this message and exit.                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```

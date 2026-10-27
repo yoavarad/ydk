@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -364,3 +365,85 @@ def test_memory_retrospective_missing_credentials_reported(
     assert result.exit_code == 1
     assert "YDK_TEST_MISSING_KEY" in result.output
     mock_cls.assert_not_called()
+
+
+def _missing_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Local epic repo with one done epic, one open epic; returns (repo, done_id, open_id)."""
+    from ydk.models.pm import EpicCreate
+    from ydk.repositories.local.epics import LocalEpicRepository
+
+    monkeypatch.chdir(tmp_path)
+    repo = LocalEpicRepository(tmp_path / ".ydk")
+    done_id = repo.create_epic(EpicCreate(title="Finished epic")).id
+    open_id = repo.create_epic(EpicCreate(title="Open epic")).id
+    repo.update_status(done_id, "done")
+    return repo, done_id, open_id
+
+
+@patch("ydk.repositories.factory.get_epic_repository")
+def test_memory_retrospective_missing_lists_tsv(
+    mock_epic_factory: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, done_id, open_id = _missing_setup(tmp_path, monkeypatch)
+    mock_epic_factory.return_value = repo
+    result = runner.invoke(app, ["memory", "retrospective", "--missing"])
+    assert result.exit_code == 0
+    assert f"{done_id}\tFinished epic" in result.output
+    assert open_id not in result.output
+    assert not (tmp_path / ".ydk" / "retros").exists()
+
+
+@patch("ydk.repositories.factory.get_epic_repository")
+def test_memory_retrospective_missing_json(
+    mock_epic_factory: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, done_id, _ = _missing_setup(tmp_path, monkeypatch)
+    mock_epic_factory.return_value = repo
+    result = runner.invoke(app, ["memory", "retrospective", "--missing", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == [{"epic_id": done_id, "title": "Finished epic"}]
+
+
+@patch("ydk.repositories.factory.get_epic_repository")
+def test_memory_retrospective_missing_retro_file_excludes_epic(
+    mock_epic_factory: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, done_id, _ = _missing_setup(tmp_path, monkeypatch)
+    mock_epic_factory.return_value = repo
+    (tmp_path / ".ydk" / "retros").mkdir(parents=True)
+    (tmp_path / ".ydk" / "retros" / f"{done_id}.md").write_text("x", encoding="utf-8")
+    text = runner.invoke(app, ["memory", "retrospective", "--missing"])
+    assert text.exit_code == 0
+    assert "No epics missing a retrospective." in text.output
+    as_json = runner.invoke(app, ["memory", "retrospective", "--missing", "--json"])
+    assert as_json.exit_code == 0
+    assert json.loads(as_json.output) == []
+
+
+@patch("ydk.repositories.factory.get_epic_repository")
+def test_memory_retrospective_missing_ignores_require_epic_retro_config(
+    mock_epic_factory: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, done_id, _ = _missing_setup(tmp_path, monkeypatch)
+    mock_epic_factory.return_value = repo
+    (tmp_path / ".ydk" / "config.yaml").write_text("learning:\n  require_epic_retro: false\n", encoding="utf-8")
+    result = runner.invoke(app, ["memory", "retrospective", "--missing"])
+    assert result.exit_code == 0
+    assert done_id in result.output
+
+
+def test_memory_retrospective_missing_conflicts_exit_1() -> None:
+    for extra in (["--epic", "E-1"], ["--sprint", "1"]):
+        result = runner.invoke(app, ["memory", "retrospective", "--missing", *extra])
+        assert result.exit_code == 1
+
+
+def test_memory_retrospective_json_requires_missing() -> None:
+    result = runner.invoke(app, ["memory", "retrospective", "--json"])
+    assert result.exit_code == 1
+
+
+@patch("ydk.repositories.factory.get_epic_repository", side_effect=RuntimeError("backend down"))
+def test_memory_retrospective_missing_backend_error_exit_1(_f: MagicMock) -> None:
+    result = runner.invoke(app, ["memory", "retrospective", "--missing"])
+    assert result.exit_code == 1
