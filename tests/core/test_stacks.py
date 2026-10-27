@@ -17,6 +17,25 @@ def test_python_cli_stack_exists() -> None:
     assert "python-cli" in STACKS
 
 
+def test_python_cli_basic_stack_has_no_rest_plugins_or_template() -> None:
+    stack = get_stack("python-cli-basic")
+    assert stack["verifications"] == ["lint-ruff", "types-ty", "tests-pytest", "python-quality"]
+    assert "templates" not in stack
+
+
+def test_python_cli_stack_unchanged() -> None:
+    stack = get_stack("python-cli")
+    assert stack["verifications"] == [
+        "lint-ruff",
+        "types-ty",
+        "tests-pytest",
+        "python-quality",
+        "cli-error-handling",
+        "cli-output-format",
+    ]
+    assert stack["templates"] == ["python-typer-cli"]
+
+
 def test_nextjs_fsd_stack_exists() -> None:
     assert "nextjs-fsd" in STACKS
 

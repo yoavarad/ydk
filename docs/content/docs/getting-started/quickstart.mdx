@@ -95,6 +95,7 @@ When you pass `--stack` to `ydk init`, YDK pre-configures verification plugins a
 
 - **`python-fastapi`** -- Enables FastAPI-specific plugins (adapter isolation, core purity, route delegation, no-mock rules) alongside the standard Python checks
 - **`python-cli`** -- Enables CLI-specific plugins (error handling, output format) with standard Python checks
+- **`python-cli-basic`** -- Standard Python checks only (lint, types, tests, quality), no template or REST-specific CLI plugins; use for non-REST CLIs
 - **`nextjs-fsd`** -- Enables Next.js and Feature-Sliced Design plugins (FSD imports, server/client boundary, page purity, module density)
 - **`terraform`** -- Enables Terraform plugins (security, tagging, format, dangling resources)
 

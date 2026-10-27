@@ -476,7 +476,7 @@ def init_command(
     force: bool = typer.Option(False, "--force", help="Overwrite existing config"),
     remote: str = typer.Option("local", "--remote", "-r", help="Remote type: local, github, gitlab"),
     stack: str = typer.Option(
-        "", "--stack", "-s", help="Technology stack: python-fastapi, python-cli, nextjs-fsd, terraform, dotnet, go"
+        "", "--stack", "-s", help="Technology stack: python-fastapi, python-cli, python-cli-basic, nextjs-fsd, terraform, dotnet, go"
     ),
 ) -> None:
     """Initialize YDK in a project directory."""

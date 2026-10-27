@@ -39,6 +39,14 @@ STACKS: dict[str, dict[str, Any]] = {
         ],
         "templates": ["python-typer-cli"],
     },
+    "python-cli-basic": {
+        "verifications": [
+            "lint-ruff",
+            "types-ty",
+            "tests-pytest",
+            "python-quality",
+        ],
+    },
     "nextjs-fsd": {
         "verifications": [
             "nextjs-fsd-imports",
