@@ -156,3 +156,27 @@ def test_sdk_supports_slnx_garbage() -> None:
 def test_sdk_supports_slnx_timeout() -> None:
     with patch("subprocess.run", MagicMock(side_effect=subprocess.TimeoutExpired("dotnet", 15))):
         assert mod.sdk_supports_slnx("dotnet", ".") is False
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        ["src/Foo.cs"],
+        ["a/App.fsproj"],
+        ["x.SLNX"],
+        ["Directory.Build.props"],
+        ["build/Common.targets"],
+        ["src/.editorconfig"],
+        ["global.json"],
+        ["sub/NuGet.Config"],
+        ["nuget.config"],
+        ["README.md", "src/Main.CS"],
+    ],
+)
+def test_affects_dotnet_build_true(files: list[str]) -> None:
+    assert mod.affects_dotnet_build(files) is True
+
+
+@pytest.mark.parametrize("files", [[], ["README.md"], ["docs/guide.md", "package.json", "notglobal.json"]])
+def test_affects_dotnet_build_false(files: list[str]) -> None:
+    assert mod.affects_dotnet_build(files) is False
