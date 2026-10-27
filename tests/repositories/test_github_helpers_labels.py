@@ -16,6 +16,11 @@ class TestRequiredLabels:
             "in-review",
             "blocked-by-code",
             "blocked-by-decision",
+            "open",
+            "ready",
+            "blocked",
+            "done",
+            "quick",
         ]
 
     def test_no_duplicate_names(self) -> None:

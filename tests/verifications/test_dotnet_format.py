@@ -1,10 +1,11 @@
 """Tests for the dotnet-format verification plugin.
 
 Covers: fail-open when no .NET SDK is installed, fail-open when no .NET
-project is found, deterministic target discovery when multiple .sln files
-are present, .slnx files being ignored, and format-fail/format-pass result
-mapping. All subprocess and dotnet-discovery calls are mocked -- these
-tests do not require a real .NET SDK to be installed.
+project is found, multi-target format runs (all .csproj when no solution),
+.slnx use gated on SDK version, third_party exclusion, configured targets,
+and format-fail/format-pass result mapping. Discovery itself is tested in
+test_dotnet_target.py. All subprocess calls are mocked except one
+real-subprocess smoke test -- no real .NET SDK is required.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -96,74 +98,142 @@ class TestHasSdk:
         assert mod._has_sdk("dotnet") is False
 
 
-class TestFindFormatTarget:
-    """_find_format_target discovers .sln first, falls back to .csproj, ignores .slnx."""
+class TestMultiTarget:
+    """main() formats every discovered target; .slnx only when the SDK supports it."""
 
-    def test_returns_none_when_nothing_found(self, tmp_path: Path) -> None:
+    def _run(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        version: str = "8.0.100",
+        failing: str | None = None,
+    ) -> tuple[dict, list[list[str]]]:
         mod = _load_check_module()
+        format_calls: list[list[str]] = []
 
-        assert mod._find_format_target(str(tmp_path)) is None
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            if "--version" in cmd:
+                return _fake_result(0, stdout=version + "\n")
+            if "--list-sdks" in cmd:
+                return _fake_result(0, stdout="8.0.100 [x]\n")
+            format_calls.append(cmd)
+            if failing and failing in cmd[2]:
+                return _fake_result(2, stdout="bad format\n")
+            return _fake_result(0, stdout="ok\n")
 
-    def test_picks_sorted_first_sln_when_multiple_present(self, tmp_path: Path) -> None:
-        """Path.rglob order is filesystem-dependent -- candidates must be sorted."""
-        (tmp_path / "Zeta.sln").write_text("")
-        (tmp_path / "Alpha.sln").write_text("")
-        (tmp_path / "Mid.sln").write_text("")
-        mod = _load_check_module()
+        monkeypatch.setattr(mod.shutil, "which", lambda name: "dotnet")
+        monkeypatch.setattr(mod.subprocess, "run", fake_run)
+        return _run_main(mod, monkeypatch, tmp_path), format_calls
 
-        target = mod._find_format_target(str(tmp_path))
+    def _two_projects(self, tmp_path: Path) -> None:
+        for name in ("a", "b"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / f"{name.upper()}.csproj").write_text("")
 
-        assert target is not None
-        assert Path(target).name == "Alpha.sln"
+    def test_all_csproj_formatted_when_no_solution(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        self._two_projects(tmp_path)
+        data, format_calls = self._run(monkeypatch, tmp_path)
 
-    def test_falls_back_to_csproj_when_no_sln(self, tmp_path: Path) -> None:
-        (tmp_path / "App.csproj").write_text("")
-        mod = _load_check_module()
+        assert data["passed"] is True
+        assert len(format_calls) == 2
+        assert len(data["detail"]["targets"]) == 2
+        assert "target" not in data["detail"]
+        assert all(c[1] == "format" and c[-1] == "--verify-no-changes" for c in format_calls)
+        assert "A.csproj ==" in data["output"]
+        assert "B.csproj ==" in data["output"]
 
-        target = mod._find_format_target(str(tmp_path))
+    def test_one_failing_target_fails_overall(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        self._two_projects(tmp_path)
+        data, format_calls = self._run(monkeypatch, tmp_path, failing="B.csproj")
 
-        assert target is not None
-        assert Path(target).name == "App.csproj"
+        assert data["passed"] is False
+        assert len(format_calls) == 2
+        assert "bad format" in data["output"]
 
-    def test_picks_sorted_first_csproj_when_multiple_present(self, tmp_path: Path) -> None:
-        (tmp_path / "Zeta.csproj").write_text("")
-        (tmp_path / "Alpha.csproj").write_text("")
-        mod = _load_check_module()
-
-        target = mod._find_format_target(str(tmp_path))
-
-        assert target is not None
-        assert Path(target).name == "Alpha.csproj"
-
-    def test_slnx_files_are_never_matched(self, tmp_path: Path) -> None:
-        """.slnx fails dotnet format with a raw MSB4068 parse error -- excluded entirely."""
+    def test_slnx_used_when_sdk_supports_it(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         (tmp_path / "App.slnx").write_text("")
-        mod = _load_check_module()
+        data, format_calls = self._run(monkeypatch, tmp_path, version="9.0.200")
 
-        assert mod._find_format_target(str(tmp_path)) is None
+        assert data["passed"] is True
+        assert len(format_calls) == 1
+        assert format_calls[0][2].endswith("App.slnx")
+        assert data["detail"]["target"].endswith("App.slnx")
 
-    def test_slnx_ignored_falls_back_to_csproj(self, tmp_path: Path) -> None:
+    def test_slnx_skipped_for_csproj_when_sdk_too_old(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         (tmp_path / "App.slnx").write_text("")
         (tmp_path / "App.csproj").write_text("")
+        data, format_calls = self._run(monkeypatch, tmp_path, version="8.0.100")
+
+        assert data["passed"] is True
+        assert len(format_calls) == 1
+        assert format_calls[0][2].endswith("App.csproj")
+
+    def test_third_party_csproj_ignored(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        (tmp_path / "third_party").mkdir()
+        (tmp_path / "third_party" / "Vendor.csproj").write_text("")
+        (tmp_path / "Real.csproj").write_text("")
+        data, format_calls = self._run(monkeypatch, tmp_path)
+
+        assert len(format_calls) == 1
+        assert format_calls[0][2].endswith("Real.csproj")
+        assert data["passed"] is True
+
+
+class TestBudget:
+    """main() shares one total budget across targets and fails cleanly on timeout."""
+
+    def _run(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, timeout_on_format: bool) -> tuple[dict, list[dict]]:
         mod = _load_check_module()
+        format_calls: list[dict] = []
 
-        target = mod._find_format_target(str(tmp_path))
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            if "--version" in cmd:
+                return _fake_result(0, stdout="8.0.100\n")
+            if "--list-sdks" in cmd:
+                return _fake_result(0, stdout="8.0.100 [x]\n")
+            format_calls.append({"cmd": cmd, **kwargs})
+            if timeout_on_format:
+                raise mod.subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+            return _fake_result(0, stdout="ok\n")
 
-        assert target is not None
-        assert Path(target).name == "App.csproj"
+        monkeypatch.setattr(mod.shutil, "which", lambda name: "dotnet")
+        monkeypatch.setattr(mod.subprocess, "run", fake_run)
+        for name in ("a", "b"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / f"{name.upper()}.csproj").write_text("")
+        return _run_main(mod, monkeypatch, tmp_path), format_calls
 
-    def test_skips_excluded_directories(self, tmp_path: Path) -> None:
-        (tmp_path / "bin").mkdir()
-        (tmp_path / "bin" / "Ignored.sln").write_text("")
-        (tmp_path / "obj").mkdir()
-        (tmp_path / "obj" / "Ignored2.sln").write_text("")
-        (tmp_path / "Real.sln").write_text("")
-        mod = _load_check_module()
+    def test_timeout_fails_emits_json_and_stops(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        data, format_calls = self._run(monkeypatch, tmp_path, timeout_on_format=True)
 
-        target = mod._find_format_target(str(tmp_path))
+        assert data["passed"] is False
+        assert "timed out" in data["output"]
+        assert len(format_calls) == 1
 
-        assert target is not None
-        assert Path(target).name == "Real.sln"
+    def test_format_timeout_within_budget(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        _, format_calls = self._run(monkeypatch, tmp_path, timeout_on_format=False)
+
+        assert len(format_calls) == 2
+        assert all(1.0 <= c["timeout"] <= 110 for c in format_calls)
+
+
+class TestRealSubprocess:
+    """Run check.py as a real subprocess -- proves the shared helper import works."""
+
+    def test_no_dotnet_on_path_skips(self, tmp_path: Path) -> None:
+        import subprocess
+
+        proc = subprocess.run(
+            [sys.executable, str(CHECK_SCRIPT)],
+            input=json.dumps({"project_root": str(tmp_path)}),
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PATH": ""},
+            check=False,
+        )
+
+        assert proc.returncode == 0
+        assert "dotnet SDK not found" in proc.stdout
 
 
 class TestMainFailOpen:
@@ -195,7 +265,7 @@ class TestMainFailOpen:
         data = _run_main(mod, monkeypatch, tmp_path)
 
         assert data["passed"] is True
-        assert "no .sln/.csproj" in data["output"].lower()
+        assert "no .sln/.slnx/.csproj" in data["output"].lower()
 
 
 class TestMainFormatResult:
@@ -254,7 +324,7 @@ class TestChangedFilesScoping:
         data = _run_main(mod, monkeypatch, tmp_path, changed_files=["src/Foo.cs"])
 
         assert data["passed"] is True
-        assert "no .sln/.csproj" in data["output"].lower()
+        assert "no .sln/.slnx/.csproj" in data["output"].lower()
 
     def test_absent_changed_files_runs_unconditionally(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         mod = _load_check_module()
@@ -264,7 +334,7 @@ class TestChangedFilesScoping:
         data = _run_main(mod, monkeypatch, tmp_path)
 
         assert data["passed"] is True
-        assert "no .sln/.csproj" in data["output"].lower()
+        assert "no .sln/.slnx/.csproj" in data["output"].lower()
 
     def test_runs_normally_when_uppercase_cs_extension_changed(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -277,7 +347,7 @@ class TestChangedFilesScoping:
         data = _run_main(mod, monkeypatch, tmp_path, changed_files=["src/Main.CS"])
 
         assert data["passed"] is True
-        assert "no .sln/.csproj" in data["output"].lower()
+        assert "no .sln/.slnx/.csproj" in data["output"].lower()
 
 
 class TestConfiguredTarget:
@@ -321,6 +391,13 @@ class TestConfiguredTarget:
         assert "nope.sln" in data["output"]
         assert all("--list-sdks" in c for c in calls)
 
+    def test_configured_slnx_accepted(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        (tmp_path / "app.slnx").write_text("")
+        data, calls = self._run(monkeypatch, tmp_path, "app.slnx")
+        assert data["passed"] is True
+        assert data["detail"]["target"] == str((tmp_path / "app.slnx").resolve())
+        assert str((tmp_path / "app.slnx").resolve()) in calls[-1]
+
     @pytest.mark.parametrize("kind", ["dir", "cs"])
     def test_non_project_target_fails_clearly(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str) -> None:
         (tmp_path / "a.sln").write_text("")
@@ -332,5 +409,5 @@ class TestConfiguredTarget:
             name = "Foo.cs"
         data, calls = self._run(monkeypatch, tmp_path, name)
         assert data["passed"] is False
-        assert ".sln or .csproj" in data["output"]
+        assert ".sln, .slnx or .csproj" in data["output"]
         assert all("--list-sdks" in c for c in calls)

@@ -502,3 +502,22 @@ def test_init_hook_scripts_written_with_lf(tmp_path: Path, monkeypatch: object) 
         path = tmp_path / rel
         if path.exists():
             assert b"\r\n" not in path.read_bytes(), rel
+
+
+def test_create_github_labels_creates_every_required_label_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_create_github_labels runs `gh label create` once per label ydk needs."""
+    from unittest.mock import MagicMock
+
+    from ydk.cli import init_cmd
+
+    run = MagicMock()
+    monkeypatch.setattr(init_cmd.subprocess, "run", run)
+    init_cmd._create_github_labels()
+    created = [call.args[0][3] for call in run.call_args_list]
+    expected = {
+        "epic", "story", "task", "open", "ready", "in-progress",
+        "in-review", "blocked", "done", "quick",
+    }  # fmt: skip
+    assert expected <= set(created)
+    assert len(created) == len(set(created))
+    assert all("--force" in call.args[0] for call in run.call_args_list)
