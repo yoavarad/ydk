@@ -2,6 +2,7 @@
 """Verification plugin: TDD enforcement -- staged source files must have test files."""
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path, PurePosixPath
@@ -35,12 +36,29 @@ def _is_guarded(filepath: str, tdd: dict) -> bool:
     return not any(pat in filepath for pat in ["__init__", "conftest", "/migrations/", "/ports/", "/tests/"])
 
 
+def _git_staged(root: str) -> list[str]:
+    """Staged (added/copied/modified/renamed) paths from git; empty if git fails."""
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "-z", "--relative", "--diff-filter=ACMR"],
+            cwd=root,
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+        )
+    except OSError:
+        return []
+    if r.returncode != 0:
+        return []
+    return [line for line in r.stdout.split("\0") if line]
+
+
 def main() -> None:
     """Run the python-tdd-guard verification check."""
     context = json.loads(sys.stdin.read())
     project_root = context["project_root"]
     config = context.get("config", {})
-    staged_files = config.get("staged_files", [])
+    staged_files = config["staged_files"] if "staged_files" in config else _git_staged(project_root)
     tdd = config.get("tdd") or {}
     start = time.time()
 

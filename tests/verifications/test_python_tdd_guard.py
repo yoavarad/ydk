@@ -66,3 +66,59 @@ def test_source_globs_without_test_globs_still_skips_tests_and_init(tmp_path: Pa
     tdd = {"source_globs": ["**/*.py"]}
     staged = ["tests/test_x.py", "pkg/conftest.py", "pkg/__init__.py"]
     assert _run(tmp_path, staged, tdd)["passed"] is True
+
+
+def _git_repo(root: Path, staged: list[str]) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    for rel in staged:
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    subprocess.run(["git", "add", "--", *staged], cwd=root, check=True)
+
+
+def _run_no_config_staged(root: Path) -> dict:
+    r = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT)],
+        input=json.dumps({"project_root": str(root), "config": {}}),
+        capture_output=True,
+        text=True,
+    )
+    return {"rc": r.returncode, **json.loads(r.stdout)}
+
+
+def test_git_staged_missing_test_fails(tmp_path: Path) -> None:
+    _git_repo(tmp_path, ["src/pkg/foo.py"])
+    data = _run_no_config_staged(tmp_path)
+    assert data["passed"] is False
+    assert "test_foo.py" in data["output"]
+
+
+def test_git_staged_with_test_passes(tmp_path: Path) -> None:
+    _git_repo(tmp_path, ["src/pkg/foo.py", "tests/test_foo.py"])
+    assert _run_no_config_staged(tmp_path)["passed"] is True
+
+
+def test_git_nothing_staged_passes(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    assert _run_no_config_staged(tmp_path)["passed"] is True
+
+
+def test_non_repo_passes(tmp_path: Path) -> None:
+    assert _run_no_config_staged(tmp_path)["passed"] is True
+
+
+def test_explicit_staged_files_take_precedence(tmp_path: Path) -> None:
+    _git_repo(tmp_path, ["src/pkg/foo.py"])
+    assert _run(tmp_path, [])["passed"] is True
+
+
+def test_git_staged_subdir_project_root(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    sub = tmp_path / "pkg"
+    (sub / "src").mkdir(parents=True)
+    (sub / "src/foo.py").write_text("")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    data = _run_no_config_staged(sub)
+    assert data["passed"] is False
+    assert "test_foo.py" in data["output"]
