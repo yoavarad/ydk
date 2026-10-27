@@ -70,3 +70,49 @@ def test_passes_when_staged_files_absent(tmp_path: Path) -> None:
 
     assert data["returncode"] == 0, data["stderr"]
     assert data["passed"] is True
+
+
+def _git_repo(root: Path, staged: list[str]) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    for rel in staged:
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    subprocess.run(["git", "add", "--", *staged], cwd=root, check=True)
+
+
+def test_git_staged_missing_test_fails(tmp_path: Path) -> None:
+    _git_repo(tmp_path, ["src/Foo.cs"])
+    data = _run_check(tmp_path)
+    assert data["passed"] is False
+    assert "FooTests.cs" in data["output"]
+
+
+def test_git_staged_with_test_passes(tmp_path: Path) -> None:
+    _git_repo(tmp_path, ["src/Foo.cs", "tests/App.Tests/FooTests.cs"])
+    assert _run_check(tmp_path)["passed"] is True
+
+
+def test_git_nothing_staged_passes(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    assert _run_check(tmp_path)["passed"] is True
+
+
+def test_non_repo_passes(tmp_path: Path) -> None:
+    assert _run_check(tmp_path)["passed"] is True
+
+
+def test_explicit_staged_files_take_precedence(tmp_path: Path) -> None:
+    _git_repo(tmp_path, ["src/Foo.cs"])
+    assert _run_check(tmp_path, {"staged_files": []})["passed"] is True
+
+
+def test_git_staged_subdir_project_root(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    sub = tmp_path / "pkg"
+    (sub / "src").mkdir(parents=True)
+    (sub / "src/Foo.cs").write_text("")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    data = _run_check(sub)
+    assert data["passed"] is False
+    assert "FooTests.cs" in data["output"]
