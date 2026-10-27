@@ -1,3 +1,26 @@
+## v1.8.0 (2026-10-27)
+
+### Feat
+
+- **verifications**: python-file-length scans configurable roots and limit
+- **stacks**: add python-cli-basic for non-REST CLIs
+- **memory**: add --missing/--json to memory retrospective
+- **init**: create all labels ydk needs for github remote
+
+### Fix
+
+- **verifications**: dotnet-tdd-guard reads staged files from git when config.staged_files absent
+- **verifications**: python-tdd-guard reads staged files from git when config.staged_files absent
+- **init**: skip existing labels instead of --force overwrite
+- **task**: comment ignored remove-label rc, warn on failure, realistic gh fakes, CLI close test
+- **verifications**: widen dotnet skip rule to build-affecting files
+- **tasks**: remove stale status labels on GitLab close, document linked-issue exclusion
+- **memory**: sanitize titles in --missing output, assert stderr message
+- **task**: remove in-review/in-progress labels when GitHub task is closed
+- **verifications**: shared dotnet target discovery with .slnx and all-csproj support
+- **task**: treat missing todos.yaml as empty registry on task start
+- **component**: read component files as UTF-8 on Windows
+
 ## v1.7.1 (2026-10-26)
 
 ### Fix
