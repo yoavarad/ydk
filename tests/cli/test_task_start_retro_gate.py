@@ -123,3 +123,16 @@ def test_config_opt_out_bypasses(mock_build: MagicMock, tmp_path: Path, monkeypa
     result = runner.invoke(app, ["task", "start", "T-001"])
     assert result.exit_code == 0
     lc.start.assert_called_once()
+
+
+@patch("ydk.cli.task_cmd._build_lifecycle")
+def test_missing_todos_registry_proceeds(mock_build: MagicMock, tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    (tmp_path / ".ydk").mkdir()
+    lc = MagicMock()
+    lc.start.return_value = {"worktree": ".ydk/worktrees/T-001"}
+    mock_build.return_value = lc
+
+    result = runner.invoke(app, ["task", "start", "T-001"])
+    assert result.exit_code == 0
+    lc.start.assert_called_once()

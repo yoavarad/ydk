@@ -50,4 +50,9 @@ REQUIRED_LABELS: list[tuple[str, str, str]] = [
     ("in-review", "1d76db", "Work in code review"),
     ("blocked-by-code", "d73a4a", "Blocked by unmerged code dependency"),
     ("blocked-by-decision", "e99695", "Blocked pending a decision"),
+    ("open", "0e8a16", "Task is open"),
+    ("ready", "c2e0c6", "Task is ready to start"),
+    ("blocked", "b60205", "Task is blocked"),
+    ("done", "5319e7", "Task is done"),
+    ("quick", "bfdadc", "Quick task"),
 ]
