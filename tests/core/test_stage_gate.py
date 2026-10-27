@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
@@ -322,12 +323,16 @@ class TestCliPreconditions:
         assert result.exit_code != 0
         assert "Spec verification required" in result.output
 
-    def test_task_start_fails_without_todos(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_task_start_succeeds_without_todos(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".ydk").mkdir()
-        result = runner.invoke(app, ["task", "start", "T-001"])
-        assert result.exit_code != 0
-        assert "No TODO registry found" in result.output
+        lc = MagicMock()
+        lc.start.return_value = {"worktree": ".ydk/worktrees/T-001"}
+        with patch("ydk.cli.task_cmd._build_lifecycle", return_value=lc):
+            result = runner.invoke(app, ["task", "start", "T-001"])
+        assert result.exit_code == 0
+        assert "No TODO registry found" not in result.output
+        lc.start.assert_called_once()
 
 
 class TestStateAdvancement:

@@ -235,6 +235,8 @@ class _FakeGh:
                 if str(issue["number"]) == cmd[3]:
                     issue["state"] = "CLOSED"
             return subprocess.CompletedProcess(cmd, 0, "", "")
+        if cmd[:3] == ["gh", "issue", "edit"] and "--remove-label" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
         raise AssertionError(f"unexpected gh call: {cmd}")
 
 

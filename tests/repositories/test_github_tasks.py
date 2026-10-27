@@ -313,6 +313,29 @@ class TestUpdateStatus:
         with patch("ydk.repositories.github.tasks.run_gh", return_value=fake), pytest.raises(RuntimeError):
             repo.update_status(42, "closed")
 
+    @pytest.mark.parametrize("status", ["done", "closed"])
+    def test_close_removes_stale_labels_before_close(self, status: str) -> None:
+        repo = GitHubTaskRepository()
+        fake = _fake_run()
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.update_status(42, status)
+        cmds = [c[0][0] for c in mock_run.call_args_list]
+        assert ["gh", "issue", "edit", "42", "--remove-label", "in-review"] in cmds
+        assert ["gh", "issue", "edit", "42", "--remove-label", "in-progress"] in cmds
+        assert cmds[-1] == ["gh", "issue", "close", "42"]
+
+    def test_remove_label_failure_does_not_raise(self) -> None:
+        repo = GitHubTaskRepository()
+
+        def fake_gh(cmd: list[str], *args: object, **kwargs: object) -> object:
+            if "--remove-label" in cmd:
+                return _fake_run(returncode=1, stderr="label not found")
+            return _fake_run()
+
+        with patch("ydk.repositories.github.tasks.run_gh", side_effect=fake_gh) as mock_run:
+            repo.update_status(42, "done")
+        assert mock_run.call_args_list[-1][0][0] == ["gh", "issue", "close", "42"]
+
 
 # ---------------------------------------------------------------------------
 # add_comment

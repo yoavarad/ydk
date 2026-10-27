@@ -215,6 +215,8 @@ class GitHubTaskRepository:
         """Update an issue's status by toggling open/closed or adding labels."""
         num = str(issue_number)
         if status in ("closed", "done"):
+            for lbl in ("in-review", "in-progress"):
+                run_gh(["gh", "issue", "edit", num, "--remove-label", lbl])
             cmd = ["gh", "issue", "close", num]
         elif status == "open":
             cmd = ["gh", "issue", "reopen", num]

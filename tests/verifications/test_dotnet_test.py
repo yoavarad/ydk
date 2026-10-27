@@ -1,9 +1,10 @@
 """Tests for the dotnet-test verification plugin.
 
 Covers: fail-open when the .NET SDK isn't installed (including the bare
-muxer-with-no-SDK case), fail-open when no .NET project is found, target
-discovery (sorted .sln/.csproj candidates, .slnx exclusion, the Test/Tests
-substring heuristic), and pass/fail mapping from ``dotnet test``'s exit code.
+muxer-with-no-SDK case), fail-open when no .NET project is found, running
+``dotnet test`` once per discovered target (discovery itself is covered in
+test_dotnet_target.py), .slnx SDK gating, summed pass/fail counts, configured
+targets, and a real-subprocess run proving the shared helper import works.
 """
 
 from __future__ import annotations
@@ -11,7 +12,9 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
@@ -87,64 +90,28 @@ class TestHasSdk:
             assert mod._has_sdk("dotnet") is False
 
 
-class TestFindTestTarget:
-    """_find_test_target discovers .sln first, else a Test/Tests-looking .csproj."""
+def _make_fake_run(
+    calls: list[list[str]],
+    version: str = "8.0.100",
+    test_results: dict[str, subprocess.CompletedProcess] | None = None,
+) -> object:
+    """Fake subprocess.run dispatching on the dotnet subcommand; records every call."""
 
-    def test_none_when_no_dotnet_files(self, tmp_path: Path) -> None:
-        mod = _load_check_module()
-        assert mod._find_test_target(str(tmp_path)) is None
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(cmd)
+        if "--list-sdks" in cmd:
+            return _completed(0, stdout="8.0.100 [C:\\dotnet\\sdk]\n")
+        if "--version" in cmd:
+            return _completed(0, stdout=version + "\n")
+        if cmd[1] == "test":
+            return (test_results or {}).get(cmd[2], _completed(0, stdout="Passed!  - Failed: 0, Passed: 1\n"))
+        raise AssertionError(f"unexpected command: {cmd}")
 
-    def test_sln_preferred_over_csproj(self, tmp_path: Path) -> None:
-        mod = _load_check_module()
-        (tmp_path / "App.sln").write_text("")
-        (tmp_path / "App.Tests.csproj").write_text("")
-        assert mod._find_test_target(str(tmp_path)) == str(tmp_path / "App.sln")
+    return fake_run
 
-    def test_sorted_candidate_selection_with_multiple_sln(self, tmp_path: Path) -> None:
-        """Path.rglob() order is filesystem-dependent -- must sort before picking [0]."""
-        mod = _load_check_module()
-        (tmp_path / "zzz").mkdir()
-        (tmp_path / "aaa").mkdir()
-        (tmp_path / "zzz" / "Zeta.sln").write_text("")
-        (tmp_path / "aaa" / "Alpha.sln").write_text("")
-        assert mod._find_test_target(str(tmp_path)) == str(tmp_path / "aaa" / "Alpha.sln")
 
-    def test_sorted_candidate_selection_with_multiple_test_csproj(self, tmp_path: Path) -> None:
-        mod = _load_check_module()
-        (tmp_path / "Zeta.Tests.csproj").write_text("")
-        (tmp_path / "Alpha.Tests.csproj").write_text("")
-        assert mod._find_test_target(str(tmp_path)) == str(tmp_path / "Alpha.Tests.csproj")
-
-    def test_slnx_files_ignored(self, tmp_path: Path) -> None:
-        """.slnx isn't matched at all -- the .NET 8 SDK fails on it with a raw MSB4068 error."""
-        mod = _load_check_module()
-        (tmp_path / "App.slnx").write_text("")
-        assert mod._find_test_target(str(tmp_path)) is None
-
-    def test_slnx_ignored_falls_back_to_test_csproj(self, tmp_path: Path) -> None:
-        mod = _load_check_module()
-        (tmp_path / "App.slnx").write_text("")
-        (tmp_path / "App.Tests.csproj").write_text("")
-        assert mod._find_test_target(str(tmp_path)) == str(tmp_path / "App.Tests.csproj")
-
-    def test_non_test_csproj_not_matched(self, tmp_path: Path) -> None:
-        mod = _load_check_module()
-        (tmp_path / "App.csproj").write_text("")
-        assert mod._find_test_target(str(tmp_path)) is None
-
-    @pytest.mark.parametrize("name", ["Foo.Tests.csproj", "FooTest.csproj", "Tests.csproj"])
-    def test_test_tests_substring_heuristic_matches(self, tmp_path: Path, name: str) -> None:
-        mod = _load_check_module()
-        (tmp_path / name).write_text("")
-        assert mod._find_test_target(str(tmp_path)) == str(tmp_path / name)
-
-    def test_excluded_dirs_skipped(self, tmp_path: Path) -> None:
-        mod = _load_check_module()
-        for d in ["bin", "obj", ".git", ".ydk", ".vs", "node_modules"]:
-            sub = tmp_path / d
-            sub.mkdir()
-            (sub / "Ignored.sln").write_text("")
-        assert mod._find_test_target(str(tmp_path)) is None
+def _test_calls(calls: list[list[str]]) -> list[list[str]]:
+    return [c for c in calls if len(c) > 1 and c[1] == "test"]
 
 
 class TestMain:
@@ -190,37 +157,189 @@ class TestMain:
     ) -> None:
         mod = _load_check_module()
         (tmp_path / "App.Tests.csproj").write_text("")
-        responses = iter(
-            [
-                _completed(0, stdout="8.0.100\n"),  # --list-sdks
-                _completed(0, stdout="Passed!  - Failed: 0, Passed: 3\n"),  # dotnet test
-            ]
-        )
+        target = str(tmp_path / "App.Tests.csproj")
+        fake = _make_fake_run([], test_results={target: _completed(0, stdout="Passed!  - Failed: 0, Passed: 3\n")})
         with (
             patch.object(mod.shutil, "which", return_value="dotnet"),
-            patch.object(mod.subprocess, "run", side_effect=lambda *a, **k: next(responses)),
+            patch.object(mod.subprocess, "run", side_effect=fake),
         ):
             data = _run_main(mod, tmp_path, monkeypatch, capsys)
         assert data["passed"] is True
-        assert data["detail"]["target"] == str(tmp_path / "App.Tests.csproj")
+        assert data["detail"]["target"] == target
+        assert data["detail"]["targets"] == [target]
+        assert data["detail"]["passed_count"] == 3
 
     def test_maps_dotnet_test_fail_to_failed_result(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
     ) -> None:
         mod = _load_check_module()
         (tmp_path / "App.Tests.csproj").write_text("")
-        responses = iter(
-            [
-                _completed(0, stdout="8.0.100\n"),  # --list-sdks
-                _completed(1, stdout="Failed!  - Failed: 2, Passed: 1\n"),  # dotnet test
-            ]
-        )
+        target = str(tmp_path / "App.Tests.csproj")
+        fake = _make_fake_run([], test_results={target: _completed(1, stdout="Failed!  - Failed: 2, Passed: 1\n")})
         with (
             patch.object(mod.shutil, "which", return_value="dotnet"),
-            patch.object(mod.subprocess, "run", side_effect=lambda *a, **k: next(responses)),
+            patch.object(mod.subprocess, "run", side_effect=fake),
         ):
             data = _run_main(mod, tmp_path, monkeypatch, capsys)
         assert data["passed"] is False
+
+    def test_runs_every_test_project_when_no_solution(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        mod = _load_check_module()
+        (tmp_path / "app").mkdir()
+        (tmp_path / "lib").mkdir()
+        app_tests = str(tmp_path / "app" / "App.Tests.csproj")
+        lib_tests = str(tmp_path / "lib" / "Lib.Tests.csproj")
+        (tmp_path / "app" / "App.Tests.csproj").write_text("")
+        (tmp_path / "lib" / "Lib.Tests.csproj").write_text("")
+        (tmp_path / "app" / "App.csproj").write_text("")
+        calls: list[list[str]] = []
+        fake = _make_fake_run(
+            calls,
+            test_results={
+                app_tests: _completed(0, stdout="Passed!  - Failed: 0, Passed: 3\n"),
+                lib_tests: _completed(0, stdout="Passed!  - Failed: 0, Passed: 4\n"),
+            },
+        )
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=fake),
+        ):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert sorted(c[2] for c in _test_calls(calls)) == sorted([app_tests, lib_tests])
+        assert sorted(data["detail"]["targets"]) == sorted([app_tests, lib_tests])
+        assert "target" not in data["detail"]
+        assert data["passed"] is True
+        assert data["detail"]["passed_count"] == 7
+        assert data["detail"]["failed"] == 0
+        assert f"== {app_tests} ==" in data["output"]
+
+    def test_one_failing_project_fails_and_counts_are_summed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        mod = _load_check_module()
+        app_tests = str(tmp_path / "App.Tests.csproj")
+        lib_tests = str(tmp_path / "Lib.Tests.csproj")
+        (tmp_path / "App.Tests.csproj").write_text("")
+        (tmp_path / "Lib.Tests.csproj").write_text("")
+        fake = _make_fake_run(
+            [],
+            test_results={
+                app_tests: _completed(0, stdout="Passed!  - Failed: 0, Passed: 3\n"),
+                lib_tests: _completed(1, stdout="Failed!  - Failed: 2, Passed: 1\n"),
+            },
+        )
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=fake),
+        ):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert data["passed"] is False
+        assert data["detail"]["failed"] == 2
+        assert data["detail"]["passed_count"] == 4
+
+    def test_timeout_marks_failed_and_stops_remaining_targets(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        mod = _load_check_module()
+        (tmp_path / "App.Tests.csproj").write_text("")
+        (tmp_path / "Lib.Tests.csproj").write_text("")
+        calls: list[list[str]] = []
+        base = _make_fake_run(calls)
+
+        def fake(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            if len(cmd) > 1 and cmd[1] == "test":
+                calls.append(cmd)
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+            return base(cmd, **kwargs)
+
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=fake),
+        ):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert data["passed"] is False
+        assert "timed out" in data["output"]
+        assert len(_test_calls(calls)) == 1
+
+    def test_test_run_timeout_within_budget(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        mod = _load_check_module()
+        (tmp_path / "App.Tests.csproj").write_text("")
+        timeouts: list[float] = []
+        base = _make_fake_run([])
+
+        def fake(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            if len(cmd) > 1 and cmd[1] == "test":
+                timeouts.append(kwargs["timeout"])  # type: ignore[arg-type]
+            return base(cmd, **kwargs)
+
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=fake),
+        ):
+            _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert len(timeouts) == 1
+        assert timeouts[0] <= 290
+
+    def test_slnx_used_when_sdk_supports_it(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        mod = _load_check_module()
+        (tmp_path / "App.slnx").write_text("")
+        calls: list[list[str]] = []
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=_make_fake_run(calls, version="9.0.200")),
+        ):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert [c[2] for c in _test_calls(calls)] == [str(tmp_path / "App.slnx")]
+        assert data["passed"] is True
+
+    def test_slnx_skipped_on_old_sdk_uses_test_csproj(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        mod = _load_check_module()
+        (tmp_path / "App.slnx").write_text("")
+        (tmp_path / "App.Tests.csproj").write_text("")
+        calls: list[list[str]] = []
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=_make_fake_run(calls, version="8.0.100")),
+        ):
+            _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert [c[2] for c in _test_calls(calls)] == [str(tmp_path / "App.Tests.csproj")]
+
+    def test_third_party_projects_ignored(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        mod = _load_check_module()
+        (tmp_path / "third_party").mkdir()
+        (tmp_path / "third_party" / "Foo.Tests.csproj").write_text("")
+        calls: list[list[str]] = []
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=_make_fake_run(calls)),
+        ):
+            data = _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert _test_calls(calls) == []
+        assert data["detail"]["status"] == "SKIPPED"
+        assert ".sln/.slnx" in data["output"]
+
+
+class TestRealSubprocess:
+    """Run check.py as a script to prove the shared helper import resolves."""
+
+    def test_skips_when_dotnet_not_on_path(self, tmp_path: Path) -> None:
+        env = {k: v for k, v in os.environ.items() if k.upper() in {"SYSTEMROOT", "TEMP", "TMP"}}
+        env["PATH"] = ""
+        proc = subprocess.run(
+            [sys.executable, str(CHECK_SCRIPT)],
+            input=json.dumps({"project_root": str(tmp_path)}),
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "dotnet SDK not found" in json.loads(proc.stdout)["output"]
 
 
 class TestChangedFilesScoping:
@@ -333,5 +452,12 @@ class TestConfiguredTarget:
             name = "Foo.cs"
         data, calls = self._run(monkeypatch, tmp_path, name)
         assert data["passed"] is False
-        assert ".sln or .csproj" in data["output"]
+        assert ".sln, .slnx or .csproj" in data["output"]
         assert all("--list-sdks" in c for c in calls)
+
+    def test_configured_slnx_target_accepted(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        (tmp_path / "app.slnx").write_text("")
+        data, calls = self._run(monkeypatch, tmp_path, "app.slnx")
+        assert data["passed"] is True
+        assert data["detail"]["target"] == str((tmp_path / "app.slnx").resolve())
+        assert str((tmp_path / "app.slnx").resolve()) in calls[-1]
