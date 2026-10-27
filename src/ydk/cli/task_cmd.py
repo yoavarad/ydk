@@ -862,11 +862,6 @@ def start(
     """Start a task: create worktree, claim, explore."""
     task_id = _resolve_task_id(task_id)
 
-    # Precondition: ignition must have been done (todos.yaml must exist)
-    if not (Path(".ydk") / "todos.yaml").exists():
-        console.print("[red]No TODO registry found. Run Stage 01.5 (ydk ignite) first.[/red]")
-        raise typer.Exit(1)
-
     if not skip_retro_check:
         from ydk.core.config import load_config
         from ydk.core.retro_gate import find_epics_missing_retro

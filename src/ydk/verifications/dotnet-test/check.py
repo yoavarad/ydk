@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Verification plugin: dotnet test.
 
-Runs the .NET test suite via ``dotnet test``. Skips gracefully when the
-.NET SDK isn't installed or no test project exists yet, mirroring the
-fail-open behavior of the built-in tests-pytest plugin.
+Runs the .NET test suite via ``dotnet test``: the configured
+``verification.dotnet.target`` or, failing that, every target found by the
+shared ``_dotnet_target`` helper (a solution, else all test projects), one
+``dotnet test`` run per target. Skips gracefully when the .NET SDK isn't
+installed or no test project exists yet, mirroring the fail-open behavior of
+the built-in tests-pytest plugin.
 """
 
+import importlib
 import json
 import re
 import shutil
@@ -14,9 +18,10 @@ import sys
 import time
 from pathlib import Path
 
-_EXCLUDED_DIR_PARTS = {"bin", "obj", ".git", ".ydk", ".vs", "node_modules"}
-_TEST_PROJECT_MARKERS = ("Test", "Tests")
-_DOTNET_EXTENSIONS = (".cs", ".csproj", ".sln")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_dotnet_target = importlib.import_module("_dotnet_target")
+
+_DOTNET_EXTENSIONS = (".cs", ".csproj", ".sln", ".slnx")
 
 
 def _has_sdk(dotnet_bin: str) -> bool:
@@ -41,24 +46,6 @@ def _has_sdk(dotnet_bin: str) -> bool:
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
-def _configured_target(context: dict) -> str | None:
-    """Return ``verification.dotnet.target`` from the plugin context, resolved against project_root."""
-    target = ((context.get("config") or {}).get("dotnet") or {}).get("target")
-    if not target:
-        return None
-    return str((Path(context["project_root"]) / target).resolve()) if not Path(target).is_absolute() else target
-
-
-def _target_problem(target: str) -> str | None:
-    """Explain why a configured target is unusable, or None when it is a .sln/.csproj file."""
-    path = Path(target)
-    if not path.exists():
-        return f"verification.dotnet.target does not exist: {target}"
-    if not path.is_file() or path.suffix.lower() not in (".sln", ".csproj"):
-        return f"verification.dotnet.target must be a .sln or .csproj file: {target}"
-    return None
-
-
 def _invalid_target_result(name: str, target: str, problem: str, start: float) -> dict:
     return {
         "name": name,
@@ -67,26 +54,6 @@ def _invalid_target_result(name: str, target: str, problem: str, start: float) -
         "duration_seconds": round(time.time() - start, 1),
         "detail": {"target": target},
     }
-
-
-def _find_test_target(project_root: str) -> str | None:
-    """Prefer a .sln (dotnet test filters to test projects automatically);
-    else the first .csproj whose name looks like a test project.
-
-    Deliberately excludes ``.slnx`` (the newer XML solution format): the
-    .NET 8 SDK's ``dotnet test`` CLI doesn't understand it yet and fails
-    with "MSB4068: The element <Solution> is unrecognized" even though the
-    file itself is valid. Falling through to a ``.csproj`` avoids that.
-    """
-    root = Path(project_root)
-    matches = sorted(p for p in root.rglob("*.sln") if not _EXCLUDED_DIR_PARTS & set(p.parts))
-    if matches:
-        return str(matches[0])
-    csprojs = [p for p in root.rglob("*.csproj") if not _EXCLUDED_DIR_PARTS & set(p.parts)]
-    test_projects = sorted(p for p in csprojs if any(marker in p.stem for marker in _TEST_PROJECT_MARKERS))
-    if test_projects:
-        return str(test_projects[0])
-    return None
 
 
 def main() -> None:
@@ -100,9 +67,9 @@ def main() -> None:
         result = {
             "name": "dotnet-test",
             "passed": True,
-            "output": "No .cs/.csproj/.sln files changed — skipped",
+            "output": "No .cs/.csproj/.sln/.slnx files changed — skipped",
             "duration_seconds": round(time.time() - start, 1),
-            "detail": {"status": "SKIPPED", "skip_reason": "No .cs/.csproj/.sln files changed — skipped"},
+            "detail": {"status": "SKIPPED", "skip_reason": "No .cs/.csproj/.sln/.slnx files changed — skipped"},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
@@ -124,43 +91,58 @@ def main() -> None:
         sys.exit(0)
         return
 
-    configured = _configured_target(context)
-    problem = _target_problem(configured) if configured is not None else None
+    configured = _dotnet_target.configured_target(context)
+    problem = _dotnet_target.target_problem(configured) if configured is not None else None
     if configured is not None and problem is not None:
         json.dump(_invalid_target_result("dotnet-test", configured, problem, start), sys.stdout)
         sys.exit(1)
         return
-    target = configured or _find_test_target(project_root)
-    if target is None:
+    targets = [configured] if configured else _dotnet_target.find_targets(project_root, dotnet_bin, test_only=True)
+    if not targets:
+        skip_text = "No test project (*Test*.csproj) or .sln/.slnx found — skipped"
         result = {
             "name": "dotnet-test",
             "passed": True,
-            "output": "No test project (*Test*.csproj) or .sln found — skipped",
+            "output": skip_text,
             "duration_seconds": round(time.time() - start, 1),
-            "detail": {"status": "SKIPPED", "skip_reason": "No test project (*Test*.csproj) or .sln found — skipped"},
+            "detail": {"status": "SKIPPED", "skip_reason": skip_text},
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
         return
 
-    test_result = subprocess.run(
-        [dotnet_bin, "test", target, "--nologo"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd=project_root,
-        timeout=290,
-        check=False,
-    )
-    output = test_result.stdout + ("\n" + test_result.stderr if test_result.stderr else "")
-    passed = test_result.returncode == 0
+    outputs: list[str] = []
+    passed = True
+    deadline = start + 290
+    for target in targets:
+        try:
+            test_result = subprocess.run(
+                [dotnet_bin, "test", target, "--nologo"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=project_root,
+                timeout=max(1.0, deadline - time.time()),
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            msg = f"timed out after budget: {target}"
+            outputs.append(f"== {target} ==\n{msg}" if len(targets) > 1 else msg)
+            passed = False
+            break
+        text = test_result.stdout + ("\n" + test_result.stderr if test_result.stderr else "")
+        outputs.append(f"== {target} ==\n{text}" if len(targets) > 1 else text)
+        passed = passed and test_result.returncode == 0
+    output = "\n".join(outputs)
 
-    detail: dict[str, object] = {"target": target}
-    match = re.search(r"Passed!\s*-\s*Failed:\s*(\d+),\s*Passed:\s*(\d+)", output)
-    if match:
-        detail["failed"] = int(match.group(1))
-        detail["passed_count"] = int(match.group(2))
+    detail: dict[str, object] = {"targets": targets}
+    if len(targets) == 1:
+        detail["target"] = targets[0]
+    matches = list(re.finditer(r"(?:Passed|Failed)!\s*-\s*Failed:\s*(\d+),\s*Passed:\s*(\d+)", output))
+    if matches:
+        detail["failed"] = sum(int(m.group(1)) for m in matches)
+        detail["passed_count"] = sum(int(m.group(2)) for m in matches)
 
     result = {
         "name": "dotnet-test",
