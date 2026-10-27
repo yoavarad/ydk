@@ -315,7 +315,7 @@ Guards are a standalone Python script at `.claude/hooks/guard.py`, installed by 
 **Stage Gate details:**
 - Stage tracked in `.ydk/state.json`
 - Auto-advances: `init` → 01, `spec-verify` → 01.5, `ignite` → 02, `task-start` → 03
-- CLI preconditions: `ignite` requires schemas + pack + spec-verify; `task-start` requires TODOs
+- CLI preconditions: `ignite` requires schemas + pack + spec-verify; `task-start` has no TODO/ignition precondition (missing `todos.yaml` is treated as an empty registry)
 
 ### Stage 03 — Execution
 
