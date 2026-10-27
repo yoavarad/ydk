@@ -7,7 +7,8 @@ import sys
 import time
 from pathlib import Path
 
-LIMIT = 300
+DEFAULT_PATHS = ["app", "src"]
+DEFAULT_LIMIT = 300
 
 EXEMPT_PATTERNS = [
     "/tests/",
@@ -30,13 +31,16 @@ def main() -> None:
     start = time.time()
 
     root = Path(project_root)
-    app_dir = root / "app"
+    cfg = context.get("config", {}).get("file_length", {})
+    paths: list[str] = cfg.get("paths", DEFAULT_PATHS)
+    limit: int = cfg.get("limit", DEFAULT_LIMIT)
+    roots = [root / p for p in paths if (root / p).is_dir()]
 
-    if not app_dir.is_dir():
+    if not roots:
         result = {
             "name": "python-file-length",
             "passed": True,
-            "output": "PASS: no app/ directory found",
+            "output": f"PASS: no configured root found ({', '.join(paths)})",
             "duration_seconds": round(time.time() - start, 1),
             "detail": None,
         }
@@ -46,8 +50,8 @@ def main() -> None:
     failures = 0
     messages: list[str] = []
 
-    for py_file in app_dir.rglob("*.py"):
-        fpath = str(py_file)
+    for py_file in (f for r in roots for f in r.rglob("*.py")):
+        fpath = "/" + py_file.relative_to(root).as_posix()
 
         # Skip exempt paths
         if any(pat in fpath for pat in EXEMPT_PATTERNS):
@@ -63,9 +67,9 @@ def main() -> None:
             continue
 
         line_count = len(content.splitlines())
-        if line_count > LIMIT:
+        if line_count > limit:
             messages.append(
-                f"FAIL: {py_file} has {line_count} lines (max {LIMIT})\n"
+                f"FAIL: {py_file} has {line_count} lines (max {limit})\n"
                 "  Split into smaller modules with single responsibility"
             )
             failures += 1

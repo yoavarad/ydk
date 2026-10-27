@@ -1,5 +1,5 @@
 name: python-file-length
-description: Enforce max 300 lines per Python file (excluding tests, migrations, generated)
+description: Enforce max lines (default 300) per Python file under configured roots (default app, src) (excluding tests, migrations, generated)
 trigger: git:pre-push
 parallel: true
 timeout: 30

@@ -157,6 +157,7 @@ def test_done_runs_verifications(
                     "thresholds": {"architecture": 8},
                 },
                 "go": {"coverage_min": 0.0, "coverage_packages": [], "test_tags": [], "race": "auto"},
+                "file_length": {"paths": ["app", "src"], "limit": 300},
                 "language": "python",
             },
             "task_scope": {"title": "Test task", "description": "", "acceptance_criteria": []},
