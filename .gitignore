@@ -10,6 +10,8 @@ build/
 .ydk/.verified
 .ydk/active-task.json
 .ydk/cache/
+.ydk/batch-mapping.json
+.ydk/worktrees/
 ydk-task-lifecycle-*
 docs/node_modules/
 docs/.next/
