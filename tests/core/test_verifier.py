@@ -869,6 +869,36 @@ class TestCacheKey:
         assert self._count(runs) == 2
 
 
+class TestGitWorkspaceHashLineEndings:
+    """Raw-byte (line-ending-only) working-tree changes must change the workspace hash."""
+
+    @staticmethod
+    def _repo(tmp_path: Path) -> tuple[Verifier, Path]:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        _git(repo, "config", "core.autocrlf", "false")
+        (repo / ".gitattributes").write_bytes(b"* text=auto eol=lf\n")
+        (repo / "a.cs").write_bytes(b"class A {}\nint x;\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "init")
+        v = Verifier(project_root=repo, global_verifications=tmp_path / "g", project_verifications=tmp_path / "p")
+        return v, repo
+
+    def test_lf_to_crlf_and_back_change_hash(self, tmp_path: Path) -> None:
+        v, repo = self._repo(tmp_path)
+        lf = v._git_workspace_hash()
+        (repo / "a.cs").write_bytes(b"class A {}\r\nint x;\r\n")
+        crlf = v._git_workspace_hash()
+        (repo / "a.cs").write_bytes(b"class A {}\nint x;\n")
+        lf_again = v._git_workspace_hash()
+        assert crlf not in (lf, lf_again)
+
+    def test_clean_workspace_hash_stable(self, tmp_path: Path) -> None:
+        v, _repo = self._repo(tmp_path)
+        assert v._git_workspace_hash() == v._git_workspace_hash()
+
+
 # ---------------------------------------------------------------------------
 # command-only plugins
 # ---------------------------------------------------------------------------
