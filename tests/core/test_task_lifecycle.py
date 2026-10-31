@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1698,3 +1699,77 @@ def test_build_pr_body_files_changed_uses_default_branch_merge_base(
 
     assert "- `b.txt`" in body
     assert "- `a.txt`" not in body
+
+
+def _real_repo_lifecycle(root: Path, verifier: MagicMock) -> tuple[TaskLifecycle, MagicMock]:
+    wt = MagicMock()
+    wt.get_worktree_path.return_value = None
+    repo = MagicMock()
+    repo.get_task.return_value = TaskDetail(id="T-001", title="t", status="open")
+    return _lc(root, repo, wt, verifier), repo
+
+
+@pytest.fixture
+def feature_root(tmp_path: Path) -> Path:
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test")
+    (tmp_path / "README.md").write_text("hello\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "feat: initial")
+    _git(tmp_path, "checkout", "-q", "-b", "task/T-001")
+    return tmp_path
+
+
+def test_done_aborts_on_uncommitted_changes(feature_root: Path, mock_verifier: MagicMock) -> None:
+    (feature_root / "README.md").write_text("dirty\n")
+    (feature_root / ".ydk").mkdir()
+    (feature_root / ".ydk" / ".verified").write_text("1")
+    mock_verifier.run_all = AsyncMock(return_value=_passing_report())
+    lc, repo = _real_repo_lifecycle(feature_root, mock_verifier)
+
+    result = lc.done("T-001")
+
+    assert result["passed"] is False
+    assert "README.md" in result["error"]
+    assert ".verified" not in result["error"]
+    mock_verifier.run_all.assert_not_called()
+    repo.update_status.assert_not_called()
+
+
+def test_create_pr_aborts_when_nothing_to_ship(feature_root: Path, mock_verifier: MagicMock) -> None:
+    (feature_root / ".ydk").mkdir()
+    (feature_root / ".ydk" / "x.json").write_text("{}")
+    _git(feature_root, "add", "-f", ".ydk")
+    _git(feature_root, "commit", "-q", "-m", "chore: ydk")
+    lc, _ = _real_repo_lifecycle(feature_root, mock_verifier)
+
+    with (
+        patch("ydk.core.task_lifecycle.default_branch", return_value="main"),
+        patch("subprocess.run", wraps=subprocess.run) as spy,
+        pytest.raises(RuntimeError, match="Nothing to ship"),
+    ):
+        lc._create_pr("T-001", pr_body_override="body")
+
+    assert not [c for c in spy.call_args_list if c.args[0][:2] == ["git", "push"]]
+
+
+def test_create_pr_pushes_when_branch_has_real_commits(feature_root: Path, mock_verifier: MagicMock) -> None:
+    (feature_root / "new.py").write_text("x = 1\n")
+    _git(feature_root, "add", ".")
+    _git(feature_root, "commit", "-q", "-m", "feat: work")
+    lc, _ = _real_repo_lifecycle(feature_root, mock_verifier)
+
+    def _fake(args: list[str], **kwargs: object) -> MagicMock:
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with (
+        patch("ydk.core.task_lifecycle.default_branch", return_value="main"),
+        patch("shutil.which", return_value=None),
+        patch("ydk.core.task_lifecycle.subprocess") as sp,
+    ):
+        sp.run.side_effect = _fake
+        url = lc._create_pr("T-001", pr_body_override="body")
+
+    assert url.startswith("local://")
+    assert any(c.args[0][:2] == ["git", "push"] for c in sp.run.call_args_list)
