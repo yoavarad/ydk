@@ -92,7 +92,9 @@ def init_config(
     if remote:
         project_data["remote"] = remote
 
-    data: dict[str, Any] = {**DEFAULT_CONFIG, "project": project_data}
+    # New repos hand LLM work to the calling agent's subagents (ADR 0004); configs
+    # without ``ai.provider`` keep the model default ("anthropic").
+    data: dict[str, Any] = {**DEFAULT_CONFIG, "project": project_data, "ai": {"provider": "subagent"}}
 
     if stack:
         from ydk.core.stacks import get_stack
