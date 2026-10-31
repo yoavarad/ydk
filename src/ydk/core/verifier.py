@@ -300,7 +300,11 @@ class Verifier:
             h = hashlib.sha256()
             h.update(git("ls-files", "-s", "-z", "--", *_GIT_PATHSPEC))
             h.update(git("diff", "HEAD", "--binary", "--", *_GIT_PATHSPEC))
-            for rel in sorted(git("ls-files", "--others", "--exclude-standard", "-z").split(b"\0")):
+            # Untracked files plus tracked files whose working-tree bytes differ from the index
+            # (e.g. CRLF vs LF): git's clean filter hides the latter from the diff above.
+            raw = git("ls-files", "--others", "--exclude-standard", "-z").split(b"\0")
+            raw += git("ls-files", "-m", "-z", "--", *_GIT_PATHSPEC).split(b"\0")
+            for rel in sorted(set(raw)):
                 rel_path = Path(rel.decode("utf-8", errors="replace"))
                 if not rel or _CACHE_EXCLUDED_DIRS.intersection(rel_path.parts):
                     continue
