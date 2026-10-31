@@ -27,7 +27,7 @@ from ydk.core.events import (
 )
 from ydk.models.gate import GateStatus
 from ydk.models.pm import TaskCreate
-from ydk.services.git import default_branch
+from ydk.services.git import default_branch, resolve_start_point
 
 if TYPE_CHECKING:
     from ydk.core.git_worktree import WorktreeManager
@@ -107,11 +107,12 @@ class TaskLifecycle:
             if task.title:
                 slug = re.sub(r"[^a-z0-9-]", "", task.title.lower().replace(" ", "-"))[:30].strip("-")
                 branch = f"task/{task_id}-{slug}"
-            base = base_branch or "HEAD"
+            base = resolve_start_point(self._root, base_branch)
             subprocess.run(
-                ["git", "checkout", "-b", branch, base],
+                ["git", "checkout", "--no-track", "-b", branch, base],
                 cwd=str(self._root),
                 capture_output=True,
+                check=True,
             )
             worktree_path = self._root
             summary = f"Branch {branch} created from {base} (worktree isolation disabled)"
@@ -122,7 +123,11 @@ class TaskLifecycle:
         # this is a per-task map rather than a single global slot -- writing
         # our own entry must not clobber any other task's.
         update_active_tasks(
-            self._root, lambda tasks: {**tasks, task_id: {"base_branch": base_branch or default_branch(self._root)}}
+            self._root,
+            lambda tasks: {
+                **tasks,
+                task_id: {"base_branch": base_branch or default_branch(self._root)},
+            },
         )
 
         # Update status

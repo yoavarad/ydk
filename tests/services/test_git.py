@@ -294,3 +294,92 @@ class TestMergeBase:
         self._git(tmp_path, "init", "-q", "-b", "develop")
         self._commit(tmp_path, "a")
         assert merge_base("nope", tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_start_point — real temp git repo with a bare origin
+# ---------------------------------------------------------------------------
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), capture_output=True, text=True, check=True, encoding="utf-8"
+    ).stdout.strip()
+
+
+def _commit(repo: Path, name: str) -> None:
+    (repo / name).write_text(name)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", name)
+
+
+@pytest.fixture
+def repo_with_origin(tmp_path: Path) -> Path:
+    bare = tmp_path / "origin.git"
+    repo = tmp_path / "work"
+    repo.mkdir()
+    _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "t@t.com")
+    _git(repo, "config", "user.name", "T")
+    _commit(repo, "a.txt")
+    _git(repo, "remote", "add", "origin", str(bare))
+    _git(repo, "push", "-q", "origin", "main")
+    return repo
+
+
+class TestResolveStartPoint:
+    def test_prefers_origin_ref_after_fetch(self, repo_with_origin: Path, tmp_path: Path) -> None:
+        from ydk.services.git import resolve_start_point
+
+        other = tmp_path / "other"
+        _git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(other))
+        _git(other, "config", "user.email", "t@t.com")
+        _git(other, "config", "user.name", "T")
+        _commit(other, "b.txt")
+        _git(other, "push", "-q", "origin", "main")
+        new_tip = _git(other, "rev-parse", "HEAD")
+
+        assert resolve_start_point(repo_with_origin, "main") == "origin/main"
+        assert _git(repo_with_origin, "rev-parse", "origin/main") == new_tip
+
+    def test_strips_origin_prefix_from_base(self, repo_with_origin: Path) -> None:
+        from ydk.services.git import resolve_start_point
+
+        assert resolve_start_point(repo_with_origin, "origin/main") == "origin/main"
+
+    def test_falls_back_to_local_without_remote(self, tmp_path: Path) -> None:
+        from ydk.services.git import resolve_start_point
+
+        _git(tmp_path, "init", "-q", "-b", "main")
+        _git(tmp_path, "config", "user.email", "t@t.com")
+        _git(tmp_path, "config", "user.name", "T")
+        _commit(tmp_path, "a.txt")
+
+        assert resolve_start_point(tmp_path, "main") == "main"
+
+    def test_fetch_failure_warns_and_falls_back_to_local(
+        self, repo_with_origin: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from ydk.services.git import resolve_start_point
+
+        _git(repo_with_origin, "update-ref", "-d", "refs/remotes/origin/main")
+        _git(repo_with_origin, "remote", "set-url", "origin", str(repo_with_origin / "nonexistent.git"))
+        with caplog.at_level("WARNING"):
+            assert resolve_start_point(repo_with_origin, "main") == "main"
+        assert any("fetch" in r.message.lower() for r in caplog.records)
+
+    def test_default_branch_used_when_base_none(self, repo_with_origin: Path) -> None:
+        from ydk.services.git import resolve_start_point
+
+        _git(repo_with_origin, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+        _git(repo_with_origin, "checkout", "-q", "-b", "feature/x")
+        _commit(repo_with_origin, "x.txt")
+
+        assert resolve_start_point(repo_with_origin, None) == "origin/main"
+
+    def test_missing_ref_raises(self, repo_with_origin: Path) -> None:
+        from ydk.services.git import resolve_start_point
+
+        with pytest.raises(ValueError, match="nope"):
+            resolve_start_point(repo_with_origin, "nope")
