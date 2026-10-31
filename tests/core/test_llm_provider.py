@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import anthropic
@@ -11,8 +13,22 @@ import pytest
 from pydantic import BaseModel
 
 from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
-from ydk.core.llm_provider import AnthropicLLMProvider, LLMProvider, StructuredLLMProvider, get_llm_provider
-from ydk.models.config import AIConfig, AnthropicConfig, YdkConfig
+from ydk.core.llm_provider import (
+    AnthropicLLMProvider,
+    LLMProvider,
+    LLMRequest,
+    StructuredLLMProvider,
+    SubagentHandoff,
+    SubagentProvider,
+    SubagentRequestPending,
+    SubagentResponseError,
+    get_llm_provider,
+    tier_for_purpose,
+)
+from ydk.models.config import DEFAULT_MODEL_TIERS, AIConfig, AnthropicConfig, YdkConfig
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _cfg(*, provider: str = "anthropic", model_tiers: dict[str, str] | None = None) -> YdkConfig:
@@ -185,3 +201,283 @@ class TestGetLlmProvider:
 
         with pytest.raises(MissingCredentialsError):
             get_llm_provider(cfg)
+
+
+# ---------------------------------------------------------------------------
+# LLMRequest
+# ---------------------------------------------------------------------------
+
+
+class _Other(BaseModel):
+    count: int
+
+
+def _request(
+    *,
+    purpose: str = "extract",
+    system: str = "sys",
+    user: str = "hello",
+    output_schema: dict[str, object] | None = None,
+    agent: str = "general-purpose",
+    model: str = "claude-haiku-4-5",
+    instructions: str = "",
+) -> LLMRequest:
+    return LLMRequest.build(
+        purpose=purpose,
+        system=system,
+        user=user,
+        output_schema=output_schema or _Answer.model_json_schema(),
+        model_tier="fast",
+        model=model,
+        agent=agent,
+        instructions=instructions,
+    )
+
+
+class TestLLMRequest:
+    def test_id_stable_for_identical_input(self) -> None:
+        assert _request().id == _request().id
+        assert len(_request().id) == 64
+
+    def test_id_changes_with_user_prompt(self) -> None:
+        assert _request().id != _request(user="other").id
+
+    def test_id_changes_with_system_prompt(self) -> None:
+        assert _request().id != _request(system="other").id
+
+    def test_id_changes_with_purpose(self) -> None:
+        assert _request().id != _request(purpose="compaction").id
+
+    def test_id_changes_with_schema(self) -> None:
+        assert _request().id != _request(output_schema=_Other.model_json_schema()).id
+
+    def test_id_ignores_routing_hints(self) -> None:
+        assert _request().id == _request(agent="x", model="y", instructions="z").id
+
+
+# ---------------------------------------------------------------------------
+# SubagentProvider (real filesystem via tmp_path)
+# ---------------------------------------------------------------------------
+
+
+def _subagent(root: Path, *, collect: bool = False) -> SubagentProvider:
+    return SubagentProvider(
+        root,
+        purpose="extract",
+        model_tier="fast",
+        model="claude-haiku-4-5",
+        agent="general-purpose",
+        instructions="be terse",
+        collect=collect,
+    )
+
+
+def _request_id(prompt: str) -> str:
+    return LLMRequest.compute_id(purpose="extract", system="", user=prompt, output_schema=_Answer.model_json_schema())
+
+
+def _write_response(root: Path, prompt: str, body: str) -> Path:
+    responses = root / "responses"
+    responses.mkdir(parents=True, exist_ok=True)
+    path = responses / f"{_request_id(prompt)}.json"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+class TestSubagentProvider:
+    def test_missing_response_writes_request_and_raises_handoff(self, tmp_path: Path) -> None:
+        with pytest.raises(SubagentHandoff) as exc:
+            _subagent(tmp_path).invoke_structured("question", _Answer)
+
+        path = tmp_path / "requests" / f"{_request_id('question')}.json"
+        assert exc.value.request_paths == [path]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data["id"] == _request_id("question")
+        assert data["user"] == "question"
+        assert data["purpose"] == "extract"
+        assert data["agent"] == "general-purpose"
+        assert data["model"] == "claude-haiku-4-5"
+        assert data["model_tier"] == "fast"
+        assert data["instructions"] == "be terse"
+        assert data["output_schema"] == _Answer.model_json_schema()
+
+    def test_handoff_message_lists_paths(self, tmp_path: Path) -> None:
+        with pytest.raises(SubagentHandoff, match=_request_id("question")):
+            _subagent(tmp_path).invoke_structured("question", _Answer)
+
+    def test_present_response_returns_validated_model(self, tmp_path: Path) -> None:
+        _write_response(tmp_path, "question", '{"value": "42"}')
+
+        result = _subagent(tmp_path).invoke_structured("question", _Answer)
+
+        assert result == _Answer(value="42")
+        assert not (tmp_path / "requests").exists()
+
+    def test_invalid_response_raises_naming_file(self, tmp_path: Path) -> None:
+        bad = _write_response(tmp_path, "question", '{"wrong": 1}')
+
+        with pytest.raises(SubagentResponseError, match=bad.name):
+            _subagent(tmp_path).invoke_structured("question", _Answer)
+
+    def test_malformed_json_raises_naming_file(self, tmp_path: Path) -> None:
+        bad = _write_response(tmp_path, "question", "not json")
+
+        with pytest.raises(SubagentResponseError, match=bad.name):
+            _subagent(tmp_path).invoke_structured("question", _Answer)
+
+    def test_undecodable_response_raises_naming_file(self, tmp_path: Path) -> None:
+        bad = _write_response(tmp_path, "question", "")
+        bad.write_bytes(bytes([0xFF, 0xFE, 0x00]) + b"bad")
+
+        with pytest.raises(SubagentResponseError, match=bad.name):
+            _subagent(tmp_path).invoke_structured("question", _Answer)
+
+    def test_handoff_escapes_fail_open_except_exception(self, tmp_path: Path) -> None:
+        def fail_open_caller() -> str:
+            try:
+                return _subagent(tmp_path).invoke("q")
+            except Exception:
+                return "swallowed"
+
+        with pytest.raises(SubagentHandoff):
+            fail_open_caller()
+
+    def test_invoke_returns_text_response(self, tmp_path: Path) -> None:
+        provider = _subagent(tmp_path)
+        with pytest.raises(SubagentHandoff) as exc:
+            provider.invoke("say hi")
+        request_path = exc.value.request_paths[0]
+        responses = tmp_path / "responses"
+        responses.mkdir()
+        (responses / request_path.name).write_text('{"text": "hi"}', encoding="utf-8")
+
+        assert provider.invoke("say hi") == "hi"
+
+    def test_satisfies_structured_protocol(self, tmp_path: Path) -> None:
+        assert isinstance(_subagent(tmp_path), StructuredLLMProvider)
+
+    def test_collect_mode_batches_requests_into_one_handoff(self, tmp_path: Path) -> None:
+        provider = _subagent(tmp_path, collect=True)
+        for prompt in ("a", "b", "c", "a"):
+            with pytest.raises(SubagentRequestPending):
+                provider.invoke_structured(prompt, _Answer)
+
+        expected = [tmp_path / "requests" / f"{_request_id(p)}.json" for p in ("a", "b", "c")]
+        assert provider.pending() == expected
+
+        with pytest.raises(SubagentHandoff) as exc:
+            provider.flush()
+
+        assert exc.value.request_paths == expected
+        assert all(p.is_file() for p in expected)
+        assert provider.pending() == []
+
+    def test_flush_without_pending_is_noop(self, tmp_path: Path) -> None:
+        _subagent(tmp_path, collect=True).flush()
+
+    def test_collect_mode_returns_present_responses(self, tmp_path: Path) -> None:
+        _write_response(tmp_path, "a", '{"value": "A"}')
+        provider = _subagent(tmp_path, collect=True)
+
+        assert provider.invoke_structured("a", _Answer) == _Answer(value="A")
+        assert provider.pending() == []
+
+
+# ---------------------------------------------------------------------------
+# get_llm_provider routing
+# ---------------------------------------------------------------------------
+
+
+def _routed_cfg(tmp_path: Path, **ai: object) -> YdkConfig:
+    data: dict[str, object] = {"subagent": {"dir": str(tmp_path / "llm")}}
+    data.update(ai)
+    return YdkConfig(project={"name": "test"}, ai=AIConfig.model_validate(data))
+
+
+def _handoff_request(provider: StructuredLLMProvider | None) -> tuple[Path, dict[str, object]]:
+    assert provider is not None
+    with pytest.raises(SubagentHandoff) as exc:
+        provider.invoke_structured("q", _Answer)
+    path = exc.value.request_paths[0]
+    return path, json.loads(path.read_text(encoding="utf-8"))
+
+
+class TestGetLlmProviderRouting:
+    def test_subagent_provider_selected(self, tmp_path: Path) -> None:
+        provider = get_llm_provider(_routed_cfg(tmp_path, provider="subagent"), purpose="extract")
+        assert isinstance(provider, SubagentProvider)
+
+    def test_route_overrides_provider(self, tmp_path: Path) -> None:
+        cfg = _routed_cfg(tmp_path, provider="anthropic", routes={"extract": "subagent"})
+        assert isinstance(get_llm_provider(cfg, purpose="extract"), SubagentProvider)
+
+    def test_unrouted_purpose_uses_global_provider(self, tmp_path: Path) -> None:
+        cfg = _routed_cfg(tmp_path, provider="anthropic", routes={"extract": "subagent"})
+        with patch("anthropic.Anthropic"):
+            assert isinstance(get_llm_provider(cfg, purpose="compaction"), AnthropicLLMProvider)
+
+    def test_anthropic_tier_follows_purpose(self) -> None:
+        with patch("anthropic.Anthropic"):
+            provider = get_llm_provider(_cfg(model_tiers={}), purpose="spec-review")
+        assert isinstance(provider, AnthropicLLMProvider)
+        assert provider._model_id == "claude-sonnet-5"
+
+    def test_request_uses_purpose_agent_and_tier(self, tmp_path: Path) -> None:
+        agents = {"ai-code-review": {"agent": "reviewer", "model": "opus", "instructions": "strict"}}
+        cfg = _routed_cfg(tmp_path, provider="subagent", subagent={"dir": str(tmp_path / "llm"), "agents": agents})
+
+        path, data = _handoff_request(get_llm_provider(cfg, purpose="ai-code-review"))
+
+        assert path.parent == tmp_path / "llm" / "requests"
+        assert (data["agent"], data["model"], data["instructions"]) == ("reviewer", "opus", "strict")
+        assert data["model_tier"] == "review"
+        assert data["purpose"] == "ai-code-review"
+
+    def test_unknown_purpose_falls_back_to_default_agent(self, tmp_path: Path) -> None:
+        agents = {"default": {"agent": "fallback"}}
+        cfg = _routed_cfg(tmp_path, provider="subagent", subagent={"dir": str(tmp_path / "llm"), "agents": agents})
+
+        _, data = _handoff_request(get_llm_provider(cfg, purpose="something-new"))
+
+        assert data["agent"] == "fallback"
+        assert data["model"] == "claude-haiku-4-5"
+        assert data["model_tier"] == "fast"
+        assert data["purpose"] == "something-new"
+
+    def test_unknown_routed_provider_returns_none(self, tmp_path: Path) -> None:
+        cfg = _routed_cfg(tmp_path, provider="subagent", routes={"extract": "nope"})
+        assert get_llm_provider(cfg, purpose="extract") is None
+
+    def test_default_agent_without_model_uses_purpose_tier_model(self, tmp_path: Path) -> None:
+        agents = {"default": {"agent": "fallback"}}
+        cfg = _routed_cfg(tmp_path, provider="subagent", subagent={"dir": str(tmp_path / "llm"), "agents": agents})
+
+        _, data = _handoff_request(get_llm_provider(cfg, purpose="spec-review"))
+
+        assert data["model"] == DEFAULT_MODEL_TIERS["review"]
+
+    def test_no_purpose_uses_default_purpose(self, tmp_path: Path) -> None:
+        _, data = _handoff_request(get_llm_provider(_routed_cfg(tmp_path, provider="subagent")))
+        assert data["purpose"] == "default"
+
+
+class TestTierForPurpose:
+    @pytest.mark.parametrize(
+        ("purpose", "tier"),
+        [
+            ("spec-review", "review"),
+            ("ai-code-review", "review"),
+            ("spec-alignment", "review"),
+            ("retrospective", "review"),
+            ("extract", "fast"),
+            ("layer-b-scan", "fast"),
+            ("complexity", "fast"),
+            ("compaction", "fast"),
+            ("contradiction", "fast"),
+            ("checkpoint", "fast"),
+            ("unknown", "fast"),
+            (None, "fast"),
+        ],
+    )
+    def test_mapping(self, purpose: str | None, tier: str) -> None:
+        assert tier_for_purpose(purpose) == tier

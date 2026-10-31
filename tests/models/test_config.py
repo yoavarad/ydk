@@ -46,6 +46,46 @@ class TestModelFor:
             AIConfig().model_for("nope")
 
 
+class TestAIRoutes:
+    def test_defaults(self) -> None:
+        cfg = AIConfig()
+        assert cfg.provider == "anthropic"
+        assert cfg.routes == {}
+        assert cfg.subagent.dir == ".ydk/llm"
+        assert cfg.subagent.agents == {}
+
+    def test_route_overrides_provider(self) -> None:
+        cfg = AIConfig(provider="anthropic", routes={"extract": "subagent"})
+        assert cfg.provider_for("extract") == "subagent"
+
+    def test_unrouted_purpose_uses_provider(self) -> None:
+        cfg = AIConfig(provider="anthropic", routes={"extract": "subagent"})
+        assert cfg.provider_for("compaction") == "anthropic"
+        assert cfg.provider_for(None) == "anthropic"
+
+    def test_agent_for_purpose(self) -> None:
+        cfg = AIConfig.model_validate(
+            {"subagent": {"agents": {"extract": {"agent": "extractor", "model": "haiku", "instructions": "be terse"}}}}
+        )
+        agent = cfg.subagent.agent_for("extract")
+        assert (agent.agent, agent.model, agent.instructions) == ("extractor", "haiku", "be terse")
+
+    def test_unknown_purpose_falls_back_to_default_agent(self) -> None:
+        cfg = AIConfig.model_validate({"subagent": {"agents": {"default": {"agent": "fallback"}}}})
+        assert cfg.subagent.agent_for("nope").agent == "fallback"
+        assert cfg.subagent.agent_for(None).agent == "fallback"
+
+    def test_builtin_agent_when_no_default_configured(self) -> None:
+        agent = AIConfig().subagent.agent_for("extract")
+        assert agent.agent == "general-purpose"
+        assert agent.model is None
+        assert agent.instructions == ""
+
+    def test_rejects_unknown_subagent_keys(self) -> None:
+        with pytest.raises(ValidationError):
+            AIConfig.model_validate({"subagent": {"bogus": 1}})
+
+
 class TestSpecCheckModelRemoved:
     def test_spec_check_has_no_model_field(self) -> None:
         assert "model" not in SpecCheckConfig.model_fields

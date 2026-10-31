@@ -116,6 +116,31 @@ class ExecutionConfig(BaseModel):
     worktree_isolation: bool = True
 
 
+class SubagentAgentConfig(BaseModel):
+    """Subagent hints written into a handoff request for one purpose."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent: str = "general-purpose"
+    model: str | None = None
+    instructions: str = ""
+
+
+class SubagentConfig(BaseModel):
+    """Settings for the ``subagent`` LLM provider (file-based handoff)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dir: str = ".ydk/llm"
+    agents: dict[str, SubagentAgentConfig] = Field(default_factory=dict)
+
+    def agent_for(self, purpose: str | None) -> SubagentAgentConfig:
+        """Return the agent config for ``purpose``, then ``default``, then the built-in default."""
+        if purpose and purpose in self.agents:
+            return self.agents[purpose]
+        return self.agents.get("default") or SubagentAgentConfig()
+
+
 class AIConfig(BaseModel):
     """AI model tier configuration for cached fan-out reviewer engine."""
 
@@ -123,6 +148,14 @@ class AIConfig(BaseModel):
 
     provider: str = "anthropic"
     model_tiers: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_MODEL_TIERS))
+    routes: dict[str, str] = Field(default_factory=dict)
+    subagent: SubagentConfig = Field(default_factory=SubagentConfig)
+
+    def provider_for(self, purpose: str | None) -> str:
+        """Return the provider name for ``purpose``: ``routes[purpose]`` or the global ``provider``."""
+        if purpose and purpose in self.routes:
+            return self.routes[purpose]
+        return self.provider
 
     def model_for(self, tier: str) -> str:
         """Return the model ID for ``tier``, falling back to the built-in default tier."""
