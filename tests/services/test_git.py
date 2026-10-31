@@ -294,3 +294,77 @@ class TestMergeBase:
         self._git(tmp_path, "init", "-q", "-b", "develop")
         self._commit(tmp_path, "a")
         assert merge_base("nope", tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# uncommitted_paths / committed_changes — real git repo
+# ---------------------------------------------------------------------------
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+@pytest.fixture
+def feature_repo(tmp_path: Path) -> Path:
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "T")
+    (tmp_path / "a.txt").write_text("a\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "init")
+    _git(tmp_path, "checkout", "-q", "-b", "feature")
+    return tmp_path
+
+
+class TestUncommittedPaths:
+    def test_clean_repo_is_empty(self, feature_repo: Path) -> None:
+        from ydk.services.git import uncommitted_paths
+
+        assert uncommitted_paths(feature_repo) == []
+
+    def test_lists_modified_and_untracked_but_not_ydk(self, feature_repo: Path) -> None:
+        from ydk.services.git import uncommitted_paths
+
+        (feature_repo / "a.txt").write_text("changed\n")
+        (feature_repo / "new dir").mkdir()
+        (feature_repo / "new dir" / "b.py").write_text("x\n")
+        (feature_repo / ".ydk" / "proofs" / "1").mkdir(parents=True)
+        (feature_repo / ".ydk" / ".verified").write_text("1")
+        (feature_repo / ".ydk" / "proofs" / "1" / "r.json").write_text("{}")
+
+        assert sorted(uncommitted_paths(feature_repo) or []) == ["a.txt", "new dir/b.py"]
+
+    def test_none_when_not_a_repo(self, tmp_path: Path) -> None:
+        from ydk.services.git import uncommitted_paths
+
+        assert uncommitted_paths(tmp_path / "missing") is None
+
+
+class TestCommittedChanges:
+    def test_empty_when_nothing_ahead(self, feature_repo: Path) -> None:
+        from ydk.services.git import committed_changes
+
+        assert committed_changes("main", feature_repo) == []
+
+    def test_only_ydk_commits_are_ignored(self, feature_repo: Path) -> None:
+        from ydk.services.git import committed_changes
+
+        (feature_repo / ".ydk").mkdir()
+        (feature_repo / ".ydk" / "x.json").write_text("{}")
+        _git(feature_repo, "add", "-f", ".")
+        _git(feature_repo, "commit", "-q", "-m", "ydk")
+        assert committed_changes("main", feature_repo) == []
+
+    def test_lists_real_changes(self, feature_repo: Path) -> None:
+        from ydk.services.git import committed_changes
+
+        (feature_repo / "b.txt").write_text("b\n")
+        _git(feature_repo, "add", ".")
+        _git(feature_repo, "commit", "-q", "-m", "feat")
+        assert committed_changes("main", feature_repo) == ["b.txt"]
+
+    def test_none_on_bad_base(self, feature_repo: Path) -> None:
+        from ydk.services.git import committed_changes
+
+        assert committed_changes("nope", feature_repo) is None
