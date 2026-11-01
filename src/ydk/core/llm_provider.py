@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast, runtime_checkable
 
@@ -224,6 +226,75 @@ class SubagentProvider:
         raise SubagentHandoff(paths)
 
 
+class ClaudeCliError(RuntimeError):
+    """The ``claude`` CLI is missing, failed, or returned unusable output."""
+
+
+class ClaudeCliProvider:
+    """StructuredLLMProvider that shells out to headless ``claude -p`` (no parent agent needed)."""
+
+    def __init__(self, model_id: str | None = None, *, binary: str = "claude", timeout: float = 300.0) -> None:
+        self._model_id = model_id
+        self._binary = binary
+        self._timeout = timeout
+
+    def _run(self, prompt: str, schema: dict[str, Any] | None) -> dict[str, Any]:
+        resolved = shutil.which(self._binary)
+        if resolved is None:
+            msg = f"`{self._binary}` not found on PATH; install Claude Code or choose another ai.provider"
+            raise ClaudeCliError(msg)
+        cmd = [resolved, "-p", "--output-format", "json"]
+        if self._model_id:
+            cmd += ["--model", self._model_id]
+        if schema is not None:
+            cmd += ["--json-schema", json.dumps(schema)]
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=self._timeout,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            msg = f"`{self._binary}` not found on PATH; install Claude Code or choose another ai.provider"
+            raise ClaudeCliError(msg) from exc
+        except subprocess.TimeoutExpired as exc:
+            msg = f"`{self._binary}` timed out after {self._timeout}s"
+            raise ClaudeCliError(msg) from exc
+        if proc.returncode != 0:
+            msg = f"`{self._binary}` exited {proc.returncode}: {(proc.stderr or proc.stdout).strip()}"
+            raise ClaudeCliError(msg)
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            msg = f"`{self._binary}` returned non-JSON output: {exc}"
+            raise ClaudeCliError(msg) from exc
+        if not isinstance(data, dict):
+            msg = f"`{self._binary}` returned unexpected JSON shape"
+            raise ClaudeCliError(msg)
+        return cast("dict[str, Any]", data)
+
+    def invoke(self, prompt: str) -> str:
+        """Return the CLI's text result."""
+        return str(self._run(prompt, None).get("result", ""))
+
+    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
+        """Return the CLI output validated into ``output_format``."""
+        data = self._run(prompt, output_format.model_json_schema())
+        try:
+            structured = data.get("structured_output")
+            if structured is not None:
+                return output_format.model_validate(structured)
+            return output_format.model_validate_json(str(data.get("result", "")))
+        except ValidationError as exc:
+            msg = f"`{self._binary}` output does not match {output_format.__name__}: {exc}"
+            raise ClaudeCliError(msg) from exc
+
+
 _PURPOSE_TIERS: dict[str, str] = {
     "spec-review": "review",
     "ai-code-review": "review",
@@ -265,7 +336,13 @@ def _build_subagent_provider(cfg: YdkConfig, max_tokens: int, purpose: str | Non
     )
 
 
+def _build_claude_cli_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None) -> StructuredLLMProvider:
+    del max_tokens  # the CLI owns its own output budget
+    return ClaudeCliProvider(cfg.ai.model_for(tier_for_purpose(purpose)))
+
+
 _PROVIDER_BUILDERS = {
+    "claude-cli": _build_claude_cli_provider,
     "anthropic": _build_anthropic_provider,
     "subagent": _build_subagent_provider,
 }
