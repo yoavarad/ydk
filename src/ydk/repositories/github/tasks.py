@@ -26,6 +26,7 @@ from ydk.repositories.github.parser import (
 )
 
 if TYPE_CHECKING:
+    from ydk.core.llm_provider import LLMProvider
     from ydk.models.compaction import CompactedTask
     from ydk.models.gate import Gate
 
@@ -431,7 +432,7 @@ class GitHubTaskRepository:
 
     # -- compaction -----------------------------------------------------------
 
-    def compact_task(self, task_id: str) -> CompactedTask:
+    def compact_task(self, task_id: str, *, llm_provider: LLMProvider | None = None) -> CompactedTask:
         """Compact a completed task by posting a summary comment and archiving it.
 
         Uses the same ``TaskCompactor`` logic as the local backend. The
@@ -443,7 +444,7 @@ class GitHubTaskRepository:
 
         issue_number = _extract_issue_number(task_id)
         task = self.get(issue_number)
-        compactor = TaskCompactor()
+        compactor = TaskCompactor(llm_provider)
         compacted = compactor.compact_task(task)
 
         lines: _list[str] = [
@@ -466,7 +467,7 @@ class GitHubTaskRepository:
 
         return compacted
 
-    def compact_all_done(self, *, dry_run: bool = False) -> _list[str]:
+    def compact_all_done(self, *, dry_run: bool = False, llm_provider: LLMProvider | None = None) -> _list[str]:
         """Compact all closed tasks. Returns list of compacted issue numbers."""
         closed = self.list(status="closed")
         compacted_ids: _list[str] = []
@@ -476,7 +477,7 @@ class GitHubTaskRepository:
                 compacted_ids.append(tid)
                 continue
             try:
-                self.compact_task(tid)
+                self.compact_task(tid, llm_provider=llm_provider)
                 compacted_ids.append(tid)
             except (RuntimeError, ValueError):
                 pass  # skip tasks that fail to compact

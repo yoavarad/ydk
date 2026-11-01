@@ -267,3 +267,27 @@ class TestRepositoryCompaction:
         fm, _body = parse_frontmatter(file_path.read_text(encoding="utf-8"))
         assert fm["compacted"] is True
         assert fm["status"] == "done"
+
+
+class _CannedProvider:
+    """LLM boundary stand-in returning a fixed JSON answer."""
+
+    def invoke(self, prompt: str) -> str:
+        return '{"summary": "LLM summary", "key_decisions": ["chose X"], "files_modified": ["src/a.py"]}'
+
+
+class TestRepositoryCompactionWithProvider:
+    def test_compact_task_uses_provider(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        task = _make_done_task(repo)
+        result = repo.compact_task(task.id, llm_provider=_CannedProvider())
+        assert result.summary == "LLM summary"
+        assert result.key_decisions == ["chose X"]
+        assert result.files_modified == ["src/a.py"]
+
+    def test_compact_all_done_uses_provider(self, tmp_path: Path) -> None:
+        repo = LocalTaskRepository(tmp_path)
+        task = _make_done_task(repo)
+        repo.compact_all_done(llm_provider=_CannedProvider())
+        content = (tmp_path / "tasks" / f"{task.id}.md").read_text(encoding="utf-8")
+        assert "LLM summary" in content
