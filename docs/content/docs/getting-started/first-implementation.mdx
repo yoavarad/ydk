@@ -71,7 +71,7 @@ This triggers the full verification pipeline -- all three layers, executed seque
 
 **Layer 2 (Architecture and Structure)** enforces project conventions. The `python-tdd-guard` plugin verifies that every source file has tests. The `python-file-length` plugin enforces file size limits. Framework-specific plugins check import isolation, route delegation, adapter boundaries, and other architectural rules. These checks take 5-15 seconds.
 
-**Layer 3 (AI-Powered)** runs LLM-based analysis. The `ai-code-review` plugin sends the diff to an LLM for security, quality, and design review. The `spec-alignment` plugin checks that the implementation matches the spec across six dimensions. These checks take 15-60 seconds and require the `ai` extras.
+**Layer 3 (AI-Powered)** runs LLM-based analysis. The `ai-code-review` plugin sends the diff to an LLM for security, quality, and design review. The `spec-alignment` plugin checks that the implementation matches the spec across six dimensions. These checks take 15-60 seconds and use the configured LLM provider (`ai.provider`).
 
 If all checks pass, YDK saves the verification report as a proof artifact at `.ydk/proofs/T-abc12345/verification.json`, creates a PR with the full proof embedded in the body, and posts a proof summary to the task issue. The PR body includes the actual output from every verification check -- not just "passed" or "failed", but the exact console output that proves it.
 

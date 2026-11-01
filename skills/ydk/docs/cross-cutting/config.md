@@ -57,7 +57,11 @@ components:
 
 # ─── Spec Quality Check (Stage 01) ────────────────────
 ai:
-  provider: string                # default: "anthropic" — first-party Anthropic API
+  provider: string                # default: "anthropic" — "anthropic" | "claude-cli" | "subagent" (`ydk init` writes "subagent")
+  routes: dict[string,string]     # default: {} — per-purpose provider override, e.g. {extract: anthropic}
+  subagent:
+    dir: string                   # default: ".ydk/llm" — requests/ and responses/ live here
+    agents: dict[string,object]   # per-purpose {agent, model, instructions}; key "default" is the fallback
   model_tiers:                    # single source of truth for Claude model IDs
     fast: string                  # default: "claude-haiku-4-5"
     review: string                # default: "claude-sonnet-5"
@@ -72,7 +76,7 @@ ai:
 spec_check:
   timeout: int                    # default: 60 — seconds per reviewer
   global_timeout: int             # default: 120 — seconds total
-  concurrency: int                # default: 10 — max parallel Bedrock calls
+  concurrency: int                # default: 10 — max parallel reviewer calls
   results_path: string            # default: ".ydk/spec-check-results.json"
   thresholds:
     completeness: int             # default: 8 — score 0-10
@@ -104,7 +108,7 @@ scaffolding:
 
 # ─── Memory (Stage 04) ────────────────────────────────
 memory:
-  embedding_model: string         # default: "cohere.embed-english-v3"
+  embedding_model: string         # default: "all-MiniLM-L6-v2" — informational; local MiniLM is hardcoded
   auto_bootstrap: bool            # default: true
   auto_capture: bool              # default: true
   chroma_path: string             # default: ".ydk/memory/chroma"
@@ -137,11 +141,6 @@ ignition:
     syntax: bool                  # default: true — run Python syntax check after generation
     circular_imports: bool        # default: true — detect circular imports after generation
     ruff_format: bool             # default: true — run ruff format after generation (Python stacks only)
-
-# ─── AWS ───────────────────────────────────────────────
-aws:
-  profile: string                    # default: "" — AWS profile name for Bedrock
-  region: string                     # default: "us-east-1"
 
 # ─── Verification ─────────────────────────────────────
 verification:
@@ -200,7 +199,10 @@ All hooks enabled by default after `ydk init`. Pre-push spec/task checks disable
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `provider` | string | `"anthropic"` | AI provider (first-party Anthropic API). |
+| `provider` | string | `"anthropic"` | Default LLM provider: `anthropic` (API, needs `ANTHROPIC_API_KEY`), `claude-cli` (local `claude` CLI), or `subagent` (file handoff to the calling agent; written by `ydk init`). |
+| `routes` | map | `{}` | Per-purpose provider override. Purposes: `spec-review`, `ai-code-review`, `spec-alignment`, `retrospective`, `layer-b-scan`, `extract`, `complexity`, `compaction`, `contradiction`, `checkpoint`. |
+| `subagent.dir` | string | `".ydk/llm"` | Directory holding `requests/<id>.json` and `responses/<id>.json`. |
+| `subagent.agents.<purpose>` | object | `{}` | `agent` (subagent type, default `general-purpose`), optional `model`, `instructions`. `default` applies to unlisted purposes. |
 | `model_tiers.fast` | string | `"claude-haiku-4-5"` | Lightweight calls (memory extraction, complexity scoring). |
 | `model_tiers.review` | string | `"claude-sonnet-5"` | Spec reviewers and the ai-code-review / spec-alignment plugins. |
 | `model_tiers.deep` | string | `"claude-opus-5-5"` | Complex reasoning. |
@@ -213,7 +215,7 @@ Every LLM call site resolves its model from a tier; overriding one tier keeps th
 |---|---|---|---|
 | `timeout` | int | `60` | Seconds per reviewer. Timed out = score 0. |
 | `global_timeout` | int | `120` | Seconds for entire check. |
-| `concurrency` | int | `10` | Max concurrent Bedrock calls (ThreadPoolExecutor). |
+| `concurrency` | int | `10` | Max concurrent reviewer calls (ThreadPoolExecutor). |
 | `results_path` | string | `".ydk/spec-check-results.json"` | Where to save JSON results. |
 | `thresholds.*` | int (0-10) | varies | Minimum score per rubric group. |
 | `custom` | list | `[]` | Project-specific quality criteria. |
@@ -234,7 +236,7 @@ Every LLM call site resolves its model from a tier; overriding one tier keeps th
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `embedding_model` | string | `"cohere.embed-english-v3"` | Bedrock embedding model for vector search. |
+| `embedding_model` | string | `"all-MiniLM-L6-v2"` | Informational: the local MiniLM embedding backend is hardcoded. |
 | `auto_bootstrap` | bool | `true` | Automatically bootstrap context on `ydk task start`. |
 | `auto_capture` | bool | `true` | Capture session for later extraction. |
 | `chroma_path` | string | `".ydk/memory/chroma"` | ChromaDB storage path. |

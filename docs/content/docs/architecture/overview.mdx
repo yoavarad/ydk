@@ -49,7 +49,7 @@ These rules mean you can test any core module by providing mock implementations 
 
 Six design patterns recur throughout YDK's architecture:
 
-**Protocol-based dependency injection.** Core classes depend on protocols (Python's `typing.Protocol`), not concrete implementations. `TaskLifecycle` depends on `LifecycleTaskRepository`, not `LocalTaskRepository` or `GitHubTaskRepository`. `ComplexityScorer` depends on `LLMProvider`, not a specific Bedrock client. This makes every class independently testable and swappable.
+**Protocol-based dependency injection.** Core classes depend on protocols (Python's `typing.Protocol`), not concrete implementations. `TaskLifecycle` depends on `LifecycleTaskRepository`, not `LocalTaskRepository` or `GitHubTaskRepository`. `ComplexityScorer` depends on `LLMProvider`, not a specific provider client. This makes every class independently testable and swappable.
 
 **Deterministic fallbacks.** Every LLM-powered feature has a non-LLM path. When `ComplexityScorer` has no LLM provider, it returns a default score of 5. When `ComponentScanner` has no LLM, it returns an empty result. When `TaskCompactor` has no LLM, it uses deterministic summarization. This means YDK works fully without AI credentials -- the AI features enhance but do not gate the core workflow.
 

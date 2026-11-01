@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A quality gate that evaluates spec files using 10 parallel YAML-based reviewers. Each reviewer scores the spec against one quality criterion using the Bedrock Converse API with forced structured output. All must pass their threshold before the spec can be pushed.
+A quality gate that evaluates spec files using 10 parallel YAML-based reviewers. Each reviewer scores the spec against one quality criterion through the configured LLM provider with structured output. All must pass their threshold before the spec can be pushed.
 
 ## When It Runs
 
@@ -17,9 +17,9 @@ The pre-push hook is disabled by default. Enable it in `.ydk/config.yaml` under 
 
 1. Detects which spec files changed (git diff), or checks all files with `--all-files`
 2. Reads all spec content (narratives + component manifests)
-3. Sends the spec content as a cached system prompt prefix to Bedrock
-4. Fans out 10 parallel Bedrock Converse API calls (one per reviewer YAML config)
-5. Each call uses forced `toolChoice` to guarantee structured JSON output (score, reasoning, suggestions, findings)
+3. Sends the spec content as a cacheable context prefix to the configured LLM provider
+4. Fans out 10 parallel structured-output calls (one per reviewer YAML config). With the `subagent` provider the requests are collected into a single `YDK-SUBAGENT-REQUESTS` handoff (exit code 3)
+5. Each call is validated against a structured output schema (score, reasoning, suggestions, findings)
 6. Per-reviewer timing is logged; `--verbose` shows cache metrics and DEBUG output
 7. All scores >= threshold = PASS. Any below = FAIL with detailed report.
 
@@ -128,7 +128,7 @@ ai:
 spec_check:
   timeout: 60                                    # seconds per reviewer
   global_timeout: 120                            # seconds total
-  concurrency: 10                                # max parallel Bedrock calls
+  concurrency: 10                                # max parallel reviewer calls
   thresholds:
     completeness: 8
     clarity: 8

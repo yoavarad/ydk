@@ -70,31 +70,20 @@ Each check reports its status with a clear pass/fail indicator. If something is 
 
 ## Optional Dependencies
 
-YDK's core CLI works with no extra dependencies -- you can create tasks, manage specs, run verification, and scaffold projects out of the box. However, some of the more advanced features require optional extras that pull in larger libraries.
+YDK's core CLI works with no extra dependencies -- you can create tasks, manage specs, run verification, and scaffold projects out of the box. The Anthropic SDK and ChromaDB (local MiniLM embeddings) are regular dependencies, so AI and memory features need no extras.
 
 ```bash
-# AI features (spec checking, complexity scoring, AI code review)
-uv add "ydk[ai]"
-
-# Memory system (ChromaDB + Amazon Bedrock embeddings)
-uv add "ydk[memory]"
-
 # Development tools (for contributing to YDK itself)
 uv add "ydk[dev]"
-
-# Everything
-uv add "ydk[ai,memory,dev]"
 ```
 
-The `ai` extra installs `boto3` and the Bedrock SDK, enabling YDK to call Claude for spec quality evaluation, complexity scoring, and AI-powered code review. The `memory` extra adds ChromaDB for vector storage and Bedrock embedding functions for hybrid search. Both require AWS credentials configured for Amazon Bedrock access -- set `aws.profile` and `aws.region` in your YDK config after initialization.
-
 <Callout type="info">
-If you are just getting started, install the base package first and add extras later as you need them. The core workflow -- specs, tasks, verification, and component manifests -- works without any AI or memory features.
+The core workflow -- specs, tasks, verification, and component manifests -- works without any AI features.
 </Callout>
 
 ### Setting the Claude API key
 
-AI features (`ai-code-review`, `spec-alignment` verification, `ydk spec verify`, `ydk memory extract`/`retrospective`, `ydk task analyze-complexity`) call Claude directly and need `ANTHROPIC_API_KEY` in your environment. Get a key from the [API keys page](https://platform.claude.com/), then set it as a persistent **user-level** environment variable -- not just in `.env` -- so every shell, git worktree (`.ydk/worktrees/*`), and agent/subagent process inherits it:
+`ai.provider` chooses how LLM-backed features (`ai-code-review`, `spec-alignment` verification, `ydk spec verify`, `ydk memory extract`/`retrospective`, `ydk task analyze-complexity`) run. `ydk init` writes `subagent`, which hands each request to your calling agent's subagents and needs no key. The `claude-cli` provider uses the local `claude` CLI. Only the `anthropic` provider (or an `ai.routes` entry pointing at it) calls Claude directly and needs `ANTHROPIC_API_KEY` in your environment. Get a key from the [API keys page](https://platform.claude.com/), then set it as a persistent **user-level** environment variable -- not just in `.env` -- so every shell, git worktree (`.ydk/worktrees/*`), and agent/subagent process inherits it:
 
 ```powershell
 # Windows (PowerShell)
@@ -106,7 +95,7 @@ AI features (`ai-code-review`, `spec-alignment` verification, `ydk spec verify`,
 echo 'export ANTHROPIC_API_KEY=<your-key>' >> ~/.zshrc  # or ~/.bashrc
 ```
 
-Open a new terminal (and restart any running Claude Code session) afterward so child processes pick it up. `ydk init` reports whether the key is detected. Without it, AI features are skipped or fail.
+Open a new terminal (and restart any running Claude Code session) afterward so child processes pick it up. When `anthropic` is in use, `ydk init` reports whether the key is detected; in subagent or claude-cli mode it prints no key warning. Without the key, `anthropic`-routed AI features are skipped or fail.
 
 ## What You Just Installed
 

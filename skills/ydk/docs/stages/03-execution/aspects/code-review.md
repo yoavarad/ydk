@@ -119,6 +119,6 @@ Each review agent returns:
 
 ## Parallelization
 
-All review agents run in parallel via asyncio. With Bedrock prompt caching, the diff content is cached and shared across all reviewers — the first reviewer pays full cost, subsequent reviewers get ~90% reduction.
+All review agents run in parallel via asyncio. With the `anthropic` provider's prompt caching, the diff content is cached and shared across all reviewers — the first reviewer pays full cost, subsequent reviewers get ~90% reduction.
 
 Typical timing: 3 parallel reviewers complete in ~20-30 seconds.

@@ -89,5 +89,5 @@ ydk visual feedback --session-id abc
 The companion starts a Vite dev server with an annotation overlay injected into the page. Users can make selection choices, annotate specific DOM elements (identified by CSS selector, XPath, or text anchor), and draw rectangle regions with comments. This feedback is captured as structured events that inform the spec without requiring the user to describe visual layouts in prose.
 
 <Callout type="info">
-The spec checker uses Amazon Bedrock (Claude Sonnet by default). Configure the model and thresholds in your `.ydk/config.yaml` under the `spec_check` section.
+The spec checker runs through the configured LLM provider (`ai.provider`) using the `review` model tier (Claude Sonnet by default). Configure the provider and tiers under `ai` and the thresholds under `spec_check` in your `.ydk/config.yaml`.
 </Callout>

@@ -9,6 +9,9 @@ import yaml
 from typer.testing import CliRunner
 
 from ydk.cli import app
+from ydk.cli.init_cmd import _print_api_key_status
+from ydk.models.config import AIConfig
+from ydk.output.console import console
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -337,27 +340,55 @@ def test_install_hooks_call_ydk_cli_directly(tmp_path: Path, monkeypatch: object
     assert "python3" not in commit_msg
 
 
-def test_init_confirms_api_key_when_set(tmp_path: Path, monkeypatch: object) -> None:
-    """ydk init detects ANTHROPIC_API_KEY without printing any part of its value."""
-    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-super-secret-value")  # type: ignore[attr-defined]
-    result = runner.invoke(app, ["init", "--name", "myproject"])
-    assert result.exit_code == 0
-    assert "ANTHROPIC_API_KEY" in result.output
-    assert "detected" in result.output.lower()
-    assert "sk-ant-super-secret-value" not in result.output
-    assert "SetEnvironmentVariable" not in result.output
+def test_init_confirms_api_key_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The key section detects ANTHROPIC_API_KEY without printing any part of its value."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-super-secret-value")
+    with console.capture() as cap:
+        _print_api_key_status(AIConfig())
+    out = cap.get()
+    assert "ANTHROPIC_API_KEY" in out
+    assert "detected" in out.lower()
+    assert "sk-ant-super-secret-value" not in out
+    assert "SetEnvironmentVariable" not in out
 
 
-def test_init_shows_api_key_setup_when_unset(tmp_path: Path, monkeypatch: object) -> None:
-    """ydk init shows persistent USER-level env var setup instructions when the key is unset."""
+def test_init_shows_api_key_setup_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The key section shows persistent USER-level env var setup instructions when the key is unset."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with console.capture() as cap:
+        _print_api_key_status(AIConfig())
+    out = cap.get()
+    assert "ANTHROPIC_API_KEY" in out
+    assert "SetEnvironmentVariable" in out
+    assert "platform.claude.com" in out
+
+
+def test_init_subagent_mode_prints_no_api_key_warning(tmp_path: Path, monkeypatch: object) -> None:
+    """Default ai.provider=subagent routes nothing to Anthropic, so no key section appears."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # type: ignore[attr-defined]
     result = runner.invoke(app, ["init", "--name", "myproject"])
     assert result.exit_code == 0
-    assert "ANTHROPIC_API_KEY" in result.output
-    assert "SetEnvironmentVariable" in result.output
-    assert "platform.claude.com" in result.output
+    assert "ANTHROPIC_API_KEY" not in result.output
+    assert "SetEnvironmentVariable" not in result.output
+
+
+def test_init_warns_when_a_route_resolves_to_anthropic(tmp_path: Path, monkeypatch: object) -> None:
+    """A per-purpose route to anthropic still needs the key even when the provider is subagent."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # type: ignore[attr-defined]
+    cfg = AIConfig.model_validate({"provider": "subagent", "routes": {"extract": "anthropic"}})
+    with console.capture() as cap:
+        _print_api_key_status(cfg)
+    assert "ANTHROPIC_API_KEY is not set" in cap.get()
+
+
+def test_init_no_warning_for_claude_cli_routes(monkeypatch: object) -> None:
+    """claude-cli and subagent routes need no Anthropic key."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # type: ignore[attr-defined]
+    cfg = AIConfig.model_validate({"provider": "claude-cli", "routes": {"extract": "subagent"}})
+    with console.capture() as cap:
+        _print_api_key_status(cfg)
+    assert cap.get() == ""
 
 
 def _register_ci_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

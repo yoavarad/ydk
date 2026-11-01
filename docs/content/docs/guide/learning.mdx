@@ -114,5 +114,5 @@ ydk memory audit
 The procedural memory system tracks prompt outcomes -- which prompts led to successful extractions and which did not -- enabling iterative improvement of the extraction process.
 
 <Callout type="info">
-The memory system requires the `memory` extras (`chromadb`, `boto3`). Install with `uv add "ydk[memory]"`. Without these extras, Stage 04 is skipped but all other stages work normally.
+The memory system uses ChromaDB with local MiniLM embeddings; both ship with the base install, so no extras or cloud credentials are needed. LLM-backed steps (extract, retrospective) use the configured `ai.provider`.
 </Callout>

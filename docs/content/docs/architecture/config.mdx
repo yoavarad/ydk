@@ -60,7 +60,10 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | str | `"anthropic"` | LLM provider (first-party Anthropic API) |
+| `provider` | str | `"anthropic"` | Default LLM provider: `anthropic`, `claude-cli`, or `subagent` (`ydk init` writes `subagent`) |
+| `routes` | dict[str, str] | `{}` | Per-purpose provider override (e.g. `{extract: anthropic}`) |
+| `subagent.dir` | str | `".ydk/llm"` | Directory for subagent handoff `requests/` and `responses/` |
+| `subagent.agents` | dict | `{}` | Per-purpose `agent`, `model`, `instructions`; `default` is the fallback |
 | `model_tiers.fast` | str | `"claude-haiku-4-5"` | Lightweight calls (memory extraction, complexity scoring) |
 | `model_tiers.review` | str | `"claude-sonnet-5"` | Spec reviewers and the ai-code-review / spec-alignment plugins |
 | `model_tiers.deep` | str | `"claude-opus-5-5"` | Complex reasoning |
@@ -86,7 +89,7 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `embedding_model` | str | `"amazon.titan-embed-text-v2:0"` | Bedrock embedding model for ChromaDB |
+| `embedding_model` | str | `"all-MiniLM-L6-v2"` | Informational; ChromaDB uses its local MiniLM embedder |
 | `auto_bootstrap` | bool | `True` | Automatically load relevant memories when starting a task |
 | `chroma_path` | str | `".ydk/memory/chroma"` | Directory for ChromaDB persistent storage |
 

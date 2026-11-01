@@ -8,7 +8,7 @@ The memory system turns your project's knowledge files into a searchable, scored
 
 **Storage:** ChromaDB, a lightweight vector database that persists to disk at `.ydk/memory/chroma/`. No external services required for storage.
 
-**Embeddings:** Generated via Amazon Bedrock using the configured embedding model (default: `cohere.embed-english-v3`). Each text chunk becomes a high-dimensional vector that captures its semantic meaning.
+**Embeddings:** Generated locally by ChromaDB's default MiniLM-L6 embedding function (no API key or cloud account needed). Each text chunk becomes a high-dimensional vector that captures its semantic meaning.
 
 **Keyword Index:** BM25 index maintained alongside the vector store for keyword-based matching. Updated automatically during `ydk memory index`.
 
@@ -189,7 +189,7 @@ All memory settings live in `.ydk/config.yaml` under the `memory` key:
 
 ```yaml
 memory:
-  embedding_model: cohere.embed-english-v3    # Bedrock embedding model
+  embedding_model: all-MiniLM-L6-v2           # informational; local MiniLM is hardcoded
   auto_bootstrap: true                         # Bootstrap on task start
   chroma_path: .ydk/memory/chroma              # ChromaDB storage location
   search_mode: hybrid                          # Default: hybrid | vector | keyword
@@ -212,4 +212,4 @@ memory:
 - Progressive retrieval (`--depth index`) is efficient for broad scans before drilling into specifics.
 - Negative knowledge (abandoned approaches) surfaces automatically during bootstrap — check it before starting a new approach.
 - Contradiction detection is automatic. If you see a `valid_until` timestamp, check the newer memory.
-- Embeddings are generated via AWS Bedrock. The configured AWS profile must have Bedrock access.
+- Embeddings are generated locally (MiniLM); no cloud credentials are needed. LLM-backed memory steps (`extract`, `retrospective`, contradiction detection) use the configured `ai.provider`.

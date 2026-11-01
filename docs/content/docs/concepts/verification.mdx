@@ -69,14 +69,14 @@ The `RepairLoop` class formats failures as structured JSON for machine consumpti
 
 ## Spec Verification (Reviewers)
 
-The spec verification system evaluates narrative spec quality using 10 YAML-based reviewers that run as parallel Bedrock Converse API calls. This is a completely separate system from the code verification plugins.
+The spec verification system evaluates narrative spec quality using 10 YAML-based reviewers that run as parallel structured-output calls through the configured LLM provider. This is a completely separate system from the code verification plugins.
 
 ### How It Works
 
 1. `ydk spec verify` detects which spec files changed (or use `--all-files` for all)
 2. Reads all spec content (narratives + component manifests)
-3. Sends spec content as a **cached system prompt prefix** to Bedrock
-4. Fans out 10 parallel Bedrock Converse API calls, one per reviewer
+3. Sends spec content as a **cacheable context prefix** to the configured LLM provider
+4. Fans out 10 parallel structured-output calls, one per reviewer (batched into one `YDK-SUBAGENT-REQUESTS` handoff in subagent mode)
 5. Each call uses **forced `toolChoice`** for guaranteed structured JSON output (score, reasoning, suggestions, findings)
 6. All scores >= threshold = PASS, any below = FAIL with detailed report
 

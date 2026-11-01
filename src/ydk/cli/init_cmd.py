@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -18,6 +19,9 @@ from ydk.core.config import init_config
 from ydk.core.doctor import CheckSeverity, Doctor
 from ydk.output.console import console
 from ydk.repositories.github._helpers import REQUIRED_LABELS as _REQUIRED_LABELS
+
+if TYPE_CHECKING:
+    from ydk.models.config import AIConfig
 
 
 def _python_command() -> str:
@@ -56,8 +60,11 @@ def _ensure_gitignore(entry: str = ".ydk/cache/") -> None:
     path.write_bytes((existing + entry + "\n").encode("utf-8"))
 
 
-def _print_api_key_status() -> None:
+def _print_api_key_status(ai: AIConfig) -> None:
     """Print whether ANTHROPIC_API_KEY is set, with setup instructions if not.
+
+    Prints nothing unless the provider or some ``ai.routes`` entry resolves to
+    ``anthropic``; subagent and claude-cli modes need no key.
 
     Only checks os.environ — never makes a network call, never prints any
     part of the key's value. YDK's Claude API features (ai-code-review,
@@ -65,6 +72,8 @@ def _print_api_key_status() -> None:
     extract/retrospective``, ``ydk task analyze-complexity``) are skipped
     or fail without this key.
     """
+    if "anthropic" not in {ai.provider, *ai.routes.values()}:
+        return
     console.print("\n[bold]Claude API key[/bold]")
     if os.environ.get("ANTHROPIC_API_KEY"):
         console.print("  [green]✓[/green] ANTHROPIC_API_KEY detected in environment.")
@@ -604,7 +613,7 @@ def init_command(
     total = len(results)
     console.print(f"\n{ok_count}/{total} checks passed.")
 
-    _print_api_key_status()
+    _print_api_key_status(config.ai)
 
     # Advance to stage 01 if schemas and pack are already installed
     schemas_dir = Path(config.components.schemas_path)

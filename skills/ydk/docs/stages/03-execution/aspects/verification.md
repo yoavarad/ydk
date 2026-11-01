@@ -72,7 +72,7 @@ Exception: integration and E2E tests set `parallel: false` because they're resou
 
 ### Spec Verification (separate from verification plugins)
 
-The `ydk spec verify` command runs a **separate** system from verification plugins. It uses 10 YAML-based reviewers (N01-N10) that evaluate narrative spec quality via the Bedrock Converse API. See `stages/01-brainstorming-and-design/aspects/enforcement-gate.md` for details.
+The `ydk spec verify` command runs a **separate** system from verification plugins. It uses 10 YAML-based reviewers (N01-N10) that evaluate narrative spec quality through the configured LLM provider (`ai.provider`). See `stages/01-brainstorming-and-design/aspects/enforcement-gate.md` for details.
 
 The verification plugin system (`ydk verify run`) handles code-level checks (lint, types, tests, architecture). The spec reviewer system (`ydk spec verify`) handles spec-level quality. They are complementary but independent.
 
@@ -234,7 +234,7 @@ hooks:
 
 **Between layers:** Sequential. Layer 1 must fully pass before Layer 2 starts.
 
-**AI-based plugins (Layer 3):** All run in parallel. Use Bedrock prompt caching — the changed code is cached and shared across all AI evaluators.
+**AI-based plugins (Layer 3):** All run in parallel. Use structured output through the configured LLM provider; with `anthropic`, prompt caching shares the changed code across evaluators, and with `subagent` the requests are batched into one handoff.
 
 ## Creating a New Verification Plugin
 

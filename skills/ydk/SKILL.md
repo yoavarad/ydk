@@ -257,7 +257,7 @@ ydk spec verify --verbose              # Show per-reviewer timing, cache metrics
 ydk spec list-criteria                 # List reviewers and their thresholds
 ```
 
-**Spec Reviewers**: 10 YAML reviewer configs in `src/ydk/spec_reviewers/` (copied to `.ydk/spec-reviewers/` on `ydk init`). Each reviewer has: id, name, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric. Reviewers run as parallel Bedrock Converse API calls with forced structured output (`toolChoice`). Prompt caching shares spec content across reviewers (90% cost savings after first call).
+**Spec Reviewers**: 10 YAML reviewer configs in `src/ydk/spec_reviewers/` (copied to `.ydk/spec-reviewers/` on `ydk init`). Each reviewer has: id, name, threshold, model_tier, inline Python tools, and a detailed system prompt with examples and scoring rubric. Reviewers run as parallel structured-output calls through the configured LLM provider (`ai.provider`: `anthropic`, `claude-cli`, or `subagent`). With the `anthropic` provider, prompt caching shares spec content across reviewers; with `subagent`, all reviewer requests are collected into one handoff.
 
 ### Stage 02 — Task Management
 
@@ -411,6 +411,25 @@ ydk visual screenshot                  # Capture mockup screenshot
 ydk visual list                        # List all mockup sessions
 ```
 
+## Servicing YDK-SUBAGENT-REQUESTS
+
+When `ai.provider` (or an `ai.routes` entry) is `subagent`, LLM-backed commands (`ydk spec verify`, `ydk memory extract`/`retrospective`, `ydk task analyze-complexity`, AI verification plugins, archive-done, contradiction detection) do not call a model. They write request files and exit with code **3**, printing:
+
+```
+YDK-SUBAGENT-REQUESTS:
+- .ydk/llm/requests/<id>.json
+Rerun this command after writing responses.
+```
+
+When you see this block:
+
+1. Read every listed request file. Fields: `id`, `purpose`, `system`, `user`, `cacheable_context` (optional shared context), `output_schema` (JSON Schema), `model`, `agent`, `instructions`.
+2. Spawn **one subagent per request**, using the request's `agent` as the subagent type and `model` as the model. Give it `system`, `cacheable_context`, `user` and `instructions`. For a batch, spawn all subagents in parallel in one message.
+3. Each subagent returns JSON that validates against `output_schema`; write it to `responses/<id>.json` beside `requests/` (default dir `.ydk/llm`, set by `ai.subagent.dir`). Plain-text calls use `{"text": "..."}`.
+4. Rerun the exact same command. Answered requests are read from `responses/`; identical prompts reuse stored answers, and a changed prompt gets a new id and a new request.
+
+An invalid response file fails loudly (`SubagentResponseError` naming the file); fix or delete it and rerun. Tune agent and model per purpose under `ai.subagent.agents`. See ADR 0004 (`docs/adrs/0004-subagent-llm-handoff-protocol.md`).
+
 ## Glossary of Key Concepts
 
 ### Component Manifest
@@ -426,13 +445,16 @@ Validates that all `[ydk:...]` references in narratives point to existing compon
 Reads narrative prose and identifies concepts that should be linked to components but aren't. AI-based, runs during spec check.
 
 ### Spec Reviewer
-A YAML config file in `src/ydk/spec_reviewers/` (or `.ydk/spec-reviewers/` per project) that defines one quality criterion. Has: id (N01-N10), name, group, threshold, model_tier (`smart`, `fast`, or `reasoning`), inline Python tools, and a system prompt with examples and scoring rubric. Runs via Bedrock Converse API with forced structured output.
+A YAML config file in `src/ydk/spec_reviewers/` (or `.ydk/spec-reviewers/` per project) that defines one quality criterion. Has: id (N01-N10), name, group, threshold, model_tier (`fast`, `review`, or `deep`), inline Python tools, and a system prompt with examples and scoring rubric. Runs through the configured LLM provider with structured output.
 
 ### Model Tier
-A logical name (`smart`, `fast`, `reasoning`) mapped to a Bedrock model ID in `ai.model_tiers` config. Both `smart` and `fast` default to Sonnet 4; `reasoning` defaults to Opus. Reviewers declare a tier, not a model ID.
+A logical name (`fast`, `review`, `deep`) mapped to a Claude model ID in `ai.model_tiers` config (defaults: Haiku 4.5, Sonnet 5, Opus 5.5). Reviewers declare a tier, not a model ID. Each LLM purpose (e.g. `spec-review`, `extract`) maps to a tier.
 
 ### Prompt Caching
-Bedrock prompt caching that shares spec content across all reviewer calls. The first reviewer pays full input cost; remaining reviewers hit the cache for ~90% cost savings on the spec portion.
+Anthropic prompt caching (`anthropic` provider) that shares spec content across all reviewer calls. The first reviewer pays full input cost; remaining reviewers hit the cache for ~90% cost savings on the spec portion.
+
+### Subagent Provider
+An `ai.provider` value (the default for new repos) where YDK writes each LLM request to `.ydk/llm/requests/<id>.json` and exits with code 3 instead of calling a model; the calling agent answers via subagents. See "Servicing YDK-SUBAGENT-REQUESTS" above.
 
 ### Proof Capture
 Deterministic capture of verification command output to `.ydk/proofs/<task-id>/`. Uses full verification report (all plugins) — each plugin's output saved to `.ydk/proofs/<task>/plugins/<name>.txt`. PR body assembled from all plugin results. Screenshot proof required for UI tasks (routes/pages `component_refs`).
