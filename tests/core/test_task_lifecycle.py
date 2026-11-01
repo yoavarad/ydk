@@ -12,7 +12,7 @@ import pytest
 from ydk.core.events import EventBus
 from ydk.core.task_lifecycle import TaskLifecycle
 from ydk.core.verifier import Verifier
-from ydk.models.config import DEFAULT_MODEL_TIERS
+from ydk.models.config import AIConfig
 from ydk.models.pm import AcceptanceCriterion, DependencyStatus, TaskCreate, TaskDetail
 from ydk.models.verification import CheckResult, VerificationReport
 
@@ -153,7 +153,7 @@ def test_done_runs_verifications(
             "task_id": "T-001",
             "config": {
                 "anthropic": {"api_key_env": "ANTHROPIC_API_KEY"},
-                "ai": {"model_tiers": DEFAULT_MODEL_TIERS},
+                "ai": AIConfig().model_dump(mode="json"),
                 "spec_check": {
                     "thresholds": {"architecture": 8},
                 },
@@ -162,6 +162,7 @@ def test_done_runs_verifications(
                 "language": "python",
             },
             "task_scope": {"title": "Test task", "description": "", "acceptance_criteria": []},
+            "llm_handoff": True,
         },
     )
     assert result["passed"] is True
@@ -225,6 +226,81 @@ def test_done_fails_when_verification_fails(
     assert result["passed"] is False
     mock_repo.add_comment.assert_called_once()
     assert "Verification FAILED" in mock_repo.add_comment.call_args[0][1]
+
+
+def _needs_llm_check(name: str, *paths: str) -> CheckResult:
+    return CheckResult(
+        name=name,
+        passed=False,
+        output="waiting",
+        duration_seconds=0.0,
+        detail={"status": "NEEDS_LLM", "request_paths": list(paths), "no_cache": True},
+    )
+
+
+def test_done_returns_needs_llm_without_pr_or_failure_comment(
+    lifecycle: TaskLifecycle, mock_verifier: MagicMock, mock_repo: MagicMock
+) -> None:
+    """Only NEEDS_LLM checks pending: done() returns the request paths and stops before the PR."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[
+            CheckResult(name="lint", passed=True, output="ok", duration_seconds=1.0),
+            _needs_llm_check("ai-code-review", "/r/a.json"),
+            _needs_llm_check("spec-alignment", "/r/b.json"),
+        ],
+        all_passed=False,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+
+    result = lifecycle.done("T-001")
+
+    assert result["passed"] is False
+    assert result["needs_llm"] == ["/r/a.json", "/r/b.json"]
+    assert "pr_url" not in result
+    mock_repo.add_comment.assert_not_called()
+    mock_repo.update_status.assert_not_called()
+
+
+def test_done_real_failure_takes_precedence_over_needs_llm(
+    lifecycle: TaskLifecycle, mock_verifier: MagicMock, mock_repo: MagicMock
+) -> None:
+    """A genuinely failing check is reported as a normal failure, not a handoff."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[
+            CheckResult(name="lint", passed=False, output="errors", duration_seconds=1.0),
+            _needs_llm_check("ai-code-review", "/r/a.json"),
+        ],
+        all_passed=False,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+
+    result = lifecycle.done("T-001")
+
+    assert result["passed"] is False
+    assert "needs_llm" not in result
+    assert "Verification FAILED" in mock_repo.add_comment.call_args[0][1]
+
+
+def test_done_skipped_needs_llm_plugin_does_not_hand_off(lifecycle: TaskLifecycle, mock_verifier: MagicMock) -> None:
+    """--skip-plugin on a NEEDS_LLM plugin drops its requests."""
+    report = VerificationReport(
+        timestamp="2025-01-01T00:00:00Z",
+        checks=[
+            _needs_llm_check("ai-code-review", "/r/a.json"),
+            _needs_llm_check("spec-alignment", "/r/b.json"),
+        ],
+        all_passed=False,
+        total_duration_seconds=1.0,
+    )
+    mock_verifier.run_all = AsyncMock(return_value=report)
+
+    result = lifecycle.done("T-001", skip_plugins=["ai-code-review"])
+
+    assert result["needs_llm"] == ["/r/b.json"]
 
 
 @patch("shutil.which", return_value=None)

@@ -69,15 +69,13 @@ def _write_file(root: Path, relpath: str, content: str) -> None:
     full.write_text(content)
 
 
-def _mock_tool_use_response(tool_input: dict[str, Any]) -> MagicMock:
-    """Build a fake anthropic.types.Message with a single tool_use block."""
-    block = MagicMock()
-    block.type = "tool_use"
-    block.input = tool_input
-    message = MagicMock()
-    message.content = [block]
-    message.stop_reason = "tool_use"
-    return message
+def _answer_with(mock_client: MagicMock, output: Any) -> None:
+    """Make ``messages.parse`` validate *output* into the requested model, like the SDK does."""
+
+    def parse(**kwargs: Any) -> MagicMock:
+        return MagicMock(parsed_output=kwargs["output_format"].model_validate(output), stop_reason="end_turn")
+
+    mock_client.messages.parse.side_effect = parse
 
 
 @pytest.fixture(autouse=True)
@@ -156,7 +154,7 @@ class TestSpecAlignmentWithMockedClient:
         }
 
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(evaluation)
+        _answer_with(mock_client, evaluation)
 
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
@@ -164,9 +162,10 @@ class TestSpecAlignmentWithMockedClient:
         assert result["passed"] is True
         assert result["detail"]["overall_score"] == 9
         assert "9/10" in result["output"]
-        call_kwargs = mock_client.messages.create.call_args.kwargs
+        call_kwargs = mock_client.messages.parse.call_args.kwargs
         assert call_kwargs["model"] == "claude-review-override"
-        assert call_kwargs["tool_choice"] == {"type": "tool", "name": "submit_evaluation"}
+        assert call_kwargs["output_format"].__name__ == "SpecEvaluation"
+        assert "tools" not in call_kwargs
 
     def test_failing_evaluation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         mod = _load_check_module(SPEC_ALIGNMENT_PATH, "spec_alignment_check")
@@ -190,7 +189,7 @@ class TestSpecAlignmentWithMockedClient:
         }
 
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(evaluation)
+        _answer_with(mock_client, evaluation)
 
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
@@ -210,7 +209,7 @@ class TestSpecAlignmentWithMockedClient:
 
         fake_response = httpx.Response(401, request=httpx.Request("POST", "https://api.anthropic.com"))
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = anthropic.AuthenticationError(
+        mock_client.messages.parse.side_effect = anthropic.AuthenticationError(
             "invalid x-api-key", response=fake_response, body=None
         )
 
@@ -268,7 +267,7 @@ class TestAiCodeReviewWithMockedClient:
 
         review = {"findings": [], "summary": "No issues found.", "passed": True}
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(review)
+        _answer_with(mock_client, review)
 
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
@@ -276,7 +275,7 @@ class TestAiCodeReviewWithMockedClient:
         assert result["passed"] is True
         assert result["detail"]["critical_count"] == 0
         assert "No issues found" in result["output"]
-        assert mock_client.messages.create.call_args.kwargs["model"] == "claude-review-override"
+        assert mock_client.messages.parse.call_args.kwargs["model"] == "claude-review-override"
 
     def test_defaults_to_review_tier_when_context_has_no_ai_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -292,12 +291,12 @@ class TestAiCodeReviewWithMockedClient:
 
         review = {"findings": [], "summary": "No issues found.", "passed": True}
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(review)
+        _answer_with(mock_client, review)
 
         with patch("anthropic.Anthropic", return_value=mock_client):
             mod.run_check(ctx)
 
-        assert mock_client.messages.create.call_args.kwargs["model"] == DEFAULT_MODEL_TIERS["review"]
+        assert mock_client.messages.parse.call_args.kwargs["model"] == DEFAULT_MODEL_TIERS["review"]
 
     def test_critical_finding_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         mod = _load_check_module(AI_CODE_REVIEW_PATH, "ai_code_review_check")
@@ -320,7 +319,7 @@ class TestAiCodeReviewWithMockedClient:
             "passed": False,
         }
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(review)
+        _answer_with(mock_client, review)
 
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
@@ -351,7 +350,7 @@ class TestAiCodeReviewWithMockedClient:
             "passed": True,
         }
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(review)
+        _answer_with(mock_client, review)
 
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
@@ -371,7 +370,7 @@ class TestAiCodeReviewWithMockedClient:
 
         fake_response = httpx.Response(429, request=httpx.Request("POST", "https://api.anthropic.com"))
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = anthropic.RateLimitError(
+        mock_client.messages.parse.side_effect = anthropic.RateLimitError(
             "rate limited", response=fake_response, body=None
         )
 
@@ -477,11 +476,11 @@ class TestTaskScopeGrading:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(tool_response)
+        _answer_with(mock_client, tool_response)
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
 
-        user_message = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        user_message = mock_client.messages.parse.call_args.kwargs["messages"][0]["content"]
         return result, user_message
 
     def test_prompt_contains_task_scope_and_out_of_scope_instruction(
@@ -531,13 +530,12 @@ class TestStackChecklist:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_tool_use_response(_CLEAN_REVIEW)
+        _answer_with(mock_client, _CLEAN_REVIEW)
         with patch("anthropic.Anthropic", return_value=mock_client):
             result = mod.run_check(ctx)
 
         assert result["passed"] is True
-        system = mock_client.messages.create.call_args.kwargs["system"]
-        return "\n".join(block["text"] for block in system)
+        return mock_client.messages.parse.call_args.kwargs["messages"][0]["content"]
 
     def test_dotnet_project_gets_dotnet_checklist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         text = self._system_text(tmp_path, monkeypatch, "dotnet")
@@ -594,7 +592,7 @@ def _run_with_tool_input(
     ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"] if with_spec else [])
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_tool_use_response(tool_input)
+    _answer_with(mock_client, tool_input)
     with patch("anthropic.Anthropic", return_value=mock_client):
         return mod.run_check(ctx)
 
@@ -642,3 +640,73 @@ class TestMalformedAiCodeReviewOutput:
         assert "plugin error" not in result["output"]
         assert result["detail"]["no_cache"] is True
         assert not result["detail"].get("crashed")
+
+
+# ---------------------------------------------------------------------------
+# Subagent provider (task 626): skip outside task done, NEEDS_LLM inside it
+# ---------------------------------------------------------------------------
+
+_CRITICAL_REVIEW = {
+    "findings": [{"severity": "critical", "category": "security", "file": "src/main.py", "description": "Leak"}],
+    "summary": "Bad.",
+    "passed": False,
+}
+_FAILING_EVALUATION = {**_PASSING_EVALUATION, "overall_score": 3}
+
+
+def _subagent_context(tmp_path: Path, *, handoff: bool) -> dict[str, Any]:
+    _write_file(tmp_path, "src/main.py", "x = 1")
+    _write_file(tmp_path, "docs/spec.md", "# Spec")
+    ctx = _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
+    ctx["config"]["ai"]["provider"] = "subagent"
+    if handoff:
+        ctx["llm_handoff"] = True
+    return ctx
+
+
+@pytest.mark.parametrize(
+    ("path", "module_name", "good", "bad"),
+    [
+        (SPEC_ALIGNMENT_PATH, "spec_alignment_subagent", _PASSING_EVALUATION, _FAILING_EVALUATION),
+        (AI_CODE_REVIEW_PATH, "ai_code_review_subagent", _CLEAN_REVIEW, _CRITICAL_REVIEW),
+    ],
+)
+class TestSubagentMode:
+    def test_outside_task_done_reports_skipped(
+        self, tmp_path: Path, path: Path, module_name: str, good: dict[str, Any], bad: dict[str, Any]
+    ) -> None:
+        from ydk.models.verification import CheckResult, is_skipped
+
+        mod = _load_check_module(path, module_name)
+
+        result = mod.run_check(_subagent_context(tmp_path, handoff=False))
+
+        assert result["passed"] is True
+        assert is_skipped(CheckResult(**result))
+        assert "ydk task done" in result["detail"]["skip_reason"]
+        assert not (tmp_path / ".ydk" / "llm").exists()
+
+    def test_inside_task_done_needs_llm_then_consumes_response(
+        self, tmp_path: Path, path: Path, module_name: str, good: dict[str, Any], bad: dict[str, Any]
+    ) -> None:
+        from ydk.models.verification import CheckResult, is_needs_llm
+
+        mod = _load_check_module(path, module_name)
+        ctx = _subagent_context(tmp_path, handoff=True)
+
+        first = mod.run_check(ctx)
+
+        assert first["passed"] is False
+        assert is_needs_llm(CheckResult(**first))
+        [request_path] = first["detail"]["request_paths"]
+        request = json.loads(Path(request_path).read_text(encoding="utf-8"))
+        assert request["purpose"] == mod.PURPOSE
+        assert "=== GIT DIFF ===" in request["user"]
+
+        response = tmp_path / ".ydk" / "llm" / "responses" / Path(request_path).name
+        response.parent.mkdir(parents=True)
+        response.write_text(json.dumps(good), encoding="utf-8")
+        assert mod.run_check(ctx)["passed"] is True
+
+        response.write_text(json.dumps(bad), encoding="utf-8")
+        assert mod.run_check(ctx)["passed"] is False

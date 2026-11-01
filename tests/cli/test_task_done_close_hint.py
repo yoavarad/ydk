@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -56,4 +57,18 @@ def test_done_failure_omits_close_hint_and_keeps_exit_code(mock_build: MagicMock
     assert result.exit_code == 1
     assert "Verification failed" in result.output
     assert "boom" in result.output
+    assert "ydk task close" not in result.output
+
+
+@patch("ydk.cli.task_cmd._build_lifecycle")
+def test_done_needs_llm_prints_request_block_and_exits_3(mock_build: MagicMock) -> None:
+    mock_build.return_value = _lifecycle_returning(
+        {"passed": False, "needs_llm": ["/r/a.json", "/r/b.json"]},
+    )
+    result = runner.invoke(task_app, ["done", "T-042"])
+    assert result.exit_code == 3
+    assert "YDK-SUBAGENT-REQUESTS:" in result.output
+    assert f"- {Path('/r/a.json')}" in result.output
+    assert f"- {Path('/r/b.json')}" in result.output
+    assert "PR created" not in result.output
     assert "ydk task close" not in result.output

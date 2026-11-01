@@ -240,8 +240,10 @@ class TaskLifecycle:
 
         Returns {"passed": bool, "pr_url": str, "report": VerificationReport}
         """
+        from ydk.core.plugin_llm import LLM_HANDOFF_KEY
         from ydk.core.pr_template import PRBodyBuilder
         from ydk.core.proof_capture import SKIP_REASON, ProofCapture
+        from ydk.models.verification import is_needs_llm, needs_llm_requests
 
         done_start = time.monotonic()
         logger.info("Completing task %s — running verifications", task_id)
@@ -287,7 +289,8 @@ class TaskLifecycle:
             "task_id": task_id,
             "config": {
                 "anthropic": {"api_key_env": config.anthropic.api_key_env},
-                "ai": {"model_tiers": config.ai.model_tiers},
+                # Full AI config so the AI plugins route through ai.provider / ai.routes.
+                "ai": config.ai.model_dump(mode="json"),
                 # Stack language lets ai-code-review add a stack-specific checklist (e.g. dotnet).
                 "language": profile_for(config).name,
                 "spec_check": {
@@ -317,6 +320,9 @@ class TaskLifecycle:
                 ac if isinstance(ac, str) else ac.text for ac in task_for_spec_refs.acceptance_criteria
             ],
         }
+        # An agent drives task done, so AI plugins on the subagent provider may hand off
+        # (NEEDS_LLM) here; pre-push and plain `verify run` lack this flag and skip them.
+        context[LLM_HANDOFF_KEY] = True
 
         # Run verifications scoped to task files
         report = asyncio.run(self._verifier.run_all(trigger="pre-push", context=context))
@@ -347,6 +353,12 @@ class TaskLifecycle:
             all_passed = report.all_passed
 
         if not all_passed:
+            # Only AI plugins awaiting subagent responses are failing: hand the requests
+            # back (the CLI exits 3) instead of opening a PR or recording a failure.
+            considered = [c for c in report.checks if c.name not in (skip_plugins or [])]
+            if all(c.passed or is_needs_llm(c) for c in considered):
+                return {"passed": False, "report": report, "needs_llm": needs_llm_requests(considered)}
+
             from ydk.core.auto_repair import RepairLoop
 
             loop = RepairLoop()

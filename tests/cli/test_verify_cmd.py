@@ -494,3 +494,42 @@ class TestDotnetTargetContext:
             "test_tags": [],
             "race": "auto",
         }
+
+
+class TestVerifyRunSubagentMode:
+    """With ai.provider: subagent, pre-push runs skip the AI plugins instead of handing off (task 626)."""
+
+    @staticmethod
+    def _subagent_repo(tmp_path: Path, monkeypatch) -> None:
+        TestVerifyRunChangedFiles._develop_repo(tmp_path, monkeypatch)
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            "project:\n  name: demo\nai:\n  provider: subagent\n"
+            "verification:\n  enabled: [ai-code-review, spec-alignment]\n",
+            encoding="utf-8",
+        )
+
+    def test_context_carries_full_ai_config_without_handoff_flag(self, tmp_path: Path, monkeypatch) -> None:
+        self._subagent_repo(tmp_path, monkeypatch)
+        mock_run_all = AsyncMock(return_value=_ok_report())
+        monkeypatch.setattr("ydk.cli.verify_cmd.Verifier.run_all", mock_run_all)
+
+        result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push"])
+
+        assert result.exit_code == 0
+        context = mock_run_all.call_args.kwargs["context"]
+        assert context["config"]["ai"]["provider"] == "subagent"
+        assert context["config"]["ai"]["subagent"]["dir"] == ".ydk/llm"
+        assert "llm_handoff" not in context
+        json.dumps(context)
+
+    def test_pre_push_reports_both_ai_plugins_skipped(self, tmp_path: Path, monkeypatch) -> None:
+        self._subagent_repo(tmp_path, monkeypatch)
+
+        result = runner.invoke(app, ["verify", "run", "--trigger", "pre-push", "--no-cache"])
+
+        out = " ".join(result.output.split())
+        assert result.exit_code == 0, out
+        assert "ai-code-review (skipped:" in out
+        assert "spec-alignment (skipped:" in out
+        assert not (tmp_path / ".ydk" / "llm" / "requests").exists()

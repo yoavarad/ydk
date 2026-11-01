@@ -49,7 +49,8 @@ def run(
         "project_root": str(v._root.resolve()),
         "config": {
             "anthropic": {"api_key_env": config.anthropic.api_key_env},
-            "ai": {"model_tiers": config.ai.model_tiers},
+            # Full AI config so the AI plugins route through ai.provider / ai.routes.
+            "ai": config.ai.model_dump(mode="json"),
             # Stack language lets ai-code-review add a stack-specific checklist (e.g. dotnet).
             "language": profile_for(config).name,
             "spec_check": {
