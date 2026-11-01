@@ -85,3 +85,25 @@ def test_render_markdown_neutralizes_hostile_model_text() -> None:
     assert not any(line.startswith(("#", "```")) for line in md.splitlines())
     assert "#99" not in md
     assert "#3" not in md
+
+
+def test_render_defuses_colon_and_cross_repo_close_forms_and_file_names() -> None:
+    from ydk.models.checkpoint import CheckpointPreview, ReviewConcern
+
+    preview = CheckpointPreview(
+        intent="Closes: #12 and fixes owner/repo#7",
+        concerns=[ReviewConcern(concern="c", summary="s", files=["a`b\n## Hi.py"])],
+    )
+    md = render_markdown(preview)
+    assert "#12" not in md
+    assert "#7" not in md
+    assert not any(line.startswith("#") for line in md.splitlines())
+    assert "a`b" not in md
+
+
+def test_transport_error_falls_back() -> None:
+    class Boom:
+        def invoke_structured(self, prompt: str, output_format: type) -> None:
+            raise TimeoutError("net")
+
+    assert CheckpointGenerator().generate(DIFF, llm_provider=Boom()).concerns

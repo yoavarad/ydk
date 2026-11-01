@@ -9,8 +9,6 @@ import subprocess
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
-
 from ydk.models.checkpoint import BlastRadiusSpot, CheckpointLLMOutput, CheckpointPreview, ReviewConcern
 
 if TYPE_CHECKING:
@@ -161,7 +159,7 @@ class CheckpointGenerator:
                         **out.model_dump(), files_changed=len(files), insertions=insertions, deletions=deletions
                     )
                 return _parse_llm_response(llm_provider.invoke(prompt), files, insertions, deletions)
-            except (json.JSONDecodeError, KeyError, TypeError, ValidationError, RuntimeError, ValueError) as exc:
+            except Exception as exc:  # any provider failure degrades to the fallback; SubagentHandoff is BaseException
                 logger.warning(
                     "checkpoint LLM output unusable (%s); using deterministic fallback", exc
                 )  # Fall through to directory-based grouping
@@ -232,7 +230,7 @@ def diff_against_base(root: Path, base: str) -> str:
     return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else ""
 
 
-_ISSUE_KEYWORD = re.compile(r"(?i)\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#")
+_ISSUE_KEYWORD = re.compile(r"(?i)\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:\S*#|https?://\S*/issues/)")
 
 
 def _line(text: str) -> str:
@@ -251,7 +249,7 @@ def render_markdown(preview: CheckpointPreview) -> str:
     if preview.concerns:
         lines += ["", "**Concerns**", ""]
         for c in preview.concerns:
-            files = ", ".join(f"`{f}`" for f in c.files)
+            files = ", ".join(f"`{_line(f).replace('`', '')}`" for f in c.files)
             lines.append(f"- **{_line(c.concern)}**: {_line(c.summary)}" + (f" ({files})" if files else ""))
     if preview.blast_radius:
         lines += ["", "**Blast radius**", ""]
