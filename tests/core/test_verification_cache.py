@@ -105,6 +105,15 @@ class TestVerificationCacheUnit:
         assert cached.passed is True
         assert cached.output == "ok"
 
+    def test_failed_entry_is_not_returned(self, tmp_path: Path) -> None:
+        """A pre-existing passed=false entry (older ydk) is never replayed."""
+        cache = VerificationCache(tmp_path / "cache")
+        result = CheckResult(name="lint", passed=False, output="bad", duration_seconds=0.1)
+        hashes = {"a.py": "abc123"}
+        cache.store("lint", hashes, result)
+
+        assert cache.get_cached("lint", hashes) is None
+
     def test_cache_miss_returns_none(self, tmp_path: Path) -> None:
         cache = VerificationCache(tmp_path / "cache")
         assert cache.get_cached("lint", {"a.py": "abc123"}) is None
@@ -299,6 +308,47 @@ sys.exit(1)
 
         cache_dir = tmp_path / ".ydk" / "cache" / "verification" / "flaky"
         assert not cache_dir.exists() or not list(cache_dir.iterdir())
+
+    def test_failed_result_is_rerun_not_replayed(self, tmp_path: Path) -> None:
+        """A failing plugin executes again on the next unchanged run."""
+        _write_py_file(tmp_path, "src.py", "x = 1")
+        counter = tmp_path.parent / f"{tmp_path.name}_runs.txt"
+        failing = f"""import json, sys
+context = json.loads(sys.stdin.read())
+with open({str(counter)!r}, "a") as fh:
+    fh.write("x")
+json.dump({{"name": "bad", "passed": False, "output": "no", "duration_seconds": 0.1, "detail": None}}, sys.stdout)
+sys.exit(1)
+"""
+        v = _make_verifier(tmp_path, plugins={"bad": {"check_code": failing}})
+        plugins = v.discover_plugins()
+        ctx: dict[str, Any] = {"project_root": str(tmp_path)}
+
+        asyncio.run(v.run_plugin(plugins[0], ctx))
+        asyncio.run(v.run_plugin(plugins[0], ctx))
+
+        assert counter.read_text() == "xx"
+        cache_dir = tmp_path / ".ydk" / "cache" / "verification" / "bad"
+        assert not cache_dir.exists() or not list(cache_dir.iterdir())
+
+    def test_passed_result_is_served_from_cache(self, tmp_path: Path) -> None:
+        """A passing plugin runs once; the second unchanged run is a cache hit."""
+        _write_py_file(tmp_path, "src.py", "x = 1")
+        counter = tmp_path.parent / f"{tmp_path.name}_runs.txt"
+        passing = f"""import json, sys
+context = json.loads(sys.stdin.read())
+with open({str(counter)!r}, "a") as fh:
+    fh.write("x")
+json.dump({{"name": "good", "passed": True, "output": "ok", "duration_seconds": 0.1, "detail": None}}, sys.stdout)
+"""
+        v = _make_verifier(tmp_path, plugins={"good": {"check_code": passing}})
+        plugins = v.discover_plugins()
+        ctx: dict[str, Any] = {"project_root": str(tmp_path)}
+
+        asyncio.run(v.run_plugin(plugins[0], ctx))
+        asyncio.run(v.run_plugin(plugins[0], ctx))
+
+        assert counter.read_text() == "x"
 
     def test_cache_survives_across_verifier_instances(self, tmp_path: Path) -> None:
         """Cache is file-based, so a new Verifier reads old entries."""

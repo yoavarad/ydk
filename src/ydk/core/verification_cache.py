@@ -43,11 +43,16 @@ class VerificationCache:
             return None
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            return CheckResult(**data)
+            result = CheckResult(**data)
         except (ValueError, KeyError, TypeError):
             # Corrupt entry -- treat as miss.
             path.unlink(missing_ok=True)
             return None
+        if not result.passed:
+            # Only PASS results are replayed; drop FAIL entries from older versions.
+            path.unlink(missing_ok=True)
+            return None
+        return result
 
     def store(self, plugin_name: str, file_hashes: dict[str, str], result: CheckResult) -> None:
         """Persist a verification result under the composite content hash."""
