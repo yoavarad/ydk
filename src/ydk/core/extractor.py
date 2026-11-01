@@ -182,7 +182,7 @@ class MemoryExtractor:
         from ydk.core.config import load_config
         from ydk.core.llm_provider import get_llm_provider
 
-        provider = get_llm_provider(load_config(), max_tokens=_EXTRACTION_MAX_TOKENS)
+        provider = get_llm_provider(load_config(), purpose="extract", max_tokens=_EXTRACTION_MAX_TOKENS)
         if provider is None:
             raise ImportError(
                 "Memory extraction requires a configured LLM provider "

@@ -194,3 +194,68 @@ class TestAnalyzeComplexityClaudeErrors:
         assert result.exit_code == 1
         assert "YDK_TEST_MISSING_KEY" in result.output
         mock_cls.assert_not_called()
+
+
+def _write_subagent_config(root, purpose: str) -> None:
+    """Route ``purpose`` to the subagent provider; the API key env var is deliberately unset."""
+    (root / ".ydk").mkdir(exist_ok=True)
+    (root / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: t\nanthropic:\n  api_key_env: YDK_TEST_MISSING_KEY\n"
+        f"ai:\n  routes:\n    {purpose}: subagent\n",
+        encoding="utf-8",
+    )
+
+
+def _request_paths(output: str) -> list[str]:
+    lines = output.splitlines()
+    start = lines.index("YDK-SUBAGENT-REQUESTS:")
+    return [ln[2:] for ln in lines[start + 1 :] if ln.startswith("- ")]
+
+
+class TestAnalyzeComplexitySubagentHandoff:
+    """Subagent route: one handoff for all open tasks, then success on rerun."""
+
+    def test_one_handoff_for_all_tasks_then_rerun_succeeds(self, tmp_path, monkeypatch) -> None:
+        from pathlib import Path
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+        _write_subagent_config(tmp_path, "complexity")
+        repo = _FakeRepo([_make_task_detail("T-001", "One"), _make_task_detail("T-002", "Two")])
+
+        with patch("ydk.cli.task_cmd._get_repo", return_value=repo):
+            first = runner.invoke(app, ["task", "analyze-complexity"])
+
+        assert first.exit_code == 3, first.output
+        assert first.output.count("YDK-SUBAGENT-REQUESTS:") == 1
+        assert "Rerun this command after writing responses." in first.output
+        paths = _request_paths(first.output)
+        assert len(paths) == 2
+
+        responses = tmp_path / ".ydk" / "llm" / "responses"
+        responses.mkdir(parents=True)
+        for p in paths:
+            req = json.loads(Path(p).read_text(encoding="utf-8"))
+            assert req["purpose"] == "complexity"
+            (responses / Path(p).name).write_text(
+                json.dumps({"score": 2, "reasoning": "Easy", "should_expand": False, "suggested_splits": []}),
+                encoding="utf-8",
+            )
+
+        with patch("ydk.cli.task_cmd._get_repo", return_value=repo):
+            second = runner.invoke(app, ["--format", "json", "task", "analyze-complexity"])
+
+        assert second.exit_code == 0, second.output
+        assert [s["score"] for s in json.loads(second.output)] == [2, 2]
+
+    def test_single_task_subagent_handoff(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+        _write_subagent_config(tmp_path, "complexity")
+        repo = _FakeRepo([_make_task_detail("T-001", "One"), _make_task_detail("T-002", "Two")])
+
+        with patch("ydk.cli.task_cmd._get_repo", return_value=repo):
+            result = runner.invoke(app, ["task", "analyze-complexity", "--task-id", "T-001"])
+
+        assert result.exit_code == 3, result.output
+        assert len(_request_paths(result.output)) == 1

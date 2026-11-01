@@ -6,9 +6,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from ydk.core.llm_provider import SubagentHandoff
 from ydk.models.complexity import ComplexityScore
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ydk.core.llm_provider import StructuredLLMProvider
     from ydk.models.pm import TaskDetail
 
@@ -117,5 +120,19 @@ class ComplexityScorer:
         tasks: list[TaskDetail],
         context: str | None = None,
     ) -> list[ComplexityScore]:
-        """Score multiple tasks sequentially."""
-        return [self.score_task(t, context) for t in tasks]
+        """Score multiple tasks sequentially.
+
+        Subagent handoffs from individual tasks are batched: every task is
+        tried, then a single ``SubagentHandoff`` carrying all request paths is
+        raised so the caller hands off once.
+        """
+        scores: list[ComplexityScore] = []
+        pending: list[Path] = []
+        for task in tasks:
+            try:
+                scores.append(self.score_task(task, context))
+            except SubagentHandoff as handoff:
+                pending.extend(p for p in handoff.request_paths if p not in pending)
+        if pending:
+            raise SubagentHandoff(pending)
+        return scores

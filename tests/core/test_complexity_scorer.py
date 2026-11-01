@@ -216,6 +216,37 @@ class TestBatchScoring:
         results = scorer.score_tasks([])
         assert results == []
 
+    def test_subagent_handoffs_are_batched_into_one(self, tmp_path) -> None:
+        from ydk.core.llm_provider import SubagentHandoff, SubagentProvider
+
+        provider = SubagentProvider(tmp_path, purpose="complexity", model_tier="fast", model="m", agent="a")
+        scorer = ComplexityScorer(llm_provider=provider)
+        tasks = [_make_task(id="T-001", title="One"), _make_task(id="T-002", title="Two")]
+
+        with pytest.raises(SubagentHandoff) as exc_info:
+            scorer.score_tasks(tasks)
+
+        assert len(exc_info.value.request_paths) == 2
+        assert sorted(exc_info.value.request_paths) == sorted((tmp_path / "requests").iterdir())
+
+    def test_subagent_responses_are_scored(self, tmp_path) -> None:
+        import json
+
+        from ydk.core.llm_provider import SubagentHandoff, SubagentProvider
+
+        provider = SubagentProvider(tmp_path, purpose="complexity", model_tier="fast", model="m", agent="a")
+        scorer = ComplexityScorer(llm_provider=provider)
+        tasks = [_make_task(id="T-001", title="One"), _make_task(id="T-002", title="Two")]
+        with pytest.raises(SubagentHandoff):
+            scorer.score_tasks(tasks)
+        (tmp_path / "responses").mkdir()
+        for req in (tmp_path / "requests").iterdir():
+            (tmp_path / "responses" / req.name).write_text(json.dumps(_make_response(score=7)), encoding="utf-8")
+
+        results = scorer.score_tasks(tasks)
+
+        assert [(r.task_id, r.score) for r in results] == [("T-001", 7), ("T-002", 7)]
+
 
 # ---------------------------------------------------------------------------
 # StructuredLLMProvider Protocol

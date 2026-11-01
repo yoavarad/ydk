@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+    from click.testing import Result
 
 runner = CliRunner()
 
@@ -534,3 +535,116 @@ def test_memory_retrospective_missing_json_reports_reused_number(
     with patch("ydk.repositories.factory.get_epic_repository", return_value=repo):
         result = runner.invoke(app, ["memory", "retrospective", "--missing", "--json"])
     assert json.loads(result.output) == [{"epic_id": epic_id, "title": "New Epic"}]
+
+
+# ---------------------------------------------------------------------------
+# Subagent handoff route (no API key): exit 3 with request block, then rerun
+# ---------------------------------------------------------------------------
+
+
+def _write_subagent_config(root: Path, purpose: str) -> None:
+    """Route ``purpose`` to the subagent provider; the API key env var is deliberately unset."""
+    (root / ".ydk").mkdir(exist_ok=True)
+    (root / ".ydk" / "config.yaml").write_text(
+        "project:\n  name: t\nanthropic:\n  api_key_env: YDK_TEST_MISSING_KEY\n"
+        f"ai:\n  routes:\n    {purpose}: subagent\n",
+        encoding="utf-8",
+    )
+
+
+def _answer_requests(output: str, purpose: str, answer: dict) -> int:
+    """Write ``answer`` as the response for every request listed in the handoff block."""
+    from pathlib import Path
+
+    lines = output.splitlines()
+    start = lines.index("YDK-SUBAGENT-REQUESTS:")
+    paths = [Path(ln[2:]) for ln in lines[start + 1 :] if ln.startswith("- ")]
+    for p in paths:
+        assert json.loads(p.read_text(encoding="utf-8"))["purpose"] == purpose
+        responses = p.parent.parent / "responses"
+        responses.mkdir(parents=True, exist_ok=True)
+        (responses / p.name).write_text(json.dumps(answer), encoding="utf-8")
+    return len(paths)
+
+
+@patch("ydk.cli.memory_cmd._get_engine")
+def test_memory_extract_subagent_handoff_then_rerun(
+    mock_get_engine: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+    _write_subagent_config(tmp_path, "extract")
+    engine = _mock_engine()
+    mock_get_engine.return_value = engine
+    jsonl_file = tmp_path / "session.jsonl"
+    jsonl_file.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "Fix the bug"}}) + "\n")
+    args = ["memory", "extract", "T-001", "--jsonl", str(jsonl_file)]
+
+    first = runner.invoke(app, args)
+
+    assert first.exit_code == 3, first.output
+    assert "Rerun this command after writing responses." in first.output
+    engine.add_extraction.assert_not_called()
+    memory = {
+        "memory_type": "gotcha",
+        "content": "Retry on 418",
+        "related_files": [],
+        "concepts": [],
+        "importance": "high",
+    }
+    assert _answer_requests(first.output, "extract", {"memories": [memory]}) == 1
+
+    second = runner.invoke(app, args)
+
+    assert second.exit_code == 0, second.output
+    assert "Extracted 1 memories" in second.output
+    engine.add_extraction.assert_called_once()
+
+
+def test_memory_retrospective_epic_subagent_handoff_satisfies_retro_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pathlib import Path
+
+    from ydk.core.retro_gate import find_epics_missing_retro
+    from ydk.models.pm import EpicCreate, StoryCreate, TaskCreate
+    from ydk.repositories.local.epics import LocalEpicRepository
+    from ydk.repositories.local.stories import LocalStoryRepository
+    from ydk.repositories.local.tasks import LocalTaskRepository
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+    _write_subagent_config(tmp_path, "retrospective")
+    root = tmp_path / ".ydk"
+    task_repo = LocalTaskRepository(root)
+    story_repo = LocalStoryRepository(root)
+    epic_repo = LocalEpicRepository(root)
+    epic_id = epic_repo.create_epic(EpicCreate(title="Ship it")).id
+    story_id = story_repo.create_story(StoryCreate(title="S", epic_id=epic_id)).id
+    task_id = task_repo.create_task(TaskCreate(title="Done task", story_id=story_id)).id
+    task_repo.update_status(task_id, "done")
+    epic_repo.update_status(epic_id, "done")
+    retros = Path(".ydk/retros")
+
+    def run() -> Result:
+        with (
+            patch("ydk.repositories.factory.get_task_repository", return_value=task_repo),
+            patch("ydk.repositories.factory.get_story_repository", return_value=story_repo),
+            patch("ydk.repositories.factory.get_epic_repository", return_value=epic_repo),
+        ):
+            return runner.invoke(app, ["memory", "retrospective", "--epic", epic_id])
+
+    first = run()
+
+    assert first.exit_code == 3, first.output
+    assert not (tmp_path / ".ydk" / "retros" / f"{epic_id}.md").exists()
+    assert [m.epic_id for m in find_epics_missing_retro(epic_repo, retros)] == [epic_id]
+    answer = {"patterns": ["small PRs"], "templates": ["t"], "rules": ["r"], "summary": "went well"}
+    assert _answer_requests(first.output, "retrospective", answer) == 1
+
+    second = run()
+
+    assert second.exit_code == 0, second.output
+    text = (tmp_path / ".ydk" / "retros" / f"{epic_id}.md").read_text(encoding="utf-8")
+    assert "small PRs" in text
+    assert find_epics_missing_retro(epic_repo, retros) == []
