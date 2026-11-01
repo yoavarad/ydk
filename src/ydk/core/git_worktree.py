@@ -15,7 +15,13 @@ class WorktreeManager:
     def __init__(self, project_root: Path = Path(".")) -> None:
         self._root = project_root
 
-    def create(self, task_id: str, description: str = "", base_branch: str | None = None) -> Path:
+    def create(
+        self,
+        task_id: str,
+        description: str = "",
+        base_branch: str | None = None,
+        branch_name: str | None = None,
+    ) -> Path:
         """Create a worktree + branch for a task.
 
         Branch: task/{task_id}-{description}
@@ -24,6 +30,8 @@ class WorktreeManager:
 
         When *base_branch* is provided the new branch is created from that ref.
         Otherwise it defaults to the repo default branch (never HEAD).
+
+        *branch_name* overrides the default ``task/...`` branch name.
 
         Raises RuntimeError if called from inside an existing worktree.
         """
@@ -39,6 +47,8 @@ class WorktreeManager:
         if description:
             slug = re.sub(r"[^a-z0-9-]", "", description.lower().replace(" ", "-"))[:30].strip("-")
             branch = f"task/{task_id}-{slug}"
+        if branch_name:
+            branch = branch_name
 
         worktree_path = self._root / ".ydk" / "worktrees" / task_id
         worktree_path.parent.mkdir(parents=True, exist_ok=True)

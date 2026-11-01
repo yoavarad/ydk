@@ -13,5 +13,6 @@ class QuickDevContext(BaseModel):
     task_id: str
     branch: str
     description: str
+    worktree: str = ""
     components: list[str] = Field(default_factory=list)
     testing_guidance: str = ""

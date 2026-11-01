@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING
 
 from ydk.core.active_task import update_active_tasks
 from ydk.core.config import load_config
+from ydk.core.git_worktree import WorktreeManager
 from ydk.models.pm import TaskCreate
 from ydk.models.quickdev import QuickDevContext
 from ydk.repositories.factory import get_task_repository
 from ydk.repositories.local.frontmatter import render_frontmatter
-from ydk.services.git import default_branch
+from ydk.services.git import default_branch, resolve_start_point
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -84,6 +85,8 @@ class QuickDevSetup:
         Returns a QuickDevContext with everything a coding agent needs.
         """
         branch_type = _branch_type(description)
+        # Fail fast (before any task is created) if the base cannot be resolved.
+        resolve_start_point(project_root, base_branch)
         config = load_config(project_root / ".ydk" / "config.yaml")
         remote = config.project.remote or "local"
 
@@ -124,12 +127,13 @@ class QuickDevSetup:
 
         branch = f"{branch_type}/{task_id.lower()}-{_slugify(description)}"
 
-        # Create branch (best-effort — may fail if not in a git repo)
-        subprocess.run(
-            ["git", "checkout", "-b", branch],
-            cwd=str(project_root),
-            capture_output=True,
-        )
+        # Isolated worktree forked from the base; never touches the main checkout.
+        try:
+            worktree_path = WorktreeManager(project_root).create(task_id, base_branch=base_branch, branch_name=branch)
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or b"").decode("utf-8", errors="replace").strip()
+            msg = f"Failed to create worktree/branch {branch}: {detail}"
+            raise RuntimeError(msg) from exc
 
         # Find relevant components
         components = _find_relevant_components(project_root, description)
@@ -141,6 +145,7 @@ class QuickDevSetup:
             task_id=task_id,
             branch=branch,
             description=description,
+            worktree=str(worktree_path),
             components=components,
             testing_guidance=testing_guidance,
         )

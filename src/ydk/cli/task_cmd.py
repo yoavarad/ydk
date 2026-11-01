@@ -2077,11 +2077,12 @@ def quick(
     typer.echo("\\n--- Quick Dev Setup ---")
     typer.echo(f"Task:   {result.task_id}")
     typer.echo(f"Branch: {result.branch}")
+    typer.echo(f"Worktree: {result.worktree}")
     typer.echo(f"Description: {result.description}")
     if result.components:
         typer.echo(f"Relevant components: {', '.join(result.components)}")
     typer.echo(f"Testing: {result.testing_guidance}")
-    typer.echo("\\nWorkspace is ready. Start coding!")
+    typer.echo("\\nWorkspace is ready. cd into the worktree and start coding!")
 
 
 @task_app.command("tdd")
