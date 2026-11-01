@@ -453,8 +453,11 @@ Capture what happened. Handle changes. Compact completed work.
 
 > ```bash
 > ydk task archive-done --all-done
-> # Compacted 12 completed tasks (saved ~8KB of context)
-> # Task IDs and relationships preserved, verbose descriptions removed
+> # Compacted 12 task(s):
+> #   T-001
+> #   ...
+> # Summaries (key decisions, files modified) come from the compaction LLM.
+> # Exit code 3 = subagent handoff: write the responses, then rerun.
 > ```
 
 ## Troubleshooting
