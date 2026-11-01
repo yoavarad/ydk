@@ -18,7 +18,8 @@ def main(argv: list[str] | None = None) -> int:
         retired = sync(args.dry_run)
     except RuntimeError as exc:
         return fail(str(exc))
-    print("retired: " + (", ".join(f"#{n}" for n in retired) or "none"))
+    label = "would retire" if args.dry_run else "retired"
+    print(f"{label}: " + (", ".join(f"#{n}" for n in retired) or "none"))
     return 0
 
 

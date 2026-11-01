@@ -47,7 +47,8 @@ def test_sync_issues_retires_and_prints(calls: list[tuple[str, ...]]) -> None:
 def test_sync_issues_dry_run_no_mutation(calls: list[tuple[str, ...]]) -> None:
     result = runner.invoke(app, ["task", "sync-issues", "--dry-run"])
     assert result.exit_code == 0
-    assert "retired: #3" in result.output
+    assert "would retire: #3" in result.output
+    assert "retired:" not in result.output.replace("would retire:", "")
     assert not [c for c in calls if c[:2] in (("issue", "comment"), ("issue", "edit"), ("issue", "close"))]
 
 
@@ -69,4 +70,17 @@ def test_sync_issues_malformed_gh_output_clean_error(monkeypatch: pytest.MonkeyP
 def test_sync_issues_json(calls: list[tuple[str, ...]]) -> None:
     result = runner.invoke(app, ["--format", "json", "task", "sync-issues", "--dry-run"])
     assert result.exit_code == 0
-    assert json.loads(result.output) == {"retired": [3]}
+    assert json.loads(result.output) == {"would_retire": [3], "dry_run": True}
+
+
+def test_sync_issues_dry_run_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(subprocess, "run", lambda argv, **_kw: subprocess.CompletedProcess(argv, 0, "[]", ""))
+    result = runner.invoke(app, ["task", "sync-issues", "--dry-run"])
+    assert result.exit_code == 0
+    assert "would retire: none" in result.output
+
+
+def test_sync_issues_json_real_run(calls: list[tuple[str, ...]]) -> None:
+    result = runner.invoke(app, ["--format", "json", "task", "sync-issues"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"retired": [3], "dry_run": False}

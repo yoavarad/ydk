@@ -244,7 +244,12 @@ class TestSyncIssueState:
     def test_main(self, fake_gh, capsys):
         fake_gh.responses[("issue", "list")] = "[]"
         assert sync_issue_state.main(["--dry-run"]) == 0
-        assert "none" in capsys.readouterr().out
+        assert "would retire: none" in capsys.readouterr().out
+
+    def test_main_real_run_says_retired(self, fake_gh, capsys):
+        fake_gh.responses[("issue", "list")] = "[]"
+        assert sync_issue_state.main([]) == 0
+        assert "retired: none" in capsys.readouterr().out
 
 
 def test_end_to_end_dry_run_on_fixture(fake_gh, tmp_path, capsys):
