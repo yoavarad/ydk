@@ -52,6 +52,13 @@ class PRBodyBuilder:
             parts.append(f"Task {task_id}")
             parts.append("")
 
+        # --- Review guide (checkpoint) ---
+        checkpoint_path = proof_dir / "checkpoint.md"
+        if checkpoint_path.exists():
+            parts.append("## Review guide\n")
+            parts.append(checkpoint_path.read_text(encoding="utf-8").strip())
+            parts.append("")
+
         # --- Verification Results ---
         plugin_section = self._plugins_section(task_id, proof_dir)
         review_section = self._reviews_section(task_id, proof_dir)

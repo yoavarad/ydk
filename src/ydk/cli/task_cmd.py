@@ -1005,6 +1005,32 @@ def unblock(
 
 
 @task_app.command()
+def checkpoint(
+    task_id: str = typer.Argument(..., help="Task ID to build the review guide for"),
+) -> None:
+    """Print the review guide for the task's diff against its base branch.
+
+    Uses the `checkpoint` LLM route; falls back to directory grouping when it is disabled.
+    Exits 3 with a subagent request block when the route is `subagent` and unanswered.
+    """
+    from ydk.cli._handoff import handle_subagent_handoff
+    from ydk.core.checkpoint import render_markdown
+
+    task_id = _resolve_task_id(task_id)
+    try:
+        lc = _build_lifecycle(task_id)
+        with handle_subagent_handoff():
+            preview = lc.checkpoint(task_id)
+    except (ValueError, FileNotFoundError, KeyError) as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if preview is None:
+        console.print(f"No changes against base for task {task_id}.")
+        return
+    typer.echo(render_markdown(preview))
+
+
+@task_app.command()
 def done(
     task_id: str = typer.Argument(..., help="Task ID to complete"),
     summary: str | None = typer.Option(None, "--summary", help="Agent narrative summary for the PR body"),
@@ -1035,7 +1061,7 @@ def done(
         from ydk.cli._handoff import handle_subagent_handoff
         from ydk.core.llm_provider import SubagentHandoff
 
-        console.print("[yellow]AI verification is waiting on subagent responses; no PR was created.[/yellow]")
+        console.print("[yellow]LLM steps are waiting on subagent responses; no PR was created.[/yellow]")
         with handle_subagent_handoff():
             raise SubagentHandoff([Path(p) for p in result["needs_llm"]])
 

@@ -539,3 +539,13 @@ class TestSelfSkippedRendering:
         (proof_dir / "verification-report.json").write_text(json.dumps(report_data))
         body = PRBodyBuilder().build("T-001", proof_dir)
         assert "1/2 verification checks passed, 1 skipped" in body
+
+
+class TestReviewGuideSection:
+    def test_review_guide_between_summary_and_closes(self, proof_dir: Path) -> None:
+        (proof_dir / "checkpoint.md").write_text("Intent line\n", encoding="utf-8")
+        body = PRBodyBuilder().build("T-001", proof_dir)
+        assert body.index("## Summary") < body.index("## Review guide") < body.index("Closes #T-001")
+
+    def test_no_review_guide_without_file(self, proof_dir: Path) -> None:
+        assert "## Review guide" not in PRBodyBuilder().build("T-001", proof_dir)

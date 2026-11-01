@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import subprocess
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from ydk.models.checkpoint import BlastRadiusSpot, CheckpointPreview, ReviewConcern
+from pydantic import ValidationError
+
+from ydk.models.checkpoint import BlastRadiusSpot, CheckpointLLMOutput, CheckpointPreview, ReviewConcern
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ydk.core.llm_provider import LLMProvider
     from ydk.models.pm import TaskDetail
+
+logger = logging.getLogger("ydk.checkpoint")
 
 
 def _parse_diff_stats(diff: str) -> tuple[list[str], int, int]:
@@ -143,12 +151,20 @@ class CheckpointGenerator:
         task_title = task.title if task else None
 
         if llm_provider is not None:
+            prompt = _build_llm_prompt(diff, task_title)
+            structured = getattr(llm_provider, "invoke_structured", None)
             try:
-                prompt = _build_llm_prompt(diff, task_title)
-                response = llm_provider.invoke(prompt)
-                return _parse_llm_response(response, files, insertions, deletions)
-            except (json.JSONDecodeError, KeyError, TypeError):
-                pass  # Fall through to directory-based grouping
+                if structured is not None:
+                    # SubagentHandoff (a BaseException) is deliberately not caught: it carries the pending requests.
+                    out = structured(prompt, CheckpointLLMOutput)
+                    return CheckpointPreview(
+                        **out.model_dump(), files_changed=len(files), insertions=insertions, deletions=deletions
+                    )
+                return _parse_llm_response(llm_provider.invoke(prompt), files, insertions, deletions)
+            except (json.JSONDecodeError, KeyError, TypeError, ValidationError, RuntimeError, ValueError) as exc:
+                logger.warning(
+                    "checkpoint LLM output unusable (%s); using deterministic fallback", exc
+                )  # Fall through to directory-based grouping
 
         # Fallback: group by directory
         return self._fallback_generate(files, insertions, deletions, task_title)
@@ -200,3 +216,49 @@ class CheckpointGenerator:
             blast_radius=blast_radius,
             testing_suggestions=testing_suggestions,
         )
+
+
+def diff_against_base(root: Path, base: str) -> str:
+    """Return ``git diff base...HEAD`` run in *root*; empty string when git fails."""
+    try:
+        proc = subprocess.run(
+            ["git", "-c", "core.quotepath=false", "diff", "--no-color", "--no-ext-diff", f"{base}...HEAD"],
+            cwd=str(root),
+            capture_output=True,
+            timeout=60,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+    return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else ""
+
+
+_ISSUE_KEYWORD = re.compile(r"(?i)\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#")
+
+
+def _line(text: str) -> str:
+    """Make model text safe inside the PR body: one line, no heading, no auto-close keyword."""
+    flat = " ".join(text.split()).lstrip("#> ")
+    return _ISSUE_KEYWORD.sub(r"\1 ", flat)
+
+
+def render_markdown(preview: CheckpointPreview) -> str:
+    """Render a review guide as markdown (the body of the PR "Review guide" section)."""
+    lines = [
+        _line(preview.intent),
+        "",
+        f"{preview.files_changed} file(s) changed, +{preview.insertions} / -{preview.deletions}",
+    ]
+    if preview.concerns:
+        lines += ["", "**Concerns**", ""]
+        for c in preview.concerns:
+            files = ", ".join(f"`{f}`" for f in c.files)
+            lines.append(f"- **{_line(c.concern)}**: {_line(c.summary)}" + (f" ({files})" if files else ""))
+    if preview.blast_radius:
+        lines += ["", "**Blast radius**", ""]
+        lines += [
+            f"- `{_line(b.location)}`: {_line(b.risk)}. Check: {_line(b.suggestion)}" for b in preview.blast_radius
+        ]
+    if preview.testing_suggestions:
+        lines += ["", "**Testing suggestions**", ""]
+        lines += [f"- {_line(t)}" for t in preview.testing_suggestions]
+    return "\n".join(lines) + "\n"
