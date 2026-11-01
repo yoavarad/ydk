@@ -230,7 +230,7 @@ class Verifier:
                 "passed" if result.passed else "FAILED",
                 elapsed,
             )
-            if self._use_cache and not (result.detail and result.detail.get("no_cache")):
+            if self._use_cache and result.passed and not (result.detail and result.detail.get("no_cache")):
                 self._cache.store(plugin.name, file_hashes, result)
             return result
         except subprocess.TimeoutExpired:
