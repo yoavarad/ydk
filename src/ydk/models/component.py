@@ -136,6 +136,7 @@ class ScannerFinding(BaseModel):
     suggested_id: str
     confidence: str
     reason: str
+    file: str = ""
 
 
 class ScannerResult(BaseModel):

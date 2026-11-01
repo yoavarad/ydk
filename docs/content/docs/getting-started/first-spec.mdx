@@ -177,7 +177,7 @@ Every `[ydk:...]` reference in your spec must resolve to an actual component man
 Beyond the deterministic linker, YDK offers an LLM-powered prose scanner that finds *unlinked mentions* -- places where your spec describes something that should be a component but is not referenced:
 
 ```bash
-ydk component scan
+ydk spec verify --all-files
 ```
 
 For example, if your spec mentions "the notification service sends an email when an order ships" but you have not created an event component for `order-shipped` or a contract component for the notification service, the scanner flags these as potential gaps. It produces suggestions with confidence levels, not hard errors -- the final decision is always yours.

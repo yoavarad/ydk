@@ -18,13 +18,14 @@ from ydk.core.claude_client import ClaudeAPIError
 from ydk.core.component_checker import ComponentChecker
 from ydk.core.component_linker import ComponentLinker
 from ydk.core.component_registry import ComponentRegistry
+from ydk.core.component_scanner import ComponentScanner
 from ydk.core.config import load_config
-from ydk.core.llm_provider import SubagentResponseError
+from ydk.core.llm_provider import SubagentHandoff, SubagentResponseError
 from ydk.core.reviewer import (
     ReviewResult,
     load_all_reviewers,
 )
-from ydk.models.component import LinkerResult, ScannerResult
+from ydk.models.component import LinkerResult, ScannerFinding, ScannerResult
 from ydk.models.evaluation import (
     ComponentFinding,
     CriterionResult,
@@ -257,6 +258,57 @@ def _run_cached_fanout(
     return results, deterministic_findings
 
 
+def _run_scanner_checks(config: object, spec_files: list[str]) -> tuple[ScannerResult, list[Path]]:
+    """Run Layer B LLM prose scanner per narrative on the ``layer-b-scan`` provider.
+
+    Returns the findings and the request paths still awaiting a subagent
+    response, so the caller can join them with the reviewer handoff.
+    """
+    from ydk.core.llm_provider import get_llm_provider
+    from ydk.models.config import YdkConfig
+
+    assert isinstance(config, YdkConfig)
+    empty = ScannerResult(unlinked_mentions=[], suggested_ids=[])
+    if not spec_files:
+        return empty, []
+    registry = ComponentRegistry(
+        schemas_dir=Path(config.components.schemas_path), components_dir=Path(config.components.components_path)
+    )
+    schemas = registry.load_schemas()
+    if not schemas:
+        return empty, []
+
+    provider = get_llm_provider(config, purpose="layer-b-scan", max_tokens=4096)
+    if provider is None:
+        console.print(
+            "[yellow]Layer B scanner skipped:[/yellow] no LLM provider for "
+            f"ai.provider={config.ai.provider_for('layer-b-scan')!r}"
+        )
+        return empty, []
+
+    scanner = ComponentScanner()
+    findings: list[ScannerFinding] = []
+    pending: list[Path] = []
+    for file in spec_files:
+        path = Path(file)
+        if not path.is_file():
+            continue
+        try:
+            result = scanner.scan_narrative(path.read_text(encoding="utf-8"), schemas, provider)
+        except SubagentHandoff as handoff:
+            pending.extend(handoff.request_paths)
+            continue
+        except (ClaudeAPIError, SubagentResponseError):
+            raise
+        except Exception as exc:
+            console.print(f"[yellow]Layer B scan skipped for {file}:[/yellow] {exc}")
+            continue
+        findings.extend(f.model_copy(update={"file": file}) for f in result.unlinked_mentions)
+    return ScannerResult(
+        unlinked_mentions=findings, suggested_ids=[f.suggested_id for f in findings if f.suggested_id]
+    ), pending
+
+
 def _run_component_checks(config: object) -> list[ComponentFinding]:
     """Run deterministic component quality checks."""
     from ydk.models.config import YdkConfig
@@ -428,7 +480,7 @@ def _format_report_human(
             "concepts mentioned without [ydk:...] references:"
         )
         lines.extend(
-            f'     Line {finding.line}: "{finding.text}" -> {finding.suggested_id}'
+            f'     {finding.file}:Line {finding.line}: "{finding.text}" -> {finding.suggested_id}'
             for finding in report.scanner_result.unlinked_mentions
         )
         lines.append("")
@@ -865,6 +917,7 @@ def verify(
     narrative_scores: list[CriterionResult] = []
     reviewer_results: list[ReviewResult] = []
     deterministic_findings: dict[str, list[dict[str, object]]] = {}
+    scanner_result = ScannerResult(unlinked_mentions=[], suggested_ids=[])
     if all_files:
         spec_files = git.all_files(config.project.spec_location, extension=".md")
     else:
@@ -882,6 +935,15 @@ def verify(
         spec_content = git.read_content(spec_files)
 
         with handle_subagent_handoff():
+            scan_pending: list[Path] = []
+            try:
+                # Layer B requests are collected so they join the reviewer handoff batch.
+                scanner_result, scan_pending = _run_scanner_checks(config, [] if rubric else spec_files)
+            except (ClaudeAPIError, SubagentResponseError) as exc:
+                console.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(code=1) from exc
+            except Exception as exc:
+                console.print(f"[yellow]Layer B scanner skipped:[/yellow] {exc}")
             try:
                 reviewer_results, deterministic_findings = _run_reviewer_agents(
                     spec_content=spec_content,
@@ -897,6 +959,10 @@ def verify(
                     console.print(f"[yellow]Reviewer agents failed:[/yellow] {exc}")
                 reviewer_results = []
                 deterministic_findings = {}
+            except SubagentHandoff as handoff:
+                raise SubagentHandoff([*scan_pending, *handoff.request_paths]) from None
+            if scan_pending:
+                raise SubagentHandoff(scan_pending)
 
         if reviewer_results:
             # Build threshold map from reviewer configs
@@ -917,9 +983,6 @@ def verify(
                 threshold_map[lr.id] = lr.threshold
 
             narrative_scores = _reviewer_results_to_criterion_results(reviewer_results, threshold_map)
-
-    # Phase 4: Scanner result (reviewer agents subsume this)
-    scanner_result = ScannerResult(unlinked_mentions=[], suggested_ids=[])
 
     # Build combined report
     report = _build_report(component_findings, linker_result, narrative_scores, scanner_result)
