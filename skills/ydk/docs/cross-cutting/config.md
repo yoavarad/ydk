@@ -116,7 +116,7 @@ memory:
     recency_weight: float         # default: 0.25
     access_weight: float          # default: 0.10
     recency_half_life_days: int   # default: 30
-  contradiction_threshold: float  # default: 0.85 — similarity threshold for contradiction detection
+  contradiction_threshold: float  # default: 0.6 — word/concept overlap (Jaccard) above which an older memory is judged as a contradiction candidate
   consolidation_threshold: float  # default: 0.90 — similarity threshold for memory consolidation
 
 # ─── Catalog ──────────────────────────────────────────
@@ -242,7 +242,7 @@ Every LLM call site resolves its model from a tier; overriding one tier keeps th
 | `search_mode` | string | `"hybrid"` | Default search mode: hybrid, vector, or keyword. |
 | `scoring.*` | float | varies | Memory scoring weights (must sum to 1.0). |
 | `scoring.recency_half_life_days` | int | `30` | Half-life for recency decay in days. |
-| `contradiction_threshold` | float | `0.85` | Similarity threshold for contradiction detection. |
+| `contradiction_threshold` | float | `0.6` | Similarity threshold for contradiction detection. |
 | `consolidation_threshold` | float | `0.90` | Similarity threshold for memory consolidation. |
 
 ### catalog
@@ -380,7 +380,7 @@ memory:
   search_mode: hybrid
   scoring:
     recency_half_life_days: 14    # Faster decay for fast-moving project
-  contradiction_threshold: 0.80
+  contradiction_threshold: 0.60
 
 catalog:
   backend: local

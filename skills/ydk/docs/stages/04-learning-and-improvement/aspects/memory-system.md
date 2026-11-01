@@ -160,7 +160,7 @@ When a new memory is written (via extraction or manual creation), the system che
 
 1. Search for semantically similar memories (vector similarity > threshold)
 2. Use LLM to evaluate if the new memory contradicts any existing ones
-3. If contradiction detected: old memory gets `superseded_by: <new_id>`, its score is suppressed
+3. If contradiction detected: old memory gets `valid_until: <timestamp>`, its score is suppressed
 4. Both memories are retained — the old one is still visible in audit mode
 
 **Example:**
@@ -199,7 +199,7 @@ memory:
     recency_weight: 0.25                       # Weight for time decay
     access_weight: 0.10                        # Weight for access frequency
     recency_half_life_days: 30                 # Half-life for recency decay
-  contradiction_threshold: 0.85                # Similarity threshold for contradiction check
+  contradiction_threshold: 0.6                 # Similarity threshold for contradiction check
   consolidation_threshold: 0.90                # Similarity threshold for consolidation
 ```
 
@@ -211,5 +211,5 @@ memory:
 - Hybrid search is the default and recommended mode. Use `--mode vector` or `--mode keyword` only when you have a specific reason.
 - Progressive retrieval (`--depth index`) is efficient for broad scans before drilling into specifics.
 - Negative knowledge (abandoned approaches) surfaces automatically during bootstrap — check it before starting a new approach.
-- Contradiction detection is automatic. If you see a `superseded_by` reference, check the newer memory.
+- Contradiction detection is automatic. If you see a `valid_until` timestamp, check the newer memory.
 - Embeddings are generated via AWS Bedrock. The configured AWS profile must have Bedrock access.

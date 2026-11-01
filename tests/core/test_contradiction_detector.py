@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ydk.core.contradiction_detector import Contradiction, ContradictionDetector, LLMProvider
 from ydk.models.memory import ExtractedMemoryModel
 
@@ -74,3 +76,54 @@ class TestLLMProtocol:
     def test_dataclass_fields(self) -> None:
         c = Contradiction(old_memory_id="m1", old_content="old", reason="ch")
         assert c.old_memory_id == "m1"
+
+
+class _FakeStructured:
+    """Fake StructuredLLMProvider (LLM boundary)."""
+
+    def __init__(self, verdicts: dict[str, tuple[bool, str]]) -> None:
+        self.verdicts = verdicts
+        self.calls = 0
+
+    def invoke_structured(self, prompt: str, output_format: type):
+        self.calls += 1
+        for needle, (contradicts, reason) in self.verdicts.items():
+            if needle in prompt:
+                return output_format(contradicts=contradicts, reason=reason)
+        return output_format(contradicts=False, reason="")
+
+
+class TestProviderContradictionJudge:
+    def test_returns_reason_when_contradicts(self) -> None:
+        from ydk.core.contradiction_detector import ProviderContradictionJudge
+
+        judge = ProviderContradictionJudge(_FakeStructured({"PostgreSQL": (True, "db changed")}))
+        assert judge.judge_contradiction("Use SQLite", "Use PostgreSQL") == "db changed"
+
+    def test_returns_none_when_no_contradiction(self) -> None:
+        from ydk.core.contradiction_detector import ProviderContradictionJudge
+
+        judge = ProviderContradictionJudge(_FakeStructured({}))
+        assert judge.judge_contradiction("a", "b") is None
+
+    def test_caches_repeated_pairs(self) -> None:
+        from ydk.core.contradiction_detector import ProviderContradictionJudge
+
+        fake = _FakeStructured({})
+        judge = ProviderContradictionJudge(fake)
+        judge.judge_contradiction("a", "b")
+        judge.judge_contradiction("a", "b")
+        assert fake.calls == 1
+
+    def test_collects_handoffs_and_flushes_once(self, tmp_path) -> None:
+        from ydk.core.contradiction_detector import ProviderContradictionJudge
+        from ydk.core.llm_provider import SubagentHandoff, SubagentProvider
+
+        provider = SubagentProvider(tmp_path, purpose="contradiction", model_tier="fast", model="m", agent="a")
+        judge = ProviderContradictionJudge(provider)
+        assert judge.judge_contradiction("new1", "old1") is None
+        assert judge.judge_contradiction("new2", "old2") is None
+        with pytest.raises(SubagentHandoff) as exc:
+            judge.flush()
+        assert len(exc.value.request_paths) == 2
+        judge.flush()  # cleared: no-op

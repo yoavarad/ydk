@@ -529,6 +529,7 @@ class MemoryEngine:
         valid_until: str | None = None,
         contradiction_detector: object | None = None,
         concepts: list[str] | None = None,
+        contradictions: list | None = None,
     ) -> str:
         """Add an extracted memory to the extractions collection."""
         collection = self._get_collection("extractions")
@@ -536,8 +537,12 @@ class MemoryEngine:
         doc_id = f"extraction-{task_id}-{extraction_type}-{int(now)}"
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
 
-        if contradiction_detector is not None:
-            self._run_contradiction_check(contradiction_detector, content, concepts or [], collection, now_iso)
+        if contradictions is None and contradiction_detector is not None:
+            contradictions = self.find_contradictions(content, concepts or [], contradiction_detector, collection)
+        for c in contradictions or []:
+            if contradiction_detector is not None:
+                contradiction_detector.invalidate(c.old_memory_id)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+            self._set_valid_until(collection, c.old_memory_id, now_iso)
 
         collection.add(
             ids=[doc_id],
@@ -557,31 +562,29 @@ class MemoryEngine:
                     "last_accessed": "",
                     "valid_from": valid_from or now_iso,
                     "valid_until": valid_until or "",
+                    "concepts": ",".join(concepts or []),
                 }
             ],
         )
         return doc_id
 
-    def _run_contradiction_check(
+    def find_contradictions(
         self,
-        detector: object,
         content: str,
         concepts: list[str],
-        collection: object,
-        now_iso: str,
-    ) -> None:
-        """Run contradiction detection and invalidate contradicted memories."""
+        detector: object,
+        collection: object | None = None,
+    ) -> list:
+        """Return existing valid memories that *content* contradicts (no writes)."""
         from ydk.core.contradiction_detector import ContradictionDetector
         from ydk.models.memory import ExtractedMemoryModel
 
         if not isinstance(detector, ContradictionDetector):
-            return
+            return []
+        if collection is None:
+            collection = self._get_collection("extractions")
         new_mem = ExtractedMemoryModel(memory_type="discovery", content=content, concepts=concepts)
-        existing_entries = self._gather_existing_for_contradiction(collection)
-        contradictions = detector.check(new_mem, existing_entries)
-        for c in contradictions:
-            detector.invalidate(c.old_memory_id)
-            self._set_valid_until(collection, c.old_memory_id, now_iso)
+        return detector.check(new_mem, self._gather_existing_for_contradiction(collection))
 
     @staticmethod
     def _gather_existing_for_contradiction(collection: object) -> list[dict]:

@@ -57,7 +57,7 @@ Every memory has `source_type` (user-stated, llm-extracted, agent-discovered, ve
 `ydk memory record-decision TOPIC` records topic-keyed decisions in an append-only log. Latest entry wins. When searching for "how do we handle X?", the most recent decision is returned.
 
 ### Contradiction Detection
-When a new memory contradicts an existing one, the old memory is auto-invalidated with a `superseded_by` reference. Prevents stale knowledge from persisting alongside newer corrections.
+When a new memory contradicts an existing one, the old memory is auto-invalidated with a `valid_until` timestamp. Prevents stale knowledge from persisting alongside newer corrections.
 
 ### Progressive Retrieval
 Search with `depth=index|summary|full` to control how much detail is returned. Start with `index` (titles + scores), drill into `summary` (key points), then `full` (complete content). Use `get_memory_details(ids)` for targeted full retrieval.

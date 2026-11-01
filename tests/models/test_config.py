@@ -332,3 +332,14 @@ class TestFileLengthVerificationConfig:
         )
         assert cfg.verification.file_length.paths == ["lib"]
         assert cfg.verification.file_length.limit == 200
+
+
+def test_memory_contradiction_threshold_default_and_bounds() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from ydk.models.config import MemoryConfig
+
+    assert MemoryConfig().contradiction_threshold == 0.6
+    with pytest.raises(ValidationError):
+        MemoryConfig(contradiction_threshold=1.5)
