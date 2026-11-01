@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
     """Create a minimal git repo with one commit."""
-    subprocess.run(["git", "init"], cwd=str(tmp_path), capture_output=True, check=True)
+    subprocess.run(["git", "init", "-b", "main"], cwd=str(tmp_path), capture_output=True, check=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(tmp_path), capture_output=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=str(tmp_path), capture_output=True)
     # Create initial commit
@@ -133,18 +134,34 @@ def test_create_with_base_branch(git_repo: Path) -> None:
     assert (path / "feature.txt").exists()
 
 
-def test_create_defaults_to_head_not_main(git_repo: Path) -> None:
-    """create() without base_branch uses HEAD, not hardcoded main."""
-    # Create a feature branch with a unique commit and stay on it
+def test_create_defaults_to_default_branch_not_head(git_repo: Path) -> None:
+    """create() without base_branch forks from the default branch, not the checked-out feature branch."""
+    default = subprocess.run(
+        ["git", "branch", "--show-current"], cwd=str(git_repo), capture_output=True, text=True, check=True
+    ).stdout.strip()
+    tip = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(git_repo), capture_output=True, text=True, check=True
+    ).stdout.strip()
     subprocess.run(["git", "checkout", "-b", "feature/bar"], cwd=str(git_repo), capture_output=True, check=True)
     (git_repo / "bar.txt").write_text("bar content")
     subprocess.run(["git", "add", "."], cwd=str(git_repo), capture_output=True, check=True)
     subprocess.run(["git", "commit", "-m", "bar commit"], cwd=str(git_repo), capture_output=True, check=True)
 
-    # HEAD is now feature/bar
     mgr = WorktreeManager(git_repo)
-    path = mgr.create("T-021")
+    with patch("ydk.services.git.default_branch", return_value=default):
+        path = mgr.create("T-021")
 
     assert path.exists()
-    # The worktree should contain bar.txt since HEAD was feature/bar
-    assert (path / "bar.txt").exists()
+    assert not (path / "bar.txt").exists()
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(path), capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert head == tip
+
+
+def test_create_raises_when_branch_creation_fails(git_repo: Path) -> None:
+    """create() raises instead of ignoring a failed `git branch`."""
+    mgr = WorktreeManager(git_repo)
+    mgr.create("T-022", base_branch="HEAD")
+    with pytest.raises(subprocess.CalledProcessError):
+        mgr.create("T-022", base_branch="HEAD")

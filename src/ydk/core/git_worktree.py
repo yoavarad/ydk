@@ -6,6 +6,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from ydk.services.git import resolve_start_point
+
 
 class WorktreeManager:
     """Create and manage git worktrees for task branches."""
@@ -21,7 +23,7 @@ class WorktreeManager:
         Returns the worktree path.
 
         When *base_branch* is provided the new branch is created from that ref.
-        Otherwise it defaults to HEAD (the current branch).
+        Otherwise it defaults to the repo default branch (never HEAD).
 
         Raises RuntimeError if called from inside an existing worktree.
         """
@@ -41,13 +43,14 @@ class WorktreeManager:
         worktree_path = self._root / ".ydk" / "worktrees" / task_id
         worktree_path.parent.mkdir(parents=True, exist_ok=True)
 
-        base = base_branch or "HEAD"
+        base = resolve_start_point(self._root, base_branch)
 
-        # Create branch from the specified base (defaults to HEAD)
+        # Create branch from the resolved start point (origin/<base> preferred)
         subprocess.run(
-            ["git", "branch", branch, base],
+            ["git", "branch", "--no-track", branch, base],
             cwd=str(self._root),
             capture_output=True,
+            check=True,
         )
         # Create worktree
         subprocess.run(

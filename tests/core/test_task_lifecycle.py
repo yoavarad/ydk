@@ -271,9 +271,11 @@ def test_start_fails_when_task_already_in_progress(lifecycle: TaskLifecycle, moc
         lifecycle.start("T-001")
 
 
+@patch("ydk.core.task_lifecycle.resolve_start_point", return_value="origin/main")
 @patch("ydk.core.task_lifecycle.subprocess")
 def test_start_without_worktree_isolation(
     mock_subprocess: MagicMock,
+    mock_resolve: MagicMock,
     mock_repo: MagicMock,
     mock_worktree: MagicMock,
     mock_verifier: MagicMock,
@@ -426,7 +428,7 @@ def test_start_with_base_branch(lifecycle: TaskLifecycle, mock_repo: MagicMock, 
 
 
 def test_start_defaults_to_head(lifecycle: TaskLifecycle, mock_repo: MagicMock, mock_worktree: MagicMock) -> None:
-    """start() defaults base_branch to None (which means HEAD in worktree manager), not main."""
+    """start() passes base_branch=None; the worktree manager resolves the default branch (never HEAD)."""
     lifecycle.start("T-001")
 
     mock_worktree.create.assert_called_once_with("T-001", "Test task", base_branch=None)
@@ -450,32 +452,39 @@ def test_start_force_restarts_stale_task(
     assert "worktree" in result
 
 
-@patch("ydk.core.task_lifecycle.subprocess")
-def test_start_with_base_branch_no_worktree_isolation(
-    mock_subprocess: MagicMock,
-    mock_repo: MagicMock,
-    mock_worktree: MagicMock,
-    mock_verifier: MagicMock,
+def test_start_no_worktree_isolation_forks_from_default_not_head(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock, tmp_path: Path
 ) -> None:
-    """start() passes base_branch to git checkout -b when worktree_isolation=False."""
-    events = EventBus()
+    """Non-isolation start without base forks from default branch tip, ignoring unrelated HEAD commits."""
+    import subprocess as sp
+
+    sp.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    sp.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True)
+    sp.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True)
+    (tmp_path / "a.txt").write_text("a")
+    sp.run(["git", "add", "."], cwd=tmp_path, check=True)
+    sp.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+    tip = sp.run(["git", "rev-parse", "main"], cwd=tmp_path, check=True, capture_output=True, text=True).stdout.strip()
+    sp.run(["git", "checkout", "-q", "-b", "feature/x"], cwd=tmp_path, check=True)
+    (tmp_path / "x.txt").write_text("x")
+    sp.run(["git", "add", "."], cwd=tmp_path, check=True)
+    sp.run(["git", "commit", "-q", "-m", "extra"], cwd=tmp_path, check=True)
+
     lc = TaskLifecycle(
         repo=mock_repo,
-        events=events,
+        events=EventBus(),
         worktree_mgr=mock_worktree,
         verifier=mock_verifier,
-        project_root=Path("/tmp/project"),
+        project_root=tmp_path,
         worktree_isolation=False,
     )
-    lc.start("T-001", base_branch="develop")
+    lc.start("T-001")
 
-    # Verify git checkout -b was called with the base branch
-    mock_subprocess.run.assert_called_once()
-    call_args = mock_subprocess.run.call_args[0][0]
-    assert call_args[0] == "git"
-    assert call_args[1] == "checkout"
-    assert call_args[2] == "-b"
-    assert "develop" in call_args
+    head = sp.run(["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, capture_output=True, text=True).stdout.strip()
+    assert head == tip
+    assert not (tmp_path / "x.txt").exists()
+    data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
+    assert data["tasks"]["T-001"]["base_branch"] == "main"
 
 
 @patch("ydk.core.task_lifecycle.subprocess")

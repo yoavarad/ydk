@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import functools
+import logging
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _run_text(cmd: list[str], cwd: str | Path | None, timeout: int) -> str:
@@ -34,6 +37,38 @@ def _default_branch_cached(repo_root: str) -> str:
         return out.removeprefix("origin/")
     out = _run_text(["gh", "repo", "view", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"], repo_root, 20)
     return out or "main"
+
+
+def _ref_exists(root: Path, ref: str) -> bool:
+    return bool(_run_text(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], root, 10))
+
+
+def resolve_start_point(repo_root: str | Path, base_branch: str | None = None) -> str:
+    """Ref a new task branch should fork from, matching the PR base.
+
+    ``base = base_branch or default_branch``; best-effort ``git fetch origin <base>``
+    (failure logs a warning). Returns ``origin/<base>`` if it exists, else local
+    ``<base>``; raises ``ValueError`` when neither resolves.
+    """
+    root = Path(repo_root)
+    base = (base_branch or default_branch(root)).removeprefix("origin/")
+    if _run_text(["git", "remote", "get-url", "origin"], root, 10):
+        try:
+            fetched = (
+                subprocess.run(
+                    ["git", "fetch", "origin", base], cwd=str(root), capture_output=True, timeout=60
+                ).returncode
+                == 0
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            fetched = False
+        if not fetched:
+            logger.warning("git fetch origin %s failed; using existing refs", base)
+    for ref in (f"origin/{base}", base):
+        if _ref_exists(root, ref):
+            return ref
+    msg = f"Base branch '{base}' not found locally or on origin"
+    raise ValueError(msg)
 
 
 def merge_base(base: str, cwd: str | Path | None = None) -> str | None:
