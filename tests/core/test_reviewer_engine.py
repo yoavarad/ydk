@@ -1,19 +1,26 @@
 """Unit tests for the cached fan-out reviewer engine.
 
-All tests mock the anthropic client — no real Anthropic API calls.
+Anthropic tests mock the anthropic SDK client (a system boundary) behind a real
+``AnthropicLLMProvider``; subagent tests use a real ``SubagentProvider`` on tmp_path.
 """
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import anthropic
 import httpx
 import pytest
 
-from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
-from ydk.core.reviewer_engine import ReviewerEngine, ReviewFinding, ReviewVerdict
+from ydk.core.claude_client import ClaudeAPIError
+from ydk.core.llm_provider import AnthropicLLMProvider, SubagentHandoff, SubagentProvider, SubagentResponseError
+from ydk.core.reviewer_engine import SYSTEM_PROMPT, ReviewerEngine, ReviewFinding, ReviewVerdict, spec_context
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,26 +81,37 @@ MODEL_TIERS = {
 }
 
 
+def _engine(client: MagicMock) -> ReviewerEngine:
+    return ReviewerEngine(lambda tier: AnthropicLLMProvider(client=client, model_id=MODEL_TIERS[tier], max_tokens=8192))
+
+
+def _subagent_engine(root: Path) -> ReviewerEngine:
+    return ReviewerEngine(
+        lambda tier: SubagentProvider(
+            root, purpose="spec-review", model_tier=tier, model=MODEL_TIERS[tier], agent="general-purpose"
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
-# _build_system_blocks
+# Prompts (system instruction + cached spec context)
 # ---------------------------------------------------------------------------
 
 
-class TestBuildSystemBlocks:
-    def test_structure_has_cache_point(self):
-        engine = ReviewerEngine.__new__(ReviewerEngine)
-        blocks = engine._build_system_blocks("# My Spec\nSome content")
+class TestPrompts:
+    def test_spec_context_embeds_spec(self):
+        assert "Hello World" in spec_context("Hello World")
 
-        assert len(blocks) == 2
-        assert "text" in blocks[0]
-        assert "text" in blocks[1]
-        assert blocks[1]["cache_control"] == {"type": "ephemeral"}
+    def test_anthropic_call_caches_spec_block(self):
+        mock_client = MagicMock()
+        mock_client.messages.parse.return_value = _mock_converse_response()
 
-    def test_spec_content_embedded(self):
-        engine = ReviewerEngine.__new__(ReviewerEngine)
-        blocks = engine._build_system_blocks("Hello World")
+        _engine(mock_client).run_all("# My Spec", _make_reviewers(1))
 
-        assert "Hello World" in blocks[1]["text"]
+        system = mock_client.messages.parse.call_args.kwargs["system"]
+        assert system[0] == {"type": "text", "text": SYSTEM_PROMPT}
+        assert system[1]["text"] == spec_context("# My Spec")
+        assert system[1]["cache_control"] == {"type": "ephemeral"}
 
 
 # ---------------------------------------------------------------------------
@@ -122,9 +140,8 @@ class TestCallReviewer:
             score=9, reasoning="Excellent", suggestions=["Do X"], findings=[{"line": 1, "text": "foo", "issue": "bar"}]
         )
 
-        engine = ReviewerEngine(client=mock_client)
-        system_blocks = engine._build_system_blocks("# Spec")
-        result = engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
+        engine = _engine(mock_client)
+        result = engine._call_reviewer(engine._provider("review"), "# Spec", "N01", "Evaluate")
 
         assert result["reviewer_id"] == "N01"
         assert result["score"] == 9
@@ -137,9 +154,8 @@ class TestCallReviewer:
         mock_client = MagicMock()
         mock_client.messages.parse.return_value = _mock_converse_response()
 
-        engine = ReviewerEngine(client=mock_client)
-        system_blocks = engine._build_system_blocks("# Spec")
-        engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
+        engine = _engine(mock_client)
+        engine._call_reviewer(engine._provider("review"), "# Spec", "N01", "Evaluate")
 
         call_kwargs = mock_client.messages.parse.call_args[1]
         assert call_kwargs["output_format"] is ReviewVerdict
@@ -152,19 +168,17 @@ class TestCallReviewer:
         mock_client = MagicMock()
         mock_client.messages.parse.return_value = SimpleNamespace(stop_reason="refusal", parsed_output=None)
 
-        engine = ReviewerEngine(client=mock_client)
-        system_blocks = engine._build_system_blocks("# Spec")
+        engine = _engine(mock_client)
         with pytest.raises(ClaudeAPIError, match="no structured output"):
-            engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
+            engine._call_reviewer(engine._provider("review"), "# Spec", "N01", "Evaluate")
 
     def test_authentication_error_raises_not_score_zero(self):
         mock_client = MagicMock()
         mock_client.messages.parse.side_effect = _auth_error()
 
-        engine = ReviewerEngine(client=mock_client)
-        system_blocks = engine._build_system_blocks("# Spec")
+        engine = _engine(mock_client)
         with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
-            engine._call_reviewer(system_blocks, MODEL_TIERS["review"], "N01", "Evaluate")
+            engine._call_reviewer(engine._provider("review"), "# Spec", "N01", "Evaluate")
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +197,10 @@ class TestRunAll:
             _mock_converse_response(score=8, reasoning="Good", cache_read=5000),
         ]
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         results = engine.run_all(
             spec_content="# Test Spec",
             reviewers=_make_reviewers(3),
-            model_tiers=MODEL_TIERS,
             max_workers=2,
         )
 
@@ -200,8 +213,8 @@ class TestRunAll:
     def test_empty_reviewers(self):
         mock_client = MagicMock()
 
-        engine = ReviewerEngine(client=mock_client)
-        results = engine.run_all("# Spec", [], MODEL_TIERS)
+        engine = _engine(mock_client)
+        results = engine.run_all("# Spec", [])
         assert results == []
         mock_client.messages.parse.assert_not_called()
 
@@ -209,24 +222,22 @@ class TestRunAll:
         mock_client = MagicMock()
         mock_client.messages.parse.side_effect = _auth_error()
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
             engine.run_all(
                 spec_content="# Test",
                 reviewers=_make_reviewers(1),
-                model_tiers=MODEL_TIERS,
             )
 
     def test_authentication_error_in_fanout_propagates(self):
         mock_client = MagicMock()
         mock_client.messages.parse.side_effect = [_mock_converse_response(), _auth_error()]
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         with pytest.raises(ClaudeAPIError, match="invalid or missing API key"):
             engine.run_all(
                 spec_content="# Test",
                 reviewers=_make_reviewers(2),
-                model_tiers=MODEL_TIERS,
             )
 
     def test_model_tier_resolution(self):
@@ -234,7 +245,7 @@ class TestRunAll:
 
         mock_client.messages.parse.return_value = _mock_converse_response()
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -253,7 +264,7 @@ class TestRunAll:
                 "group": "q",
             },
         ]
-        engine.run_all("# Spec", reviewers, MODEL_TIERS)
+        engine.run_all("# Spec", reviewers)
 
         # First call (prime) uses smart model
         first_call_kwargs = mock_client.messages.parse.call_args_list[0][1]
@@ -273,7 +284,7 @@ class TestRunAll:
 
         mock_client.messages.parse.side_effect = track_calls
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -308,7 +319,7 @@ class TestRunAll:
                 "group": "q",
             },
         ]
-        engine.run_all("# Spec", reviewers, MODEL_TIERS)
+        engine.run_all("# Spec", reviewers)
 
         assert mock_client.messages.parse.call_count == 4
 
@@ -337,7 +348,7 @@ class TestRunAll:
 
         mock_client.messages.parse.side_effect = track_calls
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -356,7 +367,7 @@ class TestRunAll:
                 "group": "q",
             },
         ]
-        engine.run_all("# Spec", reviewers, MODEL_TIERS)
+        engine.run_all("# Spec", reviewers)
 
         assert models_used["smart_prompt"] == MODEL_TIERS["review"]
         assert models_used["fast_prompt"] == MODEL_TIERS["fast"]
@@ -366,7 +377,7 @@ class TestRunAll:
 
         mock_client.messages.parse.return_value = _mock_converse_response(score=7)
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -377,7 +388,7 @@ class TestRunAll:
                 "group": "q",
             },
         ]
-        results = engine.run_all("# Spec", reviewers, MODEL_TIERS)
+        results = engine.run_all("# Spec", reviewers)
 
         assert results[0]["passed"] is False  # 7 < 8
 
@@ -386,7 +397,7 @@ class TestRunAll:
 
         mock_client.messages.parse.return_value = _mock_converse_response(score=8)
 
-        engine = ReviewerEngine(client=mock_client)
+        engine = _engine(mock_client)
         reviewers = [
             {
                 "id": "N01",
@@ -397,18 +408,44 @@ class TestRunAll:
                 "group": "q",
             },
         ]
-        results = engine.run_all("# Spec", reviewers, MODEL_TIERS)
+        results = engine.run_all("# Spec", reviewers)
 
         assert results[0]["passed"] is True  # 8 >= 8
 
 
-class TestConstruction:
-    def test_missing_credentials_raise_at_construction(self, monkeypatch):
-        monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
-        with pytest.raises(MissingCredentialsError):
-            ReviewerEngine(api_key_env="YDK_TEST_MISSING_KEY")
+class TestSubagentHandoff:
+    def test_all_reviewers_collected_into_one_handoff(self, tmp_path: Path):
+        with pytest.raises(SubagentHandoff) as exc:
+            _subagent_engine(tmp_path).run_all("# Spec", _make_reviewers(3))
 
-    def test_builds_client_from_custom_env(self, monkeypatch):
-        monkeypatch.setenv("YDK_TEST_KEY", "sk-test")
-        engine = ReviewerEngine(api_key_env="YDK_TEST_KEY")
-        assert engine._client.api_key == "sk-test"
+        assert len(exc.value.request_paths) == 3
+        data = json.loads(exc.value.request_paths[0].read_text(encoding="utf-8"))
+        assert data["system"] == SYSTEM_PROMPT
+        assert data["cacheable_context"] == spec_context("# Spec")
+
+    def test_rerun_with_responses_completes(self, tmp_path: Path):
+        with pytest.raises(SubagentHandoff) as exc:
+            _subagent_engine(tmp_path).run_all("# Spec", _make_reviewers(3))
+        responses = tmp_path / "responses"
+        responses.mkdir()
+        verdict = {"score": 9, "reasoning": "ok", "suggestions": [], "findings": []}
+        for path in exc.value.request_paths:
+            (responses / path.name).write_text(json.dumps(verdict), encoding="utf-8")
+
+        results = _subagent_engine(tmp_path).run_all("# Spec", _make_reviewers(3))
+
+        assert [r["reviewer_id"] for r in results] == ["N01", "N02", "N03"]
+        assert all(r["score"] == 9 and r["passed"] for r in results)
+
+    def test_invalid_fanout_response_fails_loudly(self, tmp_path: Path):
+        with pytest.raises(SubagentHandoff) as exc:
+            _subagent_engine(tmp_path).run_all("# Spec", _make_reviewers(2))
+        responses = tmp_path / "responses"
+        responses.mkdir()
+        good = {"score": 9, "reasoning": "ok", "suggestions": [], "findings": []}
+        first, second = sorted(exc.value.request_paths, key=lambda q: json.loads(q.read_text("utf-8"))["user"])
+        (responses / first.name).write_text(json.dumps(good), encoding="utf-8")
+        (responses / second.name).write_text("{}", encoding="utf-8")
+
+        with pytest.raises(SubagentResponseError):
+            _subagent_engine(tmp_path).run_all("# Spec", _make_reviewers(2))

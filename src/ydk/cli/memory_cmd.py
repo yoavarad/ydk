@@ -41,11 +41,11 @@ def _get_engine(cfg: YdkConfig) -> object:  # type: ignore[return-type]  # Memor
 
 
 def _get_extractor(cfg: YdkConfig | None = None) -> object:  # type: ignore[return-type]  # MemoryExtractor is optional dep
-    """Lazily import MemoryExtractor. Fails gracefully if strands missing."""
+    """Lazily import MemoryExtractor. Fails gracefully if it cannot be imported."""
     try:
         from ydk.core.extractor import MemoryExtractor  # type: ignore[import-untyped]
     except ImportError:
-        console.print("[red]strands-agents is not installed.[/red] Install with: uv pip install 'ydk[ai]'")
+        console.print("[red]MemoryExtractor could not be imported.[/red] Reinstall with: uv pip install ydk")
         raise typer.Exit(code=1) from None
 
     return MemoryExtractor()

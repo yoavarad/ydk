@@ -253,12 +253,11 @@ class TestReviewerConfig:
             config.id = "T02"  # type: ignore[misc]
 
 
-class TestCompileToolStrandsWrapping:
-    """Verify _compile_tool wraps functions with the Strands @tool decorator."""
+class TestCompileToolPlainCallable:
+    """_compile_tool returns the plain function; tools are called directly (no agent framework)."""
 
-    def test_compiled_tool_is_strands_decorated(self) -> None:
-        """When strands is installed, compiled tools should be DecoratedFunctionTool."""
-        from strands.tools.decorator import DecoratedFunctionTool
+    def test_compiled_tool_is_plain_function(self) -> None:
+        import types
 
         tool_def = {
             "name": "greet",
@@ -269,25 +268,9 @@ class TestCompileToolStrandsWrapping:
             """),
         }
         fn = _compile_tool(tool_def)
-        assert isinstance(fn, DecoratedFunctionTool)
-        # Should still be callable as a normal function
+        assert isinstance(fn, types.FunctionType)
+        assert fn.__name__ == "greet"
         assert fn("alice") == "hi alice"
-
-    def test_compiled_tool_preserves_name_and_description(self) -> None:
-        from strands.tools.decorator import DecoratedFunctionTool
-
-        tool_def = {
-            "name": "scanner",
-            "description": "Scans text for issues",
-            "code": textwrap.dedent("""\
-                def scanner(text: str) -> str:
-                    import json
-                    return json.dumps([])
-            """),
-        }
-        fn = _compile_tool(tool_def)
-        assert isinstance(fn, DecoratedFunctionTool)
-        assert fn.tool_name == "scanner"
 
 
 class TestModelTiers:

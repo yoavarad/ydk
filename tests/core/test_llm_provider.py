@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -561,3 +562,75 @@ class TestClaudeCliProvider:
         provider = get_llm_provider(cfg, purpose="extract")
         assert isinstance(provider, ClaudeCliProvider)
         assert isinstance(provider, StructuredLLMProvider)
+
+
+# ---------------------------------------------------------------------------
+# System prompt + cacheable context (task 625)
+# ---------------------------------------------------------------------------
+
+
+class TestSystemAndCacheableContext:
+    def test_anthropic_puts_context_in_cached_system_block(self) -> None:
+        client = MagicMock()
+        client.messages.parse.return_value = SimpleNamespace(stop_reason="end_turn", parsed_output=_Answer(value="x"))
+
+        AnthropicLLMProvider(client=client, model_id="m").invoke_structured(
+            "q", _Answer, system="be strict", cacheable_context="SPEC"
+        )
+
+        assert client.messages.parse.call_args.kwargs["system"] == [
+            {"type": "text", "text": "be strict"},
+            {"type": "text", "text": "SPEC", "cache_control": {"type": "ephemeral"}},
+        ]
+
+    def test_anthropic_system_only_has_no_cache_point(self) -> None:
+        client = MagicMock()
+        client.messages.parse.return_value = SimpleNamespace(stop_reason="end_turn", parsed_output=_Answer(value="x"))
+
+        AnthropicLLMProvider(client=client, model_id="m").invoke_structured("q", _Answer, system="be strict")
+
+        assert client.messages.parse.call_args.kwargs["system"] == [{"type": "text", "text": "be strict"}]
+
+    def test_subagent_request_carries_system_and_context(self, tmp_path: Path) -> None:
+        with pytest.raises(SubagentHandoff) as exc:
+            _subagent(tmp_path).invoke_structured("q", _Answer, system="sys", cacheable_context="SPEC")
+
+        data = json.loads(exc.value.request_paths[0].read_text(encoding="utf-8"))
+        assert (data["system"], data["cacheable_context"], data["user"]) == ("sys", "SPEC", "q")
+
+    def test_subagent_reads_response_for_context_request(self, tmp_path: Path) -> None:
+        with pytest.raises(SubagentHandoff) as exc:
+            _subagent(tmp_path).invoke_structured("q", _Answer, system="sys", cacheable_context="SPEC")
+        request_id = exc.value.request_paths[0].stem
+        (tmp_path / "responses").mkdir()
+        (tmp_path / "responses" / f"{request_id}.json").write_text('{"value": "ok"}', encoding="utf-8")
+
+        got = _subagent(tmp_path).invoke_structured("q", _Answer, system="sys", cacheable_context="SPEC")
+
+        assert got.value == "ok"
+
+    def test_id_changes_with_cacheable_context(self) -> None:
+        base = {"purpose": "p", "system": "s", "user": "u", "output_schema": {}}
+        assert LLMRequest.compute_id(**base, cacheable_context="A") != LLMRequest.compute_id(
+            **base, cacheable_context="B"
+        )
+
+    def test_id_without_context_is_unchanged(self) -> None:
+        base = {"purpose": "p", "system": "s", "user": "u", "output_schema": {}}
+        legacy = hashlib.sha256(json.dumps(["p", "s", "u", {}], sort_keys=True).encode()).hexdigest()
+        assert LLMRequest.compute_id(**base) == legacy
+
+    def test_claude_cli_prepends_system_and_context(self) -> None:
+        out = json.dumps({"structured_output": {"answer": "a"}})
+        with (
+            patch("ydk.core.llm_provider.shutil.which", return_value="/bin/claude"),
+            patch("ydk.core.llm_provider.subprocess.run", return_value=_completed(out)) as run,
+        ):
+            ClaudeCliProvider().invoke_structured("q", _CliAnswer, system="sys", cacheable_context="SPEC")
+        assert run.call_args.kwargs["input"] == "sys\n\nSPEC\n\nq"
+
+    def test_get_llm_provider_tier_override(self) -> None:
+        with patch("anthropic.Anthropic"):
+            provider = get_llm_provider(_cfg(model_tiers={"fast": "f-model"}), purpose="spec-review", tier="fast")
+        assert isinstance(provider, AnthropicLLMProvider)
+        assert provider._model_id == "f-model"

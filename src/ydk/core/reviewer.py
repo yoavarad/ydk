@@ -19,13 +19,6 @@ import yaml
 if TYPE_CHECKING:
     from pathlib import Path
 
-try:
-    from strands import tool as strands_tool
-
-    HAS_STRANDS = True
-except ImportError:
-    HAS_STRANDS = False
-
 logger = logging.getLogger(__name__)
 
 
@@ -82,23 +75,17 @@ def _compile_tool(tool_def: dict[str, str]) -> object:
     """Compile an inline Python tool from a YAML tool definition.
 
     The ``code`` block must define exactly one function whose name
-    matches the ``name`` field.  When Strands is available the raw
-    function is wrapped with ``@tool`` so the Strands Agent can
-    discover it; otherwise the plain callable is returned (sufficient
-    for tools-only mode).
+    matches the ``name`` field.  The plain callable is returned; the
+    engine calls tools directly.
     """
     name = tool_def["name"]
     code = tool_def["code"]
-    description = tool_def.get("description", "")
     namespace: dict[str, Any] = {}
     exec(compile(code, f"<reviewer-tool:{name}>", "exec"), namespace)
     func = namespace.get(name)
     if func is None:
         msg = f"Tool code for '{name}' did not define a function named '{name}'"
         raise ValueError(msg)
-
-    if HAS_STRANDS:
-        return strands_tool(name=name, description=description)(func)
     return func
 
 

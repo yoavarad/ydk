@@ -1,29 +1,47 @@
-"""Cached fan-out reviewer engine using the direct Anthropic Messages API.
+"""Cached fan-out reviewer engine running spec reviewers through an LLM provider.
 
-Replaces the Strands-based reviewer path with direct ``anthropic.Anthropic``
-calls that share a cached system prefix across all reviewers.  The first
-reviewer call primes the cache; subsequent calls fan out in parallel and
-hit the cached prefix, cutting per-reviewer latency from ~10s to ~2-4s.
+Every reviewer shares the same system instruction and a cacheable context
+block holding the spec.  With the Anthropic provider that block is marked
+``cache_control: ephemeral``: the first reviewer call per model tier primes
+the cache and the rest fan out in parallel and hit the cached prefix.  With
+the subagent provider each reviewer becomes a request file; the engine
+collects every pending request and raises one ``SubagentHandoff`` for all.
 
-Uses structured outputs (``messages.parse`` with the :class:`ReviewVerdict`
-pydantic model) so every response is schema-valid — no text parsing needed.
+Responses are validated against the :class:`ReviewVerdict` pydantic model.
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-if TYPE_CHECKING:
-    import anthropic
+from ydk.core.claude_client import ClaudeAPIError
+from ydk.core.llm_provider import SubagentHandoff, SubagentResponseError
 
-from ydk.core.claude_client import DEFAULT_API_KEY_ENV, ClaudeAPIError, build_client, parse_response
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+    from ydk.core.llm_provider import StructuredLLMProvider
 
 logger = logging.getLogger("ydk.reviewer_engine")
+
+SYSTEM_PROMPT = (
+    "You are a specification quality evaluator. "
+    "For each criterion, evaluate the document and respond with: "
+    "score (0-10), reasoning (string), suggestions (list of strings), "
+    "findings (list of objects with line, text, issue keys)."
+)
+
+
+def spec_context(spec_content: str) -> str:
+    """Return the cacheable context block that carries the spec to every reviewer."""
+    return f"Here are the specification documents to evaluate:\n\n{spec_content}"
 
 
 class ReviewFinding(BaseModel):
@@ -44,33 +62,16 @@ class ReviewVerdict(BaseModel):
 
 
 class ReviewerEngine:
-    """Runs spec reviewers using the Anthropic Messages API with prompt caching."""
+    """Runs spec reviewers through a structured LLM provider chosen per model tier."""
 
-    def __init__(self, api_key_env: str = DEFAULT_API_KEY_ENV, *, client: anthropic.Anthropic | None = None):
-        self._client = client or build_client(api_key_env, timeout=300.0, max_retries=2)
+    def __init__(self, provider_for_tier: Callable[[str], StructuredLLMProvider]) -> None:
+        self._provider_for_tier = provider_for_tier
+        self._providers: dict[str, StructuredLLMProvider] = {}
 
-    # ------------------------------------------------------------------
-    # System prompt construction
-    # ------------------------------------------------------------------
-
-    def _build_system_blocks(self, spec_content: str) -> list[dict[str, Any]]:
-        """Build system prompt with spec content and cache point."""
-        return [
-            {
-                "type": "text",
-                "text": (
-                    "You are a specification quality evaluator. "
-                    "For each criterion, evaluate the document and respond with: "
-                    "score (0-10), reasoning (string), suggestions (list of strings), "
-                    "findings (list of objects with line, text, issue keys)."
-                ),
-            },
-            {
-                "type": "text",
-                "text": f"Here are the specification documents to evaluate:\n\n{spec_content}",
-                "cache_control": {"type": "ephemeral"},
-            },
-        ]
+    def _provider(self, tier: str) -> StructuredLLMProvider:
+        if tier not in self._providers:
+            self._providers[tier] = self._provider_for_tier(tier)
+        return self._providers[tier]
 
     # ------------------------------------------------------------------
     # Single reviewer call
@@ -78,42 +79,24 @@ class ReviewerEngine:
 
     def _call_reviewer(
         self,
-        system_blocks: list[dict[str, Any]],
-        model_id: str,
+        provider: StructuredLLMProvider,
+        spec_content: str,
         reviewer_id: str,
         reviewer_prompt: str,
     ) -> dict[str, Any]:
-        """Single Anthropic Messages API call for one reviewer."""
+        """One structured provider call for one reviewer."""
         start = time.monotonic()
-        logger.info("Reviewer %s: calling Anthropic (%s)", reviewer_id, model_id)
+        logger.info("Reviewer %s: calling %s", reviewer_id, type(provider).__name__)
 
-        response = parse_response(
-            self._client,
+        verdict = provider.invoke_structured(
+            reviewer_prompt,
             ReviewVerdict,
-            model=model_id,
-            max_tokens=8192,
-            system=system_blocks,
-            messages=[{"role": "user", "content": reviewer_prompt}],
+            system=SYSTEM_PROMPT,
+            cacheable_context=spec_context(spec_content),
         )
-        verdict = cast("ReviewVerdict", response.parsed_output)
-        usage = response.usage
 
         elapsed = time.monotonic() - start
-
-        # Log cache metrics
-        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        input_tokens = getattr(usage, "input_tokens", 0) or 0
-        output_tokens = getattr(usage, "output_tokens", 0) or 0
-        logger.info(
-            "Reviewer %s: done in %.1fs — input=%d, output=%d, cache_read=%d, cache_write=%d",
-            reviewer_id,
-            elapsed,
-            input_tokens,
-            output_tokens,
-            cache_read,
-            cache_write,
-        )
+        logger.info("Reviewer %s: done in %.1fs", reviewer_id, elapsed)
 
         return {
             "reviewer_id": reviewer_id,
@@ -132,111 +115,87 @@ class ReviewerEngine:
         self,
         spec_content: str,
         reviewers: list[dict[str, Any]],
-        model_tiers: dict[str, str],
         max_workers: int = 10,
     ) -> list[dict[str, Any]]:
         """Run all reviewers with per-model-tier cache priming + parallel fan-out.
 
         Groups reviewers by model_tier so that each tier's cache is primed
-        independently.  This ensures Sonnet reviewers hit Sonnet cache and
-        Haiku reviewers hit Haiku cache.
+        independently.  Reviewers whose answer is handed off to a subagent
+        are collected; once every reviewer has run, a single
+        ``SubagentHandoff`` listing all pending requests is raised.
 
         Args:
             spec_content: The specification text to review.
             reviewers: List of reviewer dicts, each with keys:
                 id, name, system_prompt, model_tier, threshold, group.
-            model_tiers: Map of tier name to Anthropic model ID
-                (e.g. ``{"review": "<model id>"}``); see ``ydk.models.config.DEFAULT_MODEL_TIERS``.
             max_workers: Maximum parallel threads for fan-out phase.
 
         Returns:
             Sorted list of result dicts (by reviewer_id).
         """
-        from collections import defaultdict
-
         total_start = time.monotonic()
 
         if not reviewers:
             return []
 
-        # Build cached prefix (shared across all reviewers)
-        system_blocks = self._build_system_blocks(spec_content)
-
-        # Group reviewers by model tier
         by_tier: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for rev in reviewers:
             by_tier[rev.get("model_tier", "review")].append(rev)
 
         results: list[dict[str, Any]] = []
+        pending: list[Path] = []
 
-        # Process each tier: prime cache with first reviewer, fan out rest
+        def record(rev: dict[str, Any], result: dict[str, Any]) -> None:
+            result["name"] = rev["name"]
+            result["passed"] = result.get("score", 0) >= rev.get("threshold", 8)
+            results.append(result)
+
         for tier, tier_reviewers in by_tier.items():
-            model_id = model_tiers.get(tier, model_tiers.get("review", ""))
+            provider = self._provider(tier)
 
             # Step 1: Prime cache for this tier (synchronous)
             first = tier_reviewers[0]
-            logger.info(
-                "Priming cache for tier=%s model=%s with reviewer %s",
-                tier,
-                model_id,
-                first["id"],
-            )
-
-            first_result = self._call_reviewer(
-                system_blocks=system_blocks,
-                model_id=model_id,
-                reviewer_id=first["id"],
-                reviewer_prompt=first["system_prompt"],
-            )
-            first_result["name"] = first["name"]
-            first_result["passed"] = first_result.get("score", 0) >= first.get("threshold", 8)
-            results.append(first_result)
+            logger.info("Priming cache for tier=%s with reviewer %s", tier, first["id"])
+            try:
+                record(first, self._call_reviewer(provider, spec_content, first["id"], first["system_prompt"]))
+            except SubagentHandoff as handoff:
+                pending.extend(handoff.request_paths)
 
             # Step 2: Fan out remaining reviewers for this tier in parallel
             remaining = tier_reviewers[1:]
-            if remaining:
-                logger.info(
-                    "Fanning out %d remaining tier=%s reviewers in parallel",
-                    len(remaining),
-                    tier,
-                )
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures: dict[Any, dict[str, Any]] = {}
-                    for rev in remaining:
-                        future = executor.submit(
-                            self._call_reviewer,
-                            system_blocks=system_blocks,
-                            model_id=model_id,
-                            reviewer_id=rev["id"],
-                            reviewer_prompt=rev["system_prompt"],
+            if not remaining:
+                continue
+            logger.info("Fanning out %d remaining tier=%s reviewers in parallel", len(remaining), tier)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self._call_reviewer, provider, spec_content, rev["id"], rev["system_prompt"]): rev
+                    for rev in remaining
+                }
+                for future in as_completed(futures):
+                    rev = futures[future]
+                    try:
+                        record(rev, future.result())
+                    except SubagentHandoff as handoff:
+                        pending.extend(handoff.request_paths)
+                    except (ClaudeAPIError, SubagentResponseError):
+                        raise
+                    except Exception as exc:
+                        results.append(
+                            {
+                                "reviewer_id": rev["id"],
+                                "name": rev["name"],
+                                "score": 0,
+                                "passed": False,
+                                "reasoning": f"THREAD ERROR: {type(exc).__name__}: {str(exc)[:200]}",
+                                "suggestions": [],
+                                "findings": [],
+                                "elapsed_seconds": 0,
+                            }
                         )
-                        futures[future] = rev
 
-                    for future in as_completed(futures):
-                        rev = futures[future]
-                        try:
-                            result = future.result()
-                            result["name"] = rev["name"]
-                            result["passed"] = result.get("score", 0) >= rev.get("threshold", 8)
-                            results.append(result)
-                        except ClaudeAPIError:
-                            raise
-                        except Exception as exc:
-                            results.append(
-                                {
-                                    "reviewer_id": rev["id"],
-                                    "name": rev["name"],
-                                    "score": 0,
-                                    "passed": False,
-                                    "reasoning": f"THREAD ERROR: {type(exc).__name__}: {str(exc)[:200]}",
-                                    "suggestions": [],
-                                    "findings": [],
-                                    "elapsed_seconds": 0,
-                                }
-                            )
+        if pending:
+            raise SubagentHandoff(sorted(set(pending)))
 
-        total_elapsed = time.monotonic() - total_start
-        logger.info("All reviewers completed in %.1fs", total_elapsed)
-
+        logger.info("All reviewers completed in %.1fs", time.monotonic() - total_start)
         results.sort(key=lambda r: r.get("reviewer_id", ""))
         return results

@@ -30,8 +30,19 @@ class LLMProvider(Protocol):
 class StructuredLLMProvider(LLMProvider, Protocol):
     """An LLMProvider that can also return schema-validated structured output."""
 
-    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
-        """Send a prompt and return the response parsed into ``output_format``."""
+    def invoke_structured(
+        self,
+        prompt: str,
+        output_format: type[_ModelT],
+        *,
+        system: str = "",
+        cacheable_context: str | None = None,
+    ) -> _ModelT:
+        """Send a prompt and return the response parsed into ``output_format``.
+
+        ``system`` is the instruction prompt; ``cacheable_context`` is a large
+        shared prefix (e.g. a spec) that providers may cache across calls.
+        """
         ...
 
 
@@ -61,20 +72,38 @@ class AnthropicLLMProvider:
                 return cast("Any", block).text
         return ""
 
-    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
+    def invoke_structured(
+        self,
+        prompt: str,
+        output_format: type[_ModelT],
+        *,
+        system: str = "",
+        cacheable_context: str | None = None,
+    ) -> _ModelT:
         """Send a prompt to Claude and return its structured output as ``output_format``.
 
+        ``cacheable_context`` becomes a system block marked ``cache_control:
+        ephemeral`` so repeated calls sharing it hit the prompt cache.
         Raises ``ClaudeAPIError`` on API failures, truncated output, or a
         response without structured output.
         """
         from ydk.core.claude_client import parse_message
 
+        kwargs: dict[str, Any] = {}
+        system_blocks: list[dict[str, Any]] = []
+        if system:
+            system_blocks.append({"type": "text", "text": system})
+        if cacheable_context is not None:
+            system_blocks.append({"type": "text", "text": cacheable_context, "cache_control": {"type": "ephemeral"}})
+        if system_blocks:
+            kwargs["system"] = system_blocks
         return parse_message(
             self._client,
             output_format,
             model=self._model_id,
             max_tokens=self._max_tokens,
             messages=[{"role": "user", "content": prompt}],
+            **kwargs,
         )
 
 
@@ -93,9 +122,23 @@ class LLMRequest(BaseModel):
     instructions: str = ""
 
     @staticmethod
-    def compute_id(*, purpose: str, system: str, user: str, output_schema: dict[str, Any]) -> str:
-        """Return the sha256 of the prompt content; routing hints do not affect it."""
-        payload = json.dumps([purpose, system, user, output_schema], sort_keys=True, ensure_ascii=False)
+    def compute_id(
+        *,
+        purpose: str,
+        system: str,
+        user: str,
+        output_schema: dict[str, Any],
+        cacheable_context: str | None = None,
+    ) -> str:
+        """Return the sha256 of the prompt content; routing hints do not affect it.
+
+        ``cacheable_context`` is hashed only when set, so ids of requests
+        without it are unchanged.
+        """
+        content: list[Any] = [purpose, system, user, output_schema]
+        if cacheable_context is not None:
+            content.append(cacheable_context)
+        payload = json.dumps(content, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     @classmethod
@@ -114,7 +157,13 @@ class LLMRequest(BaseModel):
     ) -> LLMRequest:
         """Construct a request with its content-hash ``id`` filled in."""
         return cls(
-            id=cls.compute_id(purpose=purpose, system=system, user=user, output_schema=output_schema),
+            id=cls.compute_id(
+                purpose=purpose,
+                system=system,
+                user=user,
+                output_schema=output_schema,
+                cacheable_context=cacheable_context,
+            ),
             purpose=purpose,
             system=system,
             user=user,
@@ -185,12 +234,20 @@ class SubagentProvider:
         """Return the subagent's text answer (response schema ``{"text": str}``)."""
         return self.invoke_structured(prompt, _TextResponse).text
 
-    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
+    def invoke_structured(
+        self,
+        prompt: str,
+        output_format: type[_ModelT],
+        *,
+        system: str = "",
+        cacheable_context: str | None = None,
+    ) -> _ModelT:
         """Return the validated response, or write the request and raise a handoff."""
         request = LLMRequest.build(
             purpose=self._purpose,
-            system="",
+            system=system,
             user=prompt,
+            cacheable_context=cacheable_context,
             output_schema=output_format.model_json_schema(),
             model_tier=self._model_tier,
             model=self._model,
@@ -282,9 +339,17 @@ class ClaudeCliProvider:
         """Return the CLI's text result."""
         return str(self._run(prompt, None).get("result", ""))
 
-    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
-        """Return the CLI output validated into ``output_format``."""
-        data = self._run(prompt, output_format.model_json_schema())
+    def invoke_structured(
+        self,
+        prompt: str,
+        output_format: type[_ModelT],
+        *,
+        system: str = "",
+        cacheable_context: str | None = None,
+    ) -> _ModelT:
+        """Return the CLI output validated into ``output_format``; system and context precede the prompt."""
+        full_prompt = "\n\n".join(part for part in (system, cacheable_context, prompt) if part)
+        data = self._run(full_prompt, output_format.model_json_schema())
         try:
             structured = data.get("structured_output")
             if structured is not None:
@@ -314,17 +379,17 @@ def tier_for_purpose(purpose: str | None) -> str:
     return _PURPOSE_TIERS.get(purpose or "", "fast")
 
 
-def _build_anthropic_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None) -> StructuredLLMProvider:
+def _build_anthropic_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None, tier: str) -> StructuredLLMProvider:
+    del purpose
     from ydk.core.claude_client import build_client
 
     client = build_client(cfg.anthropic.api_key_env)
-    model_id = cfg.ai.model_for(tier_for_purpose(purpose))
+    model_id = cfg.ai.model_for(tier)
     return AnthropicLLMProvider(client=client, model_id=model_id, max_tokens=max_tokens)
 
 
-def _build_subagent_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None) -> StructuredLLMProvider:
+def _build_subagent_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None, tier: str) -> StructuredLLMProvider:
     del max_tokens  # the subagent owns its own output budget
-    tier = tier_for_purpose(purpose)
     agent = cfg.ai.subagent.agent_for(purpose)
     return SubagentProvider(
         Path(cfg.ai.subagent.dir),
@@ -336,9 +401,11 @@ def _build_subagent_provider(cfg: YdkConfig, max_tokens: int, purpose: str | Non
     )
 
 
-def _build_claude_cli_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None) -> StructuredLLMProvider:
-    del max_tokens  # the CLI owns its own output budget
-    return ClaudeCliProvider(cfg.ai.model_for(tier_for_purpose(purpose)))
+def _build_claude_cli_provider(
+    cfg: YdkConfig, max_tokens: int, purpose: str | None, tier: str
+) -> StructuredLLMProvider:
+    del max_tokens, purpose  # the CLI owns its own output budget
+    return ClaudeCliProvider(cfg.ai.model_for(tier))
 
 
 _PROVIDER_BUILDERS = {
@@ -349,12 +416,13 @@ _PROVIDER_BUILDERS = {
 
 
 def get_llm_provider(
-    cfg: YdkConfig, *, purpose: str | None = None, max_tokens: int = 1024
+    cfg: YdkConfig, *, purpose: str | None = None, max_tokens: int = 1024, tier: str | None = None
 ) -> StructuredLLMProvider | None:
     """Construct an LLMProvider for ``purpose`` from a YdkConfig.
 
     The provider is ``cfg.ai.routes[purpose]`` if set, else ``cfg.ai.provider``;
-    the model tier follows the purpose (``fast`` when unknown or omitted).
+    the model tier is ``tier`` when given, else follows the purpose (``fast``
+    when unknown or omitted).
     Returns ``None`` for an unknown provider or an unexpected construction
     error. Missing credentials are not swallowed: ``MissingCredentialsError``
     propagates so callers can report it before any request is made.
@@ -365,7 +433,7 @@ def get_llm_provider(
         builder = _PROVIDER_BUILDERS.get(cfg.ai.provider_for(purpose))
         if builder is None:
             return None
-        return builder(cfg, max_tokens, purpose)
+        return builder(cfg, max_tokens, purpose, tier or tier_for_purpose(purpose))
     except ClaudeAPIError:
         raise
     except Exception:
