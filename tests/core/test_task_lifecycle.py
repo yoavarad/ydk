@@ -282,7 +282,10 @@ def test_done_real_failure_takes_precedence_over_needs_llm(
 
     assert result["passed"] is False
     assert "needs_llm" not in result
-    assert "Verification FAILED" in mock_repo.add_comment.call_args[0][1]
+    comment = mock_repo.add_comment.call_args[0][1]
+    assert "Verification FAILED" in comment
+    assert "FAIL lint" in comment
+    assert "ai-code-review" not in comment
 
 
 def test_done_skipped_needs_llm_plugin_does_not_hand_off(lifecycle: TaskLifecycle, mock_verifier: MagicMock) -> None:

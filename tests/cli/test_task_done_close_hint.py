@@ -72,3 +72,11 @@ def test_done_needs_llm_prints_request_block_and_exits_3(mock_build: MagicMock) 
     assert f"- {Path('/r/b.json')}" in result.output
     assert "PR created" not in result.output
     assert "ydk task close" not in result.output
+
+
+@patch("ydk.cli.task_cmd._build_lifecycle")
+def test_done_needs_llm_without_paths_still_exits_3(mock_build: MagicMock) -> None:
+    mock_build.return_value = _lifecycle_returning({"passed": False, "needs_llm": []})
+    result = runner.invoke(task_app, ["done", "T-042"])
+    assert result.exit_code == 3
+    assert "YDK-SUBAGENT-REQUESTS:" in result.output

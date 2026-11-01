@@ -1031,7 +1031,7 @@ def done(
         console.print(f"[red]Unexpected error during task done: {exc}[/red]")
         raise typer.Exit(code=1) from None
 
-    if result.get("needs_llm"):
+    if "needs_llm" in result:
         from ydk.cli._handoff import handle_subagent_handoff
         from ydk.core.llm_provider import SubagentHandoff
 

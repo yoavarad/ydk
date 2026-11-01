@@ -364,7 +364,8 @@ class TaskLifecycle:
             loop = RepairLoop()
             structured_errors = loop.format_errors(report)
 
-            failures = [c for c in report.checks if not c.passed and c.name not in (skip_plugins or [])]
+            # Pending AI checks are not failures; their requests go stale once the code is fixed.
+            failures = [c for c in considered if not c.passed and not is_needs_llm(c)]
             failure_msg = "\n".join(f"FAIL {c.name}: {c.output[:100]}" for c in failures)
 
             self._repo.add_comment(task_id, f"**Verification FAILED:**\n{failure_msg}")
