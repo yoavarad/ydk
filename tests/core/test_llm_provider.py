@@ -15,6 +15,8 @@ from pydantic import BaseModel
 from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
 from ydk.core.llm_provider import (
     AnthropicLLMProvider,
+    ClaudeCliError,
+    ClaudeCliProvider,
     LLMProvider,
     LLMRequest,
     StructuredLLMProvider,
@@ -28,6 +30,7 @@ from ydk.core.llm_provider import (
 from ydk.models.config import DEFAULT_MODEL_TIERS, AIConfig, AnthropicConfig, YdkConfig
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -481,3 +484,80 @@ class TestTierForPurpose:
     )
     def test_mapping(self, purpose: str | None, tier: str) -> None:
         assert tier_for_purpose(purpose) == tier
+
+
+class _CliAnswer(BaseModel):
+    answer: str
+
+
+def _completed(stdout: str, returncode: int = 0, stderr: str = "") -> SimpleNamespace:
+    return SimpleNamespace(stdout=stdout, returncode=returncode, stderr=stderr)
+
+
+@pytest.fixture(autouse=True)
+def _claude_on_path(request: pytest.FixtureRequest) -> Iterator[None]:
+    if request.cls is not TestClaudeCliProvider:
+        yield
+        return
+    with patch("ydk.core.llm_provider.shutil.which", side_effect=lambda b: f"/bin/{b}"):
+        yield
+
+
+class TestClaudeCliProvider:
+    def test_structured_from_result_json(self) -> None:
+        out = json.dumps({"type": "result", "result": json.dumps({"answer": "hi"})})
+        with patch("ydk.core.llm_provider.subprocess.run", return_value=_completed(out)) as run:
+            got = ClaudeCliProvider("claude-x").invoke_structured("p", _CliAnswer)
+        assert got == _CliAnswer(answer="hi")
+        cmd = run.call_args.args[0]
+        assert cmd[:2] == ["/bin/claude", "-p"]
+        assert "json" in cmd
+        assert "--json-schema" in cmd
+        assert "claude-x" in cmd
+        assert run.call_args.kwargs["input"] == "p"
+
+    def test_structured_prefers_structured_output(self) -> None:
+        out = json.dumps({"result": "", "structured_output": {"answer": "so"}})
+        with patch("ydk.core.llm_provider.subprocess.run", return_value=_completed(out)):
+            assert ClaudeCliProvider().invoke_structured("p", _CliAnswer).answer == "so"
+
+    def test_invoke_returns_text(self) -> None:
+        out = json.dumps({"result": "plain text"})
+        with patch("ydk.core.llm_provider.subprocess.run", return_value=_completed(out)) as run:
+            assert ClaudeCliProvider().invoke("p") == "plain text"
+        assert "--json-schema" not in run.call_args.args[0]
+
+    def test_missing_binary_clear_error(self) -> None:
+        with (
+            patch("ydk.core.llm_provider.shutil.which", return_value=None),
+            pytest.raises(ClaudeCliError, match=r"claude.* not found"),
+        ):
+            ClaudeCliProvider().invoke("p")
+
+    def test_nonzero_exit_raises(self) -> None:
+        with (
+            patch("ydk.core.llm_provider.subprocess.run", return_value=_completed("", 1, "boom")),
+            pytest.raises(ClaudeCliError, match="boom"),
+        ):
+            ClaudeCliProvider().invoke("p")
+
+    def test_bad_json_raises(self) -> None:
+        with (
+            patch("ydk.core.llm_provider.subprocess.run", return_value=_completed("not json")),
+            pytest.raises(ClaudeCliError),
+        ):
+            ClaudeCliProvider().invoke("p")
+
+    def test_schema_mismatch_raises(self) -> None:
+        out = json.dumps({"result": json.dumps({"wrong": 1})})
+        with (
+            patch("ydk.core.llm_provider.subprocess.run", return_value=_completed(out)),
+            pytest.raises(ClaudeCliError),
+        ):
+            ClaudeCliProvider().invoke_structured("p", _CliAnswer)
+
+    def test_get_llm_provider_claude_cli(self) -> None:
+        cfg = _cfg(provider="claude-cli", model_tiers={"fast": "claude-fast"})
+        provider = get_llm_provider(cfg, purpose="extract")
+        assert isinstance(provider, ClaudeCliProvider)
+        assert isinstance(provider, StructuredLLMProvider)
