@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel
 
 from ydk.models.component import ScannerFinding, ScannerResult
 
 if TYPE_CHECKING:
-    from ydk.core.llm_provider import LLMProvider
+    from ydk.core.llm_provider import StructuredLLMProvider
     from ydk.models.component import SchemaDefinition
 
 
@@ -106,6 +107,12 @@ def _build_scanner_prompt_template() -> str:
 _SCANNER_PROMPT_TEMPLATE = _build_scanner_prompt_template()
 
 
+class _ScannerResponse(BaseModel):
+    """Structured output the scanner asks the LLM for."""
+
+    findings: list[ScannerFinding]
+
+
 class ComponentScanner:
     """LLM-based prose scanner (Layer B).
 
@@ -114,25 +121,25 @@ class ComponentScanner:
     schema-driven prompt.
     """
 
-    def __init__(self, registry: object) -> None:
-        self._registry = registry
-
     def scan_narrative(
         self,
         content: str,
         schemas: dict[str, SchemaDefinition],
-        llm_provider: LLMProvider | None = None,
+        llm_provider: StructuredLLMProvider | None = None,
     ) -> ScannerResult:
         """Scan a narrative document for unlinked component mentions.
 
         If no LLM provider is given, returns an empty result (graceful skip).
+        A subagent provider raises ``SubagentHandoff`` until its response exists.
         """
         if llm_provider is None:
             return ScannerResult(unlinked_mentions=[], suggested_ids=[])
 
-        prompt = self._build_prompt(content, schemas)
-        response = llm_provider.invoke(prompt)
-        return self._parse_response(response)
+        response = llm_provider.invoke_structured(self._build_prompt(content, schemas), _ScannerResponse)
+        return ScannerResult(
+            unlinked_mentions=response.findings,
+            suggested_ids=[f.suggested_id for f in response.findings if f.suggested_id],
+        )
 
     def _build_prompt(self, content: str, schemas: dict[str, SchemaDefinition]) -> str:
         """Build the LLM prompt dynamically from loaded schemas."""
@@ -149,34 +156,3 @@ class ComponentScanner:
             schema_definitions=schema_definitions,
             narrative_content=content,
         )
-
-    def _parse_response(self, response: str) -> ScannerResult:
-        """Parse the LLM JSON response into a ScannerResult."""
-        try:
-            text = response.strip()
-            if text.startswith("```"):
-                lines = text.split("\n")
-                lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                text = "\n".join(lines)
-
-            data = json.loads(text)
-            findings_data = data.get("findings", [])
-            findings: list[ScannerFinding] = []
-            suggested_ids: list[str] = []
-            for f in findings_data:
-                finding = ScannerFinding(
-                    text=f.get("text", ""),
-                    line=f.get("line", 0),
-                    suggested_id=f.get("suggested_id", ""),
-                    confidence=f.get("confidence", "LOW"),
-                    reason=f.get("reason", ""),
-                )
-                findings.append(finding)
-                if finding.suggested_id:
-                    suggested_ids.append(finding.suggested_id)
-
-            return ScannerResult(unlinked_mentions=findings, suggested_ids=suggested_ids)
-        except (json.JSONDecodeError, KeyError, TypeError):
-            return ScannerResult(unlinked_mentions=[], suggested_ids=[])

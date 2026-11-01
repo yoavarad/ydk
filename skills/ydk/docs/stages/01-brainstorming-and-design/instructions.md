@@ -457,7 +457,7 @@ When writing narrative specs, follow these rules strictly to pass the spec revie
 - You MUST assemble narratives into the project's spec location
 - You MUST ensure all component manifests exist in `.ydk/components/` with valid `$schema` references
 - You MUST run the Layer A deterministic linker to validate all `[ydk:...]` references: `ydk component validate`
-- You MUST run the Layer B LLM scanner to find unlinked concepts (runs as part of `ydk spec verify`)
+- You MUST run the Layer B LLM scanner to find unlinked concepts (runs as part of `ydk spec verify`: one `layer-b-scan` request per spec narrative, sent in the same subagent handoff as the reviewer requests when `ai.provider` is `subagent`; needs component schemas in `components.schemas_path`, otherwise it is skipped; findings are warnings, not failures)
 - You MUST run the spec quality check: `ydk spec verify` (10 YAML-based reviewers — N01-N10, covering problem statement, success criteria, scope, terminology, ambiguity, flow completeness, information density, no-tech-in-prose, component references, and YAGNI)
 - You MUST use `--all-files` flag when checking files not in the git diff
 - You MAY use `--verbose` to see per-reviewer timing and cache metrics

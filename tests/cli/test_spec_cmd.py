@@ -520,6 +520,57 @@ class TestSpecVerifySubagent:
         assert len(report["narrative_criteria"]["scores"]) == reviewer_count
         assert report["narrative_criteria"]["failed"] == []
 
+    def test_layer_b_requests_join_reviewer_handoff_and_findings_reported(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        from ydk.spec_reviewers import REVIEWERS_DIR
+
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        schemas = tmp_path / ".ydk" / "schemas"
+        schemas.mkdir()
+        (schemas / "entity.yaml").write_text(
+            """name: entity
+description: A domain object
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    description: id
+""",
+            encoding="utf-8",
+        )
+        reviewer_count = len(list(REVIEWERS_DIR.glob("*.yaml")))
+
+        first = runner.invoke(app, ["spec", "verify", "--all-files"])
+
+        assert first.exit_code == 3, first.output
+        assert first.output.count("YDK-SUBAGENT-REQUESTS:") == 1
+        requests = sorted((llm_dir / "requests").glob("*.json"))
+        purposes = [json.loads(r.read_text(encoding="utf-8"))["purpose"] for r in requests]
+        assert purposes.count("layer-b-scan") == 1
+        assert purposes.count("spec-review") == reviewer_count
+
+        (llm_dir / "responses").mkdir()
+        verdict = {"score": 10, "reasoning": "fine", "suggestions": [], "findings": []}
+        finding = {
+            "text": "Some content",
+            "line": 3,
+            "suggested_id": "ydk:entity:a/B",
+            "confidence": "HIGH",
+            "reason": "r",
+        }
+        for req, purpose in zip(requests, purposes, strict=True):
+            body = {"findings": [finding]} if purpose == "layer-b-scan" else verdict
+            (llm_dir / "responses" / req.name).write_text(json.dumps(body), encoding="utf-8")
+
+        second = runner.invoke(app, ["spec", "verify", "--all-files", "--format", "json"])
+
+        report = json.loads(second.output)
+        assert report["unlinked_concepts"]["count"] == 1
+        assert report["unlinked_concepts"]["findings"][0]["suggested_id"] == "ydk:entity:a/B"
+        assert report["unlinked_concepts"]["findings"][0]["file"].endswith("a.md")
+
     def test_invalid_response_fails_loudly(self, tmp_path: Path, monkeypatch: object) -> None:
         llm_dir = self._setup(tmp_path, monkeypatch)
         runner.invoke(app, ["spec", "verify", "--all-files"])
