@@ -6,7 +6,14 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from pydantic import BaseModel
+
+from ydk.core.llm_provider import SubagentHandoff
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ydk.core.llm_provider import StructuredLLMProvider
     from ydk.models.memory import ExtractedMemoryModel
 
 
@@ -17,6 +24,52 @@ class LLMProvider(Protocol):
     def judge_contradiction(self, new_text: str, old_text: str) -> str | None:
         """Return a reason string if the two texts contradict, else None."""
         ...
+
+
+class ContradictionVerdict(BaseModel):
+    """Structured LLM answer for one (new, old) memory pair."""
+
+    contradicts: bool
+    reason: str = ""
+
+
+class ProviderContradictionJudge:
+    """Adapt a StructuredLLMProvider to the ``judge_contradiction`` protocol.
+
+    Subagent handoffs are collected (the pair is treated as undecided) so one
+    ``flush()`` can raise a single handoff covering every pending judgement.
+    """
+
+    def __init__(self, provider: StructuredLLMProvider) -> None:
+        self._provider = provider
+        self._cache: dict[tuple[str, str], str | None] = {}
+        self._pending: list[Path] = []
+
+    def judge_contradiction(self, new_text: str, old_text: str) -> str | None:
+        """Return a reason if *new_text* contradicts *old_text*, else None."""
+        key = (new_text, old_text)
+        if key in self._cache:
+            return self._cache[key]
+        prompt = (
+            "Decide whether the NEW memory contradicts the OLD memory (the old one is no longer true). "
+            f"OLD: {old_text} | NEW: {new_text} | "
+            "Answer with contradicts (bool) and a short reason."
+        )
+        try:
+            verdict = self._provider.invoke_structured(prompt, ContradictionVerdict)
+        except SubagentHandoff as handoff:
+            self._pending.extend(p for p in handoff.request_paths if p not in self._pending)
+            return None
+        result = (verdict.reason or "contradicts") if verdict.contradicts else None
+        self._cache[key] = result
+        return result
+
+    def flush(self) -> None:
+        """Raise one ``SubagentHandoff`` for all collected requests; no-op if none."""
+        if not self._pending:
+            return
+        paths, self._pending = self._pending, []
+        raise SubagentHandoff(paths)
 
 
 @dataclass

@@ -48,7 +48,7 @@ Example: "Tried using Redis Streams for order events — abandoned because messa
 
 ## Contradiction Detection
 
-Automatic detection when a new memory contradicts an existing one. The old memory is marked with `superseded_by` pointing to the new memory's ID and its score is suppressed. Runs on every memory write (both extraction and manual creation).
+Automatic detection when a new memory contradicts an existing one. The old memory is marked with `valid_until` timestamp and its score is suppressed. Runs on every memory write (both extraction and manual creation).
 
 ## Decision Memory
 

@@ -137,3 +137,51 @@ class TestContradictionSetsValidUntil:
         assert len(u) >= 1
         meta = u[0].kwargs.get("metadatas") or u[0][1].get("metadatas")
         assert meta[0]["valid_until"] != ""
+
+
+class TestPrecomputedContradictions:
+    def test_precomputed_contradictions_invalidate_without_rejudging(self) -> None:
+        from ydk.core.contradiction_detector import Contradiction
+
+        e = MemoryEngine(chroma_path=Path("/tmp/unused"))
+        mc = MagicMock()
+        mc.get.return_value = {"ids": ["old"], "metadatas": [{"valid_until": ""}]}
+        e._get_collection = MagicMock(return_value=mc)  # type: ignore[assignment]
+        e.add_extraction(
+            task_id="T-8",
+            extraction_type="decision",
+            content="x",
+            contradictions=[Contradiction(old_memory_id="old", old_content="y", reason="r")],
+        )
+        meta = mc.update.call_args.kwargs["metadatas"][0]
+        assert meta["valid_until"] != ""
+
+
+class TestConceptsPersisted:
+    def test_add_extraction_stores_concepts_metadata(self) -> None:
+        e = MemoryEngine(chroma_path=Path("/tmp/unused"))
+        mc = MagicMock()
+        e._get_collection = MagicMock(return_value=mc)  # type: ignore[assignment]
+        e.add_extraction(task_id="T-9", extraction_type="decision", content="x", concepts=["db", "sqlite"])
+        meta = mc.add.call_args.kwargs["metadatas"][0]
+        assert meta["concepts"] == "db,sqlite"
+
+    def test_stored_concepts_enable_overlap_match(self) -> None:
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        e = MemoryEngine(chroma_path=Path("/tmp/unused"))
+        mc = MagicMock()
+        mc.get.return_value = {
+            "ids": ["old"],
+            "documents": ["totally different words here"],
+            "metadatas": [{"concepts": "database,postgresql", "valid_until": ""}],
+        }
+        e._get_collection = MagicMock(return_value=mc)  # type: ignore[assignment]
+
+        class FL:
+            def judge_contradiction(self, new_text, old_text):
+                return "changed"
+
+        det = ContradictionDetector(similarity_threshold=0.9, llm=FL())
+        found = e.find_contradictions("zzz qqq", ["database", "postgresql"], det)
+        assert [c.old_memory_id for c in found] == ["old"]

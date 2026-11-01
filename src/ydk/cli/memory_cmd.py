@@ -51,6 +51,24 @@ def _get_extractor(cfg: YdkConfig | None = None) -> object:  # type: ignore[retu
     return MemoryExtractor()
 
 
+def _build_contradiction_detector(cfg: YdkConfig) -> tuple[object, object] | None:
+    """Return ``(detector, judge)`` for the contradiction purpose, or None if no provider is usable."""
+    from ydk.core.claude_client import ClaudeAPIError
+    from ydk.core.contradiction_detector import ContradictionDetector, ProviderContradictionJudge
+    from ydk.core.llm_provider import get_llm_provider
+
+    try:
+        provider = get_llm_provider(cfg, purpose="contradiction")
+    except ClaudeAPIError as exc:
+        console.print(f"[yellow]Skipping contradiction check:[/yellow] {exc}")
+        return None
+    if provider is None:
+        return None
+    judge = ProviderContradictionJudge(provider)
+    detector = ContradictionDetector(similarity_threshold=cfg.memory.contradiction_threshold, llm=judge)
+    return detector, judge
+
+
 @memory_app.command()
 def index() -> None:
     """Build/rebuild ChromaDB index from project knowledge files."""
@@ -155,13 +173,26 @@ def extract(
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     if memories:
+        built = _build_contradiction_detector(cfg)
+        detector = built[0] if built else None
+        found: list[list | None] = [None] * len(memories)
+        if built:
+            # Phase 2: judge candidate pairs against the existing store (one handoff
+            # for all) before any write; the write phase reuses these verdicts.
+            with handle_subagent_handoff():
+                for i, m in enumerate(memories):
+                    found[i] = engine.find_contradictions(m.content, m.concepts, detector)  # ty: ignore[unresolved-attribute]
+                built[1].flush()  # ty: ignore[unresolved-attribute]
         # Store extracted memories in ChromaDB
-        for m in memories:
+        for i, m in enumerate(memories):
             engine.add_extraction(  # ty: ignore[unresolved-attribute]  # MemoryEngine is optional dep
                 task_id=task_id,
                 extraction_type=m.memory_type,
                 content=m.content,
                 related_files=m.related_files,
+                concepts=m.concepts,
+                contradiction_detector=detector,
+                contradictions=found[i],
             )
         console.print(f"[green]Extracted {len(memories)} memories from {task_id}:[/green]")
         for m in memories:

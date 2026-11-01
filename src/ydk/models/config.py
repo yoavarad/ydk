@@ -184,6 +184,9 @@ class MemoryConfig(BaseModel):
     embedding_model: str = "all-MiniLM-L6-v2"
     auto_bootstrap: bool = True
     chroma_path: str = ".ydk/memory/chroma"
+    # Jaccard overlap (concepts or words) above which an older memory is
+    # sent to the LLM as a contradiction candidate.
+    contradiction_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
     @model_validator(mode="before")
     @classmethod

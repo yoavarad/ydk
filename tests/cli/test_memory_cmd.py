@@ -648,3 +648,44 @@ def test_memory_retrospective_epic_subagent_handoff_satisfies_retro_gate(
     text = (tmp_path / ".ydk" / "retros" / f"{epic_id}.md").read_text(encoding="utf-8")
     assert "small PRs" in text
     assert find_epics_missing_retro(epic_repo, retros) == []
+
+
+@patch("ydk.cli.memory_cmd._get_extractor")
+@patch("ydk.cli.memory_cmd._get_engine")
+def test_memory_extract_two_phase_contradiction_handoff(
+    mock_get_engine: MagicMock, mock_get_extractor: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ydk.core.contradiction_detector import ContradictionDetector
+    from ydk.models.memory import ExtractedMemoryModel
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("YDK_TEST_MISSING_KEY", raising=False)
+    _write_subagent_config(tmp_path, "contradiction")
+    engine = _mock_engine()
+
+    def _find(content: str, concepts: list[str], detector: ContradictionDetector):
+        detector.llm.judge_contradiction(content, "old fact")  # type: ignore[union-attr]
+        return []
+
+    engine.find_contradictions.side_effect = _find
+    mock_get_engine.return_value = engine
+    mock_get_extractor.return_value.extract_from_jsonl.return_value = [
+        ExtractedMemoryModel(memory_type="decision", content="Use SQLite", concepts=["db"])
+    ]
+    jsonl_file = tmp_path / "session.jsonl"
+    jsonl_file.write_text("{}\n")
+    args = ["memory", "extract", "T-001", "--jsonl", str(jsonl_file)]
+
+    first = runner.invoke(app, args)
+
+    assert first.exit_code == 3, first.output
+    engine.add_extraction.assert_not_called()
+    assert _answer_requests(first.output, "contradiction", {"contradicts": True, "reason": "changed"}) == 1
+
+    second = runner.invoke(app, args)
+
+    assert second.exit_code == 0, second.output
+    kwargs = engine.add_extraction.call_args.kwargs
+    assert kwargs["concepts"] == ["db"]
+    assert isinstance(kwargs["contradiction_detector"], ContradictionDetector)
+    assert kwargs["contradictions"] == []

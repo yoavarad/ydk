@@ -53,7 +53,7 @@ Each abandoned memory includes:
 
 4. The learnings are stored in ChromaDB with embeddings, making them searchable by future agents via `ydk memory search` or `ydk memory bootstrap`.
 
-5. **Contradiction detection runs on write.** For each new memory, the system checks existing memories for contradictions. If found, the old memory is marked `superseded_by` the new one. This happens automatically — no manual intervention needed.
+5. **Contradiction detection runs on write.** For each new memory, the system checks existing memories for contradictions. If found, the old memory is given a `valid_until` timestamp. This happens automatically — no manual intervention needed.
 
 ## Provenance Assignment
 
@@ -76,10 +76,10 @@ Higher provenance contributes to a higher memory score, making the memory more l
 
 Every time a memory is written (extracted or manually created), the system:
 
-1. Searches for semantically similar existing memories (similarity > `contradiction_threshold`, default 0.85)
+1. Searches for semantically similar existing memories (similarity > `contradiction_threshold`, default 0.6)
 2. For each similar memory, uses an LLM to evaluate: "Does the new memory contradict the existing one?"
 3. If contradiction detected:
-   - Old memory gets `superseded_by: <new_memory_id>`
+   - Old memory gets `valid_until: <timestamp>` (the memory stays stored but is excluded as no longer valid)
    - Old memory's score is suppressed (recency weight set to 0)
    - Both memories are retained for audit
    - A log entry records the contradiction
