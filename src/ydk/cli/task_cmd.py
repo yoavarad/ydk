@@ -1230,9 +1230,11 @@ def sync_issues(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 
-    if format_or_echo(ctx, {"retired": retired}):
+    key = "would_retire" if dry_run else "retired"
+    if format_or_echo(ctx, {key: retired, "dry_run": dry_run}):
         return
-    typer.echo("retired: " + (", ".join(f"#{n}" for n in retired) or "none"))
+    label = "would retire" if dry_run else "retired"
+    typer.echo(f"{label}: " + (", ".join(f"#{n}" for n in retired) or "none"))
 
 
 @task_app.command("list")
