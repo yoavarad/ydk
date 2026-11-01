@@ -69,3 +69,94 @@ class TestFindEpicsMissingRetro:
     def test_backend_with_neither_shape_returns_empty(self, tmp_path: Path) -> None:
         missing = find_epics_missing_retro(object(), retros_dir=tmp_path / ".ydk" / "retros")  # type: ignore[arg-type]
         assert missing == []
+
+
+class _FakeEpic:
+    def __init__(self, epic_id: str, title: str, url: str = "", status: str = "closed") -> None:
+        self.id = epic_id
+        self.number = epic_id
+        self.title = title
+        self.url = url
+        self.status = status
+
+
+class _FakeRepo:
+    def __init__(self, *epics: _FakeEpic) -> None:
+        self._epics = list(epics)
+
+    def list(self, *, status: str) -> list:
+        return self._epics
+
+
+def _write_retro(path: Path, epic_id: str, title: str, url: str = "") -> None:
+    from ydk.core.retro_gate import render_frontmatter
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_frontmatter(epic_id, title, url) + "# Retrospective\n", encoding="utf-8")
+
+
+class TestRetroIdentity:
+    def test_matching_frontmatter_covers_epic(self, tmp_path: Path) -> None:
+        _write_retro(tmp_path / "11.md", "11", "Alpha  epic", "http://x/11")
+        repo = _FakeRepo(_FakeEpic("11", "Alpha epic", "http://x/11"))
+        assert find_epics_missing_retro(repo, retros_dir=tmp_path) == []  # type: ignore[arg-type]
+
+    def test_mismatched_title_is_missing(self, tmp_path: Path) -> None:
+        _write_retro(tmp_path / "11.md", "11", "Old epic")
+        repo = _FakeRepo(_FakeEpic("11", "New epic"))
+        assert [m.epic_id for m in find_epics_missing_retro(repo, retros_dir=tmp_path)] == ["11"]  # type: ignore[arg-type]
+
+    def test_mismatched_url_is_missing(self, tmp_path: Path) -> None:
+        _write_retro(tmp_path / "11.md", "11", "Same", "http://old/11")
+        repo = _FakeRepo(_FakeEpic("11", "Same", "http://new/11"))
+        assert len(find_epics_missing_retro(repo, retros_dir=tmp_path)) == 1  # type: ignore[arg-type]
+
+    def test_empty_url_on_either_side_ignored(self, tmp_path: Path) -> None:
+        _write_retro(tmp_path / "11.md", "11", "Same", "")
+        repo = _FakeRepo(_FakeEpic("11", "Same", "http://new/11"))
+        assert find_epics_missing_retro(repo, retros_dir=tmp_path) == []  # type: ignore[arg-type]
+
+    def test_legacy_file_without_frontmatter_covers_epic(self, tmp_path: Path) -> None:
+        (tmp_path / "11.md").write_text("# Retrospective: 11\n", encoding="utf-8")
+        repo = _FakeRepo(_FakeEpic("11", "Anything"))
+        assert find_epics_missing_retro(repo, retros_dir=tmp_path) == []  # type: ignore[arg-type]
+
+    def test_suffixed_file_covers_epic(self, tmp_path: Path) -> None:
+        _write_retro(tmp_path / "11.md", "11", "Old epic")
+        _write_retro(tmp_path / "11-new-epic.md", "11", "New epic")
+        repo = _FakeRepo(_FakeEpic("11", "New epic"))
+        assert find_epics_missing_retro(repo, retros_dir=tmp_path) == []  # type: ignore[arg-type]
+
+
+class TestResolveRetroPath:
+    def test_plain_when_absent(self, tmp_path: Path) -> None:
+        from ydk.core.retro_gate import resolve_retro_path
+
+        assert resolve_retro_path(tmp_path, "11", "T", "") == tmp_path / "11.md"
+
+    def test_plain_when_same_epic(self, tmp_path: Path) -> None:
+        from ydk.core.retro_gate import resolve_retro_path
+
+        _write_retro(tmp_path / "11.md", "11", "T")
+        assert resolve_retro_path(tmp_path, "11", "T", "") == tmp_path / "11.md"
+
+    def test_slug_when_other_epic(self, tmp_path: Path) -> None:
+        from ydk.core.retro_gate import resolve_retro_path
+
+        _write_retro(tmp_path / "11.md", "11", "Old")
+        assert resolve_retro_path(tmp_path, "11", "New Epic: Go!", "") == tmp_path / "11-new-epic-go.md"
+
+    def test_lookup_epic(self) -> None:
+        from ydk.core.retro_gate import lookup_epic
+
+        repo = _FakeRepo(_FakeEpic("11", "T", "u"))
+        assert lookup_epic(repo, "11") == ("T", "u")  # type: ignore[arg-type]
+        assert lookup_epic(repo, "12") is None  # type: ignore[arg-type]
+
+    def test_third_epic_same_title_gets_numbered_file(self, tmp_path: Path) -> None:
+        from ydk.core.retro_gate import resolve_retro_path
+
+        _write_retro(tmp_path / "11.md", "11", "Old")
+        _write_retro(tmp_path / "11-new.md", "11", "New", "http://a/11")
+        assert resolve_retro_path(tmp_path, "11", "New", "http://b/11") == tmp_path / "11-new-2.md"
+        assert resolve_retro_path(tmp_path, "11", "New", "http://a/11") == tmp_path / "11-new.md"

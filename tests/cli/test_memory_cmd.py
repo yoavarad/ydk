@@ -451,3 +451,86 @@ def test_memory_retrospective_missing_backend_error_message(monkeypatch: pytest.
     result = runner.invoke(app, ["memory", "retrospective", "--missing"])
     assert result.exit_code == 1
     assert "backend down" in result.output
+
+
+def _run_epic_retro(tmp_path: Path, epic_repo: object, epic_id: str) -> object:
+    """Invoke `memory retrospective --epic` with real local repos; only factories and LLM mocked."""
+    from types import SimpleNamespace
+
+    from ydk.models.pm import StoryCreate, TaskCreate
+    from ydk.repositories.local.stories import LocalStoryRepository
+    from ydk.repositories.local.tasks import LocalTaskRepository
+
+    root = tmp_path / ".ydk"
+    task_repo = LocalTaskRepository(root)
+    story_repo = LocalStoryRepository(root)
+    story_id = story_repo.create_story(StoryCreate(title="S", epic_id=epic_id)).id
+    task_id = task_repo.create_task(TaskCreate(title="Done task", story_id=story_id)).id
+    task_repo.update_status(task_id, "done")
+    client = MagicMock()
+    client.messages.parse.side_effect = lambda **kw: SimpleNamespace(
+        stop_reason="end_turn",
+        parsed_output=kw["output_format"].model_validate(
+            {"patterns": ["p"], "templates": ["t"], "rules": ["r"], "summary": "s"}
+        ),
+    )
+    with (
+        patch("ydk.repositories.factory.get_task_repository", return_value=task_repo),
+        patch("ydk.repositories.factory.get_story_repository", return_value=story_repo),
+        patch("ydk.repositories.factory.get_epic_repository", return_value=epic_repo),
+        patch("anthropic.Anthropic", return_value=client),
+    ):
+        return runner.invoke(app, ["memory", "retrospective", "--epic", epic_id])
+
+
+def test_memory_retrospective_epic_writes_frontmatter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ydk.models.pm import EpicCreate
+    from ydk.repositories.local.epics import LocalEpicRepository
+
+    monkeypatch.chdir(tmp_path)
+    epic_repo = LocalEpicRepository(tmp_path / ".ydk")
+    epic_id = epic_repo.create_epic(EpicCreate(title="Ship it")).id
+    result = _run_epic_retro(tmp_path, epic_repo, epic_id)
+    assert result.exit_code == 0  # type: ignore[attr-defined]
+    text = (tmp_path / ".ydk" / "retros" / f"{epic_id}.md").read_text(encoding="utf-8")
+    assert text.startswith(f'---\nepic_id: "{epic_id}"\ntitle: "Ship it"\nurl: ""\n---\n')
+
+
+def test_memory_retrospective_epic_collision_and_rerun(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ydk.models.pm import EpicCreate
+    from ydk.repositories.local.epics import LocalEpicRepository
+
+    monkeypatch.chdir(tmp_path)
+    epic_repo = LocalEpicRepository(tmp_path / ".ydk")
+    epic_id = epic_repo.create_epic(EpicCreate(title="New Epic")).id
+    retros = tmp_path / ".ydk" / "retros"
+    retros.mkdir(parents=True)
+    old = f'---\nepic_id: "{epic_id}"\ntitle: "Old Epic"\nurl: ""\n---\n\n# old\n'
+    (retros / f"{epic_id}.md").write_bytes(old.encode())
+
+    for _ in range(2):
+        result = _run_epic_retro(tmp_path, epic_repo, epic_id)
+        assert result.exit_code == 0  # type: ignore[attr-defined]
+
+    assert (retros / f"{epic_id}.md").read_bytes() == old.encode()
+    assert sorted(p.name for p in retros.iterdir()) == sorted([f"{epic_id}.md", f"{epic_id}-new-epic.md"])
+
+
+def test_memory_retrospective_missing_json_reports_reused_number(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ydk.models.pm import EpicCreate
+    from ydk.repositories.local.epics import LocalEpicRepository
+
+    monkeypatch.chdir(tmp_path)
+    repo = LocalEpicRepository(tmp_path / ".ydk")
+    epic_id = repo.create_epic(EpicCreate(title="New Epic")).id
+    repo.update_status(epic_id, "done")
+    retros = tmp_path / ".ydk" / "retros"
+    retros.mkdir(parents=True)
+    (retros / f"{epic_id}.md").write_text(
+        f'---\nepic_id: "{epic_id}"\ntitle: "Old Epic"\nurl: ""\n---\n', encoding="utf-8"
+    )
+    with patch("ydk.repositories.factory.get_epic_repository", return_value=repo):
+        result = runner.invoke(app, ["memory", "retrospective", "--missing", "--json"])
+    assert json.loads(result.output) == [{"epic_id": epic_id, "title": "New Epic"}]

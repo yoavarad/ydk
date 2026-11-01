@@ -99,7 +99,7 @@ Aggregate learnings across tasks. Per-epic is the default trigger — Stage 03 r
 
 **Per-epic retrospective:**
 - Gathers the epic's closed/done tasks across its stories
-- Saves the rendered retrospective to `.ydk/retros/<epic-id>.md`
+- Saves the rendered retrospective to `.ydk/retros/<epic-id>.md` with YAML front-matter (`epic_id`, `title`, `url`) identifying the epic; if that file already belongs to a different epic (reused issue number), it writes `.ydk/retros/<epic-id>-<title-slug>.md` instead and never overwrites the other epic's retro. Legacy files without front-matter still count for `<epic-id>`
 - Marks the epic `retro-done` (adds a `retro-done` label/comment on GitHub/GitLab backends, or sets the `retro` frontmatter field locally) so the completion is auditable
 - A future `ydk task start` gate blocks starting new work under a completed epic that has no recorded retro (tracked separately; not yet enforced as of this doc)
 

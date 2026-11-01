@@ -300,12 +300,18 @@ def retrospective(
     if epic:
         retros_dir = Path(".ydk/retros")
         retros_dir.mkdir(parents=True, exist_ok=True)
-        output_path = retros_dir / f"{epic}.md"
-        output_path.write_text(_render_epic_retro_markdown(epic, shipped, proposals), encoding="utf-8")
-
+        from ydk.core.retro_gate import lookup_epic, render_frontmatter, resolve_retro_path
         from ydk.repositories.factory import get_epic_repository
 
-        get_epic_repository().mark_retro_done(epic, output_path.as_posix())
+        epic_repo = get_epic_repository()
+        title, url = lookup_epic(epic_repo, epic) or ("", "")
+        output_path = resolve_retro_path(retros_dir, epic, title, url)
+        output_path.write_text(
+            render_frontmatter(epic, title, url) + _render_epic_retro_markdown(epic, shipped, proposals),
+            encoding="utf-8",
+        )
+
+        epic_repo.mark_retro_done(epic, output_path.as_posix())
         console.print(f"\n  [dim]Saved to {output_path}[/dim]")
     elif proposals:
         # Save to proofs directory
