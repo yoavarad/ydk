@@ -357,18 +357,36 @@ class TestLLMAuthoritativeScoring:
 # ---------------------------------------------------------------------------
 
 
-class TestRunCachedFanoutIntegration:
-    """Integration test for the full _run_cached_fanout flow with fixes."""
+def _verdict_client(score: int = 9) -> MagicMock:
+    """Anthropic SDK client double (system boundary) returning one ReviewVerdict."""
+    from types import SimpleNamespace
 
-    def test_tool_findings_injected_and_min_scored(self) -> None:
-        """End-to-end: tools find issues -> injected into prompt -> min-score applied."""
-        # Ensure the module is importable before patching
-        import ydk.core.reviewer_engine  # noqa: F401
+    from ydk.core.reviewer_engine import ReviewVerdict
+
+    client = MagicMock()
+    client.messages.parse.return_value = SimpleNamespace(
+        stop_reason="end_turn",
+        parsed_output=ReviewVerdict(score=score, reasoning="LLM thinks it's good", suggestions=[], findings=[]),
+    )
+    return client
+
+
+def _anthropic_config() -> object:
+    from ydk.models.config import AIConfig, YdkConfig
+
+    return YdkConfig(
+        project={"name": "t"}, ai=AIConfig(provider="anthropic", model_tiers={"review": "claude-review-override"})
+    )
+
+
+class TestRunCachedFanoutIntegration:
+    """Integration test for the full _run_cached_fanout flow (anthropic SDK mocked)."""
+
+    def test_tool_findings_injected_and_llm_score_authoritative(self) -> None:
+        """Tools find issues -> injected into prompt; LLM score is final; request is cached."""
         from ydk.cli.spec_cmd import _run_cached_fanout
         from ydk.core.reviewer import ReviewerConfig
-        from ydk.models.config import YdkConfig
 
-        # Tool that finds 5 issues (det_score = 4)
         def noisy_tool(spec_content: str) -> str:
             return json.dumps([{"line": i, "text": f"violation {i}", "message": f"problem {i}"} for i in range(5)])
 
@@ -383,116 +401,122 @@ class TestRunCachedFanoutIntegration:
                 model_tier="review",
             ),
         ]
+        client = _verdict_client(score=9)
 
-        captured_prompts: list[str] = []
-        captured_tiers: list[dict] = []
+        with patch("anthropic.Anthropic", return_value=client):
+            results, det_findings = _run_cached_fanout("# Test spec", _anthropic_config(), reviewers, verbose=False)
 
-        def capture_run_all(*, spec_content: str, reviewers: list, model_tiers: dict, max_workers: int) -> list:
-            captured_prompts.extend(rev["system_prompt"] for rev in reviewers)
-            captured_tiers.append(model_tiers)
-            return [
-                {
-                    "reviewer_id": "N08",
-                    "name": "Testability",
-                    "score": 9,  # LLM says 9
-                    "passed": True,
-                    "reasoning": "LLM thinks it's good",
-                    "suggestions": [],
-                    "findings": [],
-                    "elapsed_seconds": 1.0,
-                }
-            ]
+        kwargs = client.messages.parse.call_args.kwargs
+        prompt = kwargs["messages"][0]["content"]
+        assert "DETERMINISTIC TOOL FINDINGS" in prompt
+        assert "5 issues found" in prompt
+        assert "violation 0" in prompt
+        # Partial tier override applies; review budget and cache point preserved
+        assert kwargs["model"] == "claude-review-override"
+        assert kwargs["max_tokens"] == 8192
+        assert kwargs["system"][1]["cache_control"] == {"type": "ephemeral"}
+        assert "# Test spec" in kwargs["system"][1]["text"]
 
-        with patch("ydk.core.reviewer_engine.ReviewerEngine") as MockEngine:
-            mock_engine_instance = MockEngine.return_value
-            mock_engine_instance.run_all.side_effect = capture_run_all
-
-            config = MagicMock()
-            config.__class__ = YdkConfig
-            config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
-            config.ai.model_tiers = {"review": "claude-review-override"}
-            config.spec_check.concurrency = 4
-
-            results, det_findings = _run_cached_fanout("# Test spec", config, reviewers, verbose=False)
-
-        # Partial tier override is merged over the built-in defaults
-        from ydk.models.config import DEFAULT_MODEL_TIERS
-
-        assert captured_tiers == [{**DEFAULT_MODEL_TIERS, "review": "claude-review-override"}]
-
-        # Issue 1: Tool findings were injected into the prompt
-        assert len(captured_prompts) == 1
-        assert "DETERMINISTIC TOOL FINDINGS" in captured_prompts[0]
-        assert "5 issues found" in captured_prompts[0]
-        assert "violation 0" in captured_prompts[0]
-
-        # LLM score is authoritative — tool findings are evidence, not judges
         assert len(results) == 1
-        assert results[0].score == 9  # LLM said 9, that's the final score
-        assert results[0].passed is True  # 9 >= threshold 8
-
-        # Deterministic findings returned separately
-        assert "N08" in det_findings
+        assert results[0].score == 9
+        assert results[0].passed is True
         assert len(det_findings["N08"]) == 5
 
-    def test_no_tools_no_score_cap(self) -> None:
-        """Reviewer with no tools: no injection, score passes through unchanged."""
-        import ydk.core.reviewer_engine  # noqa: F401
+    def test_no_tools_no_injection(self) -> None:
         from ydk.cli.spec_cmd import _run_cached_fanout
         from ydk.core.reviewer import ReviewerConfig
-        from ydk.models.config import YdkConfig
 
         reviewers = [
             ReviewerConfig(
                 id="N01",
                 name="Completeness",
                 system_prompt="Evaluate completeness.",
-                tools=[],  # No tools
+                tools=[],
                 threshold=8,
                 group="completeness",
                 model_tier="review",
             ),
         ]
+        client = _verdict_client(score=9)
 
-        captured_prompts: list[str] = []
+        with patch("anthropic.Anthropic", return_value=client):
+            results, det_findings = _run_cached_fanout("# Test spec", _anthropic_config(), reviewers, verbose=False)
 
-        def capture_run_all(*, spec_content: str, reviewers: list, model_tiers: dict, max_workers: int) -> list:
-            captured_prompts.extend(rev["system_prompt"] for rev in reviewers)
-            return [
-                {
-                    "reviewer_id": "N01",
-                    "name": "Completeness",
-                    "score": 9,
-                    "passed": True,
-                    "reasoning": "Good",
-                    "suggestions": [],
-                    "findings": [],
-                    "elapsed_seconds": 1.0,
-                }
-            ]
-
-        with patch("ydk.core.reviewer_engine.ReviewerEngine") as MockEngine:
-            mock_engine_instance = MockEngine.return_value
-            mock_engine_instance.run_all.side_effect = capture_run_all
-
-            config = MagicMock()
-            config.__class__ = YdkConfig
-            config.anthropic.api_key_env = "ANTHROPIC_API_KEY"
-            config.ai.model_tiers = {"review": "claude-review-override"}
-            config.spec_check.concurrency = 4
-
-            results, det_findings = _run_cached_fanout("# Test spec", config, reviewers, verbose=False)
-
-        # No injection
-        assert "DETERMINISTIC TOOL FINDINGS" not in captured_prompts[0]
-        assert captured_prompts[0] == "Evaluate completeness."
-
-        # Score passes through: min(9, 10) = 9
+        assert client.messages.parse.call_args.kwargs["messages"][0]["content"] == "Evaluate completeness."
         assert results[0].score == 9
-        assert results[0].passed is True
-
-        # No deterministic findings
         assert det_findings == {}
+
+    def test_unknown_tier_falls_back_to_review_model(self) -> None:
+        from ydk.cli.spec_cmd import _run_cached_fanout
+        from ydk.core.reviewer import ReviewerConfig
+
+        reviewers = [
+            ReviewerConfig(id="C01", name="Custom", system_prompt="x", tools=[], model_tier="mystery"),
+        ]
+        client = _verdict_client()
+
+        with patch("anthropic.Anthropic", return_value=client):
+            _run_cached_fanout("# Spec", _anthropic_config(), reviewers, verbose=False)
+
+        assert client.messages.parse.call_args.kwargs["model"] == "claude-review-override"
+
+
+class TestSpecVerifySubagent:
+    """ai.provider: subagent -> one handoff with every reviewer request, completes on rerun."""
+
+    def _setup(self, tmp_path: Path, monkeypatch: object) -> Path:
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        (tmp_path / "docs" / "specs").mkdir(parents=True)
+        (tmp_path / "docs" / "specs" / "a.md").write_text("# Spec\n\nSome content.\n", encoding="utf-8")
+        (tmp_path / ".ydk").mkdir()
+        llm_dir = tmp_path / "llm"
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            f"project:\n  name: t\nai:\n  provider: subagent\n  subagent:\n    dir: {llm_dir.as_posix()}\n",
+            encoding="utf-8",
+        )
+        return llm_dir
+
+    def test_one_handoff_then_completes_on_rerun(self, tmp_path: Path, monkeypatch: object) -> None:
+        from ydk.spec_reviewers import REVIEWERS_DIR
+
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        reviewer_count = len(list(REVIEWERS_DIR.glob("*.yaml")))
+
+        first = runner.invoke(app, ["spec", "verify", "--all-files"])
+
+        assert first.exit_code == 3, first.output
+        assert first.output.count("YDK-SUBAGENT-REQUESTS:") == 1
+        requests = sorted((llm_dir / "requests").glob("*.json"))
+        assert len(requests) == reviewer_count
+        for req in requests:
+            assert str(req) in first.output
+            data = json.loads(req.read_text(encoding="utf-8"))
+            assert "# Spec" in data["cacheable_context"]
+            assert data["purpose"] == "spec-review"
+
+        (llm_dir / "responses").mkdir()
+        verdict = {"score": 10, "reasoning": "fine", "suggestions": [], "findings": []}
+        for req in requests:
+            (llm_dir / "responses" / req.name).write_text(json.dumps(verdict), encoding="utf-8")
+
+        second = runner.invoke(app, ["spec", "verify", "--all-files", "--format", "json"])
+
+        assert "YDK-SUBAGENT-REQUESTS" not in second.output
+        report = json.loads(second.output)
+        assert len(report["narrative_criteria"]["scores"]) == reviewer_count
+        assert report["narrative_criteria"]["failed"] == []
+
+    def test_invalid_response_fails_loudly(self, tmp_path: Path, monkeypatch: object) -> None:
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        runner.invoke(app, ["spec", "verify", "--all-files"])
+        (llm_dir / "responses").mkdir()
+        for req in (llm_dir / "requests").glob("*.json"):
+            (llm_dir / "responses" / req.name).write_text("{}", encoding="utf-8")
+
+        result = runner.invoke(app, ["spec", "verify", "--all-files"])
+
+        assert result.exit_code == 1
+        assert "invalid subagent response" in result.output
 
 
 # ---------------------------------------------------------------------------

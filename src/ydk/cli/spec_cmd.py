@@ -13,11 +13,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from ydk.cli._handoff import handle_subagent_handoff
 from ydk.core.claude_client import ClaudeAPIError
 from ydk.core.component_checker import ComponentChecker
 from ydk.core.component_linker import ComponentLinker
 from ydk.core.component_registry import ComponentRegistry
 from ydk.core.config import load_config
+from ydk.core.llm_provider import SubagentResponseError
 from ydk.core.reviewer import (
     ReviewResult,
     load_all_reviewers,
@@ -32,16 +34,6 @@ from ydk.output.console import console
 from ydk.services.git import LocalGitService
 
 spec_app = typer.Typer(name="spec", help="Spec management and quality checks")
-
-
-def _strands_available() -> bool:
-    """Check if strands-agents is importable."""
-    try:
-        import strands  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
 
 
 def _anthropic_available() -> bool:
@@ -80,11 +72,7 @@ def _run_reviewer_agents(
     rubric_filter: str | None = None,
     verbose: bool = False,
 ) -> tuple[list[ReviewResult], dict[str, list[dict[str, object]]]]:
-    """Run parallel reviewer agents against spec content.
-
-    Runs the cached fan-out engine (direct Anthropic Messages API with
-    prompt caching).
-    """
+    """Run parallel reviewer agents against spec content via the cached fan-out engine."""
     from ydk.models.config import YdkConfig
 
     assert isinstance(config, YdkConfig)
@@ -134,14 +122,18 @@ def _run_cached_fanout(
     *,
     verbose: bool = False,
 ) -> tuple[list[ReviewResult], dict[str, list[dict[str, object]]]]:
-    """Run reviewers via the cached fan-out engine (direct Anthropic Messages API).
+    """Run reviewers via the cached fan-out engine on the ``spec-review`` LLM provider.
+
+    Raises ``SubagentHandoff`` (one, for all reviewers) when the provider is ``subagent``
+    and responses are missing.
 
     Returns:
         A tuple of (review results, deterministic findings per reviewer ID).
     """
+    from ydk.core.llm_provider import StructuredLLMProvider, get_llm_provider
     from ydk.core.reviewer import ReviewerConfig
     from ydk.core.reviewer_engine import ReviewerEngine
-    from ydk.models.config import YdkConfig
+    from ydk.models.config import DEFAULT_MODEL_TIERS, YdkConfig
 
     assert isinstance(config, YdkConfig)
 
@@ -206,22 +198,26 @@ def _run_cached_fanout(
             }
         )
 
-    # Create engine and run
-    engine = ReviewerEngine(api_key_env=config.anthropic.api_key_env)
+    # Unknown reviewer tiers fall back to the review tier.
+    known_tiers = {*DEFAULT_MODEL_TIERS, *config.ai.model_tiers}
 
-    from ydk.models.config import DEFAULT_MODEL_TIERS
+    def provider_for_tier(tier: str) -> StructuredLLMProvider:
+        resolved = tier if tier in known_tiers else "review"
+        provider = get_llm_provider(config, purpose="spec-review", max_tokens=8192, tier=resolved)
+        if provider is None:
+            msg = f"no LLM provider available for ai.provider={config.ai.provider_for('spec-review')!r}"
+            raise ValueError(msg)
+        return provider
 
-    # Partial ai.model_tiers overrides keep the built-in defaults for other tiers.
-    model_tiers = {**DEFAULT_MODEL_TIERS, **config.ai.model_tiers}
+    engine = ReviewerEngine(provider_for_tier)
 
     if verbose:
-        typer.echo(f"  [engine] model tiers: {model_tiers}")
-        typer.echo(f"  [engine] {len(reviewer_dicts)} reviewers, priming cache with first review-tier call")
+        typer.echo(f"  [engine] provider: {config.ai.provider_for('spec-review')}")
+        typer.echo(f"  [engine] {len(reviewer_dicts)} reviewers, priming cache with first call per tier")
 
     raw_results = engine.run_all(
         spec_content=spec_content,
         reviewers=reviewer_dicts,
-        model_tiers=model_tiers,
         max_workers=config.spec_check.concurrency,
     )
 
@@ -848,7 +844,7 @@ def verify(
 ) -> None:
     """Run unified quality verification: components, references, and reviewer agents."""
     # Early check: guard against broken installs where anthropic is missing
-    if not _anthropic_available() and not _strands_available():
+    if not _anthropic_available():
         console.print(
             "[red]Error:[/red] Spec reviewers require anthropic (a core YDK dependency).\n"
             "Your installation appears broken. Reinstall with: uv pip install ydk"
@@ -874,8 +870,6 @@ def verify(
     else:
         spec_files = git.changed_files(config.project.spec_location, base_ref=base_ref, extension=".md")
 
-    llm_available = _anthropic_available() or _strands_available()
-
     if not spec_files and not all_files:
         console.print("[yellow]No changed spec files found.[/yellow]")
         console.print("Use --all-files to verify all specs, or make changes to spec files.")
@@ -887,21 +881,22 @@ def verify(
 
         spec_content = git.read_content(spec_files)
 
-        try:
-            reviewer_results, deterministic_findings = _run_reviewer_agents(
-                spec_content=spec_content,
-                config=config,
-                rubric_filter=rubric,
-                verbose=verbose,
-            )
-        except ClaudeAPIError as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            raise typer.Exit(code=1) from exc
-        except Exception as exc:
-            if verbose:
-                console.print(f"[yellow]Reviewer agents failed:[/yellow] {exc}")
-            reviewer_results = []
-            deterministic_findings = {}
+        with handle_subagent_handoff():
+            try:
+                reviewer_results, deterministic_findings = _run_reviewer_agents(
+                    spec_content=spec_content,
+                    config=config,
+                    rubric_filter=rubric,
+                    verbose=verbose,
+                )
+            except (ClaudeAPIError, SubagentResponseError) as exc:
+                console.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(code=1) from exc
+            except Exception as exc:
+                if verbose:
+                    console.print(f"[yellow]Reviewer agents failed:[/yellow] {exc}")
+                reviewer_results = []
+                deterministic_findings = {}
 
         if reviewer_results:
             # Build threshold map from reviewer configs
@@ -922,12 +917,6 @@ def verify(
                 threshold_map[lr.id] = lr.threshold
 
             narrative_scores = _reviewer_results_to_criterion_results(reviewer_results, threshold_map)
-
-        if not llm_available and verbose:
-            typer.echo(
-                "LLM reviewers skipped — no AI provider configured. "
-                "Only deterministic checks ran. Install: uv pip install 'ydk[ai]'"
-            )
 
     # Phase 4: Scanner result (reviewer agents subsume this)
     scanner_result = ScannerResult(unlinked_mentions=[], suggested_ids=[])
