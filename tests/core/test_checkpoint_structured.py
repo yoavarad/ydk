@@ -91,12 +91,13 @@ def test_render_defuses_colon_and_cross_repo_close_forms_and_file_names() -> Non
     from ydk.models.checkpoint import CheckpointPreview, ReviewConcern
 
     preview = CheckpointPreview(
-        intent="Closes: #12 and fixes owner/repo#7",
+        intent="Closes: #12 and fixes owner/repo#7 Closes:#5",
         concerns=[ReviewConcern(concern="c", summary="s", files=["a`b\n## Hi.py"])],
     )
     md = render_markdown(preview)
     assert "#12" not in md
     assert "#7" not in md
+    assert "#5" not in md
     assert not any(line.startswith("#") for line in md.splitlines())
     assert "a`b" not in md
 

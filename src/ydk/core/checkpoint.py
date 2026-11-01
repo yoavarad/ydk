@@ -230,7 +230,7 @@ def diff_against_base(root: Path, base: str) -> str:
     return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else ""
 
 
-_ISSUE_KEYWORD = re.compile(r"(?i)\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:\S*#|https?://\S*/issues/)")
+_ISSUE_KEYWORD = re.compile(r"(?i)\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s*(?:\S*#|https?://\S*/issues/)")
 
 
 def _line(text: str) -> str:
