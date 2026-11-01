@@ -368,7 +368,7 @@ ydk memory search <query> --depth index|summary|full  # Progressive retrieval de
 ydk memory bootstrap <task-id>         # Assemble context for a task
 ydk memory extract <task-id>           # Extract learnings from session transcript
 ydk memory retrospective --sprint X    # Sprint-level aggregation
-ydk memory retrospective --epic E      # Epic-level aggregation (default trigger: run after "Epic ... complete"); saves .ydk/retros/E.md
+ydk memory retrospective --epic E      # Epic-level aggregation (default trigger: run after "Epic ... complete"); saves .ydk/retros/E.md (front-matter epic_id/title/url; E-<slug>.md if E.md belongs to another epic)
 ydk memory audit                       # Comprehensive health audit (stale research, duplicates, procedural reports)
 ydk memory record-decision <TOPIC>     # Record topic-keyed decision (append-only, latest-wins)
 ydk memory decision-history <TOPIC>    # Show all versions of a decision for a topic
