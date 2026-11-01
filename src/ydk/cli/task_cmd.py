@@ -1941,7 +1941,21 @@ def archive_done(
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be compacted"),
 ) -> None:
     """Archive completed tasks into context-efficient summaries."""
+    from ydk.cli._handoff import handle_subagent_handoff
+    from ydk.core.claude_client import ClaudeAPIError
+    from ydk.core.config import load_config
+    from ydk.core.llm_provider import get_llm_provider
+
     repo = _get_repo()
+
+    if not dry_run and (task_id or all_done):
+        try:
+            llm_provider = get_llm_provider(load_config(), purpose="compaction")
+        except ClaudeAPIError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    else:
+        llm_provider = None
 
     if task_id:
         if dry_run:
@@ -1953,7 +1967,8 @@ def archive_done(
             return
 
         try:
-            repo.compact_task(task_id)
+            with handle_subagent_handoff():
+                repo.compact_task(task_id, llm_provider=llm_provider)
             typer.echo(f"Compacted task {task_id}")
         except (ValueError, FileNotFoundError) as exc:
             typer.echo(f"Error: {exc}", err=True)
@@ -1961,7 +1976,8 @@ def archive_done(
         return
 
     if all_done:
-        compacted_ids = repo.compact_all_done(dry_run=dry_run)
+        with handle_subagent_handoff():
+            compacted_ids = repo.compact_all_done(dry_run=dry_run, llm_provider=llm_provider)
         if not compacted_ids:
             typer.echo("No tasks to compact.")
             return

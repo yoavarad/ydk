@@ -29,6 +29,7 @@ from ydk.repositories.local.manifest import Manifest, parse_number_from_id
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ydk.core.llm_provider import LLMProvider
     from ydk.models.compaction import CompactedTask
 
 
@@ -343,18 +344,18 @@ class LocalTaskRepository:
     # Compaction
     # ------------------------------------------------------------------
 
-    def compact_task(self, task_id: str) -> CompactedTask:
+    def compact_task(self, task_id: str, *, llm_provider: LLMProvider | None = None) -> CompactedTask:
         """Compact a completed task -- replace file with compacted version."""
         task = self.get_task(task_id)
-        compactor = TaskCompactor()
+        compactor = TaskCompactor(llm_provider)
         compacted = compactor.compact_task(task)
         self._write_compacted(task_id, compacted)
         return compacted
 
-    def compact_all_done(self, *, dry_run: bool = False) -> list[str]:
+    def compact_all_done(self, *, dry_run: bool = False, llm_provider: LLMProvider | None = None) -> list[str]:
         """Compact all done/closed tasks. Returns list of compacted IDs."""
         data = self._manifest.load()
-        compactor = TaskCompactor()
+        compactor = TaskCompactor(llm_provider)
         compacted_ids: list[str] = []
         for tid, info in data.get("tasks", {}).items():
             status = info.get("status", "open")

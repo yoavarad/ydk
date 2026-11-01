@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     import builtins
 
+    from ydk.core.llm_provider import LLMProvider
     from ydk.models.compaction import CompactedTask
     from ydk.models.gate import Gate
     from ydk.models.pm import (
@@ -103,11 +104,11 @@ class LifecycleTaskRepository(Protocol):
         """Return all open tasks whose blocking dependencies are satisfied."""
         ...
 
-    def compact_task(self, task_id: str) -> CompactedTask:
+    def compact_task(self, task_id: str, *, llm_provider: LLMProvider | None = None) -> CompactedTask:
         """Compact a completed task into a context-efficient summary."""
         ...
 
-    def compact_all_done(self, *, dry_run: bool = False) -> builtins.list[str]:
+    def compact_all_done(self, *, dry_run: bool = False, llm_provider: LLMProvider | None = None) -> builtins.list[str]:
         """Compact all done/closed tasks. Returns list of compacted IDs."""
         ...
 
