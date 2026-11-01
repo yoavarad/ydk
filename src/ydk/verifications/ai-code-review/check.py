@@ -2,8 +2,8 @@
 """Verification plugin: ai-code-review.
 
 External AI code review covering BOTH spec compliance AND standard
-code review, calling the Anthropic API directly through the shared
-YDK Claude client factory.
+code review, through the LLM provider configured for the ``ai-code-review``
+purpose (see ``ydk.core.plugin_llm``).
 
 Uses git diff output for focused review of actual changes.
 """
@@ -13,7 +13,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
+
+from pydantic import BaseModel, Field
+
+PURPOSE = "ai-code-review"
 
 SYSTEM_PROMPT = """\
 You are a senior code reviewer performing a comprehensive automated review.
@@ -45,7 +49,7 @@ And a category from:
 - "security" — security issue
 - "best_practices" — naming, error handling, test quality
 
-Call the submit_review tool with your findings. Set "passed" to false ONLY if
+Return your findings as the structured output. Set "passed" to false ONLY if
 there are any "critical" findings. If no issues found, return an empty
 findings list and passed=true.
 """
@@ -65,42 +69,22 @@ def _stack_checklist(language: object) -> str:
     return (CHECKLISTS_DIR / filename).read_text(encoding="utf-8")
 
 
-REVIEW_TOOL_SPEC = {
-    "name": "submit_review",
-    "description": "Submit the structured code review result",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "findings": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "severity": {"type": "string", "enum": ["critical", "warning", "info"]},
-                        "category": {
-                            "type": "string",
-                            "enum": [
-                                "spec_compliance",
-                                "dry",
-                                "yagni",
-                                "solid",
-                                "security",
-                                "best_practices",
-                            ],
-                        },
-                        "file": {"type": "string"},
-                        "description": {"type": "string"},
-                        "suggestion": {"type": "string"},
-                    },
-                    "required": ["severity", "category", "file", "description"],
-                },
-            },
-            "summary": {"type": "string"},
-            "passed": {"type": "boolean"},
-        },
-        "required": ["findings", "summary", "passed"],
-    },
-}
+class ReviewFinding(BaseModel):
+    """One code review finding."""
+
+    severity: Literal["critical", "warning", "info"]
+    category: Literal["spec_compliance", "dry", "yagni", "solid", "security", "best_practices"]
+    file: str
+    description: str
+    suggestion: str = ""
+
+
+class ReviewResult(BaseModel):
+    """Structured output of the ai-code-review LLM call."""
+
+    findings: list[ReviewFinding] = Field(default_factory=list)
+    summary: str
+    passed: bool
 
 
 def _read_files(root: Path, file_paths: list[str]) -> str:
@@ -197,30 +181,15 @@ def _format_task_scope(task_scope: object) -> str:
     )
 
 
-def _valid_findings(findings: object) -> bool:
-    """True when findings is a list of dicts."""
-    return isinstance(findings, list) and all(isinstance(f, dict) for f in findings)
-
-
 def run_check(context: dict) -> dict:
     """Core check logic. Separated for testability."""
-    from ydk.core.claude_client import (
-        DEFAULT_API_KEY_ENV,
-        ClaudeAPIError,
-        MissingCredentialsError,
-        build_client,
-        create_message,
-    )
-    from ydk.models.config import AIConfig
+    from ydk.core.plugin_llm import run_plugin_llm
 
     start = time.time()
     project_root = Path(context["project_root"])
     changed_files = context.get("changed_files", [])
     spec_refs = context.get("spec_refs", [])
     config = context.get("config", {})
-    anthropic_config = config.get("anthropic", {})
-    api_key_env = anthropic_config.get("api_key_env", DEFAULT_API_KEY_ENV)
-    model_id = AIConfig(model_tiers=config.get("ai", {}).get("model_tiers", {})).model_for("review")
 
     if not changed_files:
         return {
@@ -231,88 +200,39 @@ def run_check(context: dict) -> dict:
             "detail": {"skipped": True},
         }
 
-    try:
-        client = build_client(api_key_env)
-    except MissingCredentialsError as exc:
-        return {
-            "name": "ai-code-review",
-            "passed": False,
-            "output": (
-                f"{exc} Set up credentials via the `ydk init` instructions, or disable "
-                "this plugin by removing it from `verification.enabled` in .ydk/config.yaml "
-                "if it is intentionally unused."
-            ),
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"credential_error": True, "no_cache": True},
-        }
-
     # Get git diff instead of full file contents
     git_diff = _get_git_diff(project_root, changed_files)
     if not git_diff:
         # Fallback: read full files if diff is empty (new files)
         git_diff = _read_files(project_root, changed_files)
 
-    system_blocks: list[dict] = [{"type": "text", "text": SYSTEM_PROMPT}]
+    sections = [SYSTEM_PROMPT]
     checklist = _stack_checklist(config.get("language"))
     if checklist:
-        system_blocks.append({"type": "text", "text": checklist})
+        sections.append(checklist)
     if spec_refs:
         spec_content = _read_files(project_root, spec_refs)
         if spec_content:
-            system_blocks.append(
-                {
-                    "type": "text",
-                    "text": "=== SPEC CONTENT (reference for compliance review) ===\n\n" + spec_content,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            )
-
-    user_message = (
+            sections.append("=== SPEC CONTENT (reference for compliance review) ===\n\n" + spec_content)
+    sections.append(
         "Review the following git diff for spec compliance and code quality:\n\n=== GIT DIFF ===\n\n"
         + git_diff
         + _format_task_scope(context.get("task_scope"))
     )
 
-    try:
-        response = create_message(
-            client,
-            model=model_id,
-            max_tokens=8192,
-            system=system_blocks,
-            messages=[{"role": "user", "content": user_message}],
-            tools=[REVIEW_TOOL_SPEC],
-            tool_choice={"type": "tool", "name": "submit_review"},
-        )
-    except ClaudeAPIError as exc:
-        return {
-            "name": "ai-code-review",
-            "passed": False,
-            "output": f"ERROR: {exc}",
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"error": True, "no_cache": True},
-        }
-
-    tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
-    if tool_use_block is None:
-        return {
-            "name": "ai-code-review",
-            "passed": False,
-            "output": "ERROR: no tool_use block in Anthropic response (unexpected)",
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"error": True, "no_cache": True},
-        }
-
-    review = cast("Any", tool_use_block).input
-    if not isinstance(review, dict) or not _valid_findings(review.get("findings", [])):
-        return {
-            "name": "ai-code-review",
-            "passed": False,
-            "output": "ERROR: malformed review from model (unexpected submit_review shape)",
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"error": True, "malformed": True, "no_cache": True},
-        }
-    findings = review.get("findings", [])
-    summary = review.get("summary", "")
+    outcome = run_plugin_llm(
+        context,
+        name="ai-code-review",
+        purpose=PURPOSE,
+        prompt="\n\n".join(sections),
+        output_format=ReviewResult,
+        kind="review",
+        start=start,
+    )
+    if isinstance(outcome, dict):
+        return outcome
+    findings = [f.model_dump() for f in outcome.findings]
+    summary = outcome.summary
 
     critical_count = sum(1 for f in findings if f.get("severity") == "critical")
     warning_count = sum(1 for f in findings if f.get("severity") == "warning")

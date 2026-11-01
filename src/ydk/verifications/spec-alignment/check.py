@@ -18,6 +18,10 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
+from pydantic import BaseModel
+
+PURPOSE = "spec-alignment"
+
 DIMENSIONS = [
     "entity_accuracy",
     "interface_compliance",
@@ -44,36 +48,34 @@ Dimensions:
 5. scope_compliance — Does the code stay within the spec's scope?
 6. cross_cutting_adherence — Are cross-cutting concerns (logging, auth, etc.) handled per spec?
 
-Call the submit_evaluation tool with your scores and reasoning for each dimension.
+Return your scores and reasoning for each dimension as the structured output.
 """
 
-EVALUATION_TOOL_SPEC = {
-    "name": "submit_evaluation",
-    "description": "Submit the structured spec-alignment evaluation result",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "dimensions": {
-                "type": "object",
-                "properties": {
-                    dim: {
-                        "type": "object",
-                        "properties": {
-                            "score": {"type": "number"},
-                            "reasoning": {"type": "string"},
-                        },
-                        "required": ["score", "reasoning"],
-                    }
-                    for dim in DIMENSIONS
-                },
-                "required": DIMENSIONS,
-            },
-            "overall_score": {"type": "number"},
-            "summary": {"type": "string"},
-        },
-        "required": ["dimensions", "overall_score", "summary"],
-    },
-}
+
+class DimensionScore(BaseModel):
+    """Score and reasoning for one alignment dimension."""
+
+    score: float
+    reasoning: str
+
+
+class Dimensions(BaseModel):
+    """Scores for every dimension in ``DIMENSIONS``."""
+
+    entity_accuracy: DimensionScore
+    interface_compliance: DimensionScore
+    error_handling: DimensionScore
+    boundary_respect: DimensionScore
+    scope_compliance: DimensionScore
+    cross_cutting_adherence: DimensionScore
+
+
+class SpecEvaluation(BaseModel):
+    """Structured output of the spec-alignment LLM call."""
+
+    dimensions: Dimensions
+    overall_score: float
+    summary: str
 
 
 def _read_files(root: Path, file_paths: list[str]) -> str:
@@ -171,41 +173,16 @@ def _format_task_scope(task_scope: object) -> str:
     )
 
 
-def _is_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _is_valid_evaluation(raw: object) -> bool:
-    """True when the model's submit_evaluation input has the expected dict shape."""
-    if not isinstance(raw, dict):
-        return False
-    evaluation = cast("dict[str, Any]", raw)
-    dims = evaluation.get("dimensions", {})
-    if not isinstance(dims, dict) or not _is_number(evaluation.get("overall_score", 0)):
-        return False
-    return all(isinstance(d, dict) for d in dims.values())
-
-
 def run_check(context: dict) -> dict:
     """Core check logic. Separated for testability."""
-    from ydk.core.claude_client import (
-        DEFAULT_API_KEY_ENV,
-        ClaudeAPIError,
-        MissingCredentialsError,
-        build_client,
-        create_message,
-    )
-    from ydk.models.config import AIConfig
+    from ydk.core.plugin_llm import run_plugin_llm
 
     start = time.time()
     project_root = Path(context["project_root"])
     changed_files = context.get("changed_files", [])
     spec_refs = context.get("spec_refs", [])
     config = context.get("config", {})
-    anthropic_config = config.get("anthropic", {})
-    api_key_env = anthropic_config.get("api_key_env", DEFAULT_API_KEY_ENV)
     spec_check_config = config.get("spec_check", {})
-    model_id = AIConfig(model_tiers=config.get("ai", {}).get("model_tiers", {})).model_for("review")
 
     if not changed_files:
         return {
@@ -225,21 +202,6 @@ def run_check(context: dict) -> dict:
             "detail": {"skipped": True},
         }
 
-    try:
-        client = build_client(api_key_env)
-    except MissingCredentialsError as exc:
-        return {
-            "name": "spec-alignment",
-            "passed": False,
-            "output": (
-                f"{exc} Set up credentials via the `ydk init` instructions, or disable "
-                "this plugin by removing it from `verification.enabled` in .ydk/config.yaml "
-                "if it is intentionally unused."
-            ),
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"credential_error": True, "no_cache": True},
-        }
-
     # Read spec content
     spec_content = _read_files(project_root, spec_refs)
 
@@ -249,71 +211,37 @@ def run_check(context: dict) -> dict:
         # Fallback: read full files if diff is empty (new files)
         git_diff = _read_files(project_root, changed_files)
 
-    system_blocks: list[dict] = [{"type": "text", "text": SYSTEM_PROMPT}]
+    sections = [SYSTEM_PROMPT]
     if spec_content:
-        system_blocks.append(
-            {
-                "type": "text",
-                "text": "=== SPEC CONTENT (reference) ===\n\n" + spec_content,
-                "cache_control": {"type": "ephemeral"},
-            }
-        )
-
-    user_message = (
+        sections.append("=== SPEC CONTENT (reference) ===\n\n" + spec_content)
+    sections.append(
         "Evaluate the following code changes (git diff) for spec alignment:\n\n=== GIT DIFF ===\n\n"
         + git_diff
         + _format_task_scope(context.get("task_scope"))
     )
 
-    try:
-        response = create_message(
-            client,
-            model=model_id,
-            max_tokens=8192,
-            system=system_blocks,
-            messages=[{"role": "user", "content": user_message}],
-            tools=[EVALUATION_TOOL_SPEC],
-            tool_choice={"type": "tool", "name": "submit_evaluation"},
-        )
-    except ClaudeAPIError as exc:
-        return {
-            "name": "spec-alignment",
-            "passed": False,
-            "output": f"ERROR: {exc}",
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"error": True, "no_cache": True},
-        }
-
-    tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
-    if tool_use_block is None:
-        return {
-            "name": "spec-alignment",
-            "passed": False,
-            "output": "ERROR: no tool_use block in Anthropic response (unexpected)",
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"error": True, "no_cache": True},
-        }
-
-    evaluation = cast("Any", tool_use_block).input
-    if not _is_valid_evaluation(evaluation):
-        return {
-            "name": "spec-alignment",
-            "passed": False,
-            "output": "ERROR: malformed evaluation from model (unexpected submit_evaluation shape)",
-            "duration_seconds": round(time.time() - start, 1),
-            "detail": {"error": True, "malformed": True, "no_cache": True},
-        }
-    overall_score = evaluation.get("overall_score", 0)
+    outcome = run_plugin_llm(
+        context,
+        name="spec-alignment",
+        purpose=PURPOSE,
+        prompt="\n\n".join(sections),
+        output_format=SpecEvaluation,
+        kind="evaluation",
+        start=start,
+    )
+    if isinstance(outcome, dict):
+        return outcome
+    overall_score = outcome.overall_score
     threshold = spec_check_config.get("thresholds", {}).get("architecture", 8)
     passed = overall_score >= threshold
 
-    dimensions_detail = evaluation.get("dimensions", {})
-    summary = evaluation.get("summary", "")
+    dimensions_detail = outcome.dimensions.model_dump()
+    summary = outcome.summary
 
-    output_parts = [f"Overall score: {overall_score}/10 (threshold: {threshold})"]
+    output_parts = [f"Overall score: {overall_score:g}/10 (threshold: {threshold})"]
     for dim in DIMENSIONS:
         dim_data = dimensions_detail.get(dim, {})
-        score = dim_data.get("score", "?")
+        score = f"{dim_data['score']:g}"
         reasoning = dim_data.get("reasoning", "")
         output_parts.append(f"  {dim}: {score}/10 — {reasoning}")
     if summary:

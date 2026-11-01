@@ -1031,6 +1031,14 @@ def done(
         console.print(f"[red]Unexpected error during task done: {exc}[/red]")
         raise typer.Exit(code=1) from None
 
+    if "needs_llm" in result:
+        from ydk.cli._handoff import handle_subagent_handoff
+        from ydk.core.llm_provider import SubagentHandoff
+
+        console.print("[yellow]AI verification is waiting on subagent responses; no PR was created.[/yellow]")
+        with handle_subagent_handoff():
+            raise SubagentHandoff([Path(p) for p in result["needs_llm"]])
+
     if result.get("passed"):
         console.print("[green]✓ All verifications passed[/green]")
         console.print(f"[green]✓ PR created: {result.get('pr_url', 'N/A')}[/green]")
