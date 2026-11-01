@@ -38,7 +38,26 @@ def test_task_quick(mock_cls: MagicMock) -> None:
 
 
 def _quick_repo(root: Path) -> None:
-    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "init", "-q", "-b", "trunk"], cwd=root, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
+        cwd=root,
+        check=True,
+    )
+    subprocess.run(["git", "branch", "-q", "develop"], cwd=root, check=True)
     subprocess.run(
         ["git", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"], cwd=root, check=True
     )
@@ -64,3 +83,13 @@ def test_task_quick_default_base_is_repo_default_branch(tmp_path: Path, monkeypa
     r = runner.invoke(app, ["task", "quick", "fix: thing"])
     assert r.exit_code == 0, r.output
     assert _recorded_base(tmp_path) == "trunk"
+
+
+def test_task_quick_prints_worktree_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _quick_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    r = runner.invoke(app, ["task", "quick", "--base", "develop", "fix: thing"])
+    assert r.exit_code == 0, r.output
+    (wt,) = (tmp_path / ".ydk" / "worktrees").iterdir()
+    assert "Worktree:" in r.output
+    assert wt.name in r.output

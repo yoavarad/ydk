@@ -86,6 +86,15 @@ def _read_tasks(active_task_file: Path) -> ActiveTasks:
     return {}
 
 
+def _branch_belongs_to(branch: str, task_id: str) -> bool:
+    """True for ``task/<id>[-slug]`` and quick-style ``<type>/<id lowercased>[-slug]`` branches."""
+    if branch == f"task/{task_id}" or branch.startswith(f"task/{task_id}-"):
+        return True
+    _, _, name = branch.partition("/")
+    tid = task_id.lower()
+    return bool(name) and (name == tid or name.startswith(f"{tid}-"))
+
+
 def diff_base(project_root: Path, cwd: Path | str | None = None) -> str | None:
     """Merge-base SHA that changed-file diffs should start from, or ``None``.
 
@@ -96,7 +105,7 @@ def diff_base(project_root: Path, cwd: Path | str | None = None) -> str | None:
     cwd = cwd or project_root
     branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
     tasks = _read_tasks(resolve_active_task_file(project_root))
-    task_id = next((tid for tid in tasks if branch == f"task/{tid}" or branch.startswith(f"task/{tid}-")), None)
+    task_id = next((tid for tid in tasks if _branch_belongs_to(branch, tid)), None)
     recorded = tasks[task_id].get("base_branch") if task_id else None
     default = default_branch(project_root)
     return (merge_base(recorded, cwd) if recorded else None) or merge_base(default, cwd)

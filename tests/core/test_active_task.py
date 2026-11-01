@@ -398,3 +398,14 @@ class TestDiffBase:
             json.dumps({"tasks": {"T-001": {"base_branch": "main"}}}), encoding="utf-8"
         )
         assert diff_base(tmp_path) == _gitc(tmp_path, "rev-parse", "develop")
+
+
+class TestDiffBaseQuickBranch:
+    def test_quick_branch_uses_recorded_base(self, tmp_path: Path) -> None:
+        _develop_repo(tmp_path, branch="fix/qd-abc123-thing")
+        _gitc(tmp_path, "branch", "release", "HEAD")
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "active-task.json").write_text(
+            '{"tasks": {"QD-abc123": {"base_branch": "release"}}}', encoding="utf-8"
+        )
+        assert diff_base(tmp_path) == _gitc(tmp_path, "rev-parse", "release")
