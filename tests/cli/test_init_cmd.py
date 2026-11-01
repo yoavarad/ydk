@@ -373,7 +373,7 @@ def test_init_subagent_mode_prints_no_api_key_warning(tmp_path: Path, monkeypatc
     assert "SetEnvironmentVariable" not in result.output
 
 
-def test_init_warns_when_a_route_resolves_to_anthropic(tmp_path: Path, monkeypatch: object) -> None:
+def test_print_api_key_status_warns_when_route_is_anthropic(tmp_path: Path, monkeypatch: object) -> None:
     """A per-purpose route to anthropic still needs the key even when the provider is subagent."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # type: ignore[attr-defined]
     cfg = AIConfig.model_validate({"provider": "subagent", "routes": {"extract": "anthropic"}})
@@ -382,7 +382,7 @@ def test_init_warns_when_a_route_resolves_to_anthropic(tmp_path: Path, monkeypat
     assert "ANTHROPIC_API_KEY is not set" in cap.get()
 
 
-def test_init_no_warning_for_claude_cli_routes(monkeypatch: object) -> None:
+def test_print_api_key_status_silent_for_claude_cli_and_subagent(monkeypatch: object) -> None:
     """claude-cli and subagent routes need no Anthropic key."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # type: ignore[attr-defined]
     cfg = AIConfig.model_validate({"provider": "claude-cli", "routes": {"extract": "subagent"}})

@@ -77,13 +77,13 @@ ydk config show
 ydk config get spec_check.thresholds.completeness
 
 # Change a value
-ydk config set aws.region eu-west-1
+ydk config set ai.provider claude-cli
 
 # Validate the current config
 ydk config validate
 ```
 
-The most common early customizations are setting your AWS region and profile for AI features, adjusting spec check thresholds if the defaults are too strict or lenient for your project, and changing the execution settings to match your team's parallel capacity.
+The most common early customizations are choosing the `ai.provider` for AI features, adjusting spec check thresholds if the defaults are too strict or lenient for your project, and changing the execution settings to match your team's parallel capacity.
 
 <Callout type="info">
 Configuration changes are validated in real-time. If you try to set an invalid value -- like a non-existent field or a wrong type -- YDK rolls back the change and reports the validation error. You cannot corrupt your config through the CLI.

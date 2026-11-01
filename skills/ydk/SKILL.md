@@ -413,7 +413,7 @@ ydk visual list                        # List all mockup sessions
 
 ## Servicing YDK-SUBAGENT-REQUESTS
 
-When `ai.provider` (or an `ai.routes` entry) is `subagent`, LLM-backed commands (`ydk spec verify`, `ydk memory extract`/`retrospective`, `ydk task analyze-complexity`, AI verification plugins, archive-done, contradiction detection) do not call a model. They write request files and exit with code **3**, printing:
+When `ai.provider` (or an `ai.routes` entry) is `subagent`, LLM-backed commands (`ydk spec verify`, `ydk memory extract`/`retrospective`, `ydk task analyze-complexity`, `ydk task archive-done`, `ydk task done` (AI verification plugins; `ydk verify run` skips subagent-routed plugins), contradiction detection) do not call a model. They write request files and exit with code **3**, printing:
 
 ```
 YDK-SUBAGENT-REQUESTS:
@@ -423,7 +423,7 @@ Rerun this command after writing responses.
 
 When you see this block:
 
-1. Read every listed request file. Fields: `id`, `purpose`, `system`, `user`, `cacheable_context` (optional shared context), `output_schema` (JSON Schema), `model`, `agent`, `instructions`.
+1. Read every listed request file. Fields: `id`, `purpose`, `model_tier`, `system`, `user`, `cacheable_context` (optional shared context), `output_schema` (JSON Schema), `model`, `agent`, `instructions`.
 2. Spawn **one subagent per request**, using the request's `agent` as the subagent type and `model` as the model. Give it `system`, `cacheable_context`, `user` and `instructions`. For a batch, spawn all subagents in parallel in one message.
 3. Each subagent returns JSON that validates against `output_schema`; write it to `responses/<id>.json` beside `requests/` (default dir `.ydk/llm`, set by `ai.subagent.dir`). Plain-text calls use `{"text": "..."}`.
 4. Rerun the exact same command. Answered requests are read from `responses/`; identical prompts reuse stored answers, and a changed prompt gets a new id and a new request.
