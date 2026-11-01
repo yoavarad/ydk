@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import typer
 from pydantic import BaseModel
 
+from ydk.cli._handoff import handle_subagent_handoff
 from ydk.cli._helpers import format_or_echo
 from ydk.output.console import console
 
@@ -148,7 +149,8 @@ def extract(
     from ydk.core.claude_client import ClaudeAPIError
 
     try:
-        memories = extractor.extract_from_jsonl(jsonl_path=jsonl_path, task_context=task_id)  # ty: ignore[unresolved-attribute]  # MemoryExtractor is optional dep
+        with handle_subagent_handoff():
+            memories = extractor.extract_from_jsonl(jsonl_path=jsonl_path, task_context=task_id)  # ty: ignore[unresolved-attribute]  # MemoryExtractor is optional dep
     except ClaudeAPIError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
@@ -280,7 +282,8 @@ def retrospective(
     from ydk.core.claude_client import ClaudeAPIError
 
     try:
-        proposals = _run_llm_retrospective(shipped, label)
+        with handle_subagent_handoff():
+            proposals = _run_llm_retrospective(shipped, label)
     except ClaudeAPIError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
@@ -396,7 +399,7 @@ def _run_llm_retrospective(
     from ydk.core.llm_provider import get_llm_provider
 
     # Leave room so the structured output is not truncated.
-    provider = get_llm_provider(load_config(), max_tokens=16000)
+    provider = get_llm_provider(load_config(), purpose="retrospective", max_tokens=16000)
     if provider is None:
         return None
 
