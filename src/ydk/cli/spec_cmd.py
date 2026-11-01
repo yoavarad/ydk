@@ -206,7 +206,7 @@ def _run_cached_fanout(
         provider = get_llm_provider(config, purpose="spec-review", max_tokens=8192, tier=resolved)
         if provider is None:
             msg = f"no LLM provider available for ai.provider={config.ai.provider_for('spec-review')!r}"
-            raise ValueError(msg)
+            raise ClaudeAPIError(msg)
         return provider
 
     engine = ReviewerEngine(provider_for_tier)

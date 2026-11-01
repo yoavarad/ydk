@@ -461,6 +461,20 @@ class TestRunCachedFanoutIntegration:
         assert client.messages.parse.call_args.kwargs["model"] == "claude-review-override"
 
 
+class TestSpecVerifyUnknownProvider:
+    def test_unknown_provider_fails_instead_of_skipping_review(self, tmp_path: Path, monkeypatch: object) -> None:
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        (tmp_path / "docs" / "specs").mkdir(parents=True)
+        (tmp_path / "docs" / "specs" / "a.md").write_text("# Spec\n", encoding="utf-8")
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: t\nai:\n  provider: nope\n", encoding="utf-8")
+
+        result = runner.invoke(app, ["spec", "verify", "--all-files"])
+
+        assert result.exit_code == 1
+        assert "no LLM provider" in result.output
+
+
 class TestSpecVerifySubagent:
     """ai.provider: subagent -> one handoff with every reviewer request, completes on rerun."""
 
