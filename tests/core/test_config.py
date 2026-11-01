@@ -54,6 +54,17 @@ class TestInitConfig:
         assert cfg.project.name == "new-project"
         assert config_path.is_file()
 
+    def test_new_repo_defaults_to_subagent_provider(self, tmp_path) -> None:
+        config_path = tmp_path / ".ydk" / "config.yaml"
+        init_config("new-project", config_path=config_path)
+        assert yaml.safe_load(config_path.read_text())["ai"] == {"provider": "subagent"}
+        assert load_config(config_path).ai.provider == "subagent"
+
+    def test_load_without_ai_section_keeps_anthropic(self, tmp_path) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml.dump({"project": {"name": "old"}}))
+        assert load_config(config_path).ai.provider == "anthropic"
+
     def test_raises_when_exists_and_not_force(self, tmp_path) -> None:
         config_path = tmp_path / "config.yaml"
         config_path.write_text("existing")

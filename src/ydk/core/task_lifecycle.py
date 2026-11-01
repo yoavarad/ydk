@@ -27,7 +27,12 @@ from ydk.core.events import (
 )
 from ydk.models.gate import GateStatus
 from ydk.models.pm import TaskCreate
-from ydk.services.git import default_branch, resolve_start_point
+from ydk.services.git import (
+    committed_changes,
+    default_branch,
+    resolve_start_point,
+    uncommitted_paths,
+)
 
 if TYPE_CHECKING:
     from ydk.core.git_worktree import WorktreeManager
@@ -247,6 +252,14 @@ class TaskLifecycle:
         # checkout instead of from inside the worktree). Falls back to
         # self._root when worktree isolation is off or no worktree exists.
         scan_root = self._worktree.get_worktree_path(task_id) or self._root
+
+        # Fail loudly on uncommitted work: only committed history is pushed, so
+        # verifying a dirty tree would yield an empty/partial PR reported as success.
+        dirty = uncommitted_paths(scan_root)
+        if dirty:
+            listing = "\n".join(f"  - {p}" for p in dirty)
+            msg = f"Uncommitted changes in worktree; commit them before 'ydk task done':\n{listing}"
+            return {"passed": False, "error": msg, "uncommitted": dirty}
 
         # Collect files associated with this task's TODOs for scoped verification
         from ydk.core.todo_manager import TodoManager
@@ -836,6 +849,12 @@ class TaskLifecycle:
 
         worktree = self._worktree.get_worktree_path(task_id)
         cwd = str(worktree) if worktree else str(self._root)
+
+        # Refuse to push a branch with nothing to ship (only .ydk/ bookkeeping).
+        base = diff_base(self._root, cwd) or default_branch(self._root)
+        shipped = committed_changes(base, cwd)
+        if shipped is not None and not shipped:
+            raise RuntimeError(f"Nothing to ship for task {task_id}: no non-.ydk changes vs {base}. Commit your work.")
 
         # Push the branch
         push_result = subprocess.run(

@@ -84,6 +84,65 @@ def merge_base(base: str, cwd: str | Path | None = None) -> str | None:
     return None
 
 
+def _non_ydk(paths: list[str]) -> list[str]:
+    return [p for p in paths if not (p == ".ydk" or p.startswith(".ydk/"))]
+
+
+def uncommitted_paths(cwd: str | Path | None = None) -> list[str] | None:
+    """Modified/untracked paths in *cwd*'s work tree, excluding ``.ydk/`` bookkeeping.
+
+    ``None`` when git status cannot run (not a repo), so callers can skip the check.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "-z", "-uall"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=cwd,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    entries = result.stdout.split("\0")
+    paths: list[str] = []
+    i = 0
+    while i < len(entries):
+        entry = entries[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        paths.append(entry[3:])
+        if entry[0] in "RC":  # rename/copy entries are followed by the origin path
+            i += 1
+    return _non_ydk(paths)
+
+
+def committed_changes(base: str, cwd: str | Path | None = None) -> list[str] | None:
+    """Non-``.ydk/`` paths changed on HEAD since the merge-base with *base*.
+
+    ``None`` when the diff cannot be computed.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{base}...HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=cwd,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return _non_ydk([line.strip() for line in result.stdout.splitlines() if line.strip()])
+
+
 class LocalGitService:
     """Git operations via subprocess."""
 

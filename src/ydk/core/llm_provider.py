@@ -1,10 +1,13 @@
-"""Canonical LLM provider abstraction and Anthropic-backed implementation."""
+"""Canonical LLM provider abstraction: Anthropic-backed and subagent-handoff implementations."""
 
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 if TYPE_CHECKING:
     from ydk.models.config import YdkConfig
@@ -73,22 +76,208 @@ class AnthropicLLMProvider:
         )
 
 
-def _build_anthropic_provider(cfg: YdkConfig, max_tokens: int) -> StructuredLLMProvider:
+class LLMRequest(BaseModel):
+    """One LLM call handed off to a subagent, keyed by a content hash (see ADR 0004)."""
+
+    id: str
+    purpose: str
+    system: str
+    user: str
+    cacheable_context: str | None = None
+    output_schema: dict[str, Any]
+    model_tier: str
+    model: str
+    agent: str
+    instructions: str = ""
+
+    @staticmethod
+    def compute_id(*, purpose: str, system: str, user: str, output_schema: dict[str, Any]) -> str:
+        """Return the sha256 of the prompt content; routing hints do not affect it."""
+        payload = json.dumps([purpose, system, user, output_schema], sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        purpose: str,
+        system: str,
+        user: str,
+        output_schema: dict[str, Any],
+        model_tier: str,
+        model: str,
+        agent: str,
+        instructions: str = "",
+        cacheable_context: str | None = None,
+    ) -> LLMRequest:
+        """Construct a request with its content-hash ``id`` filled in."""
+        return cls(
+            id=cls.compute_id(purpose=purpose, system=system, user=user, output_schema=output_schema),
+            purpose=purpose,
+            system=system,
+            user=user,
+            cacheable_context=cacheable_context,
+            output_schema=output_schema,
+            model_tier=model_tier,
+            model=model,
+            agent=agent,
+            instructions=instructions,
+        )
+
+
+class SubagentHandoff(BaseException):
+    """Raised when LLM work must be done by a subagent; carries the request file paths.
+
+    Derives from ``BaseException`` (like ``KeyboardInterrupt``) so the many
+    fail-open ``except Exception`` blocks around LLM calls cannot swallow it.
+    """
+
+    def __init__(self, request_paths: list[Path]) -> None:
+        self.request_paths = list(request_paths)
+        listed = "\n".join(f"  {p}" for p in self.request_paths)
+        super().__init__(f"subagent handoff: {len(self.request_paths)} request(s) pending\n{listed}")
+
+
+class SubagentRequestPending(SubagentHandoff):
+    """Raised per call in collect mode; ``SubagentProvider.flush`` raises the batched handoff."""
+
+
+class SubagentResponseError(ValueError):
+    """A subagent response file exists but cannot be read or does not match the output schema."""
+
+
+class _TextResponse(BaseModel):
+    text: str
+
+
+class SubagentProvider:
+    """StructuredLLMProvider that exchanges JSON files with a calling agent's subagents.
+
+    Requests go to ``<root>/requests/<id>.json``; answers are read from
+    ``<root>/responses/<id>.json``. With ``collect=True`` each missing response
+    raises ``SubagentRequestPending`` and is recorded, so a fan-out caller can
+    continue and later ``flush()`` one ``SubagentHandoff`` for all of them.
+    """
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        purpose: str,
+        model_tier: str,
+        model: str,
+        agent: str,
+        instructions: str = "",
+        collect: bool = False,
+    ) -> None:
+        self._root = Path(root)
+        self._purpose = purpose
+        self._model_tier = model_tier
+        self._model = model
+        self._agent = agent
+        self._instructions = instructions
+        self._collect = collect
+        self._pending: list[Path] = []
+
+    def invoke(self, prompt: str) -> str:
+        """Return the subagent's text answer (response schema ``{"text": str}``)."""
+        return self.invoke_structured(prompt, _TextResponse).text
+
+    def invoke_structured(self, prompt: str, output_format: type[_ModelT]) -> _ModelT:
+        """Return the validated response, or write the request and raise a handoff."""
+        request = LLMRequest.build(
+            purpose=self._purpose,
+            system="",
+            user=prompt,
+            output_schema=output_format.model_json_schema(),
+            model_tier=self._model_tier,
+            model=self._model,
+            agent=self._agent,
+            instructions=self._instructions,
+        )
+        response_path = self._root / "responses" / f"{request.id}.json"
+        if response_path.is_file():
+            try:
+                return output_format.model_validate_json(response_path.read_text(encoding="utf-8"))
+            except (ValidationError, OSError, UnicodeDecodeError) as exc:
+                msg = f"invalid subagent response {response_path}: {exc}"
+                raise SubagentResponseError(msg) from exc
+
+        request_path = self._root / "requests" / f"{request.id}.json"
+        request_path.parent.mkdir(parents=True, exist_ok=True)
+        request_path.write_text(request.model_dump_json(indent=2), encoding="utf-8")
+        if request_path not in self._pending:
+            self._pending.append(request_path)
+        if self._collect:
+            raise SubagentRequestPending([request_path])
+        raise SubagentHandoff([request_path])
+
+    def pending(self) -> list[Path]:
+        """Return request paths recorded since the last ``flush``."""
+        return list(self._pending)
+
+    def flush(self) -> None:
+        """Raise one ``SubagentHandoff`` for all pending requests and clear them; no-op if none."""
+        if not self._pending:
+            return
+        paths, self._pending = self._pending, []
+        raise SubagentHandoff(paths)
+
+
+_PURPOSE_TIERS: dict[str, str] = {
+    "spec-review": "review",
+    "ai-code-review": "review",
+    "spec-alignment": "review",
+    "retrospective": "review",
+    "layer-b-scan": "fast",
+    "extract": "fast",
+    "complexity": "fast",
+    "compaction": "fast",
+    "contradiction": "fast",
+    "checkpoint": "fast",
+}
+
+
+def tier_for_purpose(purpose: str | None) -> str:
+    """Return the model tier for ``purpose``; unknown or missing purposes use ``fast``."""
+    return _PURPOSE_TIERS.get(purpose or "", "fast")
+
+
+def _build_anthropic_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None) -> StructuredLLMProvider:
     from ydk.core.claude_client import build_client
 
     client = build_client(cfg.anthropic.api_key_env)
-    model_id = cfg.ai.model_for("fast")
+    model_id = cfg.ai.model_for(tier_for_purpose(purpose))
     return AnthropicLLMProvider(client=client, model_id=model_id, max_tokens=max_tokens)
+
+
+def _build_subagent_provider(cfg: YdkConfig, max_tokens: int, purpose: str | None) -> StructuredLLMProvider:
+    del max_tokens  # the subagent owns its own output budget
+    tier = tier_for_purpose(purpose)
+    agent = cfg.ai.subagent.agent_for(purpose)
+    return SubagentProvider(
+        Path(cfg.ai.subagent.dir),
+        purpose=purpose or "default",
+        model_tier=tier,
+        model=agent.model or cfg.ai.model_for(tier),
+        agent=agent.agent,
+        instructions=agent.instructions,
+    )
 
 
 _PROVIDER_BUILDERS = {
     "anthropic": _build_anthropic_provider,
+    "subagent": _build_subagent_provider,
 }
 
 
-def get_llm_provider(cfg: YdkConfig, *, max_tokens: int = 1024) -> StructuredLLMProvider | None:
-    """Construct an LLMProvider from a YdkConfig, dispatching on ``cfg.ai.provider``.
+def get_llm_provider(
+    cfg: YdkConfig, *, purpose: str | None = None, max_tokens: int = 1024
+) -> StructuredLLMProvider | None:
+    """Construct an LLMProvider for ``purpose`` from a YdkConfig.
 
+    The provider is ``cfg.ai.routes[purpose]`` if set, else ``cfg.ai.provider``;
+    the model tier follows the purpose (``fast`` when unknown or omitted).
     Returns ``None`` for an unknown provider or an unexpected construction
     error. Missing credentials are not swallowed: ``MissingCredentialsError``
     propagates so callers can report it before any request is made.
@@ -96,10 +285,10 @@ def get_llm_provider(cfg: YdkConfig, *, max_tokens: int = 1024) -> StructuredLLM
     from ydk.core.claude_client import ClaudeAPIError
 
     try:
-        builder = _PROVIDER_BUILDERS.get(cfg.ai.provider)
+        builder = _PROVIDER_BUILDERS.get(cfg.ai.provider_for(purpose))
         if builder is None:
             return None
-        return builder(cfg, max_tokens)
+        return builder(cfg, max_tokens, purpose)
     except ClaudeAPIError:
         raise
     except Exception:
