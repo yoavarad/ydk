@@ -9,9 +9,11 @@ from typing import Annotated
 import typer
 import yaml
 
+from ydk.cli._handoff import handle_subagent_handoff
 from ydk.cli._helpers import format_or_echo
 from ydk.core.component_registry import ComponentRegistry, ComponentRegistryError
 from ydk.core.config import load_config
+from ydk.core.llm_provider import SubagentHandoff
 from ydk.output.console import console
 
 component_app = typer.Typer(name="component", help="Component manifest management")
@@ -244,3 +246,47 @@ def init_schemas(
             type_dir.mkdir(parents=True, exist_ok=True)
 
     console.print(f"[bold]Component directories created in {components_dir}[/bold]")
+
+
+@component_app.command("scan")
+def scan_components(
+    ctx: typer.Context,
+    path: Annotated[
+        Path | None,
+        typer.Argument(help="Narrative file or directory to scan (default: project.spec_location)"),
+    ] = None,
+) -> None:
+    """Scan narratives for unlinked component mentions (Layer B, LLM-based).
+
+    Uses the `layer-b-scan` LLM route. With `ai.provider: subagent` the first
+    run writes requests and exits 3; rerun after writing the responses.
+    """
+    from ydk.cli.spec_cmd import _run_scanner_checks
+
+    config = load_config()
+    target = path if path is not None else Path(config.project.spec_location)
+    if target.is_file():
+        files = [str(target)]
+    elif target.is_dir():
+        files = sorted(str(p) for p in target.rglob("*.md"))
+    else:
+        console.print(f"[red]Path not found: {target}[/red]")
+        raise typer.Exit(1)
+
+    with handle_subagent_handoff():
+        result, pending = _run_scanner_checks(config, files)
+        if pending:
+            raise SubagentHandoff(pending)
+
+    if format_or_echo(ctx, result.model_dump()):
+        return
+
+    if not result.unlinked_mentions:
+        console.print("[green]No unlinked component mentions found.[/green]")
+        return
+
+    console.print(f"\n[bold]Unlinked mentions: {len(result.unlinked_mentions)}[/bold]\n")
+    for f in result.unlinked_mentions:
+        console.print(f"  [cyan]{f.file}:{f.line}[/cyan] ({f.confidence}) {f.text}")
+        console.print(f"    -> suggested: {f.suggested_id}")
+        console.print(f"    -> {f.reason}")

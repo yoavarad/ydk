@@ -88,10 +88,10 @@ ydk component validate
 Layer B uses an LLM to find gaps that the deterministic linker cannot detect. It reads your narrative prose and the schema definitions, then identifies places where you describe something that should be a component but have not formalized it. For example, if your spec says "the notification service sends an email when an order is confirmed" but you have not created an event component for `order-confirmed` or a contract component for the notification service, the scanner flags these as unlinked mentions.
 
 ```bash
-ydk spec verify --all-files
+ydk component scan [PATH]
 ```
 
-`ydk spec verify` runs the scanner once per narrative, alongside the reviewer agents, on the `layer-b-scan` LLM route. It produces suggestions with confidence levels, not hard errors. It is a second pair of eyes that catches things you might have overlooked, but the final decision on whether to create a component is always yours.
+Without `PATH` it scans every narrative under `project.spec_location`; `PATH` may be one file or a directory. Each unlinked mention is listed with its file, line, confidence, and a suggested component id. `ydk spec verify` also runs the scanner once per narrative, alongside the reviewer agents, on the `layer-b-scan` LLM route. It produces suggestions with confidence levels, not hard errors. It is a second pair of eyes that catches things you might have overlooked, but the final decision on whether to create a component is always yours.
 
 <Callout type="warn">
 Layer A is deterministic and always runs. Layer B calls the configured LLM provider (`ai.provider`) and produces suggestions rather than hard errors. Always run Layer A first -- fix the deterministic issues before spending LLM tokens on the scanner.

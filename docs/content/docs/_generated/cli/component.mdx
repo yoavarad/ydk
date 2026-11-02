@@ -22,6 +22,8 @@ description: "CLI reference for ydk component"
 │ list-schemas  List available schemas.                                        │
 │ show-schema   Show a schema definition.                                      │
 │ init-schemas  Copy default schemas to project's .ydk/schemas/ directory.     │
+│ scan          Scan narratives for unlinked component mentions (Layer B,      │
+│               LLM-based).                                                    │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -125,6 +127,26 @@ description: "CLI reference for ydk component"
                                                                                 
  Copy default schemas to project's .ydk/schemas/ directory.                     
                                                                                 
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk component scan`
+
+```text
+                                                                                
+ Usage: ydk component scan [OPTIONS] [PATH]                                     
+                                                                                
+ Scan narratives for unlinked component mentions (Layer B, LLM-based).          
+                                                                                
+ Uses the `layer-b-scan` LLM route. With `ai.provider: subagent` the first run  
+ writes requests and exits 3; rerun after writing the responses.                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│   path      [PATH]  Narrative file or directory to scan (default:            │
+│                     project.spec_location)                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --help          Show this message and exit.                                  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
