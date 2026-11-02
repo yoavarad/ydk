@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from ydk.cli import app
@@ -283,3 +285,123 @@ class TestComponentValidateWarnings:
         assert result.exit_code == 0
         assert "WARNING: ydk:contract:ns/A" in result.output
         assert "ext_ref" in result.output
+
+
+_SCAN_SCHEMA = """name: entity
+description: A domain object
+version: 1
+fields:
+  id:
+    type: string
+    required: true
+    description: id
+"""
+_SCAN_FINDING = {
+    "text": "Order model",
+    "line": 3,
+    "suggested_id": "ydk:entity:orders/Order",
+    "confidence": "HIGH",
+    "reason": "mentioned without reference",
+}
+
+
+class TestComponentScan:
+    """`ydk component scan`: standalone Layer B scan via the subagent provider (system boundary)."""
+
+    def _setup(self, tmp_path, monkeypatch, *, schemas: bool = True):
+        monkeypatch.chdir(tmp_path)
+        specs = tmp_path / "docs" / "specs"
+        specs.mkdir(parents=True)
+        (specs / "a.md").write_text("# A\n\nThe Order model.\n", encoding="utf-8")
+        (specs / "sub").mkdir()
+        (specs / "sub" / "b.md").write_text("# B\n\nOther.\n", encoding="utf-8")
+        (tmp_path / ".ydk").mkdir()
+        llm_dir = tmp_path / "llm"
+        (tmp_path / ".ydk" / "config.yaml").write_text(
+            f"project:\n  name: t\nai:\n  provider: subagent\n  subagent:\n    dir: {llm_dir.as_posix()}\n",
+            encoding="utf-8",
+        )
+        if schemas:
+            (tmp_path / ".ydk" / "schemas").mkdir()
+            (tmp_path / ".ydk" / "schemas" / "entity.yaml").write_text(_SCAN_SCHEMA, encoding="utf-8")
+        return llm_dir
+
+    def _respond(self, llm_dir):
+        import json
+
+        (llm_dir / "responses").mkdir(exist_ok=True)
+        for req in (llm_dir / "requests").glob("*.json"):
+            (llm_dir / "responses" / req.name).write_text(json.dumps({"findings": [_SCAN_FINDING]}), encoding="utf-8")
+
+    def test_handoff_exit_3_with_one_request_per_narrative(self, tmp_path, monkeypatch):
+        import json
+
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        result = runner.invoke(app, ["component", "scan"])
+        assert result.exit_code == 3, result.output
+        assert result.output.count("YDK-SUBAGENT-REQUESTS:") == 1
+        requests = sorted((llm_dir / "requests").glob("*.json"))
+        assert len(requests) == 2
+        for req in requests:
+            assert json.loads(req.read_text(encoding="utf-8"))["purpose"] == "layer-b-scan"
+
+    def test_rerun_lists_findings_with_suggested_ids(self, tmp_path, monkeypatch):
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        runner.invoke(app, ["component", "scan", "docs/specs/a.md"])
+        self._respond(llm_dir)
+        result = runner.invoke(app, ["component", "scan", "docs/specs/a.md"])
+        assert result.exit_code == 0, result.output
+        assert "ydk:entity:orders/Order" in result.output
+        assert "a.md" in result.output
+
+    def test_json_format_findings_carry_file(self, tmp_path, monkeypatch):
+        import json
+
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        runner.invoke(app, ["component", "scan", "docs/specs/a.md"])
+        self._respond(llm_dir)
+        result = runner.invoke(app, ["--format", "json", "component", "scan", "docs/specs/a.md"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["suggested_ids"] == ["ydk:entity:orders/Order"]
+        assert data["unlinked_mentions"][0]["file"].endswith("a.md")
+
+    def test_no_schemas_reports_nothing_to_scan(self, tmp_path, monkeypatch):
+        self._setup(tmp_path, monkeypatch, schemas=False)
+        result = runner.invoke(app, ["component", "scan"])
+        assert result.exit_code == 0, result.output
+        assert "No unlinked" in result.output
+
+    def test_missing_path_exits_1(self, tmp_path, monkeypatch):
+        self._setup(tmp_path, monkeypatch)
+        result = runner.invoke(app, ["component", "scan", "nope"])
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+    def test_directory_scan_reports_each_file(self, tmp_path, monkeypatch):
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        runner.invoke(app, ["component", "scan"])
+        self._respond(llm_dir)
+        result = runner.invoke(app, ["--format", "json", "component", "scan"])
+        assert result.exit_code == 0, result.output
+        import json
+
+        files = sorted(Path(f["file"]).name for f in json.loads(result.output)["unlinked_mentions"])
+        assert files == ["a.md", "b.md"]
+
+    def test_invalid_response_exits_1(self, tmp_path, monkeypatch):
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        runner.invoke(app, ["component", "scan", "docs/specs/a.md"])
+        (llm_dir / "responses").mkdir()
+        for req in (llm_dir / "requests").glob("*.json"):
+            (llm_dir / "responses" / req.name).write_text("{}", encoding="utf-8")
+        result = runner.invoke(app, ["component", "scan", "docs/specs/a.md"])
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+
+    def test_empty_directory_warns(self, tmp_path, monkeypatch):
+        self._setup(tmp_path, monkeypatch)
+        (tmp_path / "empty").mkdir()
+        result = runner.invoke(app, ["component", "scan", "empty"])
+        assert result.exit_code == 0
+        assert "nothing scanned" in result.output

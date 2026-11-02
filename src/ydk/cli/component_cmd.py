@@ -8,10 +8,14 @@ from typing import Annotated
 
 import typer
 import yaml
+from rich.markup import escape
 
+from ydk.cli._handoff import handle_subagent_handoff
 from ydk.cli._helpers import format_or_echo
+from ydk.core.claude_client import ClaudeAPIError
 from ydk.core.component_registry import ComponentRegistry, ComponentRegistryError
 from ydk.core.config import load_config
+from ydk.core.llm_provider import SubagentHandoff, SubagentResponseError
 from ydk.output.console import console
 
 component_app = typer.Typer(name="component", help="Component manifest management")
@@ -244,3 +248,58 @@ def init_schemas(
             type_dir.mkdir(parents=True, exist_ok=True)
 
     console.print(f"[bold]Component directories created in {components_dir}[/bold]")
+
+
+@component_app.command("scan")
+def scan_components(
+    ctx: typer.Context,
+    path: Annotated[
+        Path | None,
+        typer.Argument(help="Narrative file or directory to scan (default: project.spec_location)"),
+    ] = None,
+) -> None:
+    """Scan narratives for unlinked component mentions (Layer B, LLM-based).
+
+    Uses the `layer-b-scan` LLM route. With `ai.provider: subagent` the first
+    run writes requests and exits 3; rerun after writing the responses.
+    """
+    from ydk.cli.spec_cmd import _run_scanner_checks
+
+    config = load_config()
+    target = path if path is not None else Path(config.project.spec_location)
+    if target.is_file():
+        files = [str(target)]
+    elif target.is_dir():
+        files = sorted(str(p) for p in target.rglob("*.md"))
+    else:
+        console.print(f"[red]Path not found: {target}[/red]")
+        raise typer.Exit(1)
+
+    if not files:
+        console.print(f"[yellow]No narratives (*.md) found under {target}; nothing scanned.[/yellow]")
+        return
+
+    with handle_subagent_handoff():
+        try:
+            result, pending = _run_scanner_checks(config, files)
+        except (ClaudeAPIError, SubagentResponseError) as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1) from exc
+        if pending:
+            raise SubagentHandoff(pending)
+
+    if format_or_echo(ctx, result.model_dump()):
+        return
+
+    if not result.unlinked_mentions:
+        console.print(
+            f"[green]No unlinked component mentions found[/green] in {len(files)} file(s). "
+            "(Nothing is scanned when no component schemas exist; see `ydk component init-schemas`.)"
+        )
+        return
+
+    console.print(f"\n[bold]Unlinked mentions: {len(result.unlinked_mentions)}[/bold]\n")
+    for f in result.unlinked_mentions:
+        console.print(f"  [cyan]{escape(f.file)}:{f.line}[/cyan] ({escape(f.confidence)}) {escape(f.text)}")
+        console.print(f"    -> suggested: {escape(f.suggested_id)}")
+        console.print(f"    -> {escape(f.reason)}")
