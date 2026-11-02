@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from ydk.cli import app
@@ -285,10 +287,7 @@ class TestComponentValidateWarnings:
         assert "ext_ref" in result.output
 
 
-class TestComponentScan:
-    """`ydk component scan`: standalone Layer B scan via the subagent provider (system boundary)."""
-
-    _SCHEMA = """name: entity
+_SCAN_SCHEMA = """name: entity
 description: A domain object
 version: 1
 fields:
@@ -297,13 +296,17 @@ fields:
     required: true
     description: id
 """
-    _FINDING = {
-        "text": "Order model",
-        "line": 3,
-        "suggested_id": "ydk:entity:orders/Order",
-        "confidence": "HIGH",
-        "reason": "mentioned without reference",
-    }
+_SCAN_FINDING = {
+    "text": "Order model",
+    "line": 3,
+    "suggested_id": "ydk:entity:orders/Order",
+    "confidence": "HIGH",
+    "reason": "mentioned without reference",
+}
+
+
+class TestComponentScan:
+    """`ydk component scan`: standalone Layer B scan via the subagent provider (system boundary)."""
 
     def _setup(self, tmp_path, monkeypatch, *, schemas: bool = True):
         monkeypatch.chdir(tmp_path)
@@ -320,7 +323,7 @@ fields:
         )
         if schemas:
             (tmp_path / ".ydk" / "schemas").mkdir()
-            (tmp_path / ".ydk" / "schemas" / "entity.yaml").write_text(self._SCHEMA, encoding="utf-8")
+            (tmp_path / ".ydk" / "schemas" / "entity.yaml").write_text(_SCAN_SCHEMA, encoding="utf-8")
         return llm_dir
 
     def _respond(self, llm_dir):
@@ -328,7 +331,7 @@ fields:
 
         (llm_dir / "responses").mkdir(exist_ok=True)
         for req in (llm_dir / "requests").glob("*.json"):
-            (llm_dir / "responses" / req.name).write_text(json.dumps({"findings": [self._FINDING]}), encoding="utf-8")
+            (llm_dir / "responses" / req.name).write_text(json.dumps({"findings": [_SCAN_FINDING]}), encoding="utf-8")
 
     def test_handoff_exit_3_with_one_request_per_narrative(self, tmp_path, monkeypatch):
         import json
@@ -374,3 +377,31 @@ fields:
         result = runner.invoke(app, ["component", "scan", "nope"])
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
+
+    def test_directory_scan_reports_each_file(self, tmp_path, monkeypatch):
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        runner.invoke(app, ["component", "scan"])
+        self._respond(llm_dir)
+        result = runner.invoke(app, ["--format", "json", "component", "scan"])
+        assert result.exit_code == 0, result.output
+        import json
+
+        files = sorted(Path(f["file"]).name for f in json.loads(result.output)["unlinked_mentions"])
+        assert files == ["a.md", "b.md"]
+
+    def test_invalid_response_exits_1(self, tmp_path, monkeypatch):
+        llm_dir = self._setup(tmp_path, monkeypatch)
+        runner.invoke(app, ["component", "scan", "docs/specs/a.md"])
+        (llm_dir / "responses").mkdir()
+        for req in (llm_dir / "requests").glob("*.json"):
+            (llm_dir / "responses" / req.name).write_text("{}", encoding="utf-8")
+        result = runner.invoke(app, ["component", "scan", "docs/specs/a.md"])
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+
+    def test_empty_directory_warns(self, tmp_path, monkeypatch):
+        self._setup(tmp_path, monkeypatch)
+        (tmp_path / "empty").mkdir()
+        result = runner.invoke(app, ["component", "scan", "empty"])
+        assert result.exit_code == 0
+        assert "nothing scanned" in result.output

@@ -8,12 +8,14 @@ from typing import Annotated
 
 import typer
 import yaml
+from rich.markup import escape
 
 from ydk.cli._handoff import handle_subagent_handoff
 from ydk.cli._helpers import format_or_echo
+from ydk.core.claude_client import ClaudeAPIError
 from ydk.core.component_registry import ComponentRegistry, ComponentRegistryError
 from ydk.core.config import load_config
-from ydk.core.llm_provider import SubagentHandoff
+from ydk.core.llm_provider import SubagentHandoff, SubagentResponseError
 from ydk.output.console import console
 
 component_app = typer.Typer(name="component", help="Component manifest management")
@@ -273,8 +275,16 @@ def scan_components(
         console.print(f"[red]Path not found: {target}[/red]")
         raise typer.Exit(1)
 
+    if not files:
+        console.print(f"[yellow]No narratives (*.md) found under {target}; nothing scanned.[/yellow]")
+        return
+
     with handle_subagent_handoff():
-        result, pending = _run_scanner_checks(config, files)
+        try:
+            result, pending = _run_scanner_checks(config, files)
+        except (ClaudeAPIError, SubagentResponseError) as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1) from exc
         if pending:
             raise SubagentHandoff(pending)
 
@@ -282,11 +292,14 @@ def scan_components(
         return
 
     if not result.unlinked_mentions:
-        console.print("[green]No unlinked component mentions found.[/green]")
+        console.print(
+            f"[green]No unlinked component mentions found[/green] in {len(files)} file(s). "
+            "(Nothing is scanned when no component schemas exist; see `ydk component init-schemas`.)"
+        )
         return
 
     console.print(f"\n[bold]Unlinked mentions: {len(result.unlinked_mentions)}[/bold]\n")
     for f in result.unlinked_mentions:
-        console.print(f"  [cyan]{f.file}:{f.line}[/cyan] ({f.confidence}) {f.text}")
-        console.print(f"    -> suggested: {f.suggested_id}")
-        console.print(f"    -> {f.reason}")
+        console.print(f"  [cyan]{escape(f.file)}:{f.line}[/cyan] ({escape(f.confidence)}) {escape(f.text)}")
+        console.print(f"    -> suggested: {escape(f.suggested_id)}")
+        console.print(f"    -> {escape(f.reason)}")
