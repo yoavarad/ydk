@@ -37,3 +37,14 @@ class CheckpointPreview(BaseModel):
     concerns: list[ReviewConcern] = Field(default_factory=list)
     blast_radius: list[BlastRadiusSpot] = Field(default_factory=list)
     testing_suggestions: list[str] = Field(default_factory=list)
+
+
+class CheckpointLLMOutput(BaseModel):
+    """Structured answer expected from the model; stats are computed from the diff, not asked for."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    intent: str
+    concerns: list[ReviewConcern] = Field(default_factory=list)
+    blast_radius: list[BlastRadiusSpot] = Field(default_factory=list)
+    testing_suggestions: list[str] = Field(default_factory=list)

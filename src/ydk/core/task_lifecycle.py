@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from ydk.core.git_worktree import WorktreeManager
     from ydk.core.stack_profile import LanguageProfile
     from ydk.core.verifier import Verifier
+    from ydk.models.checkpoint import CheckpointPreview
+    from ydk.models.config import YdkConfig
     from ydk.models.verification import CheckResult
     from ydk.repositories.protocols import LifecycleTaskRepository
 
@@ -240,6 +242,7 @@ class TaskLifecycle:
 
         Returns {"passed": bool, "pr_url": str, "report": VerificationReport}
         """
+        from ydk.core.llm_provider import SubagentHandoff
         from ydk.core.plugin_llm import LLM_HANDOFF_KEY
         from ydk.core.pr_template import PRBodyBuilder
         from ydk.core.proof_capture import SKIP_REASON, ProofCapture
@@ -352,12 +355,29 @@ class TaskLifecycle:
         else:
             all_passed = report.all_passed
 
+        # Ask for the review guide in the same round as the AI plugins so one handoff covers both.
+        # Skipped when something genuinely failed: the diff is about to change.
+        checkpoint_preview = None
+        checkpoint_requests: list[str] = []
+        considered_all = [c for c in report.checks if c.name not in (skip_plugins or [])]
+        if all(c.passed or is_needs_llm(c) for c in considered_all):
+            try:
+                checkpoint_preview = self.checkpoint(task_id, config)
+            except SubagentHandoff as handoff:
+                checkpoint_requests = [str(p) for p in handoff.request_paths]
+            except Exception:
+                logger.warning("checkpoint generation failed; PR body will omit the review guide", exc_info=True)
+
         if not all_passed:
             # Only AI plugins awaiting subagent responses are failing: hand the requests
             # back (the CLI exits 3) instead of opening a PR or recording a failure.
             considered = [c for c in report.checks if c.name not in (skip_plugins or [])]
             if all(c.passed or is_needs_llm(c) for c in considered):
-                return {"passed": False, "report": report, "needs_llm": needs_llm_requests(considered)}
+                return {
+                    "passed": False,
+                    "report": report,
+                    "needs_llm": [*needs_llm_requests(considered), *checkpoint_requests],
+                }
 
             from ydk.core.auto_repair import RepairLoop
 
@@ -370,6 +390,9 @@ class TaskLifecycle:
 
             self._repo.add_comment(task_id, f"**Verification FAILED:**\n{failure_msg}")
             return {"passed": False, "report": report, "structured_errors": structured_errors}
+
+        if checkpoint_requests:
+            return {"passed": False, "report": report, "needs_llm": checkpoint_requests}
 
         # Check UI screenshot requirement before proof capture
         task = self._repo.get_task(task_id)
@@ -392,6 +415,13 @@ class TaskLifecycle:
             pc.write_summary(task_id, summary)
 
         artifacts = pc.save_report(report, skipped_plugins=skip_plugins)
+
+        checkpoint_file = proof_dir / "checkpoint.md"
+        checkpoint_file.unlink(missing_ok=True)  # never reuse a guide from an earlier run
+        if checkpoint_preview is not None:
+            from ydk.core.checkpoint import render_markdown
+
+            checkpoint_file.write_text(render_markdown(checkpoint_preview), encoding="utf-8")
 
         # The JSON report is already saved by save_report; keep proof_path for event
         proof_path = artifacts.verification_report_path
@@ -464,6 +494,35 @@ class TaskLifecycle:
         if todo_warnings:
             result["todo_warnings"] = todo_warnings
         return result
+
+    def checkpoint(self, task_id: str, config: YdkConfig | None = None) -> CheckpointPreview | None:
+        """Build the review guide for the task's ``base...HEAD`` diff; ``None`` when there is no diff.
+
+        Uses the ``checkpoint`` LLM route when available and the deterministic
+        directory grouping otherwise (route disabled, provider unavailable or erroring).
+        A subagent route with no response yet raises ``SubagentHandoff``.
+        """
+        from ydk.core.checkpoint import CheckpointGenerator, diff_against_base
+        from ydk.core.config import load_config
+        from ydk.core.llm_provider import get_llm_provider
+
+        scan_root = self._worktree.get_worktree_path(task_id) or self._root
+        base = diff_base(self._root, scan_root) or default_branch(self._root)
+        diff = diff_against_base(scan_root, base)
+        if not diff.strip():
+            return None
+        cfg = config or load_config(scan_root / ".ydk" / "config.yaml")
+        # Resolve the request dir against the worktree, as the AI plugins do, so one handoff shares one dir.
+        sub = cfg.ai.subagent
+        if not Path(sub.dir).is_absolute():
+            sub = sub.model_copy(update={"dir": str(scan_root / sub.dir)})
+            cfg = cfg.model_copy(update={"ai": cfg.ai.model_copy(update={"subagent": sub})})
+        try:
+            provider = get_llm_provider(cfg, purpose="checkpoint", max_tokens=4096)
+        except Exception:
+            logger.warning("checkpoint LLM provider unavailable; using deterministic fallback")
+            provider = None
+        return CheckpointGenerator().generate(diff, self._repo.get_task(task_id), provider)
 
     def _run_pr_body_validation(self, pr_body: str, context: dict[str, object]) -> CheckResult | None:
         """Run the ``pr-body-validation`` plugin as a final gate before PR creation.
