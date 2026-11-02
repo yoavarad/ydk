@@ -29,6 +29,8 @@ description: "CLI reference for ydk task"
 │                       progress).                                             │
 │ block                 Mark task as blocked.                                  │
 │ unblock               Resume a blocked task.                                 │
+│ checkpoint            Print the review guide for the task's diff against its │
+│                       base branch.                                           │
 │ done                  Complete task: verify, create PR, post proof.          │
 │ add-gate              Add an external event gate to a task.                  │
 │ check-gates           Check all gates on a task.                             │
@@ -271,6 +273,27 @@ Try 'ydk task --help' for help.
 │ --summary            TEXT  Agent narrative summary for the PR body           │
 │ --skip-plugin        TEXT  Skip a plugin (only if it demonstrably fails)     │
 │ --help                     Show this message and exit.                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+## `ydk task checkpoint`
+
+```text
+                                                                                
+ Usage: ydk task checkpoint [OPTIONS] TASK_ID                                   
+                                                                                
+ Print the review guide for the task's diff against its base branch.            
+                                                                                
+ Uses the `checkpoint` LLM route; falls back to directory grouping when it is   
+ disabled.                                                                      
+ Exits 3 with a subagent request block when the route is `subagent` and         
+ unanswered.                                                                    
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    task_id      TEXT  Task ID to build the review guide for [required]     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 

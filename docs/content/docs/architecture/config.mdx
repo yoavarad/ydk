@@ -61,7 +61,7 @@ Model tiers are the single source of truth for Claude model IDs. Every LLM call 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `provider` | str | `"anthropic"` | Default LLM provider: `anthropic`, `claude-cli`, or `subagent` (`ydk init` writes `subagent`) |
-| `routes` | dict[str, str] | `{}` | Per-purpose provider override (e.g. `{extract: anthropic}`) |
+| `routes` | dict[str, str] | `{}` | Per-purpose provider override (e.g. `{extract: anthropic}`). Purposes include `checkpoint` (PR review guide) |
 | `subagent.dir` | str | `".ydk/llm"` | Directory for subagent handoff `requests/` and `responses/` |
 | `subagent.agents` | dict | `{}` | Per-purpose `agent`, `model`, `instructions`; `default` is the fallback |
 | `model_tiers.fast` | str | `"claude-haiku-4-5"` | Lightweight calls (memory extraction, complexity scoring) |
