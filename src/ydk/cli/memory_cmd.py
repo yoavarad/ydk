@@ -31,7 +31,7 @@ def _get_engine(cfg: YdkConfig) -> object:  # type: ignore[return-type]  # Memor
     try:
         from ydk.core.memory import MemoryEngine  # type: ignore[import-untyped]
     except ImportError:
-        console.print("[red]chromadb is not installed.[/red] Install with: uv pip install 'ydk[memory]'")
+        console.print("[red]chromadb is not installed.[/red] It ships with ydk; reinstall with: uv sync")
         raise typer.Exit(code=1) from None
 
     return MemoryEngine(

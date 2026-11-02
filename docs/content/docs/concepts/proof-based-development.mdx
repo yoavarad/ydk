@@ -44,7 +44,7 @@ YDK organizes its 40 verification plugins into three layers that execute sequent
 
 **Layer 2: Architecture and Structure.** These checks enforce project conventions and design rules. The `python-tdd-guard` plugin ensures that every staged source file has a corresponding test file -- enforcing TDD at the tooling level, not just as a guideline. The `python-file-length` plugin catches files that have grown too large. Framework-specific plugins check import boundaries (FastAPI adapter isolation, Next.js FSD layers), route organization (route delegation, route splitting), and anti-patterns (no mocks in integration tests, no useEffect for data fetching). These checks take 5-15 seconds.
 
-**Layer 3: AI-Powered.** These checks use LLMs for analysis that cannot be done deterministically. The `ai-code-review` plugin sends the git diff to an LLM for security analysis, code quality assessment, and design review. The `spec-alignment` plugin checks that the implementation matches the spec across six dimensions. These checks take 15-60 seconds and require the `ai` extras. They catch subtle issues -- spec drift, security vulnerabilities, design inconsistencies -- that mechanical checks miss.
+**Layer 3: AI-Powered.** These checks use LLMs for analysis that cannot be done deterministically. The `ai-code-review` plugin sends the git diff to an LLM for security analysis, code quality assessment, and design review. The `spec-alignment` plugin checks that the implementation matches the spec across six dimensions. These checks take 15-60 seconds and use the configured LLM provider (`ai.provider`). They catch subtle issues -- spec drift, security vulnerabilities, design inconsistencies -- that mechanical checks miss.
 
 ## Content-Hash Caching
 

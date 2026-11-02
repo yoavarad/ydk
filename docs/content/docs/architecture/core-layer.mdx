@@ -41,7 +41,7 @@ The core modules naturally group into five functional areas:
 
 ### Memory and Learning
 
-- **`memory.py`** -- The `MemoryEngine`: ChromaDB + Bedrock embeddings + BM25 hybrid search + RRF fusion + 4-factor scoring + progressive retrieval.
+- **`memory.py`** -- The `MemoryEngine`: ChromaDB + local MiniLM embeddings + BM25 hybrid search + RRF fusion + 4-factor scoring + progressive retrieval.
 - **`bm25_index.py`** -- JSON-persisted BM25 keyword index with k1=1.5, b=0.75 tuning.
 - **`extractor.py`** -- LLM-based knowledge extraction from Claude Code session transcripts.
 - **`transcript_parser.py`** -- Parses Claude Code JSONL session format into structured exchanges.

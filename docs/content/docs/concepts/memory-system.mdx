@@ -13,7 +13,7 @@ YDK's memory system exists to break this cycle. It captures knowledge from compl
 
 ## Architecture
 
-The memory system is built on two storage engines working in tandem. ChromaDB provides vector storage with Amazon Bedrock embeddings (Cohere Embed English v3 by default), enabling semantic similarity search -- finding memories that are conceptually related to a query even when they use different words. A BM25 keyword index (JSON-persisted, with k1=1.5 and b=0.75 tuning parameters) provides exact term matching, which is critical for finding memories about specific function names, error codes, or technical terms that vector search often misses.
+The memory system is built on two storage engines working in tandem. ChromaDB provides vector storage with local MiniLM embeddings (ChromaDB's default embedder), enabling semantic similarity search -- finding memories that are conceptually related to a query even when they use different words. A BM25 keyword index (JSON-persisted, with k1=1.5 and b=0.75 tuning parameters) provides exact term matching, which is critical for finding memories about specific function names, error codes, or technical terms that vector search often misses.
 
 Content is organized into six ChromaDB collections: `adrs` (architecture decision records), `rules` (project rules and guidelines), `research` (research documents), `specs` (specification files), `tasks` (task files), and `extractions` (knowledge extracted from agent sessions). Each collection is searched independently and results are merged.
 
@@ -106,5 +106,5 @@ ydk memory consolidate --threshold 0.85 --dry-run
 The consolidator groups memories by semantic similarity (threshold configurable, default 0.85), keeps the best version (highest provenance, most recent, most accessed), and marks duplicates with `superseded_by` metadata.
 
 <Callout type="info">
-The memory system requires the `memory` extras (ChromaDB, boto3). Install with `uv add "ydk[memory]"`. Without these extras, YDK works normally -- you just do not get compound learning.
+The memory system uses ChromaDB with local MiniLM embeddings; both ship with the base install, so no extras or cloud credentials are needed. LLM-backed steps (extract, retrospective) use the configured `ai.provider`.
 </Callout>

@@ -44,7 +44,7 @@ class MemoryEngine:
             try:
                 import chromadb
             except ImportError as exc:
-                msg = "Install memory support: uv pip install ydk[memory]"
+                msg = "chromadb is missing; it ships with ydk, reinstall with: uv sync"
                 raise ImportError(msg) from exc
             self._client = chromadb.PersistentClient(path=str(self._chroma_path))
         return self._client
@@ -59,7 +59,7 @@ class MemoryEngine:
         try:
             from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
         except ImportError as exc:
-            msg = "Install memory support: uv pip install ydk[memory]"
+            msg = "chromadb is missing; it ships with ydk, reinstall with: uv sync"
             raise ImportError(msg) from exc
 
         return DefaultEmbeddingFunction()

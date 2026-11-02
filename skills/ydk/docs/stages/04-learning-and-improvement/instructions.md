@@ -236,7 +236,7 @@ Procedural effectiveness analysis is now included as part of `ydk memory audit`.
 ## Troubleshooting
 
 ### Index fails with "chromadb not installed"
-ChromaDB is an optional dependency. Install it with: `uv pip install 'ydk[memory]'`
+ChromaDB is a base dependency; reinstall the environment with `uv sync` (or reinstall `ydk`).
 
 ### Extraction finds nothing useful
 Not every task produces extractable learnings. Simple tasks (pure refactoring, adding a test) may not generate discoveries. This is fine.

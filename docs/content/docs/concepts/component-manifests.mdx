@@ -94,7 +94,7 @@ ydk component scan
 The scanner produces suggestions with confidence levels, not hard errors. It is a second pair of eyes that catches things you might have overlooked, but the final decision on whether to create a component is always yours.
 
 <Callout type="warn">
-Layer A is deterministic and always runs. Layer B requires the AI extras and produces suggestions rather than hard errors. Always run Layer A first -- fix the deterministic issues before spending LLM tokens on the scanner.
+Layer A is deterministic and always runs. Layer B calls the configured LLM provider (`ai.provider`) and produces suggestions rather than hard errors. Always run Layer A first -- fix the deterministic issues before spending LLM tokens on the scanner.
 </Callout>
 
 ## How Resolution Works

@@ -73,7 +73,7 @@ Stage 04 is what makes YDK different from tools that treat each task as independ
 
 Memory extraction parses Claude Code session transcripts (JSONL format) and uses an LLM to identify six types of knowledge: discoveries (facts about how the system works), decisions (architectural choices with rationale), gotchas (traps and edge cases), patterns (reusable approaches), conventions (naming and structural standards), and abandoned approaches (things tried and rejected, which are arguably the most valuable because they prevent others from wasting time on the same dead ends).
 
-The memories are stored in ChromaDB with Bedrock embeddings and indexed in a BM25 keyword index. Search uses hybrid retrieval with Reciprocal Rank Fusion (RRF, k=60), combining the strengths of vector similarity for semantic matching with keyword matching for exact term lookups. Results are scored using a 4-factor formula: category weight (50%), provenance (15%), recency with 30-day half-life decay (25%), and access frequency (10%).
+The memories are stored in ChromaDB with local MiniLM embeddings and indexed in a BM25 keyword index. Search uses hybrid retrieval with Reciprocal Rank Fusion (RRF, k=60), combining the strengths of vector similarity for semantic matching with keyword matching for exact term lookups. Results are scored using a 4-factor formula: category weight (50%), provenance (15%), recency with 30-day half-life decay (25%), and access frequency (10%).
 
 Contradiction detection prevents stale knowledge from polluting the system. When a new memory contradicts an existing one (detected via concept overlap followed by LLM judgment), the old memory is marked with `valid_until` and filtered from future search results -- but not deleted, preserving the historical record.
 

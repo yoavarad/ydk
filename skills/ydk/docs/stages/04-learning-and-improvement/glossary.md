@@ -2,7 +2,7 @@
 
 ## Memory Engine
 
-The core component that manages the knowledge base. Handles indexing project files into vectors, hybrid search (vector + BM25 + RRF), bootstrapping context for tasks, storing extracted memories with scoring and provenance, and detecting contradictions. Backed by ChromaDB for persistence and Bedrock for embeddings.
+The core component that manages the knowledge base. Handles indexing project files into vectors, hybrid search (vector + BM25 + RRF), bootstrapping context for tasks, storing extracted memories with scoring and provenance, and detecting contradictions. Backed by ChromaDB for persistence and local MiniLM for embeddings.
 
 ## Hybrid Search
 
