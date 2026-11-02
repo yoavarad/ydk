@@ -68,8 +68,20 @@ When `ydk task done` runs, the `ProofCapture` class captures verification output
 1. The subagent runs `ydk task done --summary "Agent narrative here"` in its worktree
 2. `ProofCapture` runs each quality gate (`ruff check`, `ruff format --check`, `ty check`, `pytest`) via `capture_command()` and saves raw stdout+stderr to `.ydk/proofs/<task-id>/`
 3. The agent's `--summary` writes `summary.md` -- the **only** agent-authored content
-4. `PRBodyBuilder` assembles the PR body from a deterministic template + proof files + agent summary
+4. `PRBodyBuilder` assembles the PR body from a deterministic template + proof files + agent summary, plus a `## Review guide` section after Summary when `proofs/<task-id>/checkpoint.md` exists
 5. The PR is created with proof sections reflecting **actual command output**, not agent claims
+
+### Review Guide
+
+`ydk task done` also builds a review guide from the task's diff against its base branch and writes it to `.ydk/proofs/<task-id>/checkpoint.md`. It appears in the PR body as a `## Review guide` section right after Summary: the intent of the change, concerns grouped by what they affect (not by file), high blast-radius spots, and testing suggestions.
+
+The guide uses the `checkpoint` LLM route (see `ai.routes`). When the route names no usable provider (e.g. `none`), or the model output is unusable, YDK falls back to grouping changed files by top-level directory. With a `subagent` route, the checkpoint request is part of the same exit-3 handoff as any AI-plugin requests: answer the requests, then re-run `ydk task done`.
+
+Preview the guide without creating a PR:
+
+```bash
+ydk task checkpoint T-abc12345
+```
 
 ### Proof File Layout
 

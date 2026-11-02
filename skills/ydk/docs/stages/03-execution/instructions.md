@@ -275,11 +275,13 @@ Run `ydk task done` to finalize: verify everything, create PR, post proof.
 2. Runs `ydk verify run --trigger pre-push` (all layers, all plugins)
 3. If any fail → exits with error, prints first 3 lines of failure output per failing check, posts failure to issue
 4. If all pass → commits, pushes branch
-5. Creates PR with "Closes #<task_id>" and proof in description (assembled from all plugin results in `.ydk/proofs/<task>/plugins/<name>.txt`)
+5. Creates PR with "Closes #<task_id>" and proof in description (assembled from all plugin results in `.ydk/proofs/<task>/plugins/<name>.txt`). The body includes a `## Review guide` section after Summary (intent, concerns grouped by what they affect, blast-radius spots, testing suggestions), generated from the diff via the `checkpoint` LLM route and saved to `.ydk/proofs/<task>/checkpoint.md`. If the route resolves to no provider (e.g. `none`) or the output is unusable, it falls back to grouping files by top-level directory. With a `subagent` route, the checkpoint request joins the same single exit-3 handoff as the AI-plugin requests: answer them all, then re-run `ydk task done`
 6. Prints PR URL on success
 7. Posts proof summary to task issue
 8. Updates task label to `in-review`
 9. `ty` check is scoped to changed files only (won't block on generated code)
+
+Preview the review guide at any time with `ydk task checkpoint <task_id>` (prints Markdown; prints a no-changes message when the task has no diff against its base; exits 3 with a subagent request block when the `subagent` route is unanswered).
 
 **Example:**
 
