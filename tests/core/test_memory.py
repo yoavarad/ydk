@@ -324,6 +324,21 @@ class TestSearch:
         assert "adrs" in collections_found
         assert "research" in collections_found
 
+    @pytest.mark.parametrize("mode", ["hybrid", "keyword", "vector"])
+    def test_search_results_always_have_collection(self, memory_engine, tmp_path, mode) -> None:
+        """Regression #686: BM25-only hits used to come back with collection == ''."""
+        f1 = tmp_path / "adr.md"
+        f1.write_text("## ADR Decision\nWe chose PostgreSQL for persistence.\n")
+        memory_engine.index_file(f1, "adrs")
+        f2 = tmp_path / "research.md"
+        f2.write_text("## Database Research\nPostgreSQL vs MySQL comparison.\n")
+        memory_engine.index_file(f2, "research")
+
+        results = memory_engine.search("PostgreSQL database", search_mode=mode)
+        assert results
+        assert all(r["collection"] for r in results)
+        assert {"adrs", "research"} <= {r["collection"] for r in results}
+
 
 # ---------------------------------------------------------------------------
 # Memory scoring tests
