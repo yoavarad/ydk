@@ -324,6 +324,21 @@ class TestSearch:
         assert "adrs" in collections_found
         assert "research" in collections_found
 
+    @pytest.mark.parametrize("mode", ["hybrid", "keyword", "vector"])
+    def test_search_results_always_have_collection(self, memory_engine, tmp_path, mode) -> None:
+        """Regression #686: BM25-only hits used to come back with collection == ''."""
+        f1 = tmp_path / "adr.md"
+        f1.write_text("## ADR Decision\nWe chose PostgreSQL for persistence.\n")
+        memory_engine.index_file(f1, "adrs")
+        f2 = tmp_path / "research.md"
+        f2.write_text("## Database Research\nPostgreSQL vs MySQL comparison.\n")
+        memory_engine.index_file(f2, "research")
+
+        results = memory_engine.search("PostgreSQL database", search_mode=mode)
+        assert results
+        assert all(r["collection"] for r in results)
+        assert {"adrs", "research"} <= {r["collection"] for r in results}
+
 
 # ---------------------------------------------------------------------------
 # Memory scoring tests
@@ -494,3 +509,96 @@ class TestRecordAccess:
         meta = call_kwargs.kwargs["metadatas"][0] if call_kwargs.kwargs else call_kwargs[1]["metadatas"][0]
         assert meta["access_count"] == 4
         assert "last_accessed" in meta
+
+
+# ---------------------------------------------------------------------------
+# Knowledge-file contradiction detection (real engine; only judge/ChromaDB client faked)
+# ---------------------------------------------------------------------------
+
+
+class _FlagAllJudge:
+    def judge_contradiction(self, new_text: str, old_text: str) -> str | None:
+        return "conflict"
+
+
+class _RaisingJudge:
+    def judge_contradiction(self, new_text: str, old_text: str) -> str | None:
+        msg = "provider exploded"
+        raise RuntimeError(msg)
+
+
+def _write_knowledge(root: Path) -> None:
+    (root / "docs" / "specs").mkdir(parents=True)
+    (root / "docs" / "adrs").mkdir(parents=True)
+    (root / "docs" / "specs" / "a.md").write_text("## Storage\nuse postgres database for storage\n")
+    (root / "docs" / "adrs" / "b.md").write_text("## Storage\nuse sqlite database for storage\n")
+
+
+@needs_chromadb
+class TestKnowledgeContradictions:
+    def test_index_all_flags_contradiction_between_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, memory_engine: MemoryEngine
+    ) -> None:
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        monkeypatch.chdir(tmp_path)
+        _write_knowledge(tmp_path)
+        det = ContradictionDetector(similarity_threshold=0.3, llm=_FlagAllJudge())
+        result = memory_engine.index_all({}, contradiction_detector=det)
+        assert result["files"] == 2
+        assert result["warnings"] == []
+        assert len(result["contradictions"]) == 1
+        new_id, c = result["contradictions"][0]
+        ids = {new_id.replace("\\", "/"), c.old_memory_id.replace("\\", "/")}
+        assert ids == {"docs/specs/a.md#0", "docs/adrs/b.md#0"}
+        assert new_id != c.old_memory_id
+
+    def test_index_all_without_detector_has_no_contradiction_keys(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, memory_engine: MemoryEngine
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        _write_knowledge(tmp_path)
+        assert "contradictions" not in memory_engine.index_all({})
+
+    def test_judge_error_becomes_warning_and_indexing_completes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, memory_engine: MemoryEngine
+    ) -> None:
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        monkeypatch.chdir(tmp_path)
+        _write_knowledge(tmp_path)
+        det = ContradictionDetector(similarity_threshold=0.3, llm=_RaisingJudge())
+        result = memory_engine.index_all({}, contradiction_detector=det)
+        assert result["files"] == 2
+        assert result["contradictions"] == []
+        assert any("provider exploded" in w for w in result["warnings"])
+
+    def test_chroma_error_becomes_warning(self) -> None:
+        from unittest.mock import patch
+
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        engine = MemoryEngine(chroma_path=Path("/tmp/unused"))
+        det = ContradictionDetector(similarity_threshold=0.3, llm=_FlagAllJudge())
+        with patch.object(MemoryEngine, "_get_client", side_effect=RuntimeError("chroma down")):
+            found, warnings = engine.find_knowledge_contradictions(det)
+        assert found == []
+        assert any("chroma down" in w for w in warnings)
+
+    def test_malformed_chroma_result_without_metadatas(self) -> None:
+        from unittest.mock import patch
+
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        engine = MemoryEngine(chroma_path=Path("/tmp/unused"))
+        client = MagicMock()
+        collection = client.get_or_create_collection.return_value
+        collection.get.return_value = {"ids": ["x#0", "y#0"], "documents": ["same words here", "same words here"]}
+        det = ContradictionDetector(similarity_threshold=0.3, llm=_FlagAllJudge())
+        with (
+            patch.object(MemoryEngine, "_get_client", return_value=client),
+            patch.object(MemoryEngine, "_check_dimension_compat"),
+        ):
+            found, warnings = engine.find_knowledge_contradictions(det)
+        assert warnings == []
+        assert found

@@ -1861,3 +1861,25 @@ def test_create_pr_pushes_when_branch_has_real_commits(feature_root: Path, mock_
 
     assert url.startswith("local://")
     assert any(c.args[0][:2] == ["git", "push"] for c in sp.run.call_args_list)
+
+
+def test_create_pr_pushes_when_branch_only_has_retros(feature_root: Path, mock_verifier: MagicMock) -> None:
+    (feature_root / ".ydk" / "retros").mkdir(parents=True)
+    (feature_root / ".ydk" / "retros" / "615.md").write_text("retro\n")
+    _git(feature_root, "add", "-f", ".ydk")
+    _git(feature_root, "commit", "-q", "-m", "docs(retro): epic 615")
+    lc, _ = _real_repo_lifecycle(feature_root, mock_verifier)
+
+    def _fake(args: list[str], **kwargs: object) -> MagicMock:
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with (
+        patch("ydk.core.task_lifecycle.default_branch", return_value="main"),
+        patch("shutil.which", return_value=None),
+        patch("ydk.core.task_lifecycle.subprocess") as sp,
+    ):
+        sp.run.side_effect = _fake
+        url = lc._create_pr("T-001", pr_body_override="body")
+
+    assert url.startswith("local://")
+    assert any(c.args[0][:2] == ["git", "push"] for c in sp.run.call_args_list)

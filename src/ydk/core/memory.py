@@ -14,8 +14,10 @@ from ydk.models.memory import MemoryScore
 
 if TYPE_CHECKING:
     from chromadb import Collection
+    from chromadb.api.types import QueryResult
 
     from ydk.core.bm25_index import BM25Index
+    from ydk.core.contradiction_detector import ContradictionDetector
 
 logger = logging.getLogger("ydk.memory")
 
@@ -196,11 +198,13 @@ class MemoryEngine:
         )
         return {"indexed": indexed, "skipped": skipped, "total_chunks": total_chunks}
 
-    def index_all(self, config=None) -> dict:  # noqa: ANN001
+    def index_all(self, config=None, contradiction_detector: ContradictionDetector | None = None) -> dict:  # noqa: ANN001
         """Index all configured locations.
 
         ``config`` can be an YdkConfig object, a dict, or None (uses defaults).
-        Returns a summary dict with keys ``files``, ``chunks``, ``skipped``.
+        Returns a summary dict with keys ``files``, ``chunks``, ``skipped``. When
+        ``contradiction_detector`` is given, also ``contradictions`` (list of
+        ``(chunk_id, Contradiction)``) and ``warnings`` (list of str).
         """
 
         # Normalise config access
@@ -242,7 +246,49 @@ class MemoryEngine:
             else:
                 total_skipped += 1
 
-        return {"files": total_files, "chunks": total_chunks, "skipped": total_skipped}
+        summary: dict = {"files": total_files, "chunks": total_chunks, "skipped": total_skipped}
+        if contradiction_detector is not None:
+            found, warnings = self.find_knowledge_contradictions(contradiction_detector)
+            summary["contradictions"] = found
+            summary["warnings"] = warnings
+        return summary
+
+    _KNOWLEDGE_COLLECTIONS: ClassVar[tuple[str, ...]] = ("specs", "adrs", "research", "rules")
+
+    def find_knowledge_contradictions(self, detector: ContradictionDetector) -> tuple[list, list[str]]:
+        """Judge indexed knowledge chunks against chunks from other files (no writes).
+
+        Returns ``(contradictions, warnings)``; ChromaDB and judge errors become warnings.
+        """
+        from ydk.models.memory import ExtractedMemoryModel
+
+        entries: list[dict] = []
+        warnings: list[str] = []
+        for name in self._KNOWLEDGE_COLLECTIONS:
+            try:
+                result = self._get_collection(name).get() or {}
+            except Exception as exc:
+                warnings.append(f"{name}: {exc}")
+                continue
+            ids = result.get("ids") or []
+            metas = result.get("metadatas") or []
+            docs = result.get("documents") or []
+            for i, doc_id in enumerate(ids):
+                meta = (metas[i] if i < len(metas) else None) or {}
+                doc = (docs[i] if i < len(docs) else None) or ""
+                entries.append(
+                    {"id": doc_id, "content": doc, "source": meta.get("source_file", doc_id), "concepts": []}
+                )
+        found: list = []
+        for i, entry in enumerate(entries):
+            prior = [e for e in entries[:i] if e["source"] != entry["source"]]
+            new_mem = ExtractedMemoryModel(memory_type="discovery", content=entry["content"], concepts=[])
+            try:
+                found.extend((entry["id"], c) for c in detector.check(new_mem, prior))
+            except Exception as exc:
+                warnings.append(f"judge failed at {entry['id']}, check aborted: {exc}")
+                break
+        return found, warnings
 
     # ------------------------------------------------------------------
     # Hybrid search methods
@@ -255,14 +301,14 @@ class MemoryEngine:
             collections = [self._get_collection(collection_name)]
         else:
             self._get_client()  # ensure client is initialized
-            for name in ["adrs", "rules", "research", "specs", "tasks", "extractions"]:
+            for name in self._known_collections():
                 with contextlib.suppress(Exception):
                     collections.append(self._get_collection(name))
 
         all_results: list[dict] = []
         for col in collections:
             try:
-                results = col.query(query_texts=[query], n_results=min(n_results, 5))
+                results = self._query_with_retry(col, query, min(n_results, 5))
                 if results and results["documents"]:
                     for i, doc in enumerate(results["documents"][0]):
                         meta = results["metadatas"][0][i] if results["metadatas"] else {}
@@ -277,10 +323,28 @@ class MemoryEngine:
                             }
                         )
             except Exception:
-                pass
+                logger.warning("Vector query failed for collection %r", col.name, exc_info=True)
 
         all_results.sort(key=lambda x: x["score"], reverse=True)
         return all_results
+
+    @staticmethod
+    def _query_with_retry(col: Collection, query: str, n_results: int, attempts: int = 5) -> QueryResult:
+        """Query a collection, retrying ChromaDB's transient hnsw reader race.
+
+        Right after a write, ChromaDB can raise "Error creating hnsw segment
+        reader: Nothing found on disk" until its segment is readable. Without
+        a retry the collection is silently dropped from the results (#686).
+        """
+        for attempt in range(attempts):
+            try:
+                return col.query(query_texts=[query], n_results=n_results)
+            except Exception as exc:
+                if "hnsw segment reader" not in str(exc) or attempt == attempts - 1:
+                    raise
+                time.sleep(0.1 * (attempt + 1))
+        msg = "unreachable"
+        raise RuntimeError(msg)
 
     def _bm25_search(self, query: str, n_results: int = 10) -> tuple[list[tuple[str, float]], dict[str, dict]]:
         """Run BM25 keyword search. Returns (ranked_results, snippets_map).
@@ -304,7 +368,42 @@ class MemoryEngine:
                 "section": section,
                 "collection": "",
             }
+        self._enrich_bm25_snippets(snippets)
         return results, snippets
+
+    def _enrich_bm25_snippets(self, snippets: dict[str, dict]) -> None:
+        """Fill collection/section/snippet for BM25 hits from ChromaDB metadata.
+
+        BM25 stores only doc ids, so without this a keyword hit has an empty
+        ``collection`` and a chunk-index ``section`` that never matches the
+        vector hit for the same chunk (duplicates in RRF fusion).
+        """
+        pending = set(snippets)
+        if not pending:
+            return
+        self._get_client()
+        for name in self._known_collections():
+            if not pending:
+                break
+            try:
+                found = self._get_collection(name).get(ids=sorted(pending))
+            except Exception:
+                logger.debug("BM25 enrichment skipped for collection %r", name, exc_info=True)
+                continue
+            for i, doc_id in enumerate(found["ids"]):
+                meta = (found["metadatas"] or [{}] * len(found["ids"]))[i] or {}
+                snippets[doc_id].update(
+                    {
+                        "snippet": (found["documents"] or [""] * len(found["ids"]))[i] or "",
+                        "section": meta.get("section", snippets[doc_id]["section"]),
+                        "collection": meta.get("collection", name),
+                    }
+                )
+                pending.discard(doc_id)
+
+    @staticmethod
+    def _known_collections() -> list[str]:
+        return ["adrs", "rules", "research", "specs", "tasks", "extractions"]
 
     def _rrf_fuse(
         self,

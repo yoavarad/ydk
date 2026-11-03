@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import typer
 from pydantic import BaseModel
+from rich.markup import escape
 
 from ydk.cli._handoff import handle_subagent_handoff
 from ydk.cli._helpers import format_or_echo
@@ -51,7 +52,7 @@ def _get_extractor(cfg: YdkConfig | None = None) -> object:  # type: ignore[retu
     return MemoryExtractor()
 
 
-def _build_contradiction_detector(cfg: YdkConfig) -> tuple[object, object] | None:
+def _build_contradiction_detector(cfg: YdkConfig, *, quiet: bool = False) -> tuple[object, object] | None:
     """Return ``(detector, judge)`` for the contradiction purpose, or None if no provider is usable."""
     from ydk.core.claude_client import ClaudeAPIError
     from ydk.core.contradiction_detector import ContradictionDetector, ProviderContradictionJudge
@@ -60,7 +61,8 @@ def _build_contradiction_detector(cfg: YdkConfig) -> tuple[object, object] | Non
     try:
         provider = get_llm_provider(cfg, purpose="contradiction")
     except ClaudeAPIError as exc:
-        console.print(f"[yellow]Skipping contradiction check:[/yellow] {exc}")
+        if not quiet:
+            console.print(f"[yellow]Skipping contradiction check:[/yellow] {exc}")
         return None
     if provider is None:
         return None
@@ -74,10 +76,25 @@ def index() -> None:
     """Build/rebuild ChromaDB index from project knowledge files."""
     cfg = _load_memory_config()
     engine = _get_engine(cfg)
-    result = engine.index_all(cfg)  # ty: ignore[unresolved-attribute]  # MemoryEngine is optional dep
+    built = _build_contradiction_detector(cfg, quiet=True)
+    if built is None:
+        console.print("[yellow]Skipping contradiction check:[/yellow] no usable LLM provider for 'contradiction'")
+        result = engine.index_all(cfg)  # ty: ignore[unresolved-attribute]  # MemoryEngine is optional dep
+    else:
+        result = engine.index_all(cfg, contradiction_detector=built[0])  # ty: ignore[unresolved-attribute]
     console.print(f"[green]Indexed {result['files']} files[/green]")
     console.print(f"  Chunks created: {result.get('chunks', 0)}")
     console.print(f"  Skipped: {result.get('skipped', 0)}")
+    for warning in result.get("warnings", []):
+        console.print(f"[yellow]Warning:[/yellow] contradiction check: {escape(str(warning))}", highlight=False)
+    if built is not None:
+        with handle_subagent_handoff():
+            built[1].flush()  # ty: ignore[unresolved-attribute]
+    for new_id, c in result.get("contradictions", []):
+        console.print(
+            f"[red]Contradiction:[/red] {escape(new_id)} vs {escape(c.old_memory_id)}: {escape(c.reason)}",
+            highlight=False,
+        )
 
 
 @memory_app.command()

@@ -441,6 +441,25 @@ class TestCommittedChanges:
         _git(feature_repo, "commit", "-q", "-m", "ydk")
         assert committed_changes("main", feature_repo) == []
 
+    def test_retros_only_commit_is_shippable(self, feature_repo: Path) -> None:
+        from ydk.services.git import committed_changes
+
+        (feature_repo / ".ydk" / "retros").mkdir(parents=True)
+        (feature_repo / ".ydk" / "retros" / "615.md").write_text("retro\n")
+        _git(feature_repo, "add", "-f", ".")
+        _git(feature_repo, "commit", "-q", "-m", "retro")
+        assert committed_changes("main", feature_repo) == [".ydk/retros/615.md"]
+
+    def test_mixed_retros_and_bookkeeping_lists_only_retros(self, feature_repo: Path) -> None:
+        from ydk.services.git import committed_changes
+
+        (feature_repo / ".ydk" / "retros").mkdir(parents=True)
+        (feature_repo / ".ydk" / "retros" / "615.md").write_text("retro\n")
+        (feature_repo / ".ydk" / "manifest.yaml").write_text("x: 1\n")
+        _git(feature_repo, "add", "-f", ".")
+        _git(feature_repo, "commit", "-q", "-m", "mixed")
+        assert committed_changes("main", feature_repo) == [".ydk/retros/615.md"]
+
     def test_lists_real_changes(self, feature_repo: Path) -> None:
         from ydk.services.git import committed_changes
 

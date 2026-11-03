@@ -173,3 +173,47 @@ class TestAnthropicRoute:
         assert result["passed"] is False
         assert "malformed answer from model" in result["output"]
         assert result["detail"]["malformed"] is True
+
+
+def _run_with_context(ctx: dict[str, Any]) -> _Answer | dict[str, Any]:
+    return run_plugin_llm(
+        ctx,
+        name="demo",
+        purpose="spec-alignment",
+        system="You review.",
+        cacheable_context="SPEC TEXT",
+        prompt="Is it good?",
+        output_format=_Answer,
+        kind="answer",
+        start=0.0,
+    )
+
+
+class TestCacheableContext:
+    def test_anthropic_route_sends_cacheable_context_as_ephemeral_system_block(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        client = MagicMock()
+        client.messages.parse.return_value = MagicMock(parsed_output=_Answer(verdict="ok"), stop_reason="end_turn")
+
+        with patch("anthropic.Anthropic", return_value=client):
+            result = _run_with_context(_context(tmp_path))
+
+        assert result == _Answer(verdict="ok")
+        kwargs = client.messages.parse.call_args.kwargs
+        assert kwargs["system"] == [
+            {"type": "text", "text": "You review."},
+            {"type": "text", "text": "SPEC TEXT", "cache_control": {"type": "ephemeral"}},
+        ]
+        assert kwargs["messages"] == [{"role": "user", "content": "Is it good?"}]
+
+    def test_subagent_route_folds_everything_into_the_user_prompt(self, tmp_path: Path) -> None:
+        result = _run_with_context(_context(tmp_path, {"provider": "subagent"}, handoff=True))
+
+        assert isinstance(result, dict)
+        [path] = result["detail"]["request_paths"]
+        request = json.loads(Path(path).read_text(encoding="utf-8"))
+        assert request["user"] == "You review.\n\nSPEC TEXT\n\nIs it good?"
+        assert request["system"] == ""
+        assert request["cacheable_context"] is None

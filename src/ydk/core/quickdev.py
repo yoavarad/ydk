@@ -6,7 +6,7 @@ import hashlib
 import subprocess
 from typing import TYPE_CHECKING
 
-from ydk.core.active_task import QUICK_BRANCH_TYPES, update_active_tasks
+from ydk.core.active_task import QUICK_BRANCH_TYPES, ActiveTasks, update_active_tasks
 from ydk.core.config import load_config
 from ydk.core.git_worktree import WorktreeManager
 from ydk.models.pm import TaskCreate
@@ -44,13 +44,42 @@ def _slugify(text: str, max_len: int = 40) -> str:
     return slug.strip("-")[:max_len]
 
 
-def _write_active_task(project_root: Path, task_id: str, base_branch: str) -> None:
+def _write_active_task(project_root: Path, task_id: str, base_branch: str) -> dict[str, str] | None:
     """Record *task_id* in active-task.json so PR creation can find it.
 
     Merges into the existing per-task map rather than clobbering it, matching
-    the format used by ``TaskLifecycle.start``.
+    the format used by ``TaskLifecycle.start``. Returns any entry it replaced.
     """
-    update_active_tasks(project_root, lambda tasks: {**tasks, task_id: {"base_branch": base_branch}})
+    prior: list[dict[str, str] | None] = []
+
+    def mutate(tasks: ActiveTasks) -> ActiveTasks:
+        prior.append(tasks.get(task_id))
+        return {**tasks, task_id: {"base_branch": base_branch}}
+
+    update_active_tasks(project_root, mutate)
+    return prior[0] if prior else None
+
+
+def _rollback(
+    project_root: Path,
+    task_id: str,
+    prior_entry: dict[str, str] | None,
+    task_file: Path | None,
+    prior_bytes: bytes | None,
+) -> None:
+    """Undo task state written before a failed worktree creation."""
+
+    def restore(tasks: ActiveTasks) -> ActiveTasks:
+        rest = {k: v for k, v in tasks.items() if k != task_id}
+        return {**rest, task_id: prior_entry} if prior_entry is not None else rest
+
+    update_active_tasks(project_root, restore)
+    if task_file is None:
+        return
+    if prior_bytes is None:
+        task_file.unlink(missing_ok=True)
+    else:
+        task_file.write_bytes(prior_bytes)
 
 
 def _find_relevant_components(project_root: Path, description: str) -> list[str]:
@@ -86,6 +115,8 @@ class QuickDevSetup:
         resolve_start_point(project_root, base_branch)
         config = load_config(project_root / ".ydk" / "config.yaml")
         remote = config.project.remote or "local"
+        task_file: Path | None = None
+        prior_task_bytes: bytes | None = None
 
         if remote == "local":
             task_id = _generate_task_id(description)
@@ -95,6 +126,7 @@ class QuickDevSetup:
             tasks_dir.mkdir(parents=True, exist_ok=True)
 
             task_file = tasks_dir / f"{task_id}.md"
+            prior_task_bytes = task_file.read_bytes() if task_file.exists() else None
             task_file.write_text(
                 render_frontmatter(
                     {
@@ -120,14 +152,18 @@ class QuickDevSetup:
             detail = repo.create_task(TaskCreate(title=description, labels=["in-progress"]))
             task_id = str(detail.number)
 
-        _write_active_task(project_root, task_id, base_branch or default_branch(project_root))
+        prior_entry = _write_active_task(project_root, task_id, base_branch or default_branch(project_root))
 
         branch = f"{branch_type}/{task_id.lower()}-{_slugify(description)}"
 
         # Isolated worktree forked from the base; never touches the main checkout.
         try:
             worktree_path = WorktreeManager(project_root).create(task_id, base_branch=base_branch, branch_name=branch)
+        except RuntimeError:
+            _rollback(project_root, task_id, prior_entry, task_file, prior_task_bytes)
+            raise
         except subprocess.CalledProcessError as exc:
+            _rollback(project_root, task_id, prior_entry, task_file, prior_task_bytes)
             detail = (exc.stderr or b"").decode("utf-8", errors="replace").strip()
             msg = f"Failed to create worktree/branch {branch}: {detail}"
             raise RuntimeError(msg) from exc

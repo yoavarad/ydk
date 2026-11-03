@@ -206,15 +206,16 @@ def run_check(context: dict) -> dict:
         # Fallback: read full files if diff is empty (new files)
         git_diff = _read_files(project_root, changed_files)
 
-    sections = [SYSTEM_PROMPT]
+    system = SYSTEM_PROMPT
     checklist = _stack_checklist(config.get("language"))
     if checklist:
-        sections.append(checklist)
+        system += "\n\n" + checklist
+    spec_block = None
     if spec_refs:
         spec_content = _read_files(project_root, spec_refs)
         if spec_content:
-            sections.append("=== SPEC CONTENT (reference for compliance review) ===\n\n" + spec_content)
-    sections.append(
+            spec_block = "=== SPEC CONTENT (reference for compliance review) ===\n\n" + spec_content
+    prompt = (
         "Review the following git diff for spec compliance and code quality:\n\n=== GIT DIFF ===\n\n"
         + git_diff
         + _format_task_scope(context.get("task_scope"))
@@ -224,7 +225,9 @@ def run_check(context: dict) -> dict:
         context,
         name="ai-code-review",
         purpose=PURPOSE,
-        prompt="\n\n".join(sections),
+        system=system,
+        cacheable_context=spec_block,
+        prompt=prompt,
         output_format=ReviewResult,
         kind="review",
         start=start,
