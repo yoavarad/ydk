@@ -62,13 +62,17 @@ class WorktreeManager:
             capture_output=True,
             check=True,
         )
-        # Create worktree
-        subprocess.run(
-            ["git", "worktree", "add", str(worktree_path), branch],
-            cwd=str(self._root),
-            capture_output=True,
-            check=True,
-        )
+        # Create worktree; on failure drop the branch this call just created
+        try:
+            subprocess.run(
+                ["git", "worktree", "add", str(worktree_path), branch],
+                cwd=str(self._root),
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            subprocess.run(["git", "branch", "-D", branch], cwd=str(self._root), capture_output=True)
+            raise
         return worktree_path
 
     def cleanup(self, task_id: str) -> None:
