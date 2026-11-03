@@ -926,7 +926,7 @@ class TaskLifecycle:
         base = diff_base(self._root, cwd) or default_branch(self._root)
         shipped = committed_changes(base, cwd)
         if shipped is not None and not shipped:
-            raise RuntimeError(f"Nothing to ship for task {task_id}: no non-.ydk changes vs {base}. Commit your work.")
+            raise RuntimeError(f"Nothing to ship for task {task_id}: no shippable changes vs {base}. Commit your work.")
 
         # Push the branch
         push_result = subprocess.run(
