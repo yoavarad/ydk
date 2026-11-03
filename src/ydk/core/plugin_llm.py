@@ -51,6 +51,8 @@ def run_plugin_llm[ModelT: BaseModel](
     kind: str,
     start: float,
     max_tokens: int = 8192,
+    system: str = "",
+    cacheable_context: str | None = None,
 ) -> ModelT | dict[str, Any]:
     """Return the provider's ``output_format`` answer, or the plugin result to emit instead.
 
@@ -58,6 +60,10 @@ def run_plugin_llm[ModelT: BaseModel](
     a ``NEEDS_LLM`` failure carrying ``request_paths`` (subagent provider inside task
     done, response not written yet), or an uncached failure for credential, provider,
     API and schema errors. *kind* names the output in the malformed-output message.
+
+    On the anthropic route *system* and *cacheable_context* go out as system blocks,
+    the latter marked ``cache_control: ephemeral``. Other routes get them folded into
+    one user prompt (``system``, ``cacheable_context``, ``prompt`` joined by blank lines).
     """
     from ydk.core.claude_client import ClaudeAPIError, MissingCredentialsError
     from ydk.core.llm_provider import ClaudeCliError, SubagentHandoff, SubagentResponseError, get_llm_provider
@@ -85,7 +91,10 @@ def run_plugin_llm[ModelT: BaseModel](
         return result(False, f"ERROR: could not build ai.provider {provider_name!r} for {purpose}", error=True)
 
     try:
-        return provider.invoke_structured(prompt, output_format)
+        if provider_name == "anthropic":
+            return provider.invoke_structured(prompt, output_format, system=system, cacheable_context=cacheable_context)
+        folded = "\n\n".join(part for part in (system, cacheable_context, prompt) if part)
+        return provider.invoke_structured(folded, output_format)
     except SubagentHandoff as handoff:
         paths = [str(p) for p in handoff.request_paths]
         listed = "\n".join(f"  {p}" for p in paths)

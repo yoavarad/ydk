@@ -211,10 +211,8 @@ def run_check(context: dict) -> dict:
         # Fallback: read full files if diff is empty (new files)
         git_diff = _read_files(project_root, changed_files)
 
-    sections = [SYSTEM_PROMPT]
-    if spec_content:
-        sections.append("=== SPEC CONTENT (reference) ===\n\n" + spec_content)
-    sections.append(
+    spec_block = "=== SPEC CONTENT (reference) ===\n\n" + spec_content if spec_content else None
+    prompt = (
         "Evaluate the following code changes (git diff) for spec alignment:\n\n=== GIT DIFF ===\n\n"
         + git_diff
         + _format_task_scope(context.get("task_scope"))
@@ -224,7 +222,9 @@ def run_check(context: dict) -> dict:
         context,
         name="spec-alignment",
         purpose=PURPOSE,
-        prompt="\n\n".join(sections),
+        system=SYSTEM_PROMPT,
+        cacheable_context=spec_block,
+        prompt=prompt,
         output_format=SpecEvaluation,
         kind="evaluation",
         start=start,
