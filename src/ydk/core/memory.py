@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from chromadb import Collection
 
     from ydk.core.bm25_index import BM25Index
+    from ydk.core.contradiction_detector import ContradictionDetector
 
 logger = logging.getLogger("ydk.memory")
 
@@ -196,7 +197,7 @@ class MemoryEngine:
         )
         return {"indexed": indexed, "skipped": skipped, "total_chunks": total_chunks}
 
-    def index_all(self, config=None, contradiction_detector: object | None = None) -> dict:  # noqa: ANN001
+    def index_all(self, config=None, contradiction_detector: ContradictionDetector | None = None) -> dict:  # noqa: ANN001
         """Index all configured locations.
 
         ``config`` can be an YdkConfig object, a dict, or None (uses defaults).
@@ -253,27 +254,27 @@ class MemoryEngine:
 
     _KNOWLEDGE_COLLECTIONS: ClassVar[tuple[str, ...]] = ("specs", "adrs", "research", "rules")
 
-    def find_knowledge_contradictions(self, detector: object) -> tuple[list, list[str]]:
+    def find_knowledge_contradictions(self, detector: ContradictionDetector) -> tuple[list, list[str]]:
         """Judge indexed knowledge chunks against chunks from other files (no writes).
 
-        Returns ``(contradictions, warnings)``; ChromaDB errors become warnings.
+        Returns ``(contradictions, warnings)``; ChromaDB and judge errors become warnings.
         """
-        from ydk.core.contradiction_detector import ContradictionDetector
         from ydk.models.memory import ExtractedMemoryModel
 
-        if not isinstance(detector, ContradictionDetector):
-            return [], []
         entries: list[dict] = []
         warnings: list[str] = []
         for name in self._KNOWLEDGE_COLLECTIONS:
             try:
-                result = self._get_collection(name).get()
+                result = self._get_collection(name).get() or {}
             except Exception as exc:
                 warnings.append(f"{name}: {exc}")
                 continue
-            for i, doc_id in enumerate(result.get("ids") or []):
-                meta = (result.get("metadatas") or [{}] * (i + 1))[i] or {}
-                doc = (result.get("documents") or [""] * (i + 1))[i]
+            ids = result.get("ids") or []
+            metas = result.get("metadatas") or []
+            docs = result.get("documents") or []
+            for i, doc_id in enumerate(ids):
+                meta = (metas[i] if i < len(metas) else None) or {}
+                doc = (docs[i] if i < len(docs) else None) or ""
                 entries.append(
                     {"id": doc_id, "content": doc, "source": meta.get("source_file", doc_id), "concepts": []}
                 )
@@ -281,7 +282,11 @@ class MemoryEngine:
         for i, entry in enumerate(entries):
             prior = [e for e in entries[:i] if e["source"] != entry["source"]]
             new_mem = ExtractedMemoryModel(memory_type="discovery", content=entry["content"], concepts=[])
-            found.extend((entry["id"], c) for c in detector.check(new_mem, prior))
+            try:
+                found.extend((entry["id"], c) for c in detector.check(new_mem, prior))
+            except Exception as exc:
+                warnings.append(f"judge failed at {entry['id']}, check aborted: {exc}")
+                break
         return found, warnings
 
     # ------------------------------------------------------------------

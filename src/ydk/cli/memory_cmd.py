@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import typer
 from pydantic import BaseModel
+from rich.markup import escape
 
 from ydk.cli._handoff import handle_subagent_handoff
 from ydk.cli._helpers import format_or_echo
@@ -80,16 +81,20 @@ def index() -> None:
         console.print("[yellow]Skipping contradiction check:[/yellow] no usable LLM provider for 'contradiction'")
         result = engine.index_all(cfg)  # ty: ignore[unresolved-attribute]  # MemoryEngine is optional dep
     else:
-        with handle_subagent_handoff():
-            result = engine.index_all(cfg, contradiction_detector=built[0])  # ty: ignore[unresolved-attribute]
-            built[1].flush()  # ty: ignore[unresolved-attribute]
+        result = engine.index_all(cfg, contradiction_detector=built[0])  # ty: ignore[unresolved-attribute]
     console.print(f"[green]Indexed {result['files']} files[/green]")
     console.print(f"  Chunks created: {result.get('chunks', 0)}")
     console.print(f"  Skipped: {result.get('skipped', 0)}")
     for warning in result.get("warnings", []):
-        console.print(f"[yellow]Warning:[/yellow] contradiction check: {warning}", markup=True, highlight=False)
+        console.print(f"[yellow]Warning:[/yellow] contradiction check: {escape(str(warning))}", highlight=False)
+    if built is not None:
+        with handle_subagent_handoff():
+            built[1].flush()  # ty: ignore[unresolved-attribute]
     for new_id, c in result.get("contradictions", []):
-        console.print(f"[red]Contradiction:[/red] {new_id} vs {c.old_memory_id}: {c.reason}", highlight=False)
+        console.print(
+            f"[red]Contradiction:[/red] {escape(new_id)} vs {escape(c.old_memory_id)}: {escape(c.reason)}",
+            highlight=False,
+        )
 
 
 @memory_app.command()
