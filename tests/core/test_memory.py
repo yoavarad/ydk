@@ -494,3 +494,93 @@ class TestRecordAccess:
         meta = call_kwargs.kwargs["metadatas"][0] if call_kwargs.kwargs else call_kwargs[1]["metadatas"][0]
         assert meta["access_count"] == 4
         assert "last_accessed" in meta
+
+
+# ---------------------------------------------------------------------------
+# Knowledge-file contradiction detection (ChromaDB boundary mocked)
+# ---------------------------------------------------------------------------
+
+
+class _FlagAllJudge:
+    def judge_contradiction(self, new_text: str, old_text: str) -> str | None:
+        return "conflict"
+
+
+def _knowledge_engine(per_collection: dict[str, dict]) -> MemoryEngine:
+    engine = MemoryEngine(chroma_path=Path("/tmp/unused"))
+
+    def _coll(name: str) -> MagicMock:
+        mc = MagicMock()
+        mc.get.return_value = per_collection.get(name, {"ids": [], "documents": [], "metadatas": []})
+        return mc
+
+    engine._get_collection = _coll  # type: ignore[assignment]
+    return engine
+
+
+class TestKnowledgeContradictions:
+    def test_flags_contradiction_between_two_files(self) -> None:
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        engine = _knowledge_engine(
+            {
+                "specs": {
+                    "ids": ["a.md#0"],
+                    "documents": ["use postgres database for storage"],
+                    "metadatas": [{"source_file": "a.md"}],
+                },
+                "adrs": {
+                    "ids": ["b.md#0"],
+                    "documents": ["use postgres database for storage always"],
+                    "metadatas": [{"source_file": "b.md"}],
+                },
+            }
+        )
+        det = ContradictionDetector(similarity_threshold=0.5, llm=_FlagAllJudge())
+        found, warnings = engine.find_knowledge_contradictions(det)
+        assert warnings == []
+        assert [(new, c.old_memory_id) for new, c in found] == [("b.md#0", "a.md#0")]
+
+    def test_same_file_chunks_not_compared(self) -> None:
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        engine = _knowledge_engine(
+            {
+                "specs": {
+                    "ids": ["a.md#0", "a.md#1"],
+                    "documents": ["use postgres database", "use postgres database"],
+                    "metadatas": [{"source_file": "a.md"}, {"source_file": "a.md"}],
+                }
+            }
+        )
+        det = ContradictionDetector(similarity_threshold=0.5, llm=_FlagAllJudge())
+        assert engine.find_knowledge_contradictions(det) == ([], [])
+
+    def test_chroma_error_becomes_warning(self) -> None:
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        engine = MemoryEngine(chroma_path=Path("/tmp/unused"))
+        mc = MagicMock()
+        mc.get.side_effect = RuntimeError("chroma down")
+        engine._get_collection = MagicMock(return_value=mc)  # type: ignore[assignment]
+        det = ContradictionDetector(similarity_threshold=0.5, llm=_FlagAllJudge())
+        found, warnings = engine.find_knowledge_contradictions(det)
+        assert found == []
+        assert any("chroma down" in w for w in warnings)
+
+    def test_index_all_runs_detector_and_returns_results(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ydk.core.contradiction_detector import ContradictionDetector
+
+        monkeypatch.chdir(tmp_path)
+        engine = _knowledge_engine({})
+        det = ContradictionDetector(similarity_threshold=0.5, llm=_FlagAllJudge())
+        result = engine.index_all({}, contradiction_detector=det)
+        assert result["contradictions"] == []
+        assert result["warnings"] == []
+
+    def test_index_all_without_detector_has_no_contradiction_keys(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = _knowledge_engine({}).index_all({})
+        assert "contradictions" not in result

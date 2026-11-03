@@ -689,3 +689,70 @@ def test_memory_extract_two_phase_contradiction_handoff(
     assert kwargs["concepts"] == ["db"]
     assert isinstance(kwargs["contradiction_detector"], ContradictionDetector)
     assert kwargs["contradictions"] == []
+
+
+# ---------------------------------------------------------------------------
+# memory index: contradiction detection
+# ---------------------------------------------------------------------------
+
+
+@patch("ydk.cli.memory_cmd._build_contradiction_detector")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
+def test_memory_index_flags_contradiction(
+    mock_config: MagicMock, mock_get_engine: MagicMock, mock_build: MagicMock
+) -> None:
+    from ydk.core.contradiction_detector import Contradiction
+
+    detector, judge = MagicMock(), MagicMock()
+    mock_build.return_value = (detector, judge)
+    engine = _mock_engine()
+    engine.index_all.return_value = {
+        "files": 2,
+        "chunks": 2,
+        "skipped": 0,
+        "contradictions": [("b.md#0", Contradiction(old_memory_id="a.md#0", old_content="x", reason="conflict"))],
+        "warnings": [],
+    }
+    mock_get_engine.return_value = engine
+    result = runner.invoke(app, ["memory", "index"])
+    assert result.exit_code == 0, result.output
+    assert "b.md#0" in result.output
+    assert "a.md#0" in result.output
+    assert engine.index_all.call_args.kwargs["contradiction_detector"] is detector
+    judge.flush.assert_called_once()
+
+
+@patch("ydk.cli.memory_cmd._build_contradiction_detector")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
+def test_memory_index_no_provider_warns_once_and_completes(
+    mock_config: MagicMock, mock_get_engine: MagicMock, mock_build: MagicMock
+) -> None:
+    mock_build.return_value = None
+    mock_get_engine.return_value = _mock_engine()
+    result = runner.invoke(app, ["memory", "index"])
+    assert result.exit_code == 0, result.output
+    assert "Indexed 12 files" in result.output
+    assert result.output.count("Skipping contradiction check") == 1
+
+
+@patch("ydk.cli.memory_cmd._build_contradiction_detector")
+@patch("ydk.cli.memory_cmd._get_engine")
+@patch("ydk.cli.memory_cmd._load_memory_config")
+def test_memory_index_surfaces_chroma_warning(
+    mock_config: MagicMock, mock_get_engine: MagicMock, mock_build: MagicMock
+) -> None:
+    mock_build.return_value = (MagicMock(), MagicMock())
+    engine = _mock_engine()
+    engine.index_all.return_value = {
+        "files": 1,
+        "chunks": 1,
+        "skipped": 0,
+        "contradictions": [],
+        "warnings": ["specs: chroma down"],
+    }
+    mock_get_engine.return_value = engine
+    result = runner.invoke(app, ["memory", "index"])
+    assert result.exit_code == 0, result.output
+    assert "chroma down" in result.output
