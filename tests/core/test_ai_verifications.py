@@ -535,7 +535,9 @@ class TestStackChecklist:
             result = mod.run_check(ctx)
 
         assert result["passed"] is True
-        return mock_client.messages.parse.call_args.kwargs["messages"][0]["content"]
+        kwargs = mock_client.messages.parse.call_args.kwargs
+        system_text = "\n\n".join(block["text"] for block in kwargs.get("system", []))
+        return system_text + "\n\n" + kwargs["messages"][0]["content"]
 
     def test_dotnet_project_gets_dotnet_checklist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         text = self._system_text(tmp_path, monkeypatch, "dotnet")
@@ -710,3 +712,62 @@ class TestSubagentMode:
 
         response.write_text(json.dumps(bad), encoding="utf-8")
         assert mod.run_check(ctx)["passed"] is False
+
+
+# ---------------------------------------------------------------------------
+# Spec text as cacheable context (task 684)
+# ---------------------------------------------------------------------------
+
+_SPEC_TEXT = "# Greeting API\nMust accept name."
+
+
+@pytest.mark.parametrize(
+    ("path", "module_name", "good"),
+    [
+        (SPEC_ALIGNMENT_PATH, "spec_alignment_cache", _PASSING_EVALUATION),
+        (AI_CODE_REVIEW_PATH, "ai_code_review_cache", _CLEAN_REVIEW),
+    ],
+)
+class TestSpecAsCacheableContext:
+    def _setup(self, tmp_path: Path, path: Path, module_name: str) -> tuple[types.ModuleType, dict[str, Any]]:
+        mod = _load_check_module(path, module_name)
+        _write_file(tmp_path, "src/main.py", "x = 1")
+        _write_file(tmp_path, "docs/spec.md", _SPEC_TEXT)
+        return mod, _make_context(tmp_path, changed_files=["src/main.py"], spec_refs=["docs/spec.md"])
+
+    def test_anthropic_route_sends_spec_as_ephemeral_system_block(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: Path, module_name: str, good: dict[str, Any]
+    ) -> None:
+        mod, ctx = self._setup(tmp_path, path, module_name)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        mock_client = MagicMock()
+        _answer_with(mock_client, good)
+
+        with patch("anthropic.Anthropic", return_value=mock_client):
+            assert mod.run_check(ctx)["passed"] is True
+
+        kwargs = mock_client.messages.parse.call_args.kwargs
+        system, cached = kwargs["system"]
+        assert system == {"type": "text", "text": mod.SYSTEM_PROMPT}
+        assert cached["cache_control"] == {"type": "ephemeral"}
+        assert _SPEC_TEXT in cached["text"]
+        user = kwargs["messages"][0]["content"]
+        assert _SPEC_TEXT not in user
+        assert "=== GIT DIFF ===" in user
+
+    def test_subagent_route_keeps_single_user_prompt(
+        self, tmp_path: Path, path: Path, module_name: str, good: dict[str, Any]
+    ) -> None:
+        mod, ctx = self._setup(tmp_path, path, module_name)
+        ctx["config"]["ai"]["provider"] = "subagent"
+        ctx["llm_handoff"] = True
+
+        result = mod.run_check(ctx)
+
+        [request_path] = result["detail"]["request_paths"]
+        request = json.loads(Path(request_path).read_text(encoding="utf-8"))
+        assert request["system"] == ""
+        assert request["cacheable_context"] is None
+        user = request["user"]
+        assert user.startswith(mod.SYSTEM_PROMPT + "\n\n")
+        assert user.index(mod.SYSTEM_PROMPT) < user.index(_SPEC_TEXT) < user.index("=== GIT DIFF ===")
