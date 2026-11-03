@@ -291,3 +291,45 @@ class TestQuickDevWorktree:
         QuickDevSetup().setup("fix: thing", tmp_path)
         with pytest.raises(RuntimeError, match="worktree"):
             QuickDevSetup().setup("fix: thing", tmp_path)
+
+
+class TestQuickDevRollback:
+    """A failed worktree creation leaves no orphan task state or branch behind."""
+
+    def _block_worktree(self, root: Path, description: str) -> Path:
+        blocker = root / ".ydk" / "worktrees" / _generate_task_id(description)
+        blocker.mkdir(parents=True)
+        (blocker / "keep.txt").write_text("x", encoding="utf-8")
+        return blocker
+
+    def test_failed_worktree_add_rolls_back_state_and_branch(self, tmp_path: Path) -> None:
+        _git_repo_with_origin_head(tmp_path, "trunk")
+        desc = "fix: rollback me"
+        task_id = _generate_task_id(desc)
+        blocker = self._block_worktree(tmp_path, desc)
+
+        with pytest.raises(RuntimeError, match="worktree"):
+            QuickDevSetup().setup(desc, tmp_path)
+
+        active = tmp_path / ".ydk" / "active-task.json"
+        if active.exists():
+            assert task_id not in json.loads(active.read_text(encoding="utf-8"))["tasks"]
+        assert not (tmp_path / ".ydk" / "tasks" / f"{task_id}.md").exists()
+        assert _git(tmp_path, "branch", "--list", "fix/*") == ""
+
+        # Retry succeeds once the blocker is gone.
+        (blocker / "keep.txt").unlink()
+        blocker.rmdir()
+        ctx = QuickDevSetup().setup(desc, tmp_path)
+        assert ctx.task_id == task_id
+
+    def test_preexisting_branch_not_deleted_and_prior_state_kept(self, tmp_path: Path) -> None:
+        _git_repo_with_origin_head(tmp_path, "trunk")
+        first = QuickDevSetup().setup("fix: thing", tmp_path)
+        with pytest.raises(RuntimeError, match="worktree"):
+            QuickDevSetup().setup("fix: thing", tmp_path)
+
+        assert _git(tmp_path, "branch", "--list", first.branch).strip() != ""
+        data = json.loads((tmp_path / ".ydk" / "active-task.json").read_text(encoding="utf-8"))
+        assert first.task_id in data["tasks"]
+        assert (tmp_path / ".ydk" / "tasks" / f"{first.task_id}.md").exists()
