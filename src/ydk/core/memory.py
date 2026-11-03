@@ -14,6 +14,7 @@ from ydk.models.memory import MemoryScore
 
 if TYPE_CHECKING:
     from chromadb import Collection
+    from chromadb.api.types import QueryResult
 
     from ydk.core.bm25_index import BM25Index
     from ydk.core.contradiction_detector import ContradictionDetector
@@ -300,14 +301,14 @@ class MemoryEngine:
             collections = [self._get_collection(collection_name)]
         else:
             self._get_client()  # ensure client is initialized
-            for name in ["adrs", "rules", "research", "specs", "tasks", "extractions"]:
+            for name in self._known_collections():
                 with contextlib.suppress(Exception):
                     collections.append(self._get_collection(name))
 
         all_results: list[dict] = []
         for col in collections:
             try:
-                results = col.query(query_texts=[query], n_results=min(n_results, 5))
+                results = self._query_with_retry(col, query, min(n_results, 5))
                 if results and results["documents"]:
                     for i, doc in enumerate(results["documents"][0]):
                         meta = results["metadatas"][0][i] if results["metadatas"] else {}
@@ -322,10 +323,28 @@ class MemoryEngine:
                             }
                         )
             except Exception:
-                pass
+                logger.warning("Vector query failed for collection %r", col.name, exc_info=True)
 
         all_results.sort(key=lambda x: x["score"], reverse=True)
         return all_results
+
+    @staticmethod
+    def _query_with_retry(col: Collection, query: str, n_results: int, attempts: int = 5) -> QueryResult:
+        """Query a collection, retrying ChromaDB's transient hnsw reader race.
+
+        Right after a write, ChromaDB can raise "Error creating hnsw segment
+        reader: Nothing found on disk" until its segment is readable. Without
+        a retry the collection is silently dropped from the results (#686).
+        """
+        for attempt in range(attempts):
+            try:
+                return col.query(query_texts=[query], n_results=n_results)
+            except Exception as exc:
+                if "hnsw segment reader" not in str(exc) or attempt == attempts - 1:
+                    raise
+                time.sleep(0.1 * (attempt + 1))
+        msg = "unreachable"
+        raise RuntimeError(msg)
 
     def _bm25_search(self, query: str, n_results: int = 10) -> tuple[list[tuple[str, float]], dict[str, dict]]:
         """Run BM25 keyword search. Returns (ranked_results, snippets_map).
@@ -349,7 +368,42 @@ class MemoryEngine:
                 "section": section,
                 "collection": "",
             }
+        self._enrich_bm25_snippets(snippets)
         return results, snippets
+
+    def _enrich_bm25_snippets(self, snippets: dict[str, dict]) -> None:
+        """Fill collection/section/snippet for BM25 hits from ChromaDB metadata.
+
+        BM25 stores only doc ids, so without this a keyword hit has an empty
+        ``collection`` and a chunk-index ``section`` that never matches the
+        vector hit for the same chunk (duplicates in RRF fusion).
+        """
+        pending = set(snippets)
+        if not pending:
+            return
+        self._get_client()
+        for name in self._known_collections():
+            if not pending:
+                break
+            try:
+                found = self._get_collection(name).get(ids=sorted(pending))
+            except Exception:
+                logger.debug("BM25 enrichment skipped for collection %r", name, exc_info=True)
+                continue
+            for i, doc_id in enumerate(found["ids"]):
+                meta = (found["metadatas"] or [{}] * len(found["ids"]))[i] or {}
+                snippets[doc_id].update(
+                    {
+                        "snippet": (found["documents"] or [""] * len(found["ids"]))[i] or "",
+                        "section": meta.get("section", snippets[doc_id]["section"]),
+                        "collection": meta.get("collection", name),
+                    }
+                )
+                pending.discard(doc_id)
+
+    @staticmethod
+    def _known_collections() -> list[str]:
+        return ["adrs", "rules", "research", "specs", "tasks", "extractions"]
 
     def _rrf_fuse(
         self,
