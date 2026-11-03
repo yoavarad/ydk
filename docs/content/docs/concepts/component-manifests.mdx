@@ -93,6 +93,8 @@ ydk component scan [PATH]
 
 Without `PATH` it scans every narrative under `project.spec_location`; `PATH` may be one file or a directory. Each unlinked mention is listed with its file, line, confidence, and a suggested component id. `ydk spec verify` also runs the scanner once per narrative, alongside the reviewer agents, on the `layer-b-scan` LLM route. It produces suggestions with confidence levels, not hard errors. It is a second pair of eyes that catches things you might have overlooked, but the final decision on whether to create a component is always yours.
 
+The scan only looks at `*.md` files. If `PATH` has none, it prints a warning, scans nothing and exits 0. It also finds nothing when the project has no component schemas yet; run `ydk component init-schemas` first. An LLM or subagent-response error is printed and exits 1.
+
 <Callout type="warn">
 Layer A is deterministic and always runs. Layer B calls the configured LLM provider (`ai.provider`) and produces suggestions rather than hard errors. Always run Layer A first -- fix the deterministic issues before spending LLM tokens on the scanner.
 </Callout>
