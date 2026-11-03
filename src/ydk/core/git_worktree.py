@@ -21,6 +21,7 @@ class WorktreeManager:
         description: str = "",
         base_branch: str | None = None,
         branch_name: str | None = None,
+        start_point: str | None = None,
     ) -> Path:
         """Create a worktree + branch for a task.
 
@@ -32,6 +33,9 @@ class WorktreeManager:
         Otherwise it defaults to the repo default branch (never HEAD).
 
         *branch_name* overrides the default ``task/...`` branch name.
+
+        *start_point*, when given, is used as-is (already resolved by the caller)
+        and *base_branch* is not resolved again.
 
         Raises RuntimeError if called from inside an existing worktree.
         """
@@ -53,7 +57,7 @@ class WorktreeManager:
         worktree_path = self._root / ".ydk" / "worktrees" / task_id
         worktree_path.parent.mkdir(parents=True, exist_ok=True)
 
-        base = resolve_start_point(self._root, base_branch)
+        base = start_point or resolve_start_point(self._root, base_branch)
 
         # Create branch from the resolved start point (origin/<base> preferred)
         subprocess.run(

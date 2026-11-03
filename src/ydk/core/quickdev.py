@@ -13,7 +13,7 @@ from ydk.models.pm import TaskCreate
 from ydk.models.quickdev import QuickDevContext
 from ydk.repositories.factory import get_task_repository
 from ydk.repositories.local.frontmatter import render_frontmatter
-from ydk.services.git import default_branch, resolve_start_point
+from ydk.services.git import default_branch, resolve_start_sha
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -115,7 +115,7 @@ class QuickDevSetup:
         """
         branch_type = _branch_type(description)
         # Fail fast (before any task is created) if the base cannot be resolved.
-        resolve_start_point(project_root, base_branch)
+        start_sha = resolve_start_sha(project_root, base_branch)
         config = load_config(project_root / ".ydk" / "config.yaml")
         remote = config.project.remote or "local"
         task_file: Path | None = None
@@ -161,7 +161,9 @@ class QuickDevSetup:
 
         # Isolated worktree forked from the base; never touches the main checkout.
         try:
-            worktree_path = WorktreeManager(project_root).create(task_id, base_branch=base_branch, branch_name=branch)
+            worktree_path = WorktreeManager(project_root).create(
+                task_id, base_branch=base_branch, branch_name=branch, start_point=start_sha
+            )
         except RuntimeError:
             _rollback(project_root, task_id, prior_entry, task_file, prior_task_bytes)
             raise

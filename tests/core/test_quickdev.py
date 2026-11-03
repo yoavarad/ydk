@@ -293,6 +293,38 @@ class TestQuickDevWorktree:
             QuickDevSetup().setup("fix: thing", tmp_path)
 
 
+class TestQuickDevSingleResolve:
+    """setup() resolves the start point once and forks the worktree from that exact SHA."""
+
+    def _repo_with_bare_origin(self, tmp_path: Path) -> tuple[Path, Path]:
+        origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "commit", "-q", "--allow-empty", "-m", "init")
+        _git(repo, "remote", "add", "origin", str(origin))
+        _git(repo, "push", "-q", "origin", "main")
+        return repo, origin
+
+    def test_fetch_runs_once_and_worktree_matches_resolved_sha(self, tmp_path: Path) -> None:
+        repo, _ = self._repo_with_bare_origin(tmp_path)
+        real_run = subprocess.run
+        fetches: list[list[str]] = []
+
+        def spy(cmd: list[str], *args: object, **kwargs: object) -> object:
+            if cmd[:2] == ["git", "fetch"]:
+                fetches.append(cmd)
+            return real_run(cmd, *args, **kwargs)  # type: ignore[call-overload]
+
+        with patch("subprocess.run", side_effect=spy):
+            ctx = QuickDevSetup().setup("fix: thing", repo, base_branch="main")
+
+        assert len(fetches) == 1
+        wt = repo / ".ydk" / "worktrees" / ctx.task_id
+        assert _git(wt, "rev-parse", "HEAD") == _git(repo, "rev-parse", "origin/main")
+
+
 class TestQuickDevRollback:
     """A failed worktree creation leaves no orphan task state or branch behind."""
 
