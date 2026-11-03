@@ -71,6 +71,17 @@ def resolve_start_point(repo_root: str | Path, base_branch: str | None = None) -
     raise ValueError(msg)
 
 
+def resolve_start_sha(repo_root: str | Path, base_branch: str | None = None) -> str:
+    """Like :func:`resolve_start_point` but pinned to the commit SHA it resolves to."""
+    root = Path(repo_root)
+    ref = resolve_start_point(root, base_branch)
+    sha = _run_text(["git", "rev-parse", "--verify", f"{ref}^{{commit}}"], root, 10)
+    if not sha:
+        msg = f"Could not resolve '{ref}' to a commit"
+        raise ValueError(msg)
+    return sha
+
+
 def merge_base(base: str, cwd: str | Path | None = None) -> str | None:
     """Merge-base SHA of *base* and HEAD, preferring ``origin/<base>`` over local ``<base>``.
 
