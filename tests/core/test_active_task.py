@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ydk.core.active_task import (
+    _branch_belongs_to,
     _break_if_stale,
     _create_exclusive,
     diff_base,
@@ -409,3 +410,23 @@ class TestDiffBaseQuickBranch:
             '{"tasks": {"QD-abc123": {"base_branch": "release"}}}', encoding="utf-8"
         )
         assert diff_base(tmp_path) == _gitc(tmp_path, "rev-parse", "release")
+
+
+@pytest.mark.parametrize(
+    ("branch", "task_id", "expected"),
+    [
+        ("task/T-001", "T-001", True),
+        ("task/T-001-slug", "T-001", True),
+        ("task/T-0011", "T-001", False),
+        ("feat/qd-abc123-add-thing", "QD-abc123", True),
+        ("fix/qd-abc123", "QD-abc123", True),
+        ("chore/qd-abc123-x", "QD-abc123", True),
+        ("release/qd-abc123-x", "QD-abc123", True),
+        ("release/t-001", "T-001", False),
+        ("user/abc123", "abc123", False),
+        ("feat/t-001", "T-001", False),
+        ("main", "T-001", False),
+    ],
+)
+def test_branch_belongs_to_table(branch: str, task_id: str, expected: bool) -> None:
+    assert _branch_belongs_to(branch, task_id) is expected
