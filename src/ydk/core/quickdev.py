@@ -6,7 +6,7 @@ import hashlib
 import subprocess
 from typing import TYPE_CHECKING
 
-from ydk.core.active_task import ActiveTasks, update_active_tasks
+from ydk.core.active_task import QUICK_BRANCH_TYPES, ActiveTasks, update_active_tasks
 from ydk.core.config import load_config
 from ydk.core.git_worktree import WorktreeManager
 from ydk.models.pm import TaskCreate
@@ -25,14 +25,11 @@ def _generate_task_id(description: str) -> str:
     return f"QD-{h}"
 
 
-_CONVENTIONAL_TYPES = frozenset({"feat", "fix", "docs", "chore", "refactor", "test", "ci", "perf", "release", "task"})
-
-
 def _branch_type(description: str) -> str:
     """Derive a CI-allowed branch type prefix from a conventional-commit-style description."""
     if ":" in description:
         candidate = description.split(":", 1)[0].strip().lower()
-        if candidate in _CONVENTIONAL_TYPES:
+        if candidate in QUICK_BRANCH_TYPES:
             return candidate
     return "chore"
 
