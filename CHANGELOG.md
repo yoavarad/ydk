@@ -1,3 +1,45 @@
+## v1.9.0 (2026-11-04)
+
+### Feat
+
+- **memory**: run ContradictionDetector during index_all
+- **component**: add ydk component scan command
+- **task**: checkpoint review guide in PR body and ydk task checkpoint
+- **spec**: wire Layer B ComponentScanner into spec verify
+- **verify**: AI plugins use provider structured output; subagent handoff in task done
+- **spec**: run spec verify reviewers on LLM provider; remove strands
+- **task**: pass compaction LLM provider from archive-done to TaskCompactor
+- **memory**: wire ContradictionDetector into memory extract
+- **llm**: add claude-cli provider (headless claude -p)
+- **cli**: shared subagent handoff helper for extract, retrospective, analyze-complexity
+- **llm**: add LLMRequest, SubagentProvider and ai.routes config
+
+### Fix
+
+- **memory**: retry chroma hnsw reader race and fill collection on BM25 hits
+- **memory**: harden index contradiction check
+- **task**: count .ydk/retros as shippable in task done
+- **task**: roll back task state and branch when quick worktree creation fails
+- **task**: restrict _branch_belongs_to to task/ and quick-task branches
+- **component**: handle scan errors, escape markup, warn on empty scan
+- **checkpoint**: defuse close keywords with no space after colon
+- **checkpoint**: harden review-guide sanitizer and fallback on provider errors
+- **memory**: stop pointing at nonexistent ydk[memory] extra
+- **task**: sync-issues --dry-run says 'would retire', not 'retired'
+- **task**: key handoff on needs_llm presence; keep pending AI checks out of failure comment
+- **spec**: fail spec verify when no LLM provider resolves instead of skipping review
+- **task**: task quick honors --base and uses isolated worktree
+- **memory**: key epic retros by epic identity, not number alone
+- **task**: task start branches from PR base, not HEAD
+- **verify**: do not cache or replay failed verification results
+- **task**: done aborts on uncommitted changes or nothing to ship
+- **verify**: hash raw bytes of modified tracked files in cache key
+
+### Perf
+
+- **task**: task quick resolves the start point once
+- **verify**: pass spec text to AI verification plugins as cacheable context
+
 ## v1.8.0 (2026-10-27)
 
 ### Feat
