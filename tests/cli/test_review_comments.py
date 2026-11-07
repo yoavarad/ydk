@@ -144,3 +144,35 @@ class TestReviewCommentsCommand:
             result = runner.invoke(task_app, ["review-comments", "T-001"])
         assert "1 unresolved" in result.output
         assert "1 resolved" in result.output
+
+
+class TestExistingPrNumber:
+    def _config(self, tmp_path, monkeypatch, remote: str) -> None:
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text(f"project:\n  name: p\n  remote: {remote}\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+    def test_github_uses_gh_pr_list(self, tmp_path, monkeypatch) -> None:
+        from ydk.cli.task_cmd import _existing_pr_number
+
+        self._config(tmp_path, monkeypatch, "github")
+        fake = MagicMock(returncode=0, stdout=json.dumps([{"number": 12}]))
+        with patch("subprocess.run", return_value=fake) as mock_run:
+            assert _existing_pr_number("T-1") == "12"
+        assert mock_run.call_args.args[0][:4] == ["gh", "pr", "list", "--head"]
+
+    def test_gitlab_uses_glab_mr_list(self, tmp_path, monkeypatch) -> None:
+        from ydk.cli.task_cmd import _existing_pr_number
+
+        self._config(tmp_path, monkeypatch, "gitlab")
+        fake = MagicMock(returncode=0, stdout=json.dumps([{"iid": 5}]))
+        with patch("ydk.services.remote.subprocess.run", return_value=fake) as mock_run:
+            assert _existing_pr_number("T-1") == "5"
+        assert mock_run.call_args.args[0][:5] == ["glab", "mr", "list", "--source-branch", "task/T-1"]
+
+    def test_gitlab_returns_question_mark_when_none(self, tmp_path, monkeypatch) -> None:
+        from ydk.cli.task_cmd import _existing_pr_number
+
+        self._config(tmp_path, monkeypatch, "gitlab")
+        with patch("ydk.services.remote.subprocess.run", return_value=MagicMock(returncode=0, stdout="[]")):
+            assert _existing_pr_number("T-1") == "?"

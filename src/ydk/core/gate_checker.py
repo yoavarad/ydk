@@ -28,7 +28,11 @@ class GateChecker:
         return GateStatus.PENDING
 
     def check_pr_merged(self, pr_url: str) -> bool:
-        """Check if a GitHub PR is merged."""
+        """Check if a GitHub PR (or, on a GitLab remote, an MR) is merged."""
+        from ydk.services.remote import GitLabRemoteService, is_gitlab_remote
+
+        if is_gitlab_remote():
+            return GitLabRemoteService().merge_request_state(pr_url) == "MERGED"
         result = subprocess.run(
             ["gh", "pr", "view", pr_url, "--json", "state", "--jq", ".state"],
             capture_output=True,

@@ -945,28 +945,17 @@ class TaskLifecycle:
         # Use override body if provided, else build from report
         pr_body = pr_body_override or self._build_pr_body(task_id, task=task, report=report)
 
+        from ydk.services.remote import is_gitlab_remote
+
+        if is_gitlab_remote(self._root / ".ydk" / "config.yaml"):
+            if shutil.which("glab"):
+                return self._create_gitlab_mr(task_id, task, cwd, pr_body)
+            logger.warning("glab not installed; GitLab MR for task %s not opened (local reference)", task_id)
+            return f"local://{task_id}/pr-pending"
+
         # Try gh pr create if available
         if shutil.which("gh"):
-            # Get actual current branch name (not constructed)
-            branch_result = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-            actual_branch = branch_result.stdout.strip()
-
-            # Read base branch from this task's own entry in active-task.json.
-            # Never fall back to "whatever's currently active" -- a task with
-            # no entry of its own (e.g. a quickdev task, which never calls
-            # start()) must default to "main", not borrow another task's
-            # base branch.
-            active_task_file = resolve_active_task_file(self._root)
-            active_tasks = self._read_active_tasks(active_task_file)
-            raw_base_branch = active_tasks.get(task_id, {}).get("base_branch") or default_branch(self._root)
-            base_branch = self._normalize_base_branch(raw_base_branch, self._list_remotes(cwd))
+            actual_branch, raw_base_branch, base_branch = self._pr_branches(task_id, cwd)
 
             # Pass the body via --body-file rather than inline: proof-rich
             # bodies can be tens of KB, which overflows the Windows
@@ -1018,3 +1007,56 @@ class TaskLifecycle:
 
         # Fallback: return a local reference (only reached when gh is unavailable)
         return f"local://{task_id}/pr-pending"
+
+    def _pr_branches(self, task_id: str, cwd: str) -> tuple[str, str, str]:
+        """Return (head branch, raw base branch, normalized base branch) for the task's PR/MR."""
+        # Get actual current branch name (not constructed)
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        actual_branch = branch_result.stdout.strip()
+
+        # Read base branch from this task's own entry in active-task.json.
+        # Never fall back to "whatever's currently active" -- a task with
+        # no entry of its own (e.g. a quickdev task, which never calls
+        # start()) must default to "main", not borrow another task's
+        # base branch.
+        active_task_file = resolve_active_task_file(self._root)
+        active_tasks = self._read_active_tasks(active_task_file)
+        raw_base_branch = active_tasks.get(task_id, {}).get("base_branch") or default_branch(self._root)
+        base_branch = self._normalize_base_branch(raw_base_branch, self._list_remotes(cwd))
+        return actual_branch, raw_base_branch, base_branch
+
+    def _create_gitlab_mr(self, task_id: str, task: object | None, cwd: str, pr_body: str) -> str:
+        """Open a GitLab MR via glab for an already-pushed task branch. Returns the MR URL."""
+        import tempfile
+
+        from ydk.services.remote import GitLabRemoteService
+
+        actual_branch, raw_base_branch, base_branch = self._pr_branches(task_id, cwd)
+        # Body via file, not inline: same Windows command-line limit as gh (WinError 206).
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as body_file:
+            body_file.write(pr_body)
+            body_file_path = body_file.name
+        try:
+            return GitLabRemoteService().create_merge_request(
+                f"Task {task_id}: {getattr(task, 'title', task_id)}",
+                body_file_path,
+                actual_branch,
+                base_branch,
+                cwd=cwd,
+            )
+        except RuntimeError as exc:
+            logger.warning("glab mr create failed for task %s: %s", task_id, str(exc)[:200])
+            raise RuntimeError(
+                f"glab mr create failed for task {task_id} (base_branch={base_branch!r}, from {raw_base_branch!r}): "
+                f"{exc}. If the base is wrong, fix it in .ydk/active-task.json "
+                f"(tasks.{task_id}.base_branch) or restart with 'ydk task start {task_id} --base <branch>'."
+            ) from exc
+        finally:
+            Path(body_file_path).unlink(missing_ok=True)

@@ -903,21 +903,7 @@ def start(
         comments = _fetch_review_comments(task_id)
         unresolved = [c for c in comments if not c.get("resolved", False)]
         if unresolved:
-            # Find PR number for display
-            import json
-            import subprocess as _sp
-
-            find_cmd = ["gh", "pr", "list", "--head", f"task/{task_id}", "--json", "number", "--state", "all"]
-            pr_result = _sp.run(find_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-            pr_num = "?"
-            if pr_result.returncode == 0:
-                try:
-                    prs = json.loads(pr_result.stdout)
-                    if prs:
-                        pr_num = str(prs[0]["number"])
-                except json.JSONDecodeError:
-                    pass
-
+            pr_num = _existing_pr_number(task_id)
             typer.echo(f"⚠ Existing PR #{pr_num} found with {len(unresolved)} unresolved review comment(s):")
             for i, c in enumerate(unresolved, 1):
                 location = c.get("path", "General")
@@ -2192,6 +2178,29 @@ def review_comments(
 
     if resolved:
         typer.echo(f"\n{len(resolved)} resolved review comment(s).")
+
+
+def _existing_pr_number(task_id: str) -> str:
+    """Number of the task branch's existing PR (GitHub) or MR IID (GitLab), or ``"?"``."""
+    import json
+    import subprocess as _sp
+
+    from ydk.services.remote import GitLabRemoteService, is_gitlab_remote
+
+    if is_gitlab_remote():
+        return GitLabRemoteService().find_merge_request_iid(f"task/{task_id}") or "?"
+
+    find_cmd = ["gh", "pr", "list", "--head", f"task/{task_id}", "--json", "number", "--state", "all"]
+    pr_result = _sp.run(find_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    pr_num = "?"
+    if pr_result.returncode == 0:
+        try:
+            prs = json.loads(pr_result.stdout)
+            if prs:
+                pr_num = str(prs[0]["number"])
+        except json.JSONDecodeError:
+            pass
+    return pr_num
 
 
 def _fetch_review_comments(task_id: str) -> list[dict[str, object]]:

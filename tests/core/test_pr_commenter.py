@@ -322,3 +322,30 @@ class TestCLIPrFlag:
             mock_post.assert_called_once()
             call_args = mock_post.call_args
             assert call_args[0][0] == "https://github.com/org/repo/pull/1"
+
+
+class TestGitLabRemote:
+    MR_URL = "https://gitlab.com/group/proj/-/merge_requests/7"
+
+    @pytest.fixture
+    def gitlab_project(self, tmp_path, monkeypatch):
+        (tmp_path / ".ydk").mkdir()
+        (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: p\n  remote: gitlab\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        return tmp_path
+
+    def test_posts_mr_note_via_glab_and_never_gh(self, gitlab_project) -> None:
+        commenter = PRCommenter()
+        with patch("ydk.services.remote.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            commenter.post_verification_results(self.MR_URL, _sample_report())
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args.args[0]
+        assert cmd[:5] == ["glab", "mr", "note", "create", "7"]
+        assert MARKER in cmd[cmd.index("--message") + 1]
+
+    def test_raises_when_glab_fails(self, gitlab_project) -> None:
+        with patch("ydk.services.remote.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="denied")
+            with pytest.raises(RuntimeError, match="denied"):
+                PRCommenter().post_verification_results(self.MR_URL, _sample_report())

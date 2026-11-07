@@ -135,3 +135,29 @@ class TestCheckGate:
         gate = Gate(id="G-004", type=GateType.HUMAN, description="Approval needed")
         status = checker.check_gate(gate)
         assert status == GateStatus.PENDING
+
+
+@pytest.fixture
+def gitlab_project(tmp_path, monkeypatch):
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: p\n  remote: gitlab\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+class TestCheckPrMergedGitLab:
+    MR_URL = "https://gitlab.com/group/proj/-/merge_requests/7"
+
+    @pytest.mark.parametrize(("state", "merged"), [("merged", True), ("opened", False), ("closed", False)])
+    def test_uses_glab_mr_view_state(self, checker, gitlab_project, state, merged) -> None:
+        out = f'{{"iid": 7, "state": "{state}"}}'
+        with patch("ydk.services.remote.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=out, stderr="")
+            assert checker.check_pr_merged(self.MR_URL) is merged
+        cmd = mock_run.call_args.args[0]
+        assert cmd[:4] == ["glab", "mr", "view", "7"]
+
+    def test_returns_false_on_glab_error(self, checker, gitlab_project) -> None:
+        with patch("ydk.services.remote.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="404")
+            assert checker.check_pr_merged(self.MR_URL) is False

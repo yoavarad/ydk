@@ -1883,3 +1883,95 @@ def test_create_pr_pushes_when_branch_only_has_retros(feature_root: Path, mock_v
 
     assert url.startswith("local://")
     assert any(c.args[0][:2] == ["git", "push"] for c in sp.run.call_args_list)
+
+
+@pytest.fixture
+def gitlab_lifecycle(
+    tmp_path: Path, mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock
+) -> TaskLifecycle:
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: p\n  remote: gitlab\n", encoding="utf-8")
+    mock_worktree.get_worktree_path.return_value = None
+    return TaskLifecycle(
+        repo=mock_repo,
+        events=EventBus(),
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=tmp_path,
+    )
+
+
+@patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_on_gitlab_opens_mr_via_glab(
+    mock_subprocess: MagicMock, mock_which: MagicMock, gitlab_lifecycle: TaskLifecycle
+) -> None:
+    """On project.remote: gitlab, _create_pr opens an MR with glab (never gh) and returns its URL."""
+    mr_url = "https://gitlab.com/group/proj/-/merge_requests/9"
+    captured: list[list[str]] = []
+    bodies: list[str] = []
+
+    def _git(args: list[str], **kwargs: object) -> MagicMock:
+        if args[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="task/T-001\n")
+        return MagicMock(returncode=0, stdout="")
+
+    real_run = subprocess.run
+
+    def _glab(args: list[str], **kwargs: object) -> object:
+        if args[0] != "glab":  # services.git helpers share the patched subprocess module
+            return real_run(args, **kwargs)
+        captured.append(args)
+        bodies.append(Path(args[args.index("--description-file") + 1]).read_text(encoding="utf-8"))
+        return MagicMock(returncode=0, stdout=f"!9 Task T-001: Test task (task/T-001)\n {mr_url}\n", stderr="")
+
+    mock_subprocess.run.side_effect = _git
+    with patch("ydk.services.remote.subprocess.run", side_effect=_glab):
+        url = gitlab_lifecycle._create_pr("T-001", task=MagicMock(title="Test task"), pr_body_override="mr body")
+
+    assert url == mr_url
+    assert len(captured) == 1
+    cmd = captured[0]
+    assert cmd[:3] == ["glab", "mr", "create"]
+    assert cmd[cmd.index("--source-branch") + 1] == "task/T-001"
+    assert cmd[cmd.index("--target-branch") + 1] == "main"
+    assert cmd[cmd.index("--title") + 1] == "Task T-001: Test task"
+    assert bodies == ["mr body"]
+    assert not any(c.args[0][:1] == ["gh"] for c in mock_subprocess.run.call_args_list)
+
+
+@patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_on_gitlab_raises_when_glab_fails(
+    mock_subprocess: MagicMock, mock_which: MagicMock, gitlab_lifecycle: TaskLifecycle
+) -> None:
+    """A failing glab mr create surfaces as a RuntimeError naming the task and base branch."""
+    mock_subprocess.run.side_effect = lambda args, **kw: MagicMock(returncode=0, stdout="task/T-001\n")
+    real_run = subprocess.run
+
+    def _glab(args: list[str], **kwargs: object) -> object:
+        if args[0] != "glab":
+            return real_run(args, **kwargs)
+        return MagicMock(returncode=1, stdout="", stderr="403 Forbidden")
+
+    with (
+        patch("ydk.services.remote.subprocess.run", side_effect=_glab),
+        pytest.raises(RuntimeError) as exc_info,
+    ):
+        gitlab_lifecycle._create_pr("T-001", pr_body_override="body")
+    message = str(exc_info.value)
+    assert "T-001" in message
+    assert "403 Forbidden" in message
+    assert "base_branch='main'" in message
+
+
+@patch("shutil.which", side_effect=lambda name: None if name == "glab" else f"/usr/bin/{name}")
+@patch("ydk.core.task_lifecycle.subprocess")
+def test_create_pr_on_gitlab_without_glab_falls_back_to_local(
+    mock_subprocess: MagicMock, mock_which: MagicMock, gitlab_lifecycle: TaskLifecycle
+) -> None:
+    """GitLab remote without glab installed never tries gh; returns a local reference."""
+    mock_subprocess.run.return_value = MagicMock(returncode=0, stdout="")
+    url = gitlab_lifecycle._create_pr("T-001", pr_body_override="body")
+    assert url == "local://T-001/pr-pending"
+    assert not any(c.args[0][:1] == ["gh"] for c in mock_subprocess.run.call_args_list)
