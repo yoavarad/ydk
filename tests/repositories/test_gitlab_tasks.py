@@ -567,11 +567,12 @@ class TestAddLabel:
     )
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_status_labels_use_status_prefix(self, mock_run: MagicMock, label: str, expected: str) -> None:
-        mock_run.return_value = _completed(stdout=json.dumps(_issue(42)))
+        mock_run.return_value = _completed()
 
         GitLabTaskRepository().add_label("42", label)
 
-        mock_run.assert_called_with(["glab", "issue", "update", "42", "--label", expected])
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--label") + 1] == expected
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_failure_raises(self, mock_run: MagicMock) -> None:
@@ -902,30 +903,23 @@ class TestUpdateFrontmatter:
 
 class TestStartClearsBlockedLabels:
     @patch("ydk.repositories.gitlab.tasks.run_glab")
-    def test_in_progress_unlabels_blocked_status_labels(self, mock_run: MagicMock) -> None:
-        issue = _issue(5, labels=["task", "status:blocked", "status:blocked-by-decision", "bug"])
-        mock_run.return_value = _completed(stdout=json.dumps(issue))
+    def test_in_progress_unlabels_known_blocked_set_without_reading(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed()
 
         GitLabTaskRepository().update_status("5", "in-progress")
 
-        assert mock_run.call_args[0][0] == [
-            "glab",
-            "issue",
-            "update",
-            "5",
-            "--label",
-            "status:in-progress",
-            "--unlabel",
-            "status:blocked,status:blocked-by-decision",
-        ]
-
-    @patch("ydk.repositories.gitlab.tasks.run_glab")
-    def test_in_progress_without_blocked_labels_skips_unlabel(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = _completed(stdout=json.dumps(_issue(5)))
-
-        GitLabTaskRepository().update_status("5", "in-progress")
-
-        assert not any("--unlabel" in c[0][0] for c in mock_run.call_args_list)
+        mock_run.assert_called_once_with(
+            [
+                "glab",
+                "issue",
+                "update",
+                "5",
+                "--label",
+                "status:in-progress",
+                "--unlabel",
+                "status:blocked,status:blocked-by-code,status:blocked-by-decision,status:in-review",
+            ]
+        )
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_started_blocked_task_reads_in_progress(self, mock_run: MagicMock) -> None:
@@ -934,7 +928,8 @@ class TestStartClearsBlockedLabels:
         def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
             if "--unlabel" in cmd:
                 for lbl in cmd[cmd.index("--unlabel") + 1].split(","):
-                    labels.remove(lbl)
+                    if lbl in labels:
+                        labels.remove(lbl)
             if "--label" in cmd:
                 labels.append(cmd[cmd.index("--label") + 1])
             return _completed(stdout=json.dumps(_issue(5, labels=list(labels))))
@@ -946,16 +941,6 @@ class TestStartClearsBlockedLabels:
 
         assert repo.get(5).status == TaskStatus.IN_PROGRESS
 
-    @patch("ydk.repositories.gitlab.tasks.run_glab")
-    def test_in_progress_raises_when_labels_cannot_be_read(self, mock_run: MagicMock) -> None:
-        """A failed read must not silently leave the started task reading as blocked."""
-        mock_run.return_value = _completed(returncode=1, stderr="connection reset")
-
-        with pytest.raises(RuntimeError, match="glab issue view failed"):
-            GitLabTaskRepository().update_status("5", "in-progress")
-
-        assert mock_run.call_count == 1
-
 
 _STATUSES = ["in-progress", "in-review", "blocked-by-code", "blocked-by-decision"]
 
@@ -966,7 +951,8 @@ def _stateful_glab(labels: list[str]) -> Callable[[list[str]], subprocess.Comple
     def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
         if "--unlabel" in cmd:
             for lbl in cmd[cmd.index("--unlabel") + 1].split(","):
-                labels.remove(lbl)
+                if lbl in labels:
+                    labels.remove(lbl)
         if "--label" in cmd and cmd[cmd.index("--label") + 1] not in labels:
             labels.append(cmd[cmd.index("--label") + 1])
         return _completed(stdout=json.dumps(_issue(5, labels=list(labels))))
@@ -1017,7 +1003,7 @@ class TestStatusTransitionsLeaveOneLabel:
                 "--label",
                 "status:in-review",
                 "--unlabel",
-                "status:blocked-by-code",
+                "status:blocked,status:blocked-by-code,status:blocked-by-decision,status:in-progress",
             ]
         ]
 
@@ -1029,7 +1015,7 @@ class TestStatusTransitionsLeaveOneLabel:
         GitLabTaskRepository().update_status("5", "in-review")
 
         assert _status_labels(labels) == ["status:in-review"]
-        assert not any("--unlabel" in c[0][0] for c in mock_run.call_args_list)
+        assert "status:in-review" not in mock_run.call_args[0][0][-1].split(",")
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_add_label_non_status_does_not_touch_status_labels(self, mock_run: MagicMock) -> None:

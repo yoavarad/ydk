@@ -45,6 +45,9 @@ _ISSUE_REF = re.compile(r"#?([0-9]+)")
 _NON_TASK_LABELS = frozenset({"kind:epic", "kind:story"})
 # Type label every task issue carries (mirrors GitHubTaskRepository's default ``task_label``).
 _TASK_LABEL = "task"
+# The complete set of blocked labels YDK defines (see _helpers.derive_status); cleared unconditionally on start.
+_BLOCKED_LABELS = ("status:blocked", "status:blocked-by-code", "status:blocked-by-decision")
+_STATUS_LABELS = (*_BLOCKED_LABELS, "status:in-review", "status:in-progress")
 # update_frontmatter key -> ``**Label**:`` body field (same labels as the GitHub backend).
 _BODY_FIELD_LABELS: dict[str, str] = {
     "dependencies": "Dependencies",
@@ -56,6 +59,11 @@ _BODY_FIELD_LABELS: dict[str, str] = {
 def _is_task(detail: TaskDetail) -> bool:
     """True if the issue carries the task label and is not an epic or story."""
     return _TASK_LABEL in detail.labels and not _NON_TASK_LABELS.intersection(detail.labels)
+
+
+def _unlabel_args(keep: str) -> list[str]:
+    """``--unlabel`` args dropping every known status label except ``keep``."""
+    return ["--unlabel", ",".join(lbl for lbl in _STATUS_LABELS if lbl != keep)]
 
 
 def _status_label(label: str) -> str:
@@ -266,11 +274,9 @@ class GitLabTaskRepository:
         else:
             # For in_progress / blocked, use labels
             new = f"status:{status}"
-            cmd = ["glab", "issue", "update", str(issue_number), "--label", new]
-            # Keep exactly one status:* label: drop the others in the same (atomic) update.
-            stale = self._stale_status_labels(issue_ref(str(issue_number)), keep=new)
-            if stale:
-                cmd.extend(["--unlabel", ",".join(stale)])
+            # Keep exactly one status:* label: unlabel every other known one in the same update
+            # (no prior read, so a concurrent label change cannot be lost).
+            cmd = ["glab", "issue", "update", str(issue_number), "--label", new, *_unlabel_args(new)]
 
         result = run_glab(cmd)
         check_result(result, "issue update")
@@ -285,10 +291,8 @@ class GitLabTaskRepository:
         """Add a label to the issue (status labels get the ``status:`` prefix)."""
         new = _status_label(label)
         cmd = ["glab", "issue", "update", issue_ref(task_id), "--label", new]
-        if new.startswith("status:"):
-            stale = self._stale_status_labels(issue_ref(task_id), keep=new)
-            if stale:
-                cmd.extend(["--unlabel", ",".join(stale)])
+        if new in _STATUS_LABELS:
+            cmd.extend(_unlabel_args(new))
         result = run_glab(cmd)
         check_result(result, "issue update (add label)")
 
@@ -410,10 +414,6 @@ class GitLabTaskRepository:
     # ------------------------------------------------------------------
     # Private
     # ------------------------------------------------------------------
-
-    def _stale_status_labels(self, number: str, keep: str) -> builtins.list[str]:
-        """Return the issue's ``status:*`` labels except ``keep``. Raises RuntimeError if unreadable."""
-        return [lbl for lbl in self.get(int(number)).labels if lbl.startswith("status:") and lbl != keep]
 
     def _issue_json_to_detail(self, data: dict) -> TaskDetail:
         """Convert glab JSON output to a TaskDetail."""
