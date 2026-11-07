@@ -70,6 +70,10 @@ class GitLabEpicRepository:
             url=url,
         )
 
+    def create_epic(self, epic: EpicCreate) -> EpicDetail:
+        """Alias for create() -- lifecycle-compatible."""
+        return self.create(epic)
+
     def get(self, issue_number: int) -> EpicDetail:
         """Fetch a single epic issue by number."""
         cmd = ["glab", "issue", "view", str(issue_number), "--output", "json"]

@@ -26,11 +26,13 @@ logger = logging.getLogger(__name__)
 
 # Epics and stories are plain issues too; these labels keep them out of task listings.
 _NON_TASK_LABELS = frozenset({"kind:epic", "kind:story"})
+# Type label every task issue carries (mirrors GitHubTaskRepository's default ``task_label``).
+_TASK_LABEL = "task"
 
 
 def _is_task(detail: TaskDetail) -> bool:
-    """True unless the issue is an epic or story."""
-    return not _NON_TASK_LABELS.intersection(detail.labels)
+    """True if the issue carries the task label and is not an epic or story."""
+    return _TASK_LABEL in detail.labels and not _NON_TASK_LABELS.intersection(detail.labels)
 
 
 def _blocking_dep_numbers(task: TaskDetail) -> tuple[builtins.list[int], bool]:
@@ -82,8 +84,8 @@ class GitLabTaskRepository:
             body,
             "--no-editor",
         ]
-        if task.labels:
-            cmd.extend(["--label", ",".join(task.labels)])
+        labels = list(dict.fromkeys([_TASK_LABEL, *task.labels]))
+        cmd.extend(["--label", ",".join(labels)])
         if task.milestone:
             cmd.extend(["--milestone", task.milestone])
 
@@ -103,10 +105,14 @@ class GitLabTaskRepository:
             test_strategy=task.test_strategy,
             description=task.description,
             acceptance_criteria=task.acceptance_criteria,
-            labels=task.labels,
+            labels=labels,
             status=map_status("opened"),
             url=url,
         )
+
+    def create_task(self, task: TaskCreate) -> TaskDetail:
+        """Alias for create() -- lifecycle-compatible."""
+        return self.create(task)
 
     def get(self, issue_number: int) -> TaskDetail:
         """Fetch a single task issue by number."""
@@ -149,7 +155,8 @@ class GitLabTaskRepository:
 
     def list_tasks(self, state: str = "open") -> builtins.list[TaskSummary]:
         """List tasks (epics/stories excluded) as summaries with dependency status."""
-        all_details = self.list(status=state)
+        # state="all" stays unfiltered so closed epics/stories can still satisfy dependencies.
+        all_details = self.list(status=state, labels=None if state == "all" else [_TASK_LABEL])
         details = [d for d in all_details if _is_task(d)]
         # Closed = done for dependency resolution; state="all" already includes closed tasks.
         closed = (
@@ -172,7 +179,7 @@ class GitLabTaskRepository:
 
     def list_ready(self) -> builtins.list[TaskSummary]:
         """Return open tasks whose blocking deps are all closed, ranked by dependents count."""
-        open_tasks = [d for d in self.list(status="open") if _is_task(d)]
+        open_tasks = [d for d in self.list(status="open", labels=[_TASK_LABEL]) if _is_task(d)]
         closed_numbers = {d.number for d in self.list(status="closed")}
         blocking = {d.number: _blocking_dep_numbers(d) for d in open_tasks}
 
