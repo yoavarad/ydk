@@ -885,6 +885,22 @@ class TestUpdateFrontmatter:
         assert GitLabTaskRepository().get(42).dependencies == ["#3", "#4", "7"]
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_tdd_stage_and_session_id_round_trip(self, mock_run: MagicMock) -> None:
+        body = self._run(mock_run, {"tdd_stage": "red", "session_id": "abc-123"})
+
+        mock_run.return_value = _completed(stdout=json.dumps({**_sample_issue_json(), "description": body}))
+        detail = GitLabTaskRepository().get(42)
+        assert detail.tdd_stage == "red"
+        assert detail.session_id == "abc-123"
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_tdd_stage_and_session_id_default_none(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout=json.dumps(_sample_issue_json()))
+        detail = GitLabTaskRepository().get(42)
+        assert detail.tdd_stage is None
+        assert detail.session_id is None
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_replaces_existing_dependencies_and_clears_empty(self, mock_run: MagicMock) -> None:
         body = self._run(mock_run, {"dependencies": ["#9"]})
         assert "**Dependencies**: #9" in body

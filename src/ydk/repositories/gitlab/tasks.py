@@ -423,6 +423,8 @@ class GitLabTaskRepository:
             spec_refs=parsed["spec_refs"],
             dependencies=parsed["dependencies"],
             test_strategy=parsed["test_strategy"],
+            tdd_stage=parsed["tdd_stage"],
+            session_id=parsed["session_id"],
             description=parsed["description"],
             acceptance_criteria=[
                 AcceptanceCriterion(text=ac.text, done=ac.done) for ac in parsed["acceptance_criteria"]

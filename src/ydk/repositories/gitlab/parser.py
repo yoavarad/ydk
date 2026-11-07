@@ -90,6 +90,8 @@ def parse_body(body: str) -> dict:
         "spec_refs": [],
         "dependencies": [],
         "test_strategy": "",
+        "tdd_stage": None,
+        "session_id": None,
         "description": "",
         "acceptance_criteria": [],
     }
@@ -124,6 +126,10 @@ def parse_body(body: str) -> dict:
                 result["dependencies"] = [dep.strip() for dep in value.split(",") if dep.strip()]
             elif key == "test strategy":
                 result["test_strategy"] = value
+            elif key == "tdd stage":
+                result["tdd_stage"] = value
+            elif key == "session":
+                result["session_id"] = value
             continue
 
         # Section content
