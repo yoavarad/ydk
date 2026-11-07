@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ydk.models.gate import Gate, GateStatus, GateType
-from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
+from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskStatus
 from ydk.repositories.gitlab.tasks import GitLabTaskRepository
 
 if TYPE_CHECKING:
@@ -776,3 +776,173 @@ class TestDerivedStatus:
         mock_run.side_effect = _fake_glab([_issue(2, labels=["task", "status:in-review"])], [])
 
         assert GitLabTaskRepository().list_tasks()[0].status == TaskStatus.IN_REVIEW
+
+
+# -- check_dependencies / task_exists / assign / update_frontmatter (#717) ----
+
+
+def _by_iid(issues: dict[int, dict]) -> Callable[[list[str]], subprocess.CompletedProcess[str]]:
+    """Fake ``glab issue view N`` returning *issues[N]*; unknown IIDs fail like glab."""
+
+    def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+        iid = int(cmd[3])
+        if iid not in issues:
+            return _completed(returncode=1, stderr="404 Not Found")
+        return _completed(stdout=json.dumps(issues[iid]))
+
+    return run
+
+
+class TestCheckDependencies:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_reports_resolved_and_unresolved_deps(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _by_iid({5: _issue(5, deps="#1, 2"), 1: _issue(1, state="closed"), 2: _issue(2)})
+
+        deps = GitLabTaskRepository().check_dependencies("5")
+
+        assert [(d.task_id, d.resolved) for d in deps] == [("#1", True), ("2", False)]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_no_dependencies_returns_empty(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _by_iid({5: _issue(5)})
+
+        assert GitLabTaskRepository().check_dependencies("#5") == []
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_missing_or_unparseable_dep_is_unresolved(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _by_iid({5: _issue(5, deps="99, not-an-id")})
+
+        deps = GitLabTaskRepository().check_dependencies("5")
+
+        assert [(d.task_id, d.resolved) for d in deps] == [("99", False), ("not-an-id", False)]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_reads_deps_as_written_by_create(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/5\n")
+        GitLabTaskRepository().create(TaskCreate(title="t", dependencies=["#1"]))
+        cmd = mock_run.call_args[0][0]
+        written = {**_issue(5), "description": cmd[cmd.index("--description") + 1]}
+        mock_run.side_effect = _by_iid({5: written, 1: _issue(1, state="closed")})
+
+        deps = GitLabTaskRepository().check_dependencies("5")
+
+        assert [(d.task_id, d.resolved) for d in deps] == [("#1", True)]
+
+
+class TestTaskExists:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_existing_issue(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _by_iid({5: _issue(5)})
+
+        assert GitLabTaskRepository().task_exists("#5") is True
+
+    @pytest.mark.parametrize("task_id", ["404", "T-abc"])
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_missing_or_invalid_issue(self, mock_run: MagicMock, task_id: str) -> None:
+        mock_run.side_effect = _by_iid({})
+
+        assert GitLabTaskRepository().task_exists(task_id) is False
+
+
+class TestAssign:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_assigns_user(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed()
+
+        GitLabTaskRepository().assign("#5", "alice")
+
+        assert mock_run.call_args[0][0] == ["glab", "issue", "update", "5", "--assignee", "alice"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_unknown_assignee_is_ignored(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(returncode=1, stderr="user not found")
+
+        GitLabTaskRepository().assign("5", "agent")  # must not raise
+
+
+class TestUpdateFrontmatter:
+    @staticmethod
+    def _run(mock_run: MagicMock, fields: dict[str, object]) -> str:
+        mock_run.return_value = _completed(stdout=json.dumps(_sample_issue_json()))
+        GitLabTaskRepository().update_frontmatter("42", fields)
+        update = mock_run.call_args[0][0]
+        assert update[:4] == ["glab", "issue", "update", "42"]
+        return update[update.index("--description") + 1]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_writes_session_field(self, mock_run: MagicMock) -> None:
+        body = self._run(mock_run, {"session_id": "abc"})
+
+        assert "**Session**: abc" in body
+        assert "### Acceptance Criteria" in body
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_dependencies_round_trip(self, mock_run: MagicMock) -> None:
+        deps = ["#3", {"task_id": "#4", "type": "blocks"}, Dependency(task_id="7")]
+        body = self._run(mock_run, {"dependencies": deps})
+
+        mock_run.return_value = _completed(stdout=json.dumps({**_sample_issue_json(), "description": body}))
+        assert GitLabTaskRepository().get(42).dependencies == ["#3", "#4", "7"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_replaces_existing_dependencies_and_clears_empty(self, mock_run: MagicMock) -> None:
+        body = self._run(mock_run, {"dependencies": ["#9"]})
+        assert "**Dependencies**: #9" in body
+        assert "T-001" not in body
+
+        body = self._run(mock_run, {"dependencies": []})
+        assert "**Dependencies**" not in body
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_unknown_key_raises(self, mock_run: MagicMock) -> None:
+        with pytest.raises(ValueError, match="Unsupported"):
+            GitLabTaskRepository().update_frontmatter("42", {"bogus": 1})
+        mock_run.assert_not_called()
+
+
+class TestStartClearsBlockedLabels:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_in_progress_unlabels_blocked_status_labels(self, mock_run: MagicMock) -> None:
+        issue = _issue(5, labels=["task", "status:blocked", "status:blocked-by-decision", "bug"])
+        mock_run.return_value = _completed(stdout=json.dumps(issue))
+
+        GitLabTaskRepository().update_status("5", "in-progress")
+
+        calls = [c[0][0] for c in mock_run.call_args_list]
+        assert ["glab", "issue", "update", "5", "--unlabel", "status:blocked,status:blocked-by-decision"] in calls
+        assert calls[-1] == ["glab", "issue", "update", "5", "--label", "status:in-progress"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_in_progress_without_blocked_labels_skips_unlabel(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout=json.dumps(_issue(5)))
+
+        GitLabTaskRepository().update_status("5", "in-progress")
+
+        assert not any("--unlabel" in c[0][0] for c in mock_run.call_args_list)
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_started_blocked_task_reads_in_progress(self, mock_run: MagicMock) -> None:
+        labels = ["task", "status:blocked-by-code"]
+
+        def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+            if "--unlabel" in cmd:
+                for lbl in cmd[cmd.index("--unlabel") + 1].split(","):
+                    labels.remove(lbl)
+            elif "--label" in cmd:
+                labels.append(cmd[cmd.index("--label") + 1])
+            return _completed(stdout=json.dumps(_issue(5, labels=list(labels))))
+
+        mock_run.side_effect = run
+        repo = GitLabTaskRepository()
+
+        repo.update_status("5", "in-progress")
+
+        assert repo.get(5).status == TaskStatus.IN_PROGRESS
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_in_progress_still_labels_when_view_fails(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = [_completed(returncode=1, stderr="boom"), _completed()]
+
+        GitLabTaskRepository().update_status("5", "in-progress")
+
+        assert mock_run.call_args[0][0] == ["glab", "issue", "update", "5", "--label", "status:in-progress"]
