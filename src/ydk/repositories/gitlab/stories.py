@@ -9,6 +9,7 @@ from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
     glab_state_flags,
+    issue_ref,
     list_glab_issues,
     load_json_stdout,
     map_status,
@@ -18,6 +19,14 @@ from ydk.repositories.gitlab.parser import parse_body, render_body
 
 if TYPE_CHECKING:
     import builtins
+
+
+def _epic_key(raw_id: str) -> str:
+    """Normalise an epic ref (``"1"``/``"#1"``/``"E-001"``) to its IID; leave unparseable refs as-is."""
+    try:
+        return issue_ref(raw_id)
+    except ValueError:
+        return raw_id
 
 
 class GitLabStoryRepository:
@@ -108,6 +117,14 @@ class GitLabStoryRepository:
 
         issues = list_glab_issues(run_glab, cmd)
         return [self._issue_json_to_detail(i) for i in issues]
+
+    def list_stories(self, epic_id: str | None = None) -> builtins.list[StoryDetail]:
+        """List stories, optionally filtered by the epic in each story's ``**Epic**`` body field."""
+        stories = self.list()
+        if not epic_id:
+            return stories
+        target = _epic_key(epic_id)
+        return [s for s in stories if s.epic_id and _epic_key(s.epic_id) == target]
 
     # ------------------------------------------------------------------
     # Private

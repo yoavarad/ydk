@@ -83,6 +83,7 @@ def list_glab_issues(
 ) -> builtins.list[dict]:
     """Run a ``glab issue list`` command page by page and return all issues.
 
+    Empty/whitespace stdout from a successful page counts as no issues.
     Raises ``RuntimeError`` (with glab's stderr) if any page fails or yields malformed JSON.
     """
     issues: builtins.list[dict] = []
@@ -91,6 +92,8 @@ def list_glab_issues(
         if result.returncode != 0:
             msg = f"glab issue list failed: {(result.stderr or '').strip()}"
             raise RuntimeError(msg)
+        if not (result.stdout or "").strip():
+            break
         try:
             batch = load_json_stdout(result, "issue list")
         except json.JSONDecodeError as exc:

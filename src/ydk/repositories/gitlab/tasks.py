@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
-from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskDetail
+from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskDetail, TaskStatus, TaskSummary
+from ydk.models.task import is_blocking_dependency
 from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
     glab_state_flags,
+    issue_ref,
     list_glab_issues,
     load_json_stdout,
     map_status,
@@ -18,6 +21,32 @@ from ydk.repositories.gitlab.parser import parse_body, render_body
 
 if TYPE_CHECKING:
     import builtins
+
+logger = logging.getLogger(__name__)
+
+# Epics and stories are plain issues too; these labels keep them out of task listings.
+_NON_TASK_LABELS = frozenset({"kind:epic", "kind:story"})
+
+
+def _is_task(detail: TaskDetail) -> bool:
+    """True unless the issue is an epic or story."""
+    return not _NON_TASK_LABELS.intersection(detail.labels)
+
+
+def _blocking_dep_numbers(task: TaskDetail) -> tuple[builtins.list[int], bool]:
+    """Return IIDs of *task*'s blocking deps and whether any was unresolvable."""
+    numbers: builtins.list[int] = []
+    unresolved = False
+    for dep in task.dependencies:
+        if not is_blocking_dependency(dep):
+            continue
+        dep_id = dep.task_id if isinstance(dep, Dependency) else str(dep)
+        try:
+            numbers.append(int(issue_ref(dep_id)))
+        except ValueError:
+            logger.warning("Task #%s has unresolvable dependency %r; treating it as unmet", task.number, dep_id)
+            unresolved = True
+    return numbers, unresolved
 
 
 class GitLabTaskRepository:
@@ -117,6 +146,59 @@ class GitLabTaskRepository:
 
         issues = list_glab_issues(run_glab, cmd)
         return [self._issue_json_to_detail(i) for i in issues]
+
+    def list_tasks(self, state: str = "open") -> builtins.list[TaskSummary]:
+        """List tasks (epics/stories excluded) as summaries with dependency status."""
+        all_details = self.list(status=state)
+        details = [d for d in all_details if _is_task(d)]
+        # Closed = done for dependency resolution; state="all" already includes closed tasks.
+        closed = (
+            [d for d in all_details if d.status == TaskStatus.DONE] if state == "all" else self.list(status="closed")
+        )
+        done_ids = {d.number for d in closed}
+
+        summaries: builtins.list[TaskSummary] = []
+        for d in details:
+            dep_nums, unresolved = _blocking_dep_numbers(d)
+            summaries.append(
+                TaskSummary(
+                    id=str(d.number),
+                    title=d.title,
+                    status=d.status,
+                    dependencies_met=not unresolved and all(n in done_ids for n in dep_nums),
+                )
+            )
+        return summaries
+
+    def list_ready(self) -> builtins.list[TaskSummary]:
+        """Return open tasks whose blocking deps are all closed, ranked by dependents count."""
+        open_tasks = [d for d in self.list(status="open") if _is_task(d)]
+        closed_numbers = {d.number for d in self.list(status="closed")}
+        blocking = {d.number: _blocking_dep_numbers(d) for d in open_tasks}
+
+        dependents_count: dict[int, int] = {}
+        for dep_nums, _unresolved in blocking.values():
+            for dep_num in dep_nums:
+                dependents_count[dep_num] = dependents_count.get(dep_num, 0) + 1
+
+        results: builtins.list[TaskSummary] = []
+        for d in open_tasks:
+            if d.status != TaskStatus.OPEN:
+                continue
+            dep_nums, unresolved = blocking[d.number]
+            if unresolved or any(n not in closed_numbers for n in dep_nums):
+                continue
+            results.append(
+                TaskSummary(
+                    id=str(d.number),
+                    title=d.title,
+                    status=d.status,
+                    dependencies_met=True,
+                    dependents_count=dependents_count.get(d.number, 0),
+                )
+            )
+        results.sort(key=lambda t: (-t.dependents_count, t.id))
+        return results
 
     def update_status(self, issue_number: int, status: str) -> None:
         """Update task status via labels and/or close/reopen."""

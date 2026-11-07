@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
 from ydk.repositories.gitlab.tasks import GitLabTaskRepository
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # -- Helpers ---------------------------------------------------------------
 
@@ -306,3 +310,141 @@ class TestAddComment:
 
         with pytest.raises(RuntimeError, match="glab issue note failed"):
             repo.add_comment(999, "test")
+
+
+# -- list_tasks / list_ready -----------------------------------------------
+
+
+def _issue(iid: int, deps: str = "", labels: list[str] | None = None, state: str = "opened") -> dict:
+    body = f"**Dependencies**: {deps}\n\n### Description\nx\n" if deps else "### Description\nx\n"
+    return {
+        "iid": iid,
+        "title": f"Task {iid}",
+        "state": state,
+        "description": body,
+        "labels": [{"name": n} for n in (labels or ["task"])],
+        "web_url": f"https://gitlab.com/owner/repo/-/issues/{iid}",
+    }
+
+
+def _fake_glab(
+    open_issues: list[dict], closed_issues: list[dict]
+) -> Callable[[list[str]], subprocess.CompletedProcess[str]]:
+    def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+        if "--closed" in cmd:
+            return _completed(stdout=json.dumps(closed_issues))
+        if "--all" in cmd:
+            return _completed(stdout=json.dumps(open_issues + closed_issues))
+        return _completed(stdout=json.dumps(open_issues))
+
+    return run
+
+
+class TestListTasks:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_returns_summaries_with_dependency_status(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab(
+            [_issue(5, deps="#3"), _issue(6, deps="#4"), _issue(7)],
+            [_issue(3, state="closed")],
+        )
+
+        summaries = GitLabTaskRepository().list_tasks()
+
+        by_id = {s.id: s for s in summaries}
+        assert set(by_id) == {"5", "6", "7"}
+        assert by_id["5"].dependencies_met is True
+        assert by_id["6"].dependencies_met is False
+        assert by_id["7"].dependencies_met is True
+        assert by_id["5"].status == TaskStatus.OPEN
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_excludes_epic_and_story_issues(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab(
+            [_issue(1, labels=["kind:epic"]), _issue(2, labels=["kind:story"]), _issue(5)],
+            [],
+        )
+
+        assert [s.id for s in GitLabTaskRepository().list_tasks()] == ["5"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_state_all_uses_closed_from_same_listing(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(5, deps="#3")], [_issue(3, state="closed")])
+
+        summaries = GitLabTaskRepository().list_tasks(state="all")
+
+        by_id = {s.id: s for s in summaries}
+        assert by_id["3"].status == TaskStatus.DONE
+        assert by_id["5"].dependencies_met is True
+        assert all("--all" in c.args[0] for c in mock_run.call_args_list)
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_unresolvable_dependency_is_unmet(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(5, deps="T-5e9dbd18")], [])
+
+        assert GitLabTaskRepository().list_tasks()[0].dependencies_met is False
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_state_all_counts_closed_story_as_done_dependency(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(5, deps="#2")], [_issue(2, labels=["kind:story"], state="closed")])
+
+        summaries = GitLabTaskRepository().list_tasks(state="all")
+
+        assert [(s.id, s.dependencies_met) for s in summaries] == [("5", True)]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_state_closed_lists_closed_tasks(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab(
+            [_issue(5)], [_issue(3, state="closed"), _issue(4, deps="#3", state="closed")]
+        )
+
+        summaries = GitLabTaskRepository().list_tasks(state="closed")
+
+        assert [(s.id, s.status, s.dependencies_met) for s in summaries] == [
+            ("3", TaskStatus.DONE, True),
+            ("4", TaskStatus.DONE, True),
+        ]
+
+
+class TestListReady:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_returns_open_unblocked_tasks_ranked_by_dependents(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab(
+            [
+                _issue(5, deps="#3"),
+                _issue(6, deps="#4"),
+                _issue(7),
+                _issue(8, deps="#7"),
+                _issue(10, labels=["kind:epic"]),
+            ],
+            [_issue(3, state="closed")],
+        )
+
+        ready = GitLabTaskRepository().list_ready()
+
+        assert [t.id for t in ready] == ["7", "5"]
+        assert ready[0].dependents_count == 1
+        assert all(t.dependencies_met for t in ready)
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_empty_project_returns_empty(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([], [])
+
+        assert GitLabTaskRepository().list_ready() == []
+
+
+class TestListEmptyStdout:
+    @pytest.mark.parametrize("stdout", ["", "   \n"])
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_empty_stdout_with_success_is_empty_list(self, mock_run: MagicMock, stdout: str) -> None:
+        mock_run.return_value = _completed(stdout=stdout)
+
+        assert GitLabTaskRepository().list() == []
+        assert GitLabTaskRepository().list_tasks() == []
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_empty_second_page_stops_paging(self, mock_run: MagicMock) -> None:
+        full_page = [_issue(i) for i in range(1, 101)]
+        mock_run.side_effect = [_completed(stdout=json.dumps(full_page)), _completed(stdout="")]
+
+        assert len(GitLabTaskRepository().list()) == 100
+        assert mock_run.call_count == 2

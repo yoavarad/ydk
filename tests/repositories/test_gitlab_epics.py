@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -34,3 +35,19 @@ class TestMarkRetroDone:
 
         with pytest.raises(RuntimeError, match="boom"):
             repo.mark_retro_done("9", ".ydk/retros/E-009.md")
+
+
+class TestListEpics:
+    @pytest.mark.parametrize(("status", "flag"), [("open", None), ("closed", "--closed"), ("all", "--all")])
+    @patch("ydk.repositories.gitlab.epics.run_glab")
+    def test_lists_epic_labelled_issues(self, mock_run: MagicMock, status: str, flag: str | None) -> None:
+        issue = {"iid": 9, "title": "Epic", "state": "opened", "description": "d", "labels": [{"name": "kind:epic"}]}
+        mock_run.return_value = _completed(stdout=json.dumps([issue]))
+
+        epics = GitLabEpicRepository().list_epics(status=status)
+
+        assert [e.number for e in epics] == [9]
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--label") + 1] == "kind:epic"
+        if flag:
+            assert flag in cmd
