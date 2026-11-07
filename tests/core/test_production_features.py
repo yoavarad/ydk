@@ -708,3 +708,19 @@ class TestRetrospectiveClaudeErrors:
 
         with patch("anthropic.Anthropic", return_value=client), pytest.raises(ClaudeAPIError, match="max_tokens"):
             _run_llm_retrospective([MagicMock(id="T-001", title="Task 1")], None)
+
+
+def test_init_gitlab_remote_creates_gitlab_templates(tmp_path: Path, monkeypatch: object) -> None:
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    from typer.testing import CliRunner
+
+    from ydk.cli import app
+
+    result = CliRunner().invoke(app, ["init", "--name", "testproj", "--remote", "gitlab"])
+
+    assert result.exit_code == 0
+    for name in ("task.md", "story.md", "epic.md"):
+        assert (tmp_path / ".gitlab" / "issue_templates" / name).is_file()
+    assert (tmp_path / ".gitlab" / "merge_request_templates" / "Default.md").is_file()
+    assert not (tmp_path / ".github" / "ISSUE_TEMPLATE").exists()
+    assert not (tmp_path / ".github" / "PULL_REQUEST_TEMPLATE.md").exists()
