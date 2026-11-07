@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ydk.models.pm import StoryCreate
 from ydk.repositories.gitlab.stories import GitLabStoryRepository
 
 
@@ -18,6 +19,20 @@ def _completed(stdout: str = "", stderr: str = "", returncode: int = 0) -> subpr
 def _story(iid: int, epic: str | None) -> dict:
     body = (f"**Epic**: {epic}\n\n" if epic else "") + "### Description\nx\n"
     return {"iid": iid, "title": f"Story {iid}", "state": "opened", "description": body, "labels": ["kind:story"]}
+
+
+class TestCreateStory:
+    @patch("ydk.repositories.gitlab.stories.run_glab")
+    def test_creates_story_labelled_issue(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/4")
+
+        detail = GitLabStoryRepository().create_story(StoryCreate(title="S", epic_id="3", description="d"))
+
+        assert (detail.number, detail.epic_id, detail.labels) == (4, "3", ["kind:story"])
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["glab", "issue", "create"]
+        assert call_args[call_args.index("--label") + 1] == "kind:story"
+        assert "**Epic**: 3" in call_args[call_args.index("--description") + 1]
 
 
 class TestListStories:

@@ -113,10 +113,31 @@ class TestCreate:
         detail = repo.create(task)
 
         assert detail.number == 99
-        assert detail.labels == []
+        assert detail.labels == ["task"]
         call_args = mock_run.call_args[0][0]
-        assert "--label" not in call_args
+        assert call_args[call_args.index("--label") + 1] == "task"
         assert "--milestone" not in call_args
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_create_writes_task_label_once(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/42")
+
+        detail = GitLabTaskRepository().create(_sample_create())
+
+        call_args = mock_run.call_args[0][0]
+        assert call_args[call_args.index("--label") + 1] == "task,sprint-1"
+        assert detail.labels == ["task", "sprint-1"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_create_task_creates_labelled_issue(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/7")
+
+        detail = GitLabTaskRepository().create_task(TaskCreate(title="Quick fix", labels=["in-progress"]))
+
+        assert (detail.number, detail.title) == (7, "Quick fix")
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["glab", "issue", "create"]
+        assert call_args[call_args.index("--label") + 1] == "task,in-progress"
 
 
 # -- get -------------------------------------------------------------------
@@ -333,10 +354,15 @@ def _fake_glab(
 ) -> Callable[[list[str]], subprocess.CompletedProcess[str]]:
     def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
         if "--closed" in cmd:
-            return _completed(stdout=json.dumps(closed_issues))
-        if "--all" in cmd:
-            return _completed(stdout=json.dumps(open_issues + closed_issues))
-        return _completed(stdout=json.dumps(open_issues))
+            issues = closed_issues
+        elif "--all" in cmd:
+            issues = open_issues + closed_issues
+        else:
+            issues = open_issues
+        if "--label" in cmd:
+            wanted = set(cmd[cmd.index("--label") + 1].split(","))
+            issues = [i for i in issues if wanted <= {lbl["name"] for lbl in i["labels"]}]
+        return _completed(stdout=json.dumps(issues))
 
     return run
 
@@ -366,6 +392,23 @@ class TestListTasks:
         )
 
         assert [s.id for s in GitLabTaskRepository().list_tasks()] == ["5"]
+
+    @pytest.mark.parametrize("state", ["open", "closed"])
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_filters_listing_by_task_label(self, mock_run: MagicMock, state: str) -> None:
+        mock_run.side_effect = _fake_glab(
+            [_issue(5), _issue(6, labels=["bug"])], [_issue(5), _issue(6, labels=["bug"])]
+        )
+
+        assert [s.id for s in GitLabTaskRepository().list_tasks(state=state)] == ["5"]
+        listing = mock_run.call_args_list[0].args[0]
+        assert listing[listing.index("--label") + 1] == "task"
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_state_all_excludes_unlabelled_issues(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(5), _issue(6, labels=["bug"])], [])
+
+        assert [s.id for s in GitLabTaskRepository().list_tasks(state="all")] == ["5"]
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_state_all_uses_closed_from_same_listing(self, mock_run: MagicMock) -> None:
@@ -431,6 +474,14 @@ class TestListReady:
         mock_run.side_effect = _fake_glab([], [])
 
         assert GitLabTaskRepository().list_ready() == []
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_filters_open_listing_by_task_label(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(5), _issue(6, labels=["bug"])], [])
+
+        assert [t.id for t in GitLabTaskRepository().list_ready()] == ["5"]
+        listing = mock_run.call_args_list[0].args[0]
+        assert listing[listing.index("--label") + 1] == "task"
 
 
 class TestListEmptyStdout:

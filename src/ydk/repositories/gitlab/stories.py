@@ -85,6 +85,10 @@ class GitLabStoryRepository:
             url=url,
         )
 
+    def create_story(self, story: StoryCreate) -> StoryDetail:
+        """Alias for create() -- lifecycle-compatible."""
+        return self.create(story)
+
     def get(self, issue_number: int) -> StoryDetail:
         """Fetch a single story issue by number."""
         cmd = ["glab", "issue", "view", str(issue_number), "--output", "json"]
