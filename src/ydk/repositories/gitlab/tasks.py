@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskDetail, TaskStatus, TaskSummary
@@ -23,6 +24,8 @@ if TYPE_CHECKING:
     import builtins
 
 logger = logging.getLogger(__name__)
+
+_ISSUE_REF = re.compile(r"#?([0-9]+)")
 
 # Epics and stories are plain issues too; these labels keep them out of task listings.
 _NON_TASK_LABELS = frozenset({"kind:epic", "kind:story"})
@@ -123,6 +126,14 @@ class GitLabTaskRepository:
 
         data = load_json_stdout(result, "issue view")
         return self._issue_json_to_detail(data)
+
+    def get_task(self, task_id: str) -> TaskDetail:
+        """Get task by ID string (e.g. '42', '#42'). Lifecycle-compatible alias for get()."""
+        match = _ISSUE_REF.fullmatch(str(task_id).strip())
+        if match is None:
+            msg = f"{task_id!r} is not a GitLab issue number; remote=gitlab expects N or #N"
+            raise ValueError(msg)
+        return self.get(int(match.group(1)))
 
     def list(
         self,
