@@ -22,6 +22,12 @@ class PRCommenter:
         updates it instead of creating a new one.
         """
         body = self.format_comment(report)
+        from ydk.services.remote import GitLabRemoteService, is_gitlab_remote
+
+        if is_gitlab_remote():
+            # GitLab: post a fresh MR note each run (no in-place update of a prior note).
+            GitLabRemoteService().add_merge_request_note(pr_url, body)
+            return
         existing_id = self._find_existing_comment(pr_url)
         if existing_id is not None:
             self._update_comment(existing_id, body)
