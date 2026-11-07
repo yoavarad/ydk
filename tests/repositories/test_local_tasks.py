@@ -159,6 +159,14 @@ class TestAddRemoveLabel:
         detail = repo.get_task(created.id)
         assert detail.labels.count("bug") == 1
 
+    def test_in_progress_keeps_labels(self, tmp_path: Path) -> None:
+        """Pin (#717): clearing blocked labels on start is GitLab-only."""
+        repo = LocalTaskRepository(tmp_path)
+        created = repo.create_task(_make_task())
+        repo.add_label(created.id, "blocked-by-code")
+        repo.update_status(created.id, "in-progress")
+        assert "blocked-by-code" in repo.get_task(created.id).labels
+
     def test_remove_label(self, tmp_path: Path) -> None:
         repo = LocalTaskRepository(tmp_path)
         created = repo.create_task(_make_task())

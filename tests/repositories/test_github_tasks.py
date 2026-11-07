@@ -307,6 +307,18 @@ class TestUpdateStatus:
         assert "--add-label" in cmd
         assert "in-progress" in cmd
 
+    def test_in_progress_removes_no_labels(self) -> None:
+        """Pin (#717): clearing blocked labels on start is GitLab-only."""
+        repo = GitHubTaskRepository()
+        fake = _fake_run()
+        with patch("ydk.repositories.github.tasks.run_gh", return_value=fake) as mock_run:
+            repo.update_status(42, "in-progress")
+        calls = [c[0][0] for c in mock_run.call_args_list]
+        assert calls == [
+            ["gh", "label", "create", "in-progress", "--force"],
+            ["gh", "issue", "edit", "42", "--add-label", "in-progress"],
+        ]
+
     def test_raises_on_failure(self) -> None:
         repo = GitHubTaskRepository()
         fake = _fake_run(returncode=1, stderr="error")

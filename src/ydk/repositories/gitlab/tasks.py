@@ -6,9 +6,17 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskDetail, TaskStatus, TaskSummary
+from ydk.models.pm import (
+    AcceptanceCriterion,
+    Dependency,
+    DependencyStatus,
+    TaskCreate,
+    TaskDetail,
+    TaskStatus,
+    TaskSummary,
+)
 from ydk.models.task import is_blocking_dependency
-from ydk.repositories.github.parser import render_gate_line
+from ydk.repositories.github.parser import render_gate_line, set_body_field
 from ydk.repositories.gitlab._helpers import (
     check_result,
     derive_status,
@@ -37,6 +45,12 @@ _ISSUE_REF = re.compile(r"#?([0-9]+)")
 _NON_TASK_LABELS = frozenset({"kind:epic", "kind:story"})
 # Type label every task issue carries (mirrors GitHubTaskRepository's default ``task_label``).
 _TASK_LABEL = "task"
+# update_frontmatter key -> ``**Label**:`` body field (same labels as the GitHub backend).
+_BODY_FIELD_LABELS: dict[str, str] = {
+    "dependencies": "Dependencies",
+    "tdd_stage": "TDD stage",
+    "session_id": "Session",
+}
 
 
 def _is_task(detail: TaskDetail) -> bool:
@@ -49,6 +63,13 @@ def _status_label(label: str) -> str:
     if label in ("in-progress", "in-review") or label.startswith("blocked"):
         return f"status:{label}"
     return label
+
+
+def _dep_id(dep: object) -> str:
+    """Bare dependency ID, written the same way :meth:`GitLabTaskRepository.create` writes it."""
+    if isinstance(dep, dict):
+        dep = Dependency.model_validate(dep)
+    return dep.task_id if isinstance(dep, Dependency) else str(dep)
 
 
 def _blocking_dep_numbers(task: TaskDetail) -> tuple[builtins.list[int], bool]:
@@ -245,6 +266,11 @@ class GitLabTaskRepository:
         else:
             # For in_progress / blocked, use labels
             cmd = ["glab", "issue", "update", str(issue_number), "--label", f"status:{status}"]
+            if status == "in-progress":
+                # Starting a task unblocks it; drop status:blocked* in the same (atomic) update.
+                blocked = self._blocked_labels(issue_ref(str(issue_number)))
+                if blocked:
+                    cmd.extend(["--unlabel", ",".join(blocked)])
 
         result = run_glab(cmd)
         check_result(result, "issue update")
@@ -264,6 +290,59 @@ class GitLabTaskRepository:
     def remove_label(self, task_id: str, label: str) -> None:
         """Remove a label from the issue. Best-effort, like the GitHub backend."""
         run_glab(["glab", "issue", "update", issue_ref(task_id), "--unlabel", _status_label(label)])
+
+    def assign(self, task_id: str, assignee: str) -> None:
+        """Assign a user to the issue. Best-effort, like the GitHub backend (e.g. "agent" is no real user)."""
+        run_glab(["glab", "issue", "update", issue_ref(task_id), "--assignee", assignee])
+
+    def task_exists(self, task_id: str) -> bool:
+        """Check if a task issue exists in the GitLab project."""
+        try:
+            self.get_task(task_id)
+        except (RuntimeError, ValueError):
+            return False
+        return True
+
+    def check_dependencies(self, task_id: str) -> builtins.list[DependencyStatus]:
+        """Report status of blocking dependencies from the issue body (non-blocking types ignored)."""
+        results: builtins.list[DependencyStatus] = []
+        for dep in self.get_task(task_id).dependencies:
+            if not is_blocking_dependency(dep):
+                continue
+            dep_id = _dep_id(dep)
+            try:
+                resolved = self.get(int(issue_ref(dep_id))).status == TaskStatus.DONE
+            except (RuntimeError, ValueError):
+                resolved = False
+            results.append(DependencyStatus(task_id=dep_id, title="", resolved=resolved))
+        return results
+
+    def update_frontmatter(self, task_id: str, fields: dict[str, object]) -> None:
+        """Update ``**Field**:`` lines in the issue description (add if missing, replace if present).
+
+        Dependencies are written as bare IDs, matching :meth:`create`. Raises
+        ValueError for keys this backend cannot persist.
+        """
+        unknown = sorted(set(fields) - set(_BODY_FIELD_LABELS))
+        if unknown:
+            supported = ", ".join(sorted(_BODY_FIELD_LABELS))
+            raise ValueError(f"Unsupported frontmatter key(s) for GitLab backend: {unknown} (supported: {supported})")
+
+        number = issue_ref(task_id)
+        result = run_glab(["glab", "issue", "view", number, "--output", "json"])
+        check_result(result, "issue view")
+        body = (load_json_stdout(result, "issue view").get("description") or "").strip()
+
+        for key, value in fields.items():
+            if key == "dependencies":
+                dep_list = value if isinstance(value, list) else [value]
+                text = ", ".join(_dep_id(d) for d in dep_list)
+            else:
+                text = "" if value is None else str(value)
+            body = set_body_field(body, _BODY_FIELD_LABELS[key], text)
+
+        update = run_glab(["glab", "issue", "update", number, "--description", body])
+        check_result(update, "issue update (frontmatter)")
 
     def update_gates(self, task_id: str, gates: builtins.list[Gate]) -> None:
         """Persist updated gates by rewriting the issue description's ``### Gates`` section."""
@@ -326,6 +405,10 @@ class GitLabTaskRepository:
     # ------------------------------------------------------------------
     # Private
     # ------------------------------------------------------------------
+
+    def _blocked_labels(self, number: str) -> builtins.list[str]:
+        """Return the issue's ``status:blocked*`` labels. Raises RuntimeError if the issue cannot be read."""
+        return [lbl for lbl in self.get(int(number)).labels if lbl.startswith("status:blocked")]
 
     def _issue_json_to_detail(self, data: dict) -> TaskDetail:
         """Convert glab JSON output to a TaskDetail."""
