@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskDetail, TaskStatus, TaskSummary
 from ydk.models.task import is_blocking_dependency
+from ydk.repositories.github.parser import render_gate_line
 from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
@@ -22,6 +24,10 @@ from ydk.repositories.gitlab.parser import parse_body, render_body
 if TYPE_CHECKING:
     import builtins
 
+    from ydk.core.llm_provider import LLMProvider
+    from ydk.models.compaction import CompactedTask
+    from ydk.models.gate import Gate
+
 logger = logging.getLogger(__name__)
 
 # Epics and stories are plain issues too; these labels keep them out of task listings.
@@ -31,6 +37,13 @@ _NON_TASK_LABELS = frozenset({"kind:epic", "kind:story"})
 def _is_task(detail: TaskDetail) -> bool:
     """True unless the issue is an epic or story."""
     return not _NON_TASK_LABELS.intersection(detail.labels)
+
+
+def _status_label(label: str) -> str:
+    """Prefix lifecycle labels with ``status:`` to match :meth:`GitLabTaskRepository.update_status`."""
+    if label in ("in-progress", "in-review") or label.startswith("blocked"):
+        return f"status:{label}"
+    return label
 
 
 def _blocking_dep_numbers(task: TaskDetail) -> tuple[builtins.list[int], bool]:
@@ -221,6 +234,74 @@ class GitLabTaskRepository:
         cmd = ["glab", "issue", "note", str(issue_number), "--message", comment]
         result = run_glab(cmd)
         check_result(result, "issue note")
+
+    def add_label(self, task_id: str, label: str) -> None:
+        """Add a label to the issue (status labels get the ``status:`` prefix)."""
+        cmd = ["glab", "issue", "update", issue_ref(task_id), "--label", _status_label(label)]
+        result = run_glab(cmd)
+        check_result(result, "issue update (add label)")
+
+    def remove_label(self, task_id: str, label: str) -> None:
+        """Remove a label from the issue. Best-effort, like the GitHub backend."""
+        run_glab(["glab", "issue", "update", issue_ref(task_id), "--unlabel", _status_label(label)])
+
+    def update_gates(self, task_id: str, gates: builtins.list[Gate]) -> None:
+        """Persist updated gates by rewriting the issue description's ``### Gates`` section."""
+        number = issue_ref(task_id)
+        result = run_glab(["glab", "issue", "view", number, "--output", "json"])
+        check_result(result, "issue view")
+        body = (load_json_stdout(result, "issue view").get("description") or "").strip()
+
+        gate_lines = [render_gate_line(g) for g in gates]
+        new_section = "### Gates\n" + ("\n".join(gate_lines) if gate_lines else "_No gates_")
+        if "### Gates" in body:
+            body = re.sub(r"### Gates\n.*?(?=\n###|\Z)", lambda _m: new_section, body, flags=re.DOTALL)
+        else:
+            body = body.rstrip() + "\n\n" + new_section
+
+        update = run_glab(["glab", "issue", "update", number, "--description", body])
+        check_result(update, "issue update (gates)")
+
+    def compact_task(self, task_id: str, *, llm_provider: LLMProvider | None = None) -> CompactedTask:
+        """Compact a closed task: post a summary note and add the ``archived`` label.
+
+        The issue description is never modified (mirrors the GitHub backend).
+        """
+        from ydk.core.compaction import TaskCompactor
+
+        number = int(issue_ref(task_id))
+        compacted = TaskCompactor(llm_provider).compact_task(self.get(number))
+
+        lines: builtins.list[str] = ["### Summary", compacted.summary, ""]
+        if compacted.key_decisions:
+            lines.append("### Key Decisions")
+            lines.extend(f"- {d}" for d in compacted.key_decisions)
+            lines.append("")
+        if compacted.files_modified:
+            lines.append("### Files Modified")
+            lines.extend(f"- `{fp}`" for fp in compacted.files_modified)
+            lines.append("")
+
+        self.add_comment(number, "\n".join(lines))
+        self.add_label(task_id, "archived")
+        return compacted
+
+    def compact_all_done(self, *, dry_run: bool = False, llm_provider: LLMProvider | None = None) -> builtins.list[str]:
+        """Compact all closed tasks. Returns the compacted issue numbers."""
+        compacted_ids: builtins.list[str] = []
+        for task in self.list(status="closed"):
+            if "archived" in task.labels:
+                continue  # already compacted; don't re-post the summary note
+            tid = str(task.number)
+            if dry_run:
+                compacted_ids.append(tid)
+                continue
+            try:
+                self.compact_task(tid, llm_provider=llm_provider)
+                compacted_ids.append(tid)
+            except (RuntimeError, ValueError):
+                logger.warning("Skipping task #%s: compaction failed", tid)
+        return compacted_ids
 
     # ------------------------------------------------------------------
     # Private
