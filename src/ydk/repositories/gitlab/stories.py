@@ -8,7 +8,7 @@ from ydk.models.pm import AcceptanceCriterion, StoryCreate, StoryDetail
 from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
-    glab_state,
+    glab_state_flags,
     list_glab_issues,
     load_json_stdout,
     map_status,
@@ -99,8 +99,7 @@ class GitLabStoryRepository:
             "list",
             "--output",
             "json",
-            "--state",
-            glab_state(status),
+            *glab_state_flags(status),
             "--label",
             ",".join(filter_labels),
         ]

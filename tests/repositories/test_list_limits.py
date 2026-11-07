@@ -119,7 +119,26 @@ class TestGitLabListPagination:
         second_cmd = mock_run.call_args_list[1][0][0]
         assert second_cmd[second_cmd.index("--page") + 1] == "2"
 
-    def test_failure_on_later_page_returns_empty(self) -> None:
+    def test_failure_on_later_page_raises(self) -> None:
         pages = [_fake(json.dumps(_glab_items(100))), _fake(returncode=1)]
-        with patch("ydk.repositories.gitlab.tasks.run_glab", side_effect=pages):
-            assert GitLabTaskRepository().list() == []
+        with (
+            patch("ydk.repositories.gitlab.tasks.run_glab", side_effect=pages),
+            pytest.raises(RuntimeError),
+        ):
+            GitLabTaskRepository().list()
+
+    @pytest.mark.parametrize(
+        ("module", "repo_cls"),
+        [
+            ("tasks", GitLabTaskRepository),
+            ("epics", GitLabEpicRepository),
+            ("stories", GitLabStoryRepository),
+        ],
+    )
+    @pytest.mark.parametrize(("status", "flags"), [("open", []), ("closed", ["--closed"]), ("all", ["--all"])])
+    def test_state_flags_never_use_state(self, module: str, repo_cls: type, status: str, flags: list[str]) -> None:
+        with patch(f"ydk.repositories.gitlab.{module}.run_glab", return_value=_fake()) as mock_run:
+            repo_cls().list(status=status)
+        cmd = mock_run.call_args[0][0]
+        assert "--state" not in cmd
+        assert [f for f in ("--closed", "--all") if f in cmd] == flags

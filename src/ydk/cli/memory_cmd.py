@@ -307,7 +307,11 @@ def retrospective(
     repo = get_task_repository()
 
     if epic:
-        shipped = _gather_epic_tasks(epic, repo)
+        try:
+            shipped = _gather_epic_tasks(epic, repo)
+        except RuntimeError as exc:
+            console.print(f"[red]Failed to list epic tasks: {exc}[/red]")
+            raise typer.Exit(code=1) from exc
     else:
         tasks = repo.list_tasks(state="closed")
         if sprint:
@@ -355,7 +359,10 @@ def retrospective(
         from ydk.repositories.factory import get_epic_repository
 
         epic_repo = get_epic_repository()
-        title, url = lookup_epic(epic_repo, epic) or ("", "")
+        try:
+            title, url = lookup_epic(epic_repo, epic) or ("", "")
+        except RuntimeError:
+            title, url = "", ""
         output_path = resolve_retro_path(retros_dir, epic, title, url)
         output_path.write_text(
             render_frontmatter(epic, title, url) + _render_epic_retro_markdown(epic, shipped, proposals),

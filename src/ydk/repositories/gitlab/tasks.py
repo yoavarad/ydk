@@ -8,7 +8,7 @@ from ydk.models.pm import AcceptanceCriterion, Dependency, TaskCreate, TaskDetai
 from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
-    glab_state,
+    glab_state_flags,
     list_glab_issues,
     load_json_stdout,
     map_status,
@@ -108,8 +108,7 @@ class GitLabTaskRepository:
             "list",
             "--output",
             "json",
-            "--state",
-            glab_state(status),
+            *glab_state_flags(status),
         ]
         if milestone:
             cmd.extend(["--milestone", milestone])

@@ -13,7 +13,7 @@ from ydk.models.pm import EpicCreate, EpicDetail
 from ydk.repositories.gitlab._helpers import (
     check_result,
     extract_label_names,
-    glab_state,
+    glab_state_flags,
     issue_ref,
     list_glab_issues,
     load_json_stdout,
@@ -92,8 +92,7 @@ class GitLabEpicRepository:
             "list",
             "--output",
             "json",
-            "--state",
-            glab_state(status),
+            *glab_state_flags(status),
             "--label",
             ",".join(filter_labels),
         ]

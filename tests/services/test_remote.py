@@ -132,3 +132,21 @@ class TestListIssuesLimits:
         assert len(result) == 105
         second_cmd = mock_run.call_args_list[1][0][0]
         assert second_cmd[second_cmd.index("--page") + 1] == "2"
+
+    @pytest.mark.parametrize(("state", "flags"), [("open", []), ("closed", ["--closed"]), ("all", ["--all"])])
+    def test_gitlab_state_flags(self, state: str, flags: list[str]) -> None:
+        from ydk.services.remote import GitLabRemoteService
+
+        fake = MagicMock(returncode=0, stdout="[]")
+        with patch("subprocess.run", return_value=fake) as mock_run:
+            GitLabRemoteService().list_issues(state=state)
+        cmd = mock_run.call_args[0][0]
+        assert "--state" not in cmd
+        assert [f for f in ("--closed", "--all") if f in cmd] == flags
+
+    def test_gitlab_failure_raises(self) -> None:
+        from ydk.services.remote import GitLabRemoteService
+
+        fake = MagicMock(returncode=1, stdout="", stderr="unknown flag")
+        with patch("subprocess.run", return_value=fake), pytest.raises(RuntimeError, match="unknown flag"):
+            GitLabRemoteService().list_issues()
