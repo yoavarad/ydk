@@ -18,6 +18,17 @@ if TYPE_CHECKING:
 runner = CliRunner()
 
 
+def _write_remote(root: Path, remote: str) -> None:
+    (root / ".ydk").mkdir(exist_ok=True)
+    (root / ".ydk" / "config.yaml").write_text(f"project:\n  name: x\n  remote: {remote}\n", encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _github_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _write_remote(tmp_path, "github")
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
     log: list[tuple[str, ...]] = []
@@ -91,9 +102,7 @@ def test_sync_issues_json_real_run(calls: list[tuple[str, ...]]) -> None:
 
 
 def test_sync_issues_gitlab_remote_is_github_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    (tmp_path / ".ydk").mkdir()
-    (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: x\n  remote: gitlab\n", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
+    _write_remote(tmp_path, "gitlab")
     ran: list[list[str]] = []
 
     def fake(argv: list[str], **_kw: object) -> subprocess.CompletedProcess:
@@ -105,3 +114,10 @@ def test_sync_issues_gitlab_remote_is_github_only(monkeypatch: pytest.MonkeyPatc
     assert result.exit_code == 1
     assert "GitHub-only" in result.output
     assert ran == []
+
+
+def test_sync_issues_github_remote_invokes_gh(calls: list[tuple[str, ...]]) -> None:
+    result = runner.invoke(app, ["task", "sync-issues"])
+    assert result.exit_code == 0
+    assert calls
+    assert calls[0][:2] == ("issue", "list")
