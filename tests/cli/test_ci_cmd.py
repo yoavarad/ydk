@@ -195,7 +195,13 @@ def test_gitlab_json_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     _gitlab_repo(tmp_path, monkeypatch, GO_CONFIG)
     result = runner.invoke(app, ["--format", "json", "ci", "init", "--gitlab"])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["written"] == [".gitlab-ci.yml", ".gitlab/merge_request_templates/Default.md"]
+    assert json.loads(result.output)["written"] == [
+        ".gitlab-ci.yml",
+        ".gitlab/issue_templates/task.md",
+        ".gitlab/issue_templates/story.md",
+        ".gitlab/issue_templates/epic.md",
+        ".gitlab/merge_request_templates/Default.md",
+    ]
 
 
 def test_gitlab_non_go_without_make_targets_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

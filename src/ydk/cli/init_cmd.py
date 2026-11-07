@@ -14,9 +14,18 @@ from typing import TYPE_CHECKING
 import typer
 
 from ydk.cli.ci_cmd import print_ci_summary
-from ydk.core.ci_generator import PR_TEMPLATE, generate_ci
+from ydk.core.ci_generator import (
+    _ISSUE_TEMPLATE_EPIC,
+    _ISSUE_TEMPLATE_STORY,
+    _ISSUE_TEMPLATE_TASK,
+    PR_TEMPLATE,
+    SCAFFOLD_STATE_PATH,
+    generate_ci,
+    write_gitlab_templates,
+)
 from ydk.core.config import init_config
 from ydk.core.doctor import CheckSeverity, Doctor
+from ydk.core.scaffold_state import ScaffoldState
 from ydk.output.console import console
 from ydk.repositories.github._helpers import REQUIRED_LABELS as _REQUIRED_LABELS
 
@@ -102,58 +111,6 @@ def _print_api_key_status(ai: AIConfig) -> None:
 # GitHub templates
 # ---------------------------------------------------------------------------
 
-_ISSUE_TEMPLATE_TASK = """\
----
-name: Task
-about: Atomic work item for agent implementation
-labels: task
----
-
-**Story**: #
-**Spec refs**:
-**Dependencies**:
-
-### Description
-
-
-### Acceptance Criteria
-- [ ]
-
-### Test Strategy
-
-"""
-
-_ISSUE_TEMPLATE_STORY = """\
----
-name: Story
-about: Deliverable piece of user value
-labels: story
----
-
-**Epic**: #
-**Spec refs**:
-
-### Acceptance Criteria
-- [ ]
-
-"""
-
-_ISSUE_TEMPLATE_EPIC = """\
----
-name: Epic
-about: Large initiative grouping stories
-labels: epic
----
-
-**Release**:
-**Spec refs**:
-
-### Description
-
-### Scope
-
-"""
-
 _PR_TEMPLATE = PR_TEMPLATE
 
 
@@ -199,16 +156,11 @@ def _install_github_templates() -> None:
 
 
 def _install_gitlab_templates() -> None:
-    """Create .gitlab/ with issue templates and merge request template."""
-    issue_dir = Path(".gitlab") / "issue_templates"
-    mr_dir = Path(".gitlab") / "merge_request_templates"
-    issue_dir.mkdir(parents=True, exist_ok=True)
-    mr_dir.mkdir(parents=True, exist_ok=True)
-
-    (issue_dir / "task.md").write_text(_ISSUE_TEMPLATE_TASK, encoding="utf-8")
-    (issue_dir / "story.md").write_text(_ISSUE_TEMPLATE_STORY, encoding="utf-8")
-    (issue_dir / "epic.md").write_text(_ISSUE_TEMPLATE_EPIC, encoding="utf-8")
-    (mr_dir / "Default.md").write_text(_PR_TEMPLATE, encoding="utf-8")
+    """Create .gitlab/ issue and merge request templates (shared with `ci init --gitlab`)."""
+    root = Path(".")
+    state = ScaffoldState(root / SCAFFOLD_STATE_PATH)
+    write_gitlab_templates(root, force=True, state=state)
+    state.save()
 
 
 # ---------------------------------------------------------------------------
