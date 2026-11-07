@@ -795,6 +795,25 @@ def _by_iid(issues: dict[int, dict]) -> Callable[[list[str]], subprocess.Complet
 
 class TestCheckDependencies:
     @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_mixed_dep_types_round_trip_through_create(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/5\n")
+        deps = [Dependency(task_id="#1"), Dependency(task_id="#2", type="validates"), "#3"]
+        GitLabTaskRepository().create(TaskCreate(title="t", dependencies=deps))
+        cmd = mock_run.call_args[0][0]
+        written = {**_issue(5), "description": cmd[cmd.index("--description") + 1]}
+        mock_run.side_effect = _by_iid({5: written, 1: _issue(1, state="closed"), 2: _issue(2), 3: _issue(3)})
+
+        repo = GitLabTaskRepository()
+        assert repo.get_task("5").dependencies == ["#1", Dependency(task_id="#2", type="validates"), "#3"]
+        assert [(d.task_id, d.resolved) for d in repo.check_dependencies("5")] == [("#1", True), ("#3", False)]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_legacy_untyped_deps_default_to_blocking(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _by_iid({5: _issue(5, deps="#1, 2"), 1: _issue(1), 2: _issue(2)})
+
+        assert [d.task_id for d in GitLabTaskRepository().check_dependencies("5")] == ["#1", "2"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_reports_resolved_and_unresolved_deps(self, mock_run: MagicMock) -> None:
         mock_run.side_effect = _by_iid({5: _issue(5, deps="#1, 2"), 1: _issue(1, state="closed"), 2: _issue(2)})
 
@@ -883,6 +902,13 @@ class TestUpdateFrontmatter:
 
         mock_run.return_value = _completed(stdout=json.dumps({**_sample_issue_json(), "description": body}))
         assert GitLabTaskRepository().get(42).dependencies == ["#3", "#4", "7"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_non_blocking_dependency_type_round_trip(self, mock_run: MagicMock) -> None:
+        body = self._run(mock_run, {"dependencies": [{"task_id": "#4", "type": "related"}, "#5"]})
+
+        mock_run.return_value = _completed(stdout=json.dumps({**_sample_issue_json(), "description": body}))
+        assert GitLabTaskRepository().get(42).dependencies == [Dependency(task_id="#4", type="related"), "#5"]
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_replaces_existing_dependencies_and_clears_empty(self, mock_run: MagicMock) -> None:

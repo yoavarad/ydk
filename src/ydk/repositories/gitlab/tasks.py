@@ -10,6 +10,7 @@ from ydk.models.pm import (
     AcceptanceCriterion,
     Dependency,
     DependencyStatus,
+    DependencyType,
     TaskCreate,
     TaskDetail,
     TaskStatus,
@@ -65,11 +66,34 @@ def _status_label(label: str) -> str:
     return label
 
 
+_DEP_TOKEN = re.compile(r"^(?P<id>.+?)\s*\((?P<type>[a-z-]+)\)$")
+
+
 def _dep_id(dep: object) -> str:
-    """Bare dependency ID, written the same way :meth:`GitLabTaskRepository.create` writes it."""
+    """Bare dependency ID (no type suffix)."""
     if isinstance(dep, dict):
         dep = Dependency.model_validate(dep)
     return dep.task_id if isinstance(dep, Dependency) else str(dep)
+
+
+def _dep_token(dep: object) -> str:
+    """Body token for *dep*: bare ID for ``blocks``, ``ID (type)`` otherwise."""
+    if isinstance(dep, dict):
+        dep = Dependency.model_validate(dep)
+    if isinstance(dep, Dependency) and dep.type != DependencyType.BLOCKS:
+        return f"{dep.task_id} ({dep.type.value})"
+    return _dep_id(dep)
+
+
+def _parse_dep(token: str) -> str | Dependency:
+    """Inverse of :func:`_dep_token`; untyped or unknown-typed tokens stay bare strings (blocking)."""
+    m = _DEP_TOKEN.match(token)
+    if m:
+        try:
+            return Dependency(task_id=m["id"], type=DependencyType(m["type"]))
+        except ValueError:
+            pass
+    return token
 
 
 def _blocking_dep_numbers(task: TaskDetail) -> tuple[builtins.list[int], bool]:
@@ -101,7 +125,7 @@ class GitLabTaskRepository:
 
     def create(self, task: TaskCreate) -> TaskDetail:
         """Create a GitLab issue for the task and return its detail."""
-        dep_ids = [d.task_id if isinstance(d, Dependency) else d for d in task.dependencies]
+        dep_ids = [_dep_token(d) for d in task.dependencies]
         body = render_body(
             story_id=task.story_id,
             spec_refs=task.spec_refs,
@@ -320,7 +344,7 @@ class GitLabTaskRepository:
     def update_frontmatter(self, task_id: str, fields: dict[str, object]) -> None:
         """Update ``**Field**:`` lines in the issue description (add if missing, replace if present).
 
-        Dependencies are written as bare IDs, matching :meth:`create`. Raises
+        Dependencies are written as :func:`_dep_token`, matching :meth:`create`. Raises
         ValueError for keys this backend cannot persist.
         """
         unknown = sorted(set(fields) - set(_BODY_FIELD_LABELS))
@@ -336,7 +360,7 @@ class GitLabTaskRepository:
         for key, value in fields.items():
             if key == "dependencies":
                 dep_list = value if isinstance(value, list) else [value]
-                text = ", ".join(_dep_id(d) for d in dep_list)
+                text = ", ".join(_dep_token(d) for d in dep_list)
             else:
                 text = "" if value is None else str(value)
             body = set_body_field(body, _BODY_FIELD_LABELS[key], text)
@@ -421,7 +445,7 @@ class GitLabTaskRepository:
             title=data.get("title", ""),
             story_id=parsed["story_id"],
             spec_refs=parsed["spec_refs"],
-            dependencies=parsed["dependencies"],
+            dependencies=[_parse_dep(d) for d in parsed["dependencies"]],
             test_strategy=parsed["test_strategy"],
             description=parsed["description"],
             acceptance_criteria=[
