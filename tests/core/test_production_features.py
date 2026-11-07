@@ -719,8 +719,28 @@ def test_init_gitlab_remote_creates_gitlab_templates(tmp_path: Path, monkeypatch
     result = CliRunner().invoke(app, ["init", "--name", "testproj", "--remote", "gitlab"])
 
     assert result.exit_code == 0
-    for name in ("task.md", "story.md", "epic.md"):
-        assert (tmp_path / ".gitlab" / "issue_templates" / name).is_file()
+    for name in ("task", "story", "epic"):
+        text = (tmp_path / ".gitlab" / "issue_templates" / f"{name}.md").read_text(encoding="utf-8")
+        assert "---" not in text
+        assert "about:" not in text
+        assert text.startswith(f"/label ~{name}\n")
     assert (tmp_path / ".gitlab" / "merge_request_templates" / "Default.md").is_file()
     assert not (tmp_path / ".github" / "ISSUE_TEMPLATE").exists()
     assert not (tmp_path / ".github" / "PULL_REQUEST_TEMPLATE.md").exists()
+
+
+def test_init_github_remote_creates_no_gitlab_dir(tmp_path: Path, monkeypatch: object) -> None:
+    from unittest.mock import patch
+
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    from typer.testing import CliRunner
+
+    from ydk.cli import app
+
+    with patch("ydk.cli.init_cmd.subprocess.run"):
+        result = CliRunner().invoke(app, ["init", "--name", "testproj", "--remote", "github"])
+
+    assert result.exit_code == 0
+    assert not (tmp_path / ".gitlab").exists()
+    assert (tmp_path / ".github" / "ISSUE_TEMPLATE" / "task.md").is_file()
+    assert (tmp_path / ".github" / "PULL_REQUEST_TEMPLATE.md").is_file()
