@@ -265,12 +265,12 @@ class GitLabTaskRepository:
             cmd = ["glab", "issue", "reopen", str(issue_number)]
         else:
             # For in_progress / blocked, use labels
-            cmd = ["glab", "issue", "update", str(issue_number), "--label", f"status:{status}"]
-            if status == "in-progress":
-                # Starting a task unblocks it; drop status:blocked* in the same (atomic) update.
-                blocked = self._blocked_labels(issue_ref(str(issue_number)))
-                if blocked:
-                    cmd.extend(["--unlabel", ",".join(blocked)])
+            new = f"status:{status}"
+            cmd = ["glab", "issue", "update", str(issue_number), "--label", new]
+            # Keep exactly one status:* label: drop the others in the same (atomic) update.
+            stale = self._stale_status_labels(issue_ref(str(issue_number)), keep=new)
+            if stale:
+                cmd.extend(["--unlabel", ",".join(stale)])
 
         result = run_glab(cmd)
         check_result(result, "issue update")
@@ -283,7 +283,12 @@ class GitLabTaskRepository:
 
     def add_label(self, task_id: str, label: str) -> None:
         """Add a label to the issue (status labels get the ``status:`` prefix)."""
-        cmd = ["glab", "issue", "update", issue_ref(task_id), "--label", _status_label(label)]
+        new = _status_label(label)
+        cmd = ["glab", "issue", "update", issue_ref(task_id), "--label", new]
+        if new.startswith("status:"):
+            stale = self._stale_status_labels(issue_ref(task_id), keep=new)
+            if stale:
+                cmd.extend(["--unlabel", ",".join(stale)])
         result = run_glab(cmd)
         check_result(result, "issue update (add label)")
 
@@ -406,9 +411,9 @@ class GitLabTaskRepository:
     # Private
     # ------------------------------------------------------------------
 
-    def _blocked_labels(self, number: str) -> builtins.list[str]:
-        """Return the issue's ``status:blocked*`` labels. Raises RuntimeError if the issue cannot be read."""
-        return [lbl for lbl in self.get(int(number)).labels if lbl.startswith("status:blocked")]
+    def _stale_status_labels(self, number: str, keep: str) -> builtins.list[str]:
+        """Return the issue's ``status:*`` labels except ``keep``. Raises RuntimeError if unreadable."""
+        return [lbl for lbl in self.get(int(number)).labels if lbl.startswith("status:") and lbl != keep]
 
     def _issue_json_to_detail(self, data: dict) -> TaskDetail:
         """Convert glab JSON output to a TaskDetail."""
