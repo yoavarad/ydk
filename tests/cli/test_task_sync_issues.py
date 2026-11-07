@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner
 
 from ydk.cli import app
 from ydk.core.linked_issues import MARKER_PREFIX
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 runner = CliRunner()
 
@@ -84,3 +88,20 @@ def test_sync_issues_json_real_run(calls: list[tuple[str, ...]]) -> None:
     result = runner.invoke(app, ["--format", "json", "task", "sync-issues"])
     assert result.exit_code == 0
     assert json.loads(result.output) == {"retired": [3], "dry_run": False}
+
+
+def test_sync_issues_gitlab_remote_is_github_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / ".ydk").mkdir()
+    (tmp_path / ".ydk" / "config.yaml").write_text("project:\n  name: x\n  remote: gitlab\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    ran: list[list[str]] = []
+
+    def fake(argv: list[str], **_kw: object) -> subprocess.CompletedProcess:
+        ran.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "[]", "")
+
+    monkeypatch.setattr(subprocess, "run", fake)
+    result = runner.invoke(app, ["task", "sync-issues"])
+    assert result.exit_code == 1
+    assert "GitHub-only" in result.output
+    assert ran == []
