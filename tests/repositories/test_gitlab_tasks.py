@@ -908,9 +908,16 @@ class TestStartClearsBlockedLabels:
 
         GitLabTaskRepository().update_status("5", "in-progress")
 
-        calls = [c[0][0] for c in mock_run.call_args_list]
-        assert ["glab", "issue", "update", "5", "--unlabel", "status:blocked,status:blocked-by-decision"] in calls
-        assert calls[-1] == ["glab", "issue", "update", "5", "--label", "status:in-progress"]
+        assert mock_run.call_args[0][0] == [
+            "glab",
+            "issue",
+            "update",
+            "5",
+            "--label",
+            "status:in-progress",
+            "--unlabel",
+            "status:blocked,status:blocked-by-decision",
+        ]
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_in_progress_without_blocked_labels_skips_unlabel(self, mock_run: MagicMock) -> None:
@@ -928,7 +935,7 @@ class TestStartClearsBlockedLabels:
             if "--unlabel" in cmd:
                 for lbl in cmd[cmd.index("--unlabel") + 1].split(","):
                     labels.remove(lbl)
-            elif "--label" in cmd:
+            if "--label" in cmd:
                 labels.append(cmd[cmd.index("--label") + 1])
             return _completed(stdout=json.dumps(_issue(5, labels=list(labels))))
 
@@ -940,9 +947,11 @@ class TestStartClearsBlockedLabels:
         assert repo.get(5).status == TaskStatus.IN_PROGRESS
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
-    def test_in_progress_still_labels_when_view_fails(self, mock_run: MagicMock) -> None:
-        mock_run.side_effect = [_completed(returncode=1, stderr="boom"), _completed()]
+    def test_in_progress_raises_when_labels_cannot_be_read(self, mock_run: MagicMock) -> None:
+        """A failed read must not silently leave the started task reading as blocked."""
+        mock_run.return_value = _completed(returncode=1, stderr="connection reset")
 
-        GitLabTaskRepository().update_status("5", "in-progress")
+        with pytest.raises(RuntimeError, match="glab issue view failed"):
+            GitLabTaskRepository().update_status("5", "in-progress")
 
-        assert mock_run.call_args[0][0] == ["glab", "issue", "update", "5", "--label", "status:in-progress"]
+        assert mock_run.call_count == 1

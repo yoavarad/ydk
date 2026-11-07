@@ -264,10 +264,13 @@ class GitLabTaskRepository:
         elif status == "open":
             cmd = ["glab", "issue", "reopen", str(issue_number)]
         else:
-            if status == "in-progress":
-                self._clear_blocked_labels(issue_ref(str(issue_number)))
             # For in_progress / blocked, use labels
             cmd = ["glab", "issue", "update", str(issue_number), "--label", f"status:{status}"]
+            if status == "in-progress":
+                # Starting a task unblocks it; drop status:blocked* in the same (atomic) update.
+                blocked = self._blocked_labels(issue_ref(str(issue_number)))
+                if blocked:
+                    cmd.extend(["--unlabel", ",".join(blocked)])
 
         result = run_glab(cmd)
         check_result(result, "issue update")
@@ -403,18 +406,9 @@ class GitLabTaskRepository:
     # Private
     # ------------------------------------------------------------------
 
-    def _clear_blocked_labels(self, number: str) -> None:
-        """Drop every ``status:blocked*`` label so a started task no longer reads as blocked. Best-effort."""
-        try:
-            labels = self.get(int(number)).labels
-        except (RuntimeError, ValueError):
-            logger.warning("Could not read labels of #%s; blocked labels left in place", number)
-            return
-        blocked = [lbl for lbl in labels if lbl.startswith("status:blocked")]
-        if blocked:
-            result = run_glab(["glab", "issue", "update", number, "--unlabel", ",".join(blocked)])
-            if result.returncode != 0:
-                logger.warning("Could not remove %s from #%s: %s", blocked, number, (result.stderr or "").strip())
+    def _blocked_labels(self, number: str) -> builtins.list[str]:
+        """Return the issue's ``status:blocked*`` labels. Raises RuntimeError if the issue cannot be read."""
+        return [lbl for lbl in self.get(int(number)).labels if lbl.startswith("status:blocked")]
 
     def _issue_json_to_detail(self, data: dict) -> TaskDetail:
         """Convert glab JSON output to a TaskDetail."""
