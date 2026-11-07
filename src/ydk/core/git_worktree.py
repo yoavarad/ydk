@@ -99,7 +99,7 @@ class WorktreeManager:
         )
         for branch in result.stdout.strip().splitlines():
             branch = branch.strip().lstrip("* ")
-            if branch:
+            if branch == f"task/{task_id}" or branch.startswith(f"task/{task_id}-"):
                 subprocess.run(
                     ["git", "branch", "-D", branch],
                     cwd=str(self._root),
