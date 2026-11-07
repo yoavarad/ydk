@@ -1,3 +1,28 @@
+## v1.10.0 (2026-11-07)
+
+### Feat
+
+- **gitlab**: MR lifecycle via glab, so task done can open a merge request
+
+### Fix
+
+- **task**: roll back worktree and local state when task start fails
+- **gitlab**: keep exactly one status label across status transitions
+- **gitlab**: persist dependency type so non-blocking deps stay non-blocking
+- **gitlab**: clear blocked labels on start without a prior read
+- **gitlab**: parse tdd_stage and session_id back from issue body
+- **gitlab**: clear blocked labels atomically and fail loudly on start
+- **gitlab**: implement check_dependencies and clear blocked labels on start
+- **gitlab**: derive task status from status:* labels
+- **gitlab**: add create_task/create_epic/create_story and task type label
+- **gitlab**: add add_label/remove_label/update_gates/compact_task to GitLab task repo
+- **gitlab**: add GitLabTaskRepository.get_task so task start/done work
+- **gitlab**: strip front matter, add /label quick action, share template writer
+- **gitlab**: init and ci init --gitlab scaffold .gitlab templates
+- **gitlab**: add list_tasks/list_ready/list_epics/list_stories to GitLab repos
+- **gitlab**: task sync-issues reports GitHub-only on a GitLab remote
+- **gitlab**: use glab --closed/--all instead of nonexistent --state; raise on list failure
+
 ## v1.9.0 (2026-11-04)
 
 ### Feat
