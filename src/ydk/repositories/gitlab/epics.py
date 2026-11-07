@@ -100,6 +100,10 @@ class GitLabEpicRepository:
         issues = list_glab_issues(run_glab, cmd)
         return [self._issue_json_to_detail(i) for i in issues]
 
+    def list_epics(self, status: str = "open") -> builtins.list[EpicDetail]:
+        """List all epics — lifecycle-compatible."""
+        return self.list(status=status)
+
     def mark_retro_done(self, epic_id: str, retro_path: str) -> None:
         """Add the ``retro-done`` label and a note linking the retro file."""
         num = issue_ref(epic_id)
