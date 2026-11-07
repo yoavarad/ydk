@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ydk.models.gate import Gate, GateStatus, GateType
 from ydk.models.pm import AcceptanceCriterion, TaskCreate, TaskStatus
 from ydk.repositories.gitlab.tasks import GitLabTaskRepository
 
@@ -112,10 +113,31 @@ class TestCreate:
         detail = repo.create(task)
 
         assert detail.number == 99
-        assert detail.labels == []
+        assert detail.labels == ["task"]
         call_args = mock_run.call_args[0][0]
-        assert "--label" not in call_args
+        assert call_args[call_args.index("--label") + 1] == "task"
         assert "--milestone" not in call_args
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_create_writes_task_label_once(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/42")
+
+        detail = GitLabTaskRepository().create(_sample_create())
+
+        call_args = mock_run.call_args[0][0]
+        assert call_args[call_args.index("--label") + 1] == "task,sprint-1"
+        assert detail.labels == ["task", "sprint-1"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_create_task_creates_labelled_issue(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/7")
+
+        detail = GitLabTaskRepository().create_task(TaskCreate(title="Quick fix", labels=["in-progress"]))
+
+        assert (detail.number, detail.title) == (7, "Quick fix")
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["glab", "issue", "create"]
+        assert call_args[call_args.index("--label") + 1] == "task,in-progress"
 
 
 # -- get -------------------------------------------------------------------
@@ -332,10 +354,15 @@ def _fake_glab(
 ) -> Callable[[list[str]], subprocess.CompletedProcess[str]]:
     def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
         if "--closed" in cmd:
-            return _completed(stdout=json.dumps(closed_issues))
-        if "--all" in cmd:
-            return _completed(stdout=json.dumps(open_issues + closed_issues))
-        return _completed(stdout=json.dumps(open_issues))
+            issues = closed_issues
+        elif "--all" in cmd:
+            issues = open_issues + closed_issues
+        else:
+            issues = open_issues
+        if "--label" in cmd:
+            wanted = set(cmd[cmd.index("--label") + 1].split(","))
+            issues = [i for i in issues if wanted <= {lbl["name"] for lbl in i["labels"]}]
+        return _completed(stdout=json.dumps(issues))
 
     return run
 
@@ -365,6 +392,23 @@ class TestListTasks:
         )
 
         assert [s.id for s in GitLabTaskRepository().list_tasks()] == ["5"]
+
+    @pytest.mark.parametrize("state", ["open", "closed"])
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_filters_listing_by_task_label(self, mock_run: MagicMock, state: str) -> None:
+        mock_run.side_effect = _fake_glab(
+            [_issue(5), _issue(6, labels=["bug"])], [_issue(5), _issue(6, labels=["bug"])]
+        )
+
+        assert [s.id for s in GitLabTaskRepository().list_tasks(state=state)] == ["5"]
+        listing = mock_run.call_args_list[0].args[0]
+        assert listing[listing.index("--label") + 1] == "task"
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_state_all_excludes_unlabelled_issues(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(5), _issue(6, labels=["bug"])], [])
+
+        assert [s.id for s in GitLabTaskRepository().list_tasks(state="all")] == ["5"]
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_state_all_uses_closed_from_same_listing(self, mock_run: MagicMock) -> None:
@@ -431,6 +475,14 @@ class TestListReady:
 
         assert GitLabTaskRepository().list_ready() == []
 
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_filters_open_listing_by_task_label(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(5), _issue(6, labels=["bug"])], [])
+
+        assert [t.id for t in GitLabTaskRepository().list_ready()] == ["5"]
+        listing = mock_run.call_args_list[0].args[0]
+        assert listing[listing.index("--label") + 1] == "task"
+
 
 class TestListEmptyStdout:
     @pytest.mark.parametrize("stdout", ["", "   \n"])
@@ -482,3 +534,184 @@ class TestGetTask:
             repo.get_task(task_id)
 
         mock_run.assert_not_called()
+
+
+# -- add_label / remove_label (#703) ----------------------------------------
+
+
+class TestAddLabel:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_adds_plain_label(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed()
+
+        GitLabTaskRepository().add_label("#42", "archived")
+
+        mock_run.assert_called_once_with(["glab", "issue", "update", "42", "--label", "archived"])
+
+    @pytest.mark.parametrize(
+        ("label", "expected"),
+        [
+            ("in-progress", "status:in-progress"),
+            ("in-review", "status:in-review"),
+            ("blocked-by-code", "status:blocked-by-code"),
+            ("blocked-by-decision", "status:blocked-by-decision"),
+            ("status:blocked", "status:blocked"),
+        ],
+    )
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_status_labels_use_status_prefix(self, mock_run: MagicMock, label: str, expected: str) -> None:
+        mock_run.return_value = _completed()
+
+        GitLabTaskRepository().add_label("42", label)
+
+        mock_run.assert_called_once_with(["glab", "issue", "update", "42", "--label", expected])
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_failure_raises(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(returncode=1, stderr="boom")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            GitLabTaskRepository().add_label("42", "archived")
+
+
+class TestRemoveLabel:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_unlabels_with_status_prefix(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed()
+
+        GitLabTaskRepository().remove_label("42", "blocked-by-code")
+
+        mock_run.assert_called_once_with(["glab", "issue", "update", "42", "--unlabel", "status:blocked-by-code"])
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_failure_is_ignored(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(returncode=1, stderr="label not found")
+
+        GitLabTaskRepository().remove_label("42", "in-progress")  # must not raise
+
+
+# -- update_gates (#703) -----------------------------------------------------
+
+
+def _gate(status: GateStatus = GateStatus.PENDING) -> Gate:
+    return Gate(id="G-1", type=GateType.HUMAN, description="Sign-off", status=status)
+
+
+def _view_and_update(description: str) -> tuple[MagicMock, list[list[str]]]:
+    calls: list[list[str]] = []
+
+    def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[2] == "view":
+            return _completed(stdout=json.dumps({"iid": 42, "description": description}))
+        return _completed()
+
+    return MagicMock(side_effect=run), calls
+
+
+def _written_description(calls: list[list[str]]) -> str:
+    update = calls[-1]
+    assert update[:4] == ["glab", "issue", "update", "42"]
+    return update[update.index("--description") + 1]
+
+
+class TestUpdateGates:
+    def test_appends_gates_section(self) -> None:
+        mock_run, calls = _view_and_update("### Description\nDo it")
+        with patch("ydk.repositories.gitlab.tasks.run_glab", mock_run):
+            GitLabTaskRepository().update_gates("42", [_gate()])
+
+        assert calls[0][:4] == ["glab", "issue", "view", "42"]
+        assert _written_description(calls) == (
+            "### Description\nDo it\n\n### Gates\n- **G-1** (human): Sign-off [pending]"
+        )
+
+    def test_replaces_existing_gates_section(self) -> None:
+        body = "### Gates\n- **G-1** (human): Sign-off [pending]\n### Acceptance Criteria\n- [ ] x"
+        mock_run, calls = _view_and_update(body)
+        with patch("ydk.repositories.gitlab.tasks.run_glab", mock_run):
+            GitLabTaskRepository().update_gates("42", [_gate(GateStatus.RESOLVED)])
+
+        assert _written_description(calls) == (
+            "### Gates\n- **G-1** (human): Sign-off [resolved]\n### Acceptance Criteria\n- [ ] x"
+        )
+
+    def test_empty_gates_renders_placeholder(self) -> None:
+        mock_run, calls = _view_and_update("### Gates\n- **G-1** (human): Sign-off [pending]")
+        with patch("ydk.repositories.gitlab.tasks.run_glab", mock_run):
+            GitLabTaskRepository().update_gates("42", [])
+
+        assert _written_description(calls) == "### Gates\n_No gates_"
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_update_failure_raises(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = [
+            _completed(stdout=json.dumps({"iid": 42, "description": ""})),
+            _completed(returncode=1, stderr="denied"),
+        ]
+
+        with pytest.raises(RuntimeError, match="denied"):
+            GitLabTaskRepository().update_gates("42", [_gate()])
+
+
+# -- compact_task / compact_all_done (#703) ------------------------------------
+
+
+class TestCompactTask:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_posts_summary_note_and_archived_label(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = [
+            _completed(stdout=json.dumps(_sample_issue_json(state="closed"))),
+            _completed(),  # note
+            _completed(),  # label
+        ]
+
+        compacted = GitLabTaskRepository().compact_task("42")
+
+        note_cmd = mock_run.call_args_list[1].args[0]
+        assert note_cmd[:5] == ["glab", "issue", "note", "42", "--message"]
+        assert note_cmd[5].startswith("### Summary\n")
+        assert compacted.summary in note_cmd[5]
+        assert mock_run.call_args_list[2].args[0] == ["glab", "issue", "update", "42", "--label", "archived"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_open_task_is_not_compactable(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout=json.dumps(_sample_issue_json(state="opened")))
+
+        with pytest.raises(ValueError, match="not compactable"):
+            GitLabTaskRepository().compact_task("42")
+        assert mock_run.call_count == 1
+
+
+class TestCompactAllDone:
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_dry_run_lists_closed_without_writing(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout=json.dumps([_issue(1, state="closed"), _issue(2, state="closed")]))
+
+        assert GitLabTaskRepository().compact_all_done(dry_run=True) == ["1", "2"]
+        assert all(c.args[0][2] == "list" for c in mock_run.call_args_list)
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_skips_already_archived(self, mock_run: MagicMock) -> None:
+        closed = [_issue(1, labels=["task", "archived"], state="closed"), _issue(2, state="closed")]
+        mock_run.return_value = _completed(stdout=json.dumps(closed))
+
+        assert GitLabTaskRepository().compact_all_done(dry_run=True) == ["2"]
+
+    def test_compacts_each_closed_task_and_skips_failures(self) -> None:
+        issues = {1: _issue(1, state="closed"), 2: _issue(2, state="closed")}
+        writes: list[list[str]] = []
+
+        def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+            if cmd[2] == "list":
+                return _completed(stdout=json.dumps(list(issues.values())))
+            if cmd[2] == "view":
+                return _completed(stdout=json.dumps(issues[int(cmd[3])]))
+            writes.append(cmd)
+            if cmd[2] == "note" and cmd[3] == "1":
+                return _completed(returncode=1, stderr="nope")
+            return _completed()
+
+        with patch("ydk.repositories.gitlab.tasks.run_glab", side_effect=run):
+            assert GitLabTaskRepository().compact_all_done() == ["2"]
+        assert ["glab", "issue", "update", "2", "--label", "archived"] in writes

@@ -8,11 +8,25 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ydk.models.pm import EpicCreate
 from ydk.repositories.gitlab.epics import GitLabEpicRepository
 
 
 def _completed(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+class TestCreateEpic:
+    @patch("ydk.repositories.gitlab.epics.run_glab")
+    def test_creates_epic_labelled_issue(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/3")
+
+        detail = GitLabEpicRepository().create_epic(EpicCreate(title="E", description="d"))
+
+        assert (detail.number, detail.title, detail.labels) == (3, "E", ["kind:epic"])
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["glab", "issue", "create"]
+        assert call_args[call_args.index("--label") + 1] == "kind:epic"
 
 
 class TestMarkRetroDone:
