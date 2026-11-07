@@ -1256,7 +1256,12 @@ def sync_issues(
     dry_run: bool = typer.Option(False, "--dry-run", help="List issues that would be retired without changing them."),
 ) -> None:
     """Retire linked external issues whose YDK tasks are all closed."""
+    from ydk.core.config import load_config
     from ydk.core.linked_issues import sync
+
+    if load_config().project.remote == "gitlab":
+        typer.echo("task sync-issues is GitHub-only (it uses gh); not supported on a GitLab remote.", err=True)
+        raise typer.Exit(1)
 
     try:
         retired = sync(dry_run)
