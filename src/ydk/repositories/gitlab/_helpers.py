@@ -66,6 +66,22 @@ def map_status(glab_state_str: str) -> TaskStatus:
     return TaskStatus.OPEN
 
 
+def derive_status(glab_state_str: str, labels: list[str]) -> TaskStatus:
+    """Map GitLab state + ``status:*`` labels to a TaskStatus (closed wins over labels)."""
+    base = map_status(glab_state_str)
+    if base == TaskStatus.DONE:
+        return base
+    if "status:blocked-by-decision" in labels:
+        return TaskStatus.BLOCKED_BY_DECISION
+    if any(lbl.startswith("status:blocked") for lbl in labels):
+        return TaskStatus.BLOCKED_BY_CODE
+    if "status:in-review" in labels:
+        return TaskStatus.IN_REVIEW
+    if "status:in-progress" in labels:
+        return TaskStatus.IN_PROGRESS
+    return base
+
+
 def extract_label_names(raw_labels: list) -> list[str]:
     """Extract label name strings from glab JSON label data."""
     label_names: list[str] = []
