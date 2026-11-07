@@ -11,6 +11,7 @@ from ydk.models.task import is_blocking_dependency
 from ydk.repositories.github.parser import render_gate_line
 from ydk.repositories.gitlab._helpers import (
     check_result,
+    derive_status,
     extract_label_names,
     glab_state_flags,
     issue_ref,
@@ -234,7 +235,9 @@ class GitLabTaskRepository:
         """Update task status via labels and/or close/reopen."""
         if status == "done":
             # Best-effort (rc ignored, like the GitHub close path): drop stale status labels first.
-            stale = ",".join(f"status:{s}" for s in ("in-review", "in-progress"))
+            stale = ",".join(
+                f"status:{s}" for s in ("in-review", "in-progress", "blocked-by-code", "blocked-by-decision")
+            )
             run_glab(["glab", "issue", "update", str(issue_number), "--unlabel", stale])
             cmd = ["glab", "issue", "close", str(issue_number)]
         elif status == "open":
@@ -329,6 +332,7 @@ class GitLabTaskRepository:
         body = data.get("description", "") or ""
         parsed = parse_body(body)
 
+        labels = extract_label_names(data.get("labels", []))
         return TaskDetail(
             number=data.get("iid", data.get("number", 0)),
             title=data.get("title", ""),
@@ -340,7 +344,7 @@ class GitLabTaskRepository:
             acceptance_criteria=[
                 AcceptanceCriterion(text=ac.text, done=ac.done) for ac in parsed["acceptance_criteria"]
             ],
-            labels=extract_label_names(data.get("labels", [])),
-            status=map_status(data.get("state", "opened")),
+            labels=labels,
+            status=derive_status(data.get("state", "opened"), labels),
             url=data.get("web_url", ""),
         )

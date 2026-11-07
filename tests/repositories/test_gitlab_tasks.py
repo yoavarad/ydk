@@ -269,7 +269,14 @@ class TestUpdateStatus:
 
         calls = [c[0][0] for c in mock_run.call_args_list]
         assert calls == [
-            ["glab", "issue", "update", "42", "--unlabel", "status:in-review,status:in-progress"],
+            [
+                "glab",
+                "issue",
+                "update",
+                "42",
+                "--unlabel",
+                "status:in-review,status:in-progress,status:blocked-by-code,status:blocked-by-decision",
+            ],
             ["glab", "issue", "close", "42"],
         ]
 
@@ -715,3 +722,57 @@ class TestCompactAllDone:
         with patch("ydk.repositories.gitlab.tasks.run_glab", side_effect=run):
             assert GitLabTaskRepository().compact_all_done() == ["2"]
         assert ["glab", "issue", "update", "2", "--label", "archived"] in writes
+
+
+# -- status derived from status:* labels -----------------------------------
+
+
+class TestDerivedStatus:
+    @pytest.mark.parametrize(
+        ("label", "expected"),
+        [
+            ("status:in-progress", TaskStatus.IN_PROGRESS),
+            ("status:in-review", TaskStatus.IN_REVIEW),
+            ("status:blocked", TaskStatus.BLOCKED_BY_CODE),
+            ("status:blocked-by-code", TaskStatus.BLOCKED_BY_CODE),
+            ("status:blocked-by-decision", TaskStatus.BLOCKED_BY_DECISION),
+        ],
+    )
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_get_reads_status_label(self, mock_run: MagicMock, label: str, expected: TaskStatus) -> None:
+        mock_run.return_value = _completed(stdout=json.dumps(_issue(7, labels=["task", label])))
+
+        assert GitLabTaskRepository().get(7).status == expected
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_closed_wins_over_status_label(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(
+            stdout=json.dumps(_issue(7, labels=["task", "status:in-progress"], state="closed"))
+        )
+
+        assert GitLabTaskRepository().get(7).status == TaskStatus.DONE
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_bare_label_ignored(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout=json.dumps(_issue(7, labels=["task", "in-progress"])))
+
+        assert GitLabTaskRepository().get(7).status == TaskStatus.OPEN
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_list_ready_excludes_in_progress_and_blocked(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab(
+            [
+                _issue(1),
+                _issue(2, labels=["task", "status:in-progress"]),
+                _issue(3, labels=["task", "status:blocked-by-code"]),
+            ],
+            [],
+        )
+
+        assert [t.id for t in GitLabTaskRepository().list_ready()] == ["1"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_list_tasks_reports_derived_status(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _fake_glab([_issue(2, labels=["task", "status:in-review"])], [])
+
+        assert GitLabTaskRepository().list_tasks()[0].status == TaskStatus.IN_REVIEW
