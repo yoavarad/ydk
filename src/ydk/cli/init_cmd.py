@@ -198,6 +198,19 @@ def _install_github_templates() -> None:
     (github_dir / "PULL_REQUEST_TEMPLATE.md").write_text(_PR_TEMPLATE, encoding="utf-8")
 
 
+def _install_gitlab_templates() -> None:
+    """Create .gitlab/ with issue templates and merge request template."""
+    issue_dir = Path(".gitlab") / "issue_templates"
+    mr_dir = Path(".gitlab") / "merge_request_templates"
+    issue_dir.mkdir(parents=True, exist_ok=True)
+    mr_dir.mkdir(parents=True, exist_ok=True)
+
+    (issue_dir / "task.md").write_text(_ISSUE_TEMPLATE_TASK, encoding="utf-8")
+    (issue_dir / "story.md").write_text(_ISSUE_TEMPLATE_STORY, encoding="utf-8")
+    (issue_dir / "epic.md").write_text(_ISSUE_TEMPLATE_EPIC, encoding="utf-8")
+    (mr_dir / "Default.md").write_text(_PR_TEMPLATE, encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Claude Code guard script (PreToolUse hook)
 # ---------------------------------------------------------------------------
@@ -547,8 +560,11 @@ def init_command(
     # Install git hooks (with pre-push verified flag support)
     _install_hooks()
 
-    # Install GitHub templates
-    _install_github_templates()
+    # Install issue/PR templates for the configured forge
+    if config.project.remote == "gitlab":
+        _install_gitlab_templates()
+    else:
+        _install_github_templates()
 
     # Keep verification cache out of version control
     _ensure_gitignore()
