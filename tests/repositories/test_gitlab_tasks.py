@@ -502,6 +502,40 @@ class TestListEmptyStdout:
         assert mock_run.call_count == 2
 
 
+# -- get_task --------------------------------------------------------------
+
+
+class TestGetTask:
+    @pytest.mark.parametrize("task_id", ["42", "#42", " 42 "])
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_get_task_accepts_string_ids(self, mock_run: MagicMock, task_id: str) -> None:
+        repo = GitLabTaskRepository()
+        mock_run.return_value = _completed(stdout=json.dumps(_sample_issue_json(iid=42)))
+
+        detail = repo.get_task(task_id)
+
+        assert detail.number == 42
+        assert mock_run.call_args[0][0][:4] == ["glab", "issue", "view", "42"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_get_task_failure_raises(self, mock_run: MagicMock) -> None:
+        repo = GitLabTaskRepository()
+        mock_run.return_value = _completed(returncode=1, stderr="404 not found")
+
+        with pytest.raises(RuntimeError, match="glab issue view failed"):
+            repo.get_task("7")
+
+    @pytest.mark.parametrize("task_id", ["T-001", "E-042", "abc", "#", "", "-5"])
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_get_task_rejects_non_numeric_ids(self, mock_run: MagicMock, task_id: str) -> None:
+        repo = GitLabTaskRepository()
+
+        with pytest.raises(ValueError, match="not a GitLab issue number"):
+            repo.get_task(task_id)
+
+        mock_run.assert_not_called()
+
+
 # -- add_label / remove_label (#703) ----------------------------------------
 
 
