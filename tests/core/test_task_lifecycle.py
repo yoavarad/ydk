@@ -1975,3 +1975,58 @@ def test_create_pr_on_gitlab_without_glab_falls_back_to_local(
     url = gitlab_lifecycle._create_pr("T-001", pr_body_override="body")
     assert url == "local://T-001/pr-pending"
     assert not any(c.args[0][:1] == ["gh"] for c in mock_subprocess.run.call_args_list)
+
+
+@pytest.mark.parametrize(
+    ("failing_call", "expected_applied"),
+    [
+        ("update_status", ""),
+        ("assign", "status=in-progress"),
+        ("add_label", "assignee=agent"),
+        ("add_comment", "label=in-progress"),
+        ("update_frontmatter", "comment=session"),
+    ],
+)
+def test_start_failure_rolls_back_worktree_and_reports_remote_state(
+    lifecycle: TaskLifecycle,
+    mock_repo: MagicMock,
+    mock_worktree: MagicMock,
+    failing_call: str,
+    expected_applied: str,
+) -> None:
+    """A failure after worktree creation removes the worktree and names applied remote changes."""
+    getattr(mock_repo, failing_call).side_effect = RuntimeError("network down")
+
+    with pytest.raises(RuntimeError, match="network down") as excinfo:
+        lifecycle.start("T-001", session_id="sess-1")
+
+    mock_worktree.cleanup.assert_called_once_with("T-001")
+    if expected_applied:
+        assert expected_applied in " ".join(excinfo.value.__notes__)
+        mock_repo.update_status.assert_called_with("T-001", "open")
+    if failing_call in ("add_comment", "update_frontmatter"):
+        mock_repo.remove_label.assert_called_once_with("T-001", "in-progress")
+    else:
+        mock_repo.remove_label.assert_not_called()
+
+
+def test_start_failure_without_isolation_does_not_clean_worktree(
+    mock_repo: MagicMock, mock_worktree: MagicMock, mock_verifier: MagicMock
+) -> None:
+    """Rollback skips worktree cleanup when isolation is off."""
+    lc = TaskLifecycle(
+        repo=mock_repo,
+        events=EventBus(),
+        worktree_mgr=mock_worktree,
+        verifier=mock_verifier,
+        project_root=Path("/tmp/project"),
+        worktree_isolation=False,
+    )
+    mock_repo.update_status.side_effect = RuntimeError("boom")
+    with (
+        patch("ydk.core.task_lifecycle.subprocess"),
+        patch("ydk.core.task_lifecycle.resolve_start_point", return_value="main"),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        lc.start("T-001")
+    mock_worktree.cleanup.assert_not_called()

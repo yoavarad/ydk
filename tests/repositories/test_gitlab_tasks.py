@@ -302,7 +302,7 @@ class TestUpdateStatus:
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_label_based_status(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
-        mock_run.return_value = _completed()
+        mock_run.return_value = _completed(stdout=json.dumps(_issue(42)))
 
         repo.update_status(42, "in_progress")
 
@@ -571,7 +571,8 @@ class TestAddLabel:
 
         GitLabTaskRepository().add_label("42", label)
 
-        mock_run.assert_called_once_with(["glab", "issue", "update", "42", "--label", expected])
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--label") + 1] == expected
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_failure_raises(self, mock_run: MagicMock) -> None:
@@ -795,6 +796,25 @@ def _by_iid(issues: dict[int, dict]) -> Callable[[list[str]], subprocess.Complet
 
 class TestCheckDependencies:
     @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_mixed_dep_types_round_trip_through_create(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed(stdout="https://gitlab.com/owner/repo/-/issues/5\n")
+        deps = [Dependency(task_id="#1"), Dependency(task_id="#2", type="validates"), "#3"]
+        GitLabTaskRepository().create(TaskCreate(title="t", dependencies=deps))
+        cmd = mock_run.call_args[0][0]
+        written = {**_issue(5), "description": cmd[cmd.index("--description") + 1]}
+        mock_run.side_effect = _by_iid({5: written, 1: _issue(1, state="closed"), 2: _issue(2), 3: _issue(3)})
+
+        repo = GitLabTaskRepository()
+        assert repo.get_task("5").dependencies == ["#1", Dependency(task_id="#2", type="validates"), "#3"]
+        assert [(d.task_id, d.resolved) for d in repo.check_dependencies("5")] == [("#1", True), ("#3", False)]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_legacy_untyped_deps_default_to_blocking(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _by_iid({5: _issue(5, deps="#1, 2"), 1: _issue(1), 2: _issue(2)})
+
+        assert [d.task_id for d in GitLabTaskRepository().check_dependencies("5")] == ["#1", "2"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_reports_resolved_and_unresolved_deps(self, mock_run: MagicMock) -> None:
         mock_run.side_effect = _by_iid({5: _issue(5, deps="#1, 2"), 1: _issue(1, state="closed"), 2: _issue(2)})
 
@@ -899,6 +919,11 @@ class TestUpdateFrontmatter:
         detail = GitLabTaskRepository().get(42)
         assert detail.tdd_stage is None
         assert detail.session_id is None
+    def test_non_blocking_dependency_type_round_trip(self, mock_run: MagicMock) -> None:
+        body = self._run(mock_run, {"dependencies": [{"task_id": "#4", "type": "related"}, "#5"]})
+
+        mock_run.return_value = _completed(stdout=json.dumps({**_sample_issue_json(), "description": body}))
+        assert GitLabTaskRepository().get(42).dependencies == [Dependency(task_id="#4", type="related"), "#5"]
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_replaces_existing_dependencies_and_clears_empty(self, mock_run: MagicMock) -> None:
@@ -932,7 +957,7 @@ class TestStartClearsBlockedLabels:
                 "--label",
                 "status:in-progress",
                 "--unlabel",
-                "status:blocked,status:blocked-by-code,status:blocked-by-decision",
+                "status:blocked,status:blocked-by-code,status:blocked-by-decision,status:in-review",
             ]
         )
 
@@ -955,3 +980,87 @@ class TestStartClearsBlockedLabels:
         repo.update_status("5", "in-progress")
 
         assert repo.get(5).status == TaskStatus.IN_PROGRESS
+
+
+_STATUSES = ["in-progress", "in-review", "blocked-by-code", "blocked-by-decision"]
+
+
+def _stateful_glab(labels: list[str]) -> Callable[[list[str]], subprocess.CompletedProcess[str]]:
+    """Fake glab holding one issue's labels; applies --unlabel then --label per call."""
+
+    def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+        if "--unlabel" in cmd:
+            for lbl in cmd[cmd.index("--unlabel") + 1].split(","):
+                if lbl in labels:
+                    labels.remove(lbl)
+        if "--label" in cmd and cmd[cmd.index("--label") + 1] not in labels:
+            labels.append(cmd[cmd.index("--label") + 1])
+        return _completed(stdout=json.dumps(_issue(5, labels=list(labels))))
+
+    return run
+
+
+def _status_labels(labels: list[str]) -> list[str]:
+    return [lbl for lbl in labels if lbl.startswith("status:")]
+
+
+class TestStatusTransitionsLeaveOneLabel:
+    @pytest.mark.parametrize("old", _STATUSES)
+    @pytest.mark.parametrize("new", _STATUSES)
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_update_status_pair(self, mock_run: MagicMock, old: str, new: str) -> None:
+        labels = ["task", f"status:{old}"]
+        mock_run.side_effect = _stateful_glab(labels)
+
+        GitLabTaskRepository().update_status("5", new)
+
+        assert _status_labels(labels) == [f"status:{new}"]
+
+    @pytest.mark.parametrize("old", _STATUSES)
+    @pytest.mark.parametrize("new", _STATUSES)
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_add_label_pair(self, mock_run: MagicMock, old: str, new: str) -> None:
+        labels = ["task", f"status:{old}"]
+        mock_run.side_effect = _stateful_glab(labels)
+
+        GitLabTaskRepository().add_label("5", new)
+
+        assert _status_labels(labels) == [f"status:{new}"]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_removal_and_addition_in_single_update_call(self, mock_run: MagicMock) -> None:
+        mock_run.side_effect = _stateful_glab(["task", "status:blocked-by-code"])
+
+        GitLabTaskRepository().update_status("5", "in-review")
+
+        update_calls = [c[0][0] for c in mock_run.call_args_list if "update" in c[0][0]]
+        assert update_calls == [
+            [
+                "glab",
+                "issue",
+                "update",
+                "5",
+                "--label",
+                "status:in-review",
+                "--unlabel",
+                "status:blocked,status:blocked-by-code,status:blocked-by-decision,status:in-progress",
+            ]
+        ]
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_reapplying_same_status_does_not_unlabel_it(self, mock_run: MagicMock) -> None:
+        labels = ["task", "status:in-review"]
+        mock_run.side_effect = _stateful_glab(labels)
+
+        GitLabTaskRepository().update_status("5", "in-review")
+
+        assert _status_labels(labels) == ["status:in-review"]
+        assert "status:in-review" not in mock_run.call_args[0][0][-1].split(",")
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_add_label_non_status_does_not_touch_status_labels(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = _completed()
+
+        GitLabTaskRepository().add_label("5", "archived")
+
+        mock_run.assert_called_once_with(["glab", "issue", "update", "5", "--label", "archived"])

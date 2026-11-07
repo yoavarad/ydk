@@ -124,36 +124,73 @@ class TaskLifecycle:
             worktree_path = self._root
             summary = f"Branch {branch} created from {base} (worktree isolation disabled)"
 
-        # Store active task context (base branch) for PR creation, scoped by
-        # task_id. Multiple tasks can be in flight at once (parallel
-        # orchestrators, separate worktrees against the same checkout), so
-        # this is a per-task map rather than a single global slot -- writing
-        # our own entry must not clobber any other task's.
-        update_active_tasks(
-            self._root,
-            lambda tasks: {
-                **tasks,
-                task_id: {"base_branch": base_branch or default_branch(self._root)},
-            },
-        )
+        applied: list[str] = []
+        try:
+            # Store active task context (base branch) for PR creation, scoped by
+            # task_id. Multiple tasks can be in flight at once (parallel
+            # orchestrators, separate worktrees against the same checkout), so
+            # this is a per-task map rather than a single global slot -- writing
+            # our own entry must not clobber any other task's.
+            update_active_tasks(
+                self._root,
+                lambda tasks: {
+                    **tasks,
+                    task_id: {"base_branch": base_branch or default_branch(self._root)},
+                },
+            )
 
-        # Update status
-        self._repo.update_status(task_id, "in-progress")
-        self._repo.assign(task_id, "agent")
-        self._repo.add_label(task_id, "in-progress")
+            # Update status
+            self._repo.update_status(task_id, "in-progress")
+            applied.append("status=in-progress")
+            self._repo.assign(task_id, "agent")
+            applied.append("assignee=agent")
+            self._repo.add_label(task_id, "in-progress")
+            applied.append("label=in-progress")
 
-        # Store session ID if provided
-        if session_id:
-            self._repo.add_comment(task_id, f"Session: {session_id}")
-            self._repo.update_frontmatter(task_id, {"session_id": session_id})
+            # Store session ID if provided
+            if session_id:
+                self._repo.add_comment(task_id, f"Session: {session_id}")
+                applied.append("comment=session (not reverted)")
+                self._repo.update_frontmatter(task_id, {"session_id": session_id})
 
-        # Emit event (async -- doesn't block)
-        self._events.emit(TaskStartedEvent(task_id=task_id, summary=summary))
+            # Emit event (async -- doesn't block)
+            self._events.emit(TaskStartedEvent(task_id=task_id, summary=summary))
+
+        except Exception as exc:
+            self._rollback_start(task_id, task.status, applied)
+            detail = f"; remote changes already applied: {', '.join(applied)}" if applied else ""
+            if detail:
+                exc.add_note(f"Task {task_id} start rolled back locally{detail}")
+            raise
 
         elapsed = time.monotonic() - start_time
         logger.info("Task %s started in %.1fs — %s", task_id, elapsed, summary)
 
         return {"task": task, "worktree": str(worktree_path), "session_id": session_id}
+
+    def _rollback_start(self, task_id: str, prior_status: str, applied: list[str]) -> None:
+        """Best-effort undo of a partially completed start() so a rerun needs no --force."""
+        if self._worktree_isolation:
+            try:
+                self._worktree.cleanup(task_id)
+            except Exception as exc:
+                logger.warning("Rollback: could not clean worktree for %s: %s", task_id, exc)
+        try:
+            update_active_tasks(self._root, lambda tasks: {k: v for k, v in tasks.items() if k != task_id})
+        except Exception as exc:
+            logger.warning("Rollback: could not clear active-task entry for %s: %s", task_id, exc)
+        if prior_status == "in-progress":
+            return  # force-restart: remote already said in-progress; nothing to revert
+        if "label=in-progress" in applied:
+            try:
+                self._repo.remove_label(task_id, "in-progress")
+            except Exception as exc:
+                logger.warning("Rollback: could not remove label for %s: %s", task_id, exc)
+        if "status=in-progress" in applied:
+            try:
+                self._repo.update_status(task_id, prior_status)
+            except Exception as exc:
+                logger.warning("Rollback: could not restore status for %s: %s", task_id, exc)
 
     @staticmethod
     def _read_active_tasks(active_task_file: Path) -> dict:
