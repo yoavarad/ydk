@@ -6,7 +6,7 @@ import json
 import subprocess
 
 from ydk.repositories.github._helpers import GH_LIST_LIMIT
-from ydk.repositories.gitlab._helpers import list_glab_issues
+from ydk.repositories.gitlab._helpers import glab_state_flags, list_glab_issues
 
 
 class GitHubRemoteService:
@@ -93,9 +93,7 @@ class GitLabRemoteService:
         self, milestone: str | None = None, labels: list[str] | None = None, state: str = "open"
     ) -> list[dict]:
         """List issues with optional filters."""
-        # glab uses 'opened' not 'open'
-        glab_state = "opened" if state == "open" else state
-        cmd: list[str] = ["glab", "issue", "list", "--output", "json", "--state", glab_state]
+        cmd: list[str] = ["glab", "issue", "list", "--output", "json", *glab_state_flags(state)]
         if milestone:
             cmd.extend(["--milestone", milestone])
         if labels:

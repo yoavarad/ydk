@@ -48,9 +48,13 @@ def issue_ref(raw_id: str) -> str:
     return str(int(raw_id))
 
 
-def glab_state(status: str) -> str:
-    """Map generic status string to glab's ``--state`` value."""
-    return "opened" if status == "open" else status
+def glab_state_flags(status: str) -> builtins.list[str]:
+    """Map generic status to ``glab issue list`` flags (default=open, ``--closed``, ``--all``)."""
+    if status in ("closed", "done"):
+        return ["--closed"]
+    if status == "all":
+        return ["--all"]
+    return []
 
 
 def map_status(glab_state_str: str) -> TaskStatus:
@@ -79,17 +83,19 @@ def list_glab_issues(
 ) -> builtins.list[dict]:
     """Run a ``glab issue list`` command page by page and return all issues.
 
-    Returns ``[]`` if any page fails or yields malformed JSON.
+    Raises ``RuntimeError`` (with glab's stderr) if any page fails or yields malformed JSON.
     """
     issues: builtins.list[dict] = []
     for page in range(1, GLAB_MAX_PAGES + 1):
         result = run([*cmd, "--per-page", str(GLAB_PAGE_SIZE), "--page", str(page)])
         if result.returncode != 0:
-            return []
+            msg = f"glab issue list failed: {(result.stderr or '').strip()}"
+            raise RuntimeError(msg)
         try:
             batch = load_json_stdout(result, "issue list")
-        except (json.JSONDecodeError, RuntimeError):
-            return []
+        except json.JSONDecodeError as exc:
+            msg = f"glab issue list returned malformed JSON: {exc}"
+            raise RuntimeError(msg) from exc
         issues.extend(batch)
         if len(batch) < GLAB_PAGE_SIZE:
             break

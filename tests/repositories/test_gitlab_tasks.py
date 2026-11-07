@@ -184,23 +184,40 @@ class TestList:
         call_args = mock_run.call_args[0][0]
         assert "--milestone" in call_args
         assert "--label" in call_args
-        assert "--state" in call_args
-        idx = call_args.index("--state")
-        assert call_args[idx + 1] == "opened"  # 'open' -> 'opened'
+        assert "--state" not in call_args
+        assert "--closed" not in call_args
+        assert "--all" not in call_args
+
+    @pytest.mark.parametrize(
+        ("status", "flags"),
+        [("open", []), ("closed", ["--closed"]), ("done", ["--closed"]), ("all", ["--all"])],
+    )
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
+    def test_list_state_flags(self, mock_run: MagicMock, status: str, flags: list[str]) -> None:
+        mock_run.return_value = _completed(stdout=json.dumps([]))
+
+        GitLabTaskRepository().list(status=status)
+
+        call_args = mock_run.call_args[0][0]
+        assert "--state" not in call_args
+        for flag in ("--closed", "--all"):
+            assert (flag in call_args) == (flag in flags)
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
-    def test_list_returns_empty_on_failure(self, mock_run: MagicMock) -> None:
+    def test_list_raises_on_failure(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
-        mock_run.return_value = _completed(returncode=1, stderr="error")
+        mock_run.return_value = _completed(returncode=1, stderr="unknown flag: --state")
 
-        assert repo.list() == []
+        with pytest.raises(RuntimeError, match="unknown flag"):
+            repo.list()
 
     @patch("ydk.repositories.gitlab.tasks.run_glab")
-    def test_list_returns_empty_on_bad_json(self, mock_run: MagicMock) -> None:
+    def test_list_raises_on_bad_json(self, mock_run: MagicMock) -> None:
         repo = GitLabTaskRepository()
         mock_run.return_value = _completed(stdout="not json")
 
-        assert repo.list() == []
+        with pytest.raises(RuntimeError):
+            repo.list()
 
 
 # -- update_status ---------------------------------------------------------
