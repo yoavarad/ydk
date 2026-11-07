@@ -45,6 +45,8 @@ _ISSUE_REF = re.compile(r"#?([0-9]+)")
 _NON_TASK_LABELS = frozenset({"kind:epic", "kind:story"})
 # Type label every task issue carries (mirrors GitHubTaskRepository's default ``task_label``).
 _TASK_LABEL = "task"
+# The complete set of blocked labels YDK defines (see _helpers.derive_status); cleared unconditionally on start.
+_BLOCKED_LABELS = ("status:blocked", "status:blocked-by-code", "status:blocked-by-decision")
 # update_frontmatter key -> ``**Label**:`` body field (same labels as the GitHub backend).
 _BODY_FIELD_LABELS: dict[str, str] = {
     "dependencies": "Dependencies",
@@ -267,10 +269,9 @@ class GitLabTaskRepository:
             # For in_progress / blocked, use labels
             cmd = ["glab", "issue", "update", str(issue_number), "--label", f"status:{status}"]
             if status == "in-progress":
-                # Starting a task unblocks it; drop status:blocked* in the same (atomic) update.
-                blocked = self._blocked_labels(issue_ref(str(issue_number)))
-                if blocked:
-                    cmd.extend(["--unlabel", ",".join(blocked)])
+                # Starting a task unblocks it. Unlabel the known blocked set unconditionally in the same
+                # update (no prior read, so a concurrent label change cannot be lost).
+                cmd.extend(["--unlabel", ",".join(_BLOCKED_LABELS)])
 
         result = run_glab(cmd)
         check_result(result, "issue update")
@@ -405,10 +406,6 @@ class GitLabTaskRepository:
     # ------------------------------------------------------------------
     # Private
     # ------------------------------------------------------------------
-
-    def _blocked_labels(self, number: str) -> builtins.list[str]:
-        """Return the issue's ``status:blocked*`` labels. Raises RuntimeError if the issue cannot be read."""
-        return [lbl for lbl in self.get(int(number)).labels if lbl.startswith("status:blocked")]
 
     def _issue_json_to_detail(self, data: dict) -> TaskDetail:
         """Convert glab JSON output to a TaskDetail."""
