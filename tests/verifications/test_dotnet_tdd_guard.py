@@ -116,3 +116,35 @@ def test_git_staged_subdir_project_root(tmp_path: Path) -> None:
     data = _run_check(sub)
     assert data["passed"] is False
     assert "FooTests.cs" in data["output"]
+
+
+def test_exempts_file_inside_unittests_dir(tmp_path: Path) -> None:
+    data = _run_check(tmp_path, {"staged_files": ["UnitTests/FooTests.cs"]})
+
+    assert data["returncode"] == 0, data["stderr"]
+    assert data["passed"] is True
+    assert "FooTestsTests.cs" not in data["output"]
+
+
+def test_exempts_file_inside_dotted_unittests_dir(tmp_path: Path) -> None:
+    data = _run_check(tmp_path, {"staged_files": ["Foo.UnitTests/BarTests.cs"]})
+
+    assert data["returncode"] == 0, data["stderr"]
+    assert data["passed"] is True
+
+
+def test_exempts_file_inside_specs_dir(tmp_path: Path) -> None:
+    data = _run_check(tmp_path, {"staged_files": ["Foo.Specs/BarSpec.cs"]})
+
+    assert data["returncode"] == 0, data["stderr"]
+    assert data["passed"] is True
+
+
+def test_source_satisfied_by_test_in_unittests_dir(tmp_path: Path) -> None:
+    (tmp_path / "UnitTests").mkdir()
+    (tmp_path / "UnitTests" / "FooTests.cs").write_text("")
+
+    data = _run_check(tmp_path, {"staged_files": ["Common/Foo.cs"]})
+
+    assert data["returncode"] == 0, data["stderr"]
+    assert data["passed"] is True
