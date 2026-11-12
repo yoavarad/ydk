@@ -35,7 +35,7 @@ requires: []
 supports_auto_fix: false
 ```
 
-The `layer` field determines execution order (1 runs first, then 2, then 3). The `trigger` field controls when the plugin runs. The `parallel` field indicates whether concurrent execution with other plugins is safe. The `timeout` prevents runaway plugins. The `supports_auto_fix` field enables the auto-fix workflow.
+The `layer` field determines execution order (1 runs first, then 2, then 3). The `trigger` field controls when the plugin runs. The `parallel` field indicates whether concurrent execution with other plugins is safe. The `timeout` prevents runaway plugins. For `check.py` plugins, the effective timeout is also exported to the plugin process as the `YDK_PLUGIN_TIMEOUT` environment variable (seconds), so a check can budget its own work. The `supports_auto_fix` field enables the auto-fix workflow.
 
 ## The Check Contract
 

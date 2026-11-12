@@ -684,6 +684,34 @@ class TestRunCheckScriptEnv:
         assert result.output == "from_real_env"
 
 
+class TestPluginTimeoutEnv:
+    _CHECK = (
+        "import json, os, sys\n"
+        "sys.stdin.read()\n"
+        'json.dump({"name": "t", "passed": True, '
+        '"output": os.environ.get("YDK_PLUGIN_TIMEOUT", ""), "duration_seconds": 0.0}, sys.stdout)\n'
+    )
+
+    def _run(self, tmp_path: Path, monkeypatch, timeout: int) -> str:
+        v = _make_verifier(tmp_path, monkeypatch, global_plugins={"t": {"check_code": self._CHECK, "timeout": timeout}})
+        plugins = v.discover_plugins()
+        result = asyncio.run(v.run_plugin(plugins[0], {"project_root": str(tmp_path)}))
+        return result.output
+
+    def test_manifest_timeout_exported(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.delenv("YDK_PLUGIN_TIMEOUT", raising=False)
+        assert self._run(tmp_path, monkeypatch, 77) == "77"
+
+    def test_different_manifest_timeout(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.delenv("YDK_PLUGIN_TIMEOUT", raising=False)
+        assert self._run(tmp_path, monkeypatch, 5) == "5"
+
+    def test_stale_env_overridden(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("YDK_PLUGIN_TIMEOUT", "999")
+        (tmp_path / ".env").write_text("YDK_PLUGIN_TIMEOUT=888\n", encoding="utf-8")
+        assert self._run(tmp_path, monkeypatch, 42) == "42"
+
+
 class TestFilterByTriggerShorthand:
     """Ensure filter_by_trigger accepts shorthand triggers."""
 

@@ -339,7 +339,7 @@ class Verifier:
 
         input_json = json.dumps(context)
         dotenv_vars = _load_dotenv(self._root / ".env")
-        env = {**dotenv_vars, **os.environ}
+        env = {**dotenv_vars, **os.environ, "YDK_PLUGIN_TIMEOUT": str(plugin.timeout)}
         result = subprocess.run(
             [_sys.executable, str(plugin.check_script)],
             input=input_json,
