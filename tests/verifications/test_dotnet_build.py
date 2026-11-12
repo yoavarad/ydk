@@ -314,6 +314,21 @@ class TestMain:
         assert len(timeouts) == 1
         assert timeouts[0] <= 110
 
+    def test_build_timeout_kwarg_follows_env_timeout(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("YDK_PLUGIN_TIMEOUT", "300")
+        (tmp_path / "app.sln").write_text("")
+        timeouts: list[float] = []
+
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            if "--list-sdks" in cmd:
+                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="8.0.100\n")
+            timeouts.append(kwargs["timeout"])  # type: ignore[arg-type]
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
+
+        self._run_with(monkeypatch, tmp_path, fake_run)
+
+        assert 110 < timeouts[0] <= 290
+
 
 class TestConfiguredTarget:
     """verification.dotnet.target overrides auto-discovery in context["config"]."""
