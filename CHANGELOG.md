@@ -1,3 +1,13 @@
+## v1.11.0 (2026-11-12)
+
+### Feat
+
+- **verifier**: export effective manifest timeout to plugins as YDK_PLUGIN_TIMEOUT
+
+### Fix
+
+- **test**: restore dropped @patch decorator in gitlab tasks test
+
 ## v1.10.0 (2026-11-07)
 
 ### Feat
