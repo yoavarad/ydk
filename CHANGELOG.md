@@ -1,3 +1,11 @@
+## v1.11.1 (2026-11-12)
+
+### Fix
+
+- **verifications**: derive dotnet plugin deadline from manifest timeout
+- **task**: count .ydk/config.yaml as shippable in task done
+- **verify**: dotnet-tdd-guard recognise UnitTests/*Tests/*Specs dirs
+
 ## v1.11.0 (2026-11-12)
 
 ### Feat

@@ -104,6 +104,8 @@ The bundled `dotnet-build`, `dotnet-format` and `dotnet-test` plugins share one 
 
 If nothing is found, the plugin reports SKIP.
 
+Each plugin derives its internal dotnet deadline from the manifest `timeout` (exported as `YDK_PLUGIN_TIMEOUT`), so raising the manifest timeout also raises the dotnet command deadline.
+
 If the default pick is wrong, for example in a repo with several solutions, set `verification.dotnet.target` in your YDK config to a `.sln`, `.slnx` or `.csproj` path (relative to the project root, or absolute). When the check runs (SDK installed and .NET files changed), a missing path or a file of another type fails it with a clear message.
 
 Project-local copies or overrides of the dotnet plugins under `.ydk/verifications/` should no longer be needed, and the old combined build+format bundle plugin no longer exists. Delete vendored copies and remove any bundle entry from `verification.enabled`, so you get the current SKIP reporting and target handling.
