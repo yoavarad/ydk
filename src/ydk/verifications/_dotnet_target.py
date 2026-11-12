@@ -4,6 +4,7 @@ Verification plugins run as subprocesses, so each plugin's ``check.py`` puts thi
 directory on ``sys.path`` and imports this module. Stdlib only.
 """
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -23,6 +24,18 @@ BUILD_AFFECTING_EXTENSIONS = (
 )
 BUILD_AFFECTING_NAMES = frozenset({"global.json", "nuget.config"})
 SKIP_MESSAGE = "No .NET build-affecting files changed — skipped"
+
+
+def budget_seconds(default_timeout: int, margin: int = 10) -> float:
+    """Return the plugin's internal time budget: manifest timeout (YDK_PLUGIN_TIMEOUT) minus margin, at least 1."""
+    raw = os.environ.get("YDK_PLUGIN_TIMEOUT", "")
+    try:
+        timeout = int(raw)
+    except ValueError:
+        timeout = 0
+    if timeout <= 0:
+        timeout = default_timeout
+    return max(1, timeout - margin)
 
 
 def affects_dotnet_build(changed_files: list[str]) -> bool:

@@ -180,3 +180,24 @@ def test_affects_dotnet_build_true(files: list[str]) -> None:
 @pytest.mark.parametrize("files", [[], ["README.md"], ["docs/guide.md", "package.json", "notglobal.json"]])
 def test_affects_dotnet_build_false(files: list[str]) -> None:
     assert mod.affects_dotnet_build(files) is False
+
+
+class TestBudgetSeconds:
+    """budget_seconds derives the plugin deadline from YDK_PLUGIN_TIMEOUT."""
+
+    def test_unset_uses_default_minus_margin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("YDK_PLUGIN_TIMEOUT", raising=False)
+        assert mod.budget_seconds(120) == 110
+
+    def test_valid_env_overrides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("YDK_PLUGIN_TIMEOUT", "300")
+        assert mod.budget_seconds(120) == 290
+
+    @pytest.mark.parametrize("value", ["abc", "", "0", "-5", "1.5"])
+    def test_invalid_env_falls_back_to_default(self, monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+        monkeypatch.setenv("YDK_PLUGIN_TIMEOUT", value)
+        assert mod.budget_seconds(120) == 110
+
+    def test_tiny_timeout_never_non_positive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("YDK_PLUGIN_TIMEOUT", "5")
+        assert mod.budget_seconds(120) == 1

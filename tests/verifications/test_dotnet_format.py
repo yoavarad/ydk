@@ -216,6 +216,13 @@ class TestBudget:
         assert len(format_calls) == 2
         assert all(1.0 <= c["timeout"] <= 110 for c in format_calls)
 
+    def test_format_timeout_follows_env_timeout(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("YDK_PLUGIN_TIMEOUT", "300")
+        _, format_calls = self._run(monkeypatch, tmp_path, timeout_on_format=False)
+
+        assert len(format_calls) == 2
+        assert all(110 < c["timeout"] <= 290 for c in format_calls)
+
 
 class TestRealSubprocess:
     """Run check.py as a real subprocess -- proves the shared helper import works."""

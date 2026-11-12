@@ -113,7 +113,7 @@ def main() -> None:
 
     outputs: list[str] = []
     passed = True
-    deadline = start + 110
+    deadline = start + _dotnet_target.budget_seconds(120)
     for target in targets:
         try:
             format_result = subprocess.run(

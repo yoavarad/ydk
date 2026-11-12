@@ -282,6 +282,27 @@ class TestMain:
         assert len(timeouts) == 1
         assert timeouts[0] <= 290
 
+    def test_test_run_timeout_follows_env_timeout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        monkeypatch.setenv("YDK_PLUGIN_TIMEOUT", "600")
+        mod = _load_check_module()
+        (tmp_path / "App.Tests.csproj").write_text("")
+        timeouts: list[float] = []
+        base = _make_fake_run([])
+
+        def fake(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            if len(cmd) > 1 and cmd[1] == "test":
+                timeouts.append(kwargs["timeout"])  # type: ignore[arg-type]
+            return base(cmd, **kwargs)
+
+        with (
+            patch.object(mod.shutil, "which", return_value="dotnet"),
+            patch.object(mod.subprocess, "run", side_effect=fake),
+        ):
+            _run_main(mod, tmp_path, monkeypatch, capsys)
+        assert 290 < timeouts[0] <= 590
+
     def test_slnx_used_when_sdk_supports_it(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
         mod = _load_check_module()
         (tmp_path / "App.slnx").write_text("")
