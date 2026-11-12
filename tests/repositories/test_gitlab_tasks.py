@@ -919,6 +919,8 @@ class TestUpdateFrontmatter:
         detail = GitLabTaskRepository().get(42)
         assert detail.tdd_stage is None
         assert detail.session_id is None
+
+    @patch("ydk.repositories.gitlab.tasks.run_glab")
     def test_non_blocking_dependency_type_round_trip(self, mock_run: MagicMock) -> None:
         body = self._run(mock_run, {"dependencies": [{"task_id": "#4", "type": "related"}, "#5"]})
 
