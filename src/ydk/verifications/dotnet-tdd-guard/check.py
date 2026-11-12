@@ -13,8 +13,8 @@ _EXCLUDED_DIRS = {".git", "bin", "obj", "node_modules", ".venv", ".ydk"}
 
 
 def _is_test_dir_part(part: str) -> bool:
-    """True if a path segment names a test project/directory (``Tests`` or ``*.Tests``)."""
-    return part == "Tests" or part.endswith(".Tests")
+    """True if a path segment names a test project/directory (any segment ending in ``Tests`` or ``Specs``)."""
+    return part.endswith(("Tests", "Specs"))
 
 
 def _is_already_test_file(filepath: str) -> bool:
