@@ -460,6 +460,16 @@ class TestCommittedChanges:
         _git(feature_repo, "commit", "-q", "-m", "mixed")
         assert committed_changes("main", feature_repo) == [".ydk/retros/615.md"]
 
+    def test_config_yaml_only_commit_is_shippable(self, feature_repo: Path) -> None:
+        from ydk.services.git import committed_changes
+
+        (feature_repo / ".ydk").mkdir(exist_ok=True)
+        (feature_repo / ".ydk" / "config.yaml").write_text("x: 1\n")
+        (feature_repo / ".ydk" / "manifest.yaml").write_text("x: 1\n")
+        _git(feature_repo, "add", "-f", ".")
+        _git(feature_repo, "commit", "-q", "-m", "cfg")
+        assert committed_changes("main", feature_repo) == [".ydk/config.yaml"]
+
     def test_lists_real_changes(self, feature_repo: Path) -> None:
         from ydk.services.git import committed_changes
 

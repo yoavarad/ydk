@@ -133,7 +133,9 @@ def uncommitted_paths(cwd: str | Path | None = None) -> list[str] | None:
 
 
 def committed_changes(base: str, cwd: str | Path | None = None) -> list[str] | None:
-    """Shippable paths (non-``.ydk/``, plus ``.ydk/retros/``) changed on HEAD since the merge-base with *base*.
+    """Shippable paths changed on HEAD since the merge-base with *base*.
+
+    Shippable: non-``.ydk/`` paths, ``.ydk/retros/`` and ``.ydk/config.yaml``.
 
     ``None`` when the diff cannot be computed.
     """
@@ -152,8 +154,8 @@ def committed_changes(base: str, cwd: str | Path | None = None) -> list[str] | N
     if result.returncode != 0:
         return None
     paths = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    # Retros are shippable content; other .ydk/ paths are bookkeeping.
-    return [p for p in paths if p.startswith(".ydk/retros/") or p in _non_ydk([p])]
+    # Retros and config.yaml are shippable content; other .ydk/ paths are bookkeeping.
+    return [p for p in paths if p.startswith(".ydk/retros/") or p == ".ydk/config.yaml" or p in _non_ydk([p])]
 
 
 class LocalGitService:
