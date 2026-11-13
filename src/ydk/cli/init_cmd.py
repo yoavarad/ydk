@@ -241,7 +241,7 @@ _stage_file = root / ".ydk" / "state.json"
 _stage = "00"
 if _stage_file.exists():
     try:
-        _stage = json.loads(_stage_file.read_text()).get("stage", "00")
+        _stage = json.loads(_stage_file.read_text(encoding="utf-8")).get("stage", "00")
     except Exception:
         pass
 
@@ -283,7 +283,7 @@ if tool_name in ("Edit", "Write") and file_path.startswith("tests/"):
 state_file = root / ".ydk" / "state.json"
 if state_file.exists() and file_path:
     try:
-        state = json.loads(state_file.read_text())
+        state = json.loads(state_file.read_text(encoding="utf-8"))
         stage = state.get("stage", "00")
 
         # Stage 01/02: block source file edits

@@ -37,9 +37,13 @@ def _is_text_open(node: ast.Call, mode_index: int) -> bool:
             mode = kw.value
     if mode is None:
         return True
-    if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
-        return "b" not in mode.value
-    return False
+    if isinstance(mode, ast.IfExp):
+        return any(_mode_is_text(m) for m in (mode.body, mode.orelse))
+    return _mode_is_text(mode)
+
+
+def _mode_is_text(mode: ast.expr) -> bool:
+    return isinstance(mode, ast.Constant) and isinstance(mode.value, str) and "b" not in mode.value
 
 
 def test_no_bare_text_io_in_src() -> None:
@@ -54,10 +58,10 @@ def test_no_bare_text_io_in_src() -> None:
 
 
 def test_detector_flags_and_accepts() -> None:
-    bad = ast.parse("p.read_text()\np.write_text(x)\nopen(f)\np.open()\n")
+    bad = ast.parse("p.read_text()\np.write_text(x)\nopen(f)\np.open()\nopen(f, 'r' if a else 'w')\n")
     good = ast.parse(
         "p.read_text(encoding='utf-8')\np.write_text(x, encoding='utf-8')\nopen(f, 'rb')\n"
         "p.open('wb')\nos.open(p, 1)\nopen(f, encoding='utf-8')\n"
     )
-    assert find_bare_text_io(bad) == [1, 2, 3, 4]
+    assert find_bare_text_io(bad) == [1, 2, 3, 4, 5]
     assert find_bare_text_io(good) == []
