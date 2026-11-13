@@ -34,7 +34,7 @@ def main() -> None:
         if py_file.name.startswith("__"):
             continue
         try:
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8", errors="replace")
             if "client.request" in content and "ApiError" not in content:
                 messages.append(f"FAIL: {py_file} -- must catch ApiError from HTTP client calls")
                 failures += 1

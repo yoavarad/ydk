@@ -39,7 +39,7 @@ def main() -> None:
                 continue
 
             try:
-                content = f.read_text()
+                content = f.read_text(encoding="utf-8", errors="replace")
                 # Only check files that use TanStack Query
                 if not re.search(r"useQuery|useMutation|useInfiniteQuery|queryClient", content):
                     continue

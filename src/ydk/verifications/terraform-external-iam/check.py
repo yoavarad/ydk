@@ -19,7 +19,7 @@ def main() -> None:
 
     for tf in root.rglob("*.tf"):
         try:
-            for i, line in enumerate(tf.read_text().splitlines(), 1):
+            for i, line in enumerate(tf.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.search(r"Principal.*\*", line) and re.search(r"(assume_role_policy|Principal)", line):
                     messages.append(f"{tf}:{i}: {line.strip()}")
         except OSError:

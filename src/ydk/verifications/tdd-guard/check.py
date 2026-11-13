@@ -42,7 +42,7 @@ def _read_state(project_root: str) -> dict:
     state_path = Path(project_root) / STATE_FILE
     if state_path.exists():
         try:
-            return json.loads(state_path.read_text())
+            return json.loads(state_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return dict(DEFAULT_STATE)
     return dict(DEFAULT_STATE)

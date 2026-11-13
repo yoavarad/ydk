@@ -95,7 +95,7 @@ def main() -> None:
         }
         json.dump(result, sys.stdout)
         sys.exit(0)
-    state = json.loads(state_path.read_text())
+    state = json.loads(state_path.read_text(encoding="utf-8"))
 
     stage = state.get("stage", "00")
 

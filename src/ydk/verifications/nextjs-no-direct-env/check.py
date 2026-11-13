@@ -42,7 +42,7 @@ def main() -> None:
                 continue
 
             try:
-                for i, line in enumerate(f.read_text().splitlines(), 1):
+                for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     if re.search(r"process\.env(\.|(\[))", line) and "process.env.NODE_ENV" not in line:
                         rel = str(f.relative_to(root))
                         messages.append(
