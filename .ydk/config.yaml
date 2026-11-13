@@ -1,3 +1,5 @@
+ai:
+  provider: claude-cli
 project:
   name: ydk
   spec_location: docs/specs
@@ -32,3 +34,6 @@ verification:
     - python-tdd-guard     # pre-commit: every source file has a test file
     - tests-pytest         # pre-push: pytest (mirrors CI test job)
     - pr-body-validation   # ydk task done: PR body proof gate
+    - python-no-future-annotations  # pre-push: block `from __future__ import annotations` in route files
+    - ai-code-review       # ydk task done: AI review (scope fixes landed, #296-#298)
+    - spec-alignment       # ydk task done: AI spec alignment (scope fixes landed, #296-#298)
