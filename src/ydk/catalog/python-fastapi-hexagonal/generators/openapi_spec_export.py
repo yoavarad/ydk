@@ -93,5 +93,5 @@ else:
 
 spec_json = json.dumps(spec, indent=2)
 output_path = output_dir / "openapi.json"
-output_path.write_text(spec_json)
+output_path.write_text(spec_json, encoding="utf-8")
 print(json.dumps([{"path": "openapi.json", "content": spec_json}]))

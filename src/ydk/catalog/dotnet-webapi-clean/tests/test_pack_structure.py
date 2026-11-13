@@ -111,7 +111,7 @@ def test_all_templates_present() -> None:
 
 
 def test_catalog_yaml_valid() -> None:
-    catalog = yaml.safe_load((PACK_ROOT / "catalog.yaml").read_text())
+    catalog = yaml.safe_load((PACK_ROOT / "catalog.yaml").read_text(encoding="utf-8"))
     assert catalog["name"] == "dotnet-webapi-clean"
     assert catalog["version"] == "1.0.0"
     assert "ignition-pack" in catalog["tags"]
@@ -122,7 +122,7 @@ def test_catalog_yaml_valid() -> None:
 
 
 def test_manifest_yaml_valid() -> None:
-    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text())
+    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
     assert "generators" in manifest
     generator_ids = [g["id"] for g in manifest["generators"]]
     assert "solution-scaffold" in generator_ids
@@ -142,14 +142,14 @@ def test_manifest_yaml_valid() -> None:
 
 
 def test_manifest_generator_scripts_exist() -> None:
-    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text())
+    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
     for gen in manifest["generators"]:
         script_path = PACK_ROOT / gen["script"]
         assert script_path.is_file(), f"Generator script missing: {gen['script']}"
 
 
 def test_publish_checks_yaml_valid() -> None:
-    checks = yaml.safe_load((PACK_ROOT / "publish-checks.yaml").read_text())
+    checks = yaml.safe_load((PACK_ROOT / "publish-checks.yaml").read_text(encoding="utf-8"))
     assert "checks" in checks
     assert len(checks["checks"]) >= 1
 
@@ -159,7 +159,7 @@ def test_samples_present_and_valid() -> None:
     for sample_path in EXPECTED_SAMPLES:
         path = samples_dir / sample_path
         assert path.is_file(), f"Missing sample: {sample_path}"
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
         assert isinstance(data, dict)
         assert "id" in data
 

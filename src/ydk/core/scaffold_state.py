@@ -24,7 +24,7 @@ class ScaffoldState:
     def _load(self) -> None:
         """Load stored hashes from disk."""
         if self._path.exists():
-            data = yaml.safe_load(self._path.read_text())
+            data = yaml.safe_load(self._path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 self._hashes = data.get("hashes") or {}
                 self._formatted = data.get("formatted") or {}
@@ -35,7 +35,7 @@ class ScaffoldState:
         data: dict[str, dict[str, str]] = {"hashes": self._hashes}
         if self._formatted:
             data["formatted"] = self._formatted
-        self._path.write_text(yaml.dump(data, default_flow_style=False))
+        self._path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
 
     def is_modified(self, file_path: str, content: str) -> bool:
         """Check if content differs from stored hash. Returns True if new or changed."""

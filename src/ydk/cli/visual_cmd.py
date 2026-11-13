@@ -181,7 +181,7 @@ def record(
     vc = VideoCapture()
     try:
         if actions_file and actions_file.exists():
-            actions = json.loads(actions_file.read_text())
+            actions = json.loads(actions_file.read_text(encoding="utf-8"))
             video_path = vc.record_session(url, actions, output)
         else:
             video_path = vc.record_page(url, output, wait_ms=wait_ms)

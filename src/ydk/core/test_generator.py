@@ -76,7 +76,7 @@ class ComponentTestGenerator:
     def _load_template(self, name: str) -> str:
         """Load a Jinja2 template file."""
         path = self._templates_dir / name
-        return path.read_text()
+        return path.read_text(encoding="utf-8")
 
     def generate_from_entity(self, manifest: dict[str, Any], schema: dict[str, Any]) -> GeneratedTest:
         """Generate test code for an entity component."""

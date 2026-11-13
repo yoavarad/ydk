@@ -87,7 +87,7 @@ def parse_delta_directory(delta_dir: Path) -> list[DeltaOperation]:
     operations: list[DeltaOperation] = []
     for md_file in sorted(delta_dir.glob("*.md")):
         default_target = md_file.stem
-        ops = parse_delta_file(md_file.read_text(), default_target=default_target)
+        ops = parse_delta_file(md_file.read_text(encoding="utf-8"), default_target=default_target)
         operations.extend(ops)
     return operations
 

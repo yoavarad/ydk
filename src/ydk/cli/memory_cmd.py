@@ -377,7 +377,7 @@ def retrospective(
         proofs_dir.mkdir(parents=True, exist_ok=True)
         sprint_label = sprint or "current"
         output_path = proofs_dir / f"retrospective-{sprint_label}.json"
-        output_path.write_text(json.dumps(proposals, indent=2))
+        output_path.write_text(json.dumps(proposals, indent=2), encoding="utf-8")
         console.print(f"\n  [dim]Saved to {output_path}[/dim]")
 
 

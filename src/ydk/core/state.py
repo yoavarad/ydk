@@ -24,12 +24,12 @@ class ProjectState:
         """Read current state. Returns default if no file exists."""
         if not self._path.exists():
             return {"stage": "00"}
-        return json.loads(self._path.read_text())
+        return json.loads(self._path.read_text(encoding="utf-8"))
 
     def write(self, state: dict) -> None:
         """Write state to disk."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(state, indent=2))
+        self._path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
     def update(self, **kwargs: object) -> dict:
         """Merge kwargs into current state and persist."""

@@ -177,7 +177,7 @@ class Doctor:
                 detail="Run 'ydk init' to create it",
             )
         try:
-            raw = yaml.safe_load(config_path.read_text())
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
             YdkConfig.model_validate(raw)
             return CheckResult("YDK config", CheckSeverity.ok, ".ydk/config.yaml is valid")
         except (yaml.YAMLError, ValidationError, Exception) as exc:
@@ -194,7 +194,7 @@ class Doctor:
         if not config_path.is_file():
             return None
         try:
-            raw = yaml.safe_load(config_path.read_text())
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
             return YdkConfig.model_validate(raw)
         except Exception:
             return None
@@ -472,8 +472,8 @@ class Doctor:
             if not local.is_file():
                 continue
             try:
-                local_v = int(yaml.safe_load(local.read_text()).get("version", 1))
-                bundled_v = int(yaml.safe_load(bundled.read_text()).get("version", 1))
+                local_v = int(yaml.safe_load(local.read_text(encoding="utf-8")).get("version", 1))
+                bundled_v = int(yaml.safe_load(bundled.read_text(encoding="utf-8")).get("version", 1))
             except (yaml.YAMLError, AttributeError, TypeError, ValueError):
                 continue
             if local_v < bundled_v:

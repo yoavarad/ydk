@@ -413,12 +413,12 @@ def _install_claude_hooks() -> None:
         )
 
     if settings_path.exists():
-        existing = json.loads(settings_path.read_text())
+        existing = json.loads(settings_path.read_text(encoding="utf-8"))
         existing["hooks"] = settings["hooks"]
         existing["permissions"] = settings["permissions"]
-        settings_path.write_text(json.dumps(existing, indent=2))
+        settings_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     else:
-        settings_path.write_text(json.dumps(settings, indent=2))
+        settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
 
 def _install_hooks() -> None:

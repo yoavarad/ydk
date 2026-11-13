@@ -81,13 +81,13 @@ class SpecEvolutionEngine:
         info = ChangeInfo(name=name, mode=change_mode, status=ChangeStatus.ACTIVE)
 
         (change_dir / ".change.yaml").write_text(
-            yaml.dump(info.model_dump(mode="json"), default_flow_style=False, sort_keys=False)
+            yaml.dump(info.model_dump(mode="json"), default_flow_style=False, sort_keys=False), encoding="utf-8"
         )
-        (change_dir / "proposal.md").write_text(_PROPOSAL_TEMPLATE.format(name=name))
-        (change_dir / "tasks.md").write_text(_TASKS_TEMPLATE.format(name=name))
+        (change_dir / "proposal.md").write_text(_PROPOSAL_TEMPLATE.format(name=name), encoding="utf-8")
+        (change_dir / "tasks.md").write_text(_TASKS_TEMPLATE.format(name=name), encoding="utf-8")
 
         if change_mode == ChangeMode.MAJOR:
-            (change_dir / "design.md").write_text(_DESIGN_TEMPLATE.format(name=name))
+            (change_dir / "design.md").write_text(_DESIGN_TEMPLATE.format(name=name), encoding="utf-8")
 
         return info
 
@@ -149,9 +149,9 @@ class SpecEvolutionEngine:
 
         yaml_path = archive_dir / ".change.yaml"
         if yaml_path.exists():
-            data = yaml.safe_load(yaml_path.read_text())
+            data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
             data["status"] = "archived"
-            yaml_path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
+            yaml_path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False), encoding="utf-8")
 
         return ArchiveResult(
             operations_applied=len(operations),
@@ -176,7 +176,7 @@ class SpecEvolutionEngine:
         """Read the mode from .change.yaml."""
         yaml_path = change_dir / ".change.yaml"
         if yaml_path.exists():
-            data = yaml.safe_load(yaml_path.read_text())
+            data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
             return str(data.get("mode", "small"))
         return "small"
 
@@ -220,13 +220,13 @@ class SpecEvolutionEngine:
             spec_path = specs_dir / target_name
 
             if spec_path.exists():
-                content = spec_path.read_text()
+                content = spec_path.read_text(encoding="utf-8")
             else:
                 spec_path.parent.mkdir(parents=True, exist_ok=True)
                 content = f"# {spec_path.stem}\n"
 
             new_content = apply_operations_to_spec(content, ops)
-            spec_path.write_text(new_content)
+            spec_path.write_text(new_content, encoding="utf-8")
             modified.append(target_name)
 
         return modified

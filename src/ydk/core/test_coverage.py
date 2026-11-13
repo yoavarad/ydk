@@ -71,7 +71,7 @@ class TestCoverageChecker:
             )
 
         for yaml_file in sorted(components_dir.rglob("*.yaml")):
-            data = yaml.safe_load(yaml_file.read_text())
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
             if not data or not isinstance(data, dict):
                 continue
             component_id = data.get("id")
