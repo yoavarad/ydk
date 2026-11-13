@@ -40,7 +40,7 @@ def main() -> None:
 
     for tf_file in sorted(infra_dir.glob("*.tf")):
         try:
-            content = tf_file.read_text()
+            content = tf_file.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
 

@@ -34,7 +34,7 @@ def main() -> None:
         if py_file.name.startswith("__"):
             continue
         try:
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8", errors="replace")
             if "@app.command" in content and "output_json" not in content:
                 messages.append(f"FAIL: {py_file} -- command functions must support --json output flag")
                 failures += 1

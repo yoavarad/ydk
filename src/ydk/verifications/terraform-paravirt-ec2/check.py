@@ -19,7 +19,7 @@ def main() -> None:
 
     for tf in root.rglob("*.tf"):
         try:
-            for i, line in enumerate(tf.read_text().splitlines(), 1):
+            for i, line in enumerate(tf.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.search(r'instance_type.*=.*"(t1\.|m1\.|c1\.|m2\.)', line):
                     messages.append(f"{tf}:{i}: {line.strip()}")
         except OSError:

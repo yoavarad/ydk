@@ -47,7 +47,7 @@ def main() -> None:
                 continue
             try:
                 violations = []
-                for i, line in enumerate(f.read_text().splitlines(), 1):
+                for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     if re.search(pattern, line):
                         violations.append(f"  {i}: {line.strip()}")
                 if violations:

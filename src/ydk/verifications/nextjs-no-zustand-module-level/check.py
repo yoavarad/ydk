@@ -44,7 +44,7 @@ def main() -> None:
                 continue
 
             try:
-                content = f.read_text()
+                content = f.read_text(encoding="utf-8", errors="replace")
                 # Only check files that import from zustand
                 if not re.search(r"""from ['"]zustand""", content):
                     continue

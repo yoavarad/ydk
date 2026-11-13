@@ -39,7 +39,7 @@ def main() -> None:
         if "_port_service/" in rel_path or "_port_service.py" in rel_path:
             continue
         try:
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8", errors="replace")
             # Check class name: PortService classes are allowed async
             if "PortService" in content:
                 continue

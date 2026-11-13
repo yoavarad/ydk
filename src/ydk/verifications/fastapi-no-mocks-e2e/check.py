@@ -44,7 +44,7 @@ def main() -> None:
         if "__pycache__" in str(py_file):
             continue
         try:
-            for i, line in enumerate(py_file.read_text().splitlines(), 1):
+            for i, line in enumerate(py_file.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.search(combined_pattern, line):
                     violations.append(f"{py_file}:{i}: {line.strip()}")
         except OSError:

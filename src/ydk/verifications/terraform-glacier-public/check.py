@@ -19,7 +19,7 @@ def main() -> None:
 
     for tf in root.rglob("*.tf"):
         try:
-            content = tf.read_text()
+            content = tf.read_text(encoding="utf-8", errors="replace")
             lines = content.splitlines()
             in_glacier = False
             glacier_start = 0

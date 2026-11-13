@@ -36,7 +36,7 @@ def main() -> None:
             if "node_modules" in str(f) or "/generated/" in str(f):
                 continue
             try:
-                content = f.read_text()
+                content = f.read_text(encoding="utf-8", errors="replace")
                 if not re.search(r"EventSource|eventsource", content):
                     continue
 

@@ -36,7 +36,7 @@ def main() -> None:
         if py_file.name == "__init__.py" or "__pycache__" in str(py_file):
             continue
         try:
-            line_count = len(py_file.read_text().splitlines())
+            line_count = len(py_file.read_text(encoding="utf-8", errors="replace").splitlines())
             if line_count > LIMIT:
                 messages.append(
                     f"FAIL: {py_file} has {line_count} lines (max {LIMIT} per route file)\n"
