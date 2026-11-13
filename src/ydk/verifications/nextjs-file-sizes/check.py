@@ -77,7 +77,7 @@ def main() -> None:
                 continue
 
             try:
-                line_count = len(f.read_text().splitlines())
+                line_count = len(f.read_text(encoding="utf-8", errors="replace").splitlines())
                 if line_count > limit:
                     messages.append(
                         f"FAIL: {rel} has {line_count} lines (max {limit} for {layer_name})\n"

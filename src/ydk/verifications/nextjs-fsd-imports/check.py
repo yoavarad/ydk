@@ -71,7 +71,7 @@ def main() -> None:
             file_idx = layer_index(file_layer)
 
             try:
-                for _i, line in enumerate(f.read_text().splitlines(), 1):
+                for _i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     if "//" in line:
                         continue
                     if not (line.startswith("import") or "from " in line):
