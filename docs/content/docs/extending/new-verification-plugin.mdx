@@ -119,4 +119,6 @@ When a user runs `ydk verify run --auto-fix`, your plugin receives `"auto_fix": 
 
 <Callout type="info">
 Project-specific plugins in `.ydk/verifications/` override built-in plugins with the same name. This lets you customize any built-in check without modifying YDK itself.
+
+A project manifest with no `check.py` and no `command` is a manifest-only override: its fields (for example `timeout: 300`) are overlaid on the same-name built-in, which keeps its own check script. If no built-in has that name, a warning is logged and the override is ignored.
 </Callout>

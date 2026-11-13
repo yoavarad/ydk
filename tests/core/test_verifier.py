@@ -957,9 +957,29 @@ class TestCommandPlugin:
         assert [p.name for p in plugins] == ["lint"]
         assert plugins[0].command == "exit 0"
 
-    def test_manifest_without_command_or_check_ignored(self, tmp_path: Path) -> None:
+    def test_orphan_manifest_only_override_ignored_with_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         _write_command_plugin(tmp_path / "p", "nothing")
-        assert _cmd_verifier(tmp_path).discover_plugins() == []
+        with caplog.at_level("WARNING", logger="ydk.verifier"):
+            assert _cmd_verifier(tmp_path).discover_plugins() == []
+        assert "nothing" in caplog.text
+
+    def test_manifest_only_override_merges_onto_builtin(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "g", "fmt", command="exit 0", timeout=30)
+        _write_command_plugin(tmp_path / "p", "fmt", timeout=300)
+        plugins = _cmd_verifier(tmp_path).discover_plugins()
+        assert [p.name for p in plugins] == ["fmt"]
+        assert plugins[0].timeout == 300
+        assert plugins[0].command == "exit 0"
+
+    def test_manifest_only_override_keeps_builtin_check_script(self, tmp_path: Path) -> None:
+        _write_command_plugin(tmp_path / "g", "chk")
+        (tmp_path / "g" / "chk" / "check.py").write_text("print('x')", encoding="utf-8")
+        _write_command_plugin(tmp_path / "p", "chk", timeout=300)
+        plugin = _cmd_verifier(tmp_path).discover_plugins()[0]
+        assert plugin.timeout == 300
+        assert plugin.check_script == tmp_path / "g" / "chk" / "check.py"
 
     def test_exit_zero_passes_and_captures_output(self, tmp_path: Path) -> None:
         _write_command_plugin(tmp_path / "p", "ok", command="python -c \"print('hello')\"")

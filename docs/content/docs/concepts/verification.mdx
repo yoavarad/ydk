@@ -22,7 +22,7 @@ Plugins are discovered from two directories, in priority order:
 1. **Project-specific**: `.ydk/verifications/` -- plugins specific to your project
 2. **Global**: Ships with YDK at `src/ydk/verifications/` -- the 40 built-in plugins
 
-When a project plugin has the same name as a global plugin, the project plugin takes precedence.
+When a project plugin has the same name as a global plugin, the project plugin takes precedence. A project manifest with no `check.py` and no `command` only overlays its fields (e.g. `timeout`) onto the built-in, which keeps its check script.
 
 ### The Plugin Contract
 
