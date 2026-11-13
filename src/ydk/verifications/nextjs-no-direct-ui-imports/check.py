@@ -41,7 +41,7 @@ def main() -> None:
                 continue
 
             try:
-                for i, line in enumerate(f.read_text().splitlines(), 1):
+                for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     rel = str(f.relative_to(root))
                     if re.search(r"""from ['"]@/components/ui/""", line):
                         messages.append(

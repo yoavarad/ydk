@@ -25,7 +25,7 @@ def main() -> None:
     tf_contents: dict[str, str] = {}
     for tf in tf_files:
         with contextlib.suppress(OSError):
-            tf_contents[str(tf)] = tf.read_text()
+            tf_contents[str(tf)] = tf.read_text(encoding="utf-8", errors="replace")
 
     all_tf_text = "\n".join(tf_contents.values())
 

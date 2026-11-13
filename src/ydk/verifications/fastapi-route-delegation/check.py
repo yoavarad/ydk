@@ -34,7 +34,7 @@ def main() -> None:
         if py_file.name == "__init__.py" or "__pycache__" in str(py_file):
             continue
         try:
-            for i, line in enumerate(py_file.read_text().splitlines(), 1):
+            for i, line in enumerate(py_file.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if "# ydk:allow-route-import" in line:
                     continue
                 if re.search(r"from app\.adapters|from sqlalchemy.*import.*AsyncSession", line):

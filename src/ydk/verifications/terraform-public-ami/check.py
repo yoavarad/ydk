@@ -23,7 +23,7 @@ def main() -> None:
     all_text = ""
     for tf in tf_files:
         with contextlib.suppress(OSError):
-            all_text += tf.read_text() + "\n"
+            all_text += tf.read_text(encoding="utf-8", errors="replace") + "\n"
 
     # Check for hardcoded AMI IDs without data source lookups
     has_ami_refs = bool(re.search(r"ami-[0-9a-f]{8,17}", all_text))
@@ -38,7 +38,7 @@ def main() -> None:
     # Check data "aws_ami" blocks without owners
     for tf in tf_files:
         try:
-            content = tf.read_text()
+            content = tf.read_text(encoding="utf-8", errors="replace")
             if 'data "aws_ami"' in content and "owners" not in content:
                 messages.append(
                     f'FAIL: {tf} has data "aws_ami" without owners restriction.\n'

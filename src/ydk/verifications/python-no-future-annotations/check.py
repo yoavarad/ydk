@@ -36,7 +36,7 @@ def main() -> None:
     violations: list[str] = []
     for py_file in routes_dir.rglob("*.py"):
         try:
-            for i, line in enumerate(py_file.read_text().splitlines(), 1):
+            for i, line in enumerate(py_file.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.match(r"^from __future__ import annotations", line):
                     violations.append(f"{py_file}:{i}: {line}")
         except OSError:

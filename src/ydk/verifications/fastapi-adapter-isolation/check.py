@@ -35,7 +35,7 @@ def main() -> None:
         if "__pycache__" in str(py_file):
             continue
         try:
-            for i, line in enumerate(py_file.read_text().splitlines(), 1):
+            for i, line in enumerate(py_file.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.search(r"from app\.api|import app\.api", line):
                     messages.append(
                         f"FAIL: {py_file}:{i} imports from app/api/ "

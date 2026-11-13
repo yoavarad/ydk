@@ -41,7 +41,7 @@ def main() -> None:
             continue
 
         try:
-            for i, line in enumerate(py_file.read_text().splitlines(), 1):
+            for i, line in enumerate(py_file.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.search(
                     r"from app\.adapters|from app\.api|import app\.adapters|import app\.api",
                     line,
