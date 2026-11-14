@@ -135,6 +135,7 @@ class Verifier:
         """
         seen: set[str] = set()
         plugins: list[VerificationPlugin] = []
+        overrides: dict[str, dict[str, Any]] = {}  # manifest-only project overrides by plugin name
         for search_dir in (self._project, self._global):
             if not search_dir.is_dir():
                 continue
@@ -142,14 +143,19 @@ class Verifier:
                 manifest_path = child / "manifest.yaml"
                 check_path = child / "check.py"
                 if child.is_dir() and manifest_path.exists():
-                    if not check_path.exists() and "command" not in manifest_path.read_text(encoding="utf-8"):
+                    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+                    if not check_path.exists() and isinstance(data, dict) and "command" not in data:
+                        if search_dir == self._project and "name" in data:
+                            overrides[str(data["name"])] = data
                         continue
-                    plugin = self._load_plugin(manifest_path, check_path)
+                    plugin = self._load_plugin(manifest_path, check_path, overrides.pop(str(data.get("name")), None))
                     if not check_path.exists() and not plugin.command:
                         continue
                     if plugin.name not in seen:
                         seen.add(plugin.name)
                         plugins.append(plugin)
+        for orphan in overrides:
+            logger.warning("Manifest-only override %r matches no built-in plugin; ignored", orphan)
 
         # If an enabled list was provided, filter to only those plugins
         if self._enabled is not None:
@@ -524,9 +530,11 @@ class Verifier:
             (plugins_dir / f"{safe}.txt").write_text(str(check.output), encoding="utf-8")
         return path
 
-    def _load_plugin(self, manifest_path: Path, check_path: Path) -> VerificationPlugin:
-        """Load a single plugin from its manifest.yaml and check.py."""
-        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    def _load_plugin(
+        self, manifest_path: Path, check_path: Path, override: dict[str, Any] | None = None
+    ) -> VerificationPlugin:
+        """Load a single plugin from its manifest.yaml and check.py, overlaying *override* fields."""
+        data = {**yaml.safe_load(manifest_path.read_text(encoding="utf-8")), **(override or {})}
         env_raw = data.get("env")
         codes = data.get("pass_on_exit")
         return VerificationPlugin(
