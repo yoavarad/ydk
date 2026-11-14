@@ -85,7 +85,7 @@ def apply(
     # Build variables dict: var-file first, then --var overrides
     variables: dict[str, str] = {}
     if var_file is not None:
-        variables.update(yaml.safe_load(var_file.read_text()))
+        variables.update(yaml.safe_load(var_file.read_text(encoding="utf-8")))
 
     for item in var:
         if "=" not in item:

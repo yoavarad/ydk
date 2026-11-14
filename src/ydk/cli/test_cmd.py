@@ -101,7 +101,7 @@ def generate(
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(result.test_code)
+        output.write_text(result.test_code, encoding="utf-8")
         console.print(f"[green]Generated {result.test_count} test(s) → {output}[/green]")
     else:
         typer.echo(result.test_code)

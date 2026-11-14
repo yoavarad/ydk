@@ -88,7 +88,7 @@ class ScaffoldEngine:
 
         for j2_file in sorted(template_dir.rglob("*.j2")):
             # Render file content
-            content_template = self._env.from_string(j2_file.read_text())
+            content_template = self._env.from_string(j2_file.read_text(encoding="utf-8"))
             rendered_content = content_template.render(**variables)
 
             # Render filename (strip .j2 suffix, render variables in path)
@@ -121,7 +121,7 @@ class ScaffoldEngine:
 
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            full_path.write_text(f.content)
+            full_path.write_text(f.content, encoding="utf-8")
             written.append(full_path)
 
         return written

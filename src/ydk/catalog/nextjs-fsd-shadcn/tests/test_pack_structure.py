@@ -85,7 +85,7 @@ def test_all_templates_present() -> None:
 
 
 def test_catalog_yaml_valid() -> None:
-    catalog = yaml.safe_load((PACK_ROOT / "catalog.yaml").read_text())
+    catalog = yaml.safe_load((PACK_ROOT / "catalog.yaml").read_text(encoding="utf-8"))
     assert catalog["name"] == "nextjs-fsd-shadcn"
     assert catalog["version"] == "1.0.0"
     assert "ignition-pack" in catalog["tags"]
@@ -95,7 +95,7 @@ def test_catalog_yaml_valid() -> None:
 
 
 def test_manifest_yaml_valid() -> None:
-    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text())
+    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
     assert manifest["name"] == "nextjs-fsd-shadcn"
     assert "generators" in manifest
     generator_ids = [g["id"] for g in manifest["generators"]]
@@ -115,14 +115,14 @@ def test_manifest_yaml_valid() -> None:
 
 
 def test_manifest_generator_order_is_sequential() -> None:
-    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text())
+    manifest = yaml.safe_load((PACK_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
     orders = [g["order"] for g in manifest["generators"]]
     assert orders == sorted(orders), "Generator order values must be sequential"
     assert len(set(orders)) == len(orders), "Generator order values must be unique"
 
 
 def test_publish_checks_yaml_valid() -> None:
-    checks = yaml.safe_load((PACK_ROOT / "publish-checks.yaml").read_text())
+    checks = yaml.safe_load((PACK_ROOT / "publish-checks.yaml").read_text(encoding="utf-8"))
     assert "checks" in checks
     assert len(checks["checks"]) >= 1
 

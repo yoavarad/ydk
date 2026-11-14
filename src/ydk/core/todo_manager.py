@@ -237,7 +237,7 @@ class TodoManager:
         if not file_path.exists():
             # File removed entirely — consider the TODO resolved
             return True
-        content = file_path.read_text()
+        content = file_path.read_text(encoding="utf-8")
         lines = content.splitlines()
         found = markers_for(todo.file)
         stmts = found[0] if found else TODO_MARKERS[".py"][0]
@@ -262,7 +262,7 @@ class TodoManager:
         if not full_path.exists():
             return []
 
-        content = full_path.read_text()
+        content = full_path.read_text(encoding="utf-8")
         results: list[dict] = []
 
         # Parse the AST to find method context
@@ -368,7 +368,7 @@ class TodoManager:
         """Load the registry from YAML."""
         if not self._registry_path.exists():
             return TodoRegistry()
-        raw = yaml.safe_load(self._registry_path.read_text())
+        raw = yaml.safe_load(self._registry_path.read_text(encoding="utf-8"))
         if raw is None:
             return TodoRegistry()
         return TodoRegistry.model_validate(raw)
@@ -377,4 +377,4 @@ class TodoManager:
         """Save the registry to YAML."""
         self._registry_path.parent.mkdir(parents=True, exist_ok=True)
         data = registry.model_dump(mode="json")
-        self._registry_path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
+        self._registry_path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False), encoding="utf-8")

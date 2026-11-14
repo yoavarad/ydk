@@ -65,9 +65,9 @@ _PACKAGE_JSON_TEMPLATE = """{
 
 def _vite_config_template(content_dir: str, state_dir: str, port: int) -> str:
     """Generate vite.config.ts content with annotation overlay injection."""
-    overlay_js = (_OVERLAY_DIR / "annotation-overlay.js").read_text()
-    overlay_css = (_OVERLAY_DIR / "annotation-styles.css").read_text()
-    wireframe_css = (_OVERLAY_DIR / "wireframe.css").read_text()
+    overlay_js = (_OVERLAY_DIR / "annotation-overlay.js").read_text(encoding="utf-8")
+    overlay_css = (_OVERLAY_DIR / "annotation-styles.css").read_text(encoding="utf-8")
+    wireframe_css = (_OVERLAY_DIR / "wireframe.css").read_text(encoding="utf-8")
 
     escaped_js = json.dumps(overlay_js)
     escaped_css = json.dumps(overlay_css)
@@ -162,9 +162,9 @@ class VisualEngine:
         content_str = str(content_dir)
         state_str = str(state_dir)
 
-        (base / "package.json").write_text(_PACKAGE_JSON_TEMPLATE)
-        (base / "vite.config.ts").write_text(_vite_config_template(content_str, state_str, port))
-        (content_dir / "index.html").write_text(_default_index_html())
+        (base / "package.json").write_text(_PACKAGE_JSON_TEMPLATE, encoding="utf-8")
+        (base / "vite.config.ts").write_text(_vite_config_template(content_str, state_str, port), encoding="utf-8")
+        (content_dir / "index.html").write_text(_default_index_html(), encoding="utf-8")
 
         proc = subprocess.Popen(
             ["npx", "vite", "--config", str(base / "vite.config.ts")],
@@ -185,7 +185,7 @@ class VisualEngine:
         )
 
         server_info = session.model_dump()
-        (state_dir / "server-info.json").write_text(json.dumps(server_info, indent=2))
+        (state_dir / "server-info.json").write_text(json.dumps(server_info, indent=2), encoding="utf-8")
 
         return session
 
@@ -208,9 +208,9 @@ class VisualEngine:
 
         server_info_path = state_dir / "server-info.json"
         if server_info_path.exists():
-            data = json.loads(server_info_path.read_text())
+            data = json.loads(server_info_path.read_text(encoding="utf-8"))
             data["status"] = SessionStatus.stopped.value
-            server_info_path.write_text(json.dumps(data, indent=2))
+            server_info_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def push_content(self, session_id: str, content: str, filename: str = "index.html") -> Path:
         """Write a content file to the session's content directory."""
@@ -221,7 +221,7 @@ class VisualEngine:
 
         content_path = Path(session.content_dir) / filename
         content_path.parent.mkdir(parents=True, exist_ok=True)
-        content_path.write_text(content)
+        content_path.write_text(content, encoding="utf-8")
         return content_path
 
     def read_feedback(self, session_id: str) -> list[FeedbackEvent]:
@@ -236,7 +236,7 @@ class VisualEngine:
             return []
 
         events: list[FeedbackEvent] = []
-        for line in feedback_path.read_text().splitlines():
+        for line in feedback_path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not stripped:
                 continue
@@ -265,7 +265,7 @@ class VisualEngine:
 
         feedback_path = Path(session.state_dir) / "feedback.jsonl"
         if feedback_path.exists():
-            feedback_path.write_text("")
+            feedback_path.write_text("", encoding="utf-8")
 
     def get_session(self, session_id: str) -> VisualSession | None:
         """Read session state from disk."""
@@ -273,7 +273,7 @@ class VisualEngine:
         if not state_file.exists():
             return None
         try:
-            data = json.loads(state_file.read_text())
+            data = json.loads(state_file.read_text(encoding="utf-8"))
             return VisualSession.model_validate(data)
         except (json.JSONDecodeError, Exception):
             return None

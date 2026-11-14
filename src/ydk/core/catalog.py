@@ -214,7 +214,7 @@ class LocalCatalogBackend:
         lock_path = project_root / ".ydk" / "catalog-lock.yaml"
         lock_data: dict[str, object] = {}
         if lock_path.exists():
-            raw = yaml.safe_load(lock_path.read_text())
+            raw = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
                 lock_data = raw
 
@@ -230,14 +230,14 @@ class LocalCatalogBackend:
         installed_list = [e for e in installed_list if isinstance(e, dict) and e.get("name") != item.name]
         installed_list.append({"name": item.name, "version": item.version, "tags": item.tags})
         lock_data["installed"] = installed_list
-        lock_path.write_text(yaml.dump(lock_data, default_flow_style=False, sort_keys=False))
+        lock_path.write_text(yaml.dump(lock_data, default_flow_style=False, sort_keys=False), encoding="utf-8")
 
     def list_installed(self, project_root: Path) -> list[CatalogItem]:
         """List all catalog items recorded in the project's catalog-lock.yaml."""
         lock_path = project_root / ".ydk" / "catalog-lock.yaml"
         if not lock_path.exists():
             return []
-        raw = yaml.safe_load(lock_path.read_text())
+        raw = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             return []
         installed_list = raw.get("installed", [])
@@ -262,7 +262,7 @@ class LocalCatalogBackend:
         lock_path = project_root / ".ydk" / "catalog-lock.yaml"
         if not lock_path.exists():
             return False
-        raw = yaml.safe_load(lock_path.read_text())
+        raw = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             return False
         installed_list = raw.get("installed", [])
@@ -294,7 +294,7 @@ class LocalCatalogBackend:
 
         # Update lock file
         raw["installed"] = [e for e in installed_list if not (isinstance(e, dict) and e.get("name") == name)]
-        lock_path.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+        lock_path.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False), encoding="utf-8")
         return True
 
     def publish(self, item_path: Path) -> None:

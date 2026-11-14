@@ -49,7 +49,7 @@ class CatalogSearch:
 
             import yaml
 
-            raw = yaml.safe_load(catalog_yaml.read_text())
+            raw = yaml.safe_load(catalog_yaml.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 continue
 
@@ -61,7 +61,7 @@ class CatalogSearch:
 
             readme = child / "README.md"
             if readme.exists():
-                parts.append(readme.read_text())
+                parts.append(readme.read_text(encoding="utf-8"))
 
             text = " ".join(parts)
             items.append((name, text))
@@ -129,7 +129,7 @@ class CatalogSearch:
         if not catalog_yaml.exists():
             return
 
-        raw = yaml.safe_load(catalog_yaml.read_text())
+        raw = yaml.safe_load(catalog_yaml.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             return
 
@@ -141,7 +141,7 @@ class CatalogSearch:
 
         readme = item_path / "README.md"
         if readme.exists():
-            parts.append(readme.read_text())
+            parts.append(readme.read_text(encoding="utf-8"))
 
         text = " ".join(parts)
         self._keyword_index[name] = text.lower()

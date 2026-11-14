@@ -858,7 +858,7 @@ class IgnitionEngine:
             module = str(rel.with_suffix("")).replace("/", ".").replace("\\", ".")
             imports: set[str] = set()
             try:
-                tree = ast.parse(f.read_text())
+                tree = ast.parse(f.read_text(encoding="utf-8"))
                 for node in ast.walk(tree):
                     if isinstance(node, ast.Import):
                         for alias in node.names:

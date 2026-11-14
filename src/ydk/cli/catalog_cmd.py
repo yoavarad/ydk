@@ -184,7 +184,7 @@ def info(
     # Show README excerpt if available
     readme = item.path / "README.md"
     if readme.exists():
-        text = readme.read_text().strip()
+        text = readme.read_text(encoding="utf-8").strip()
         if text:
             lines = text.split("\n")[:10]
             console.print("\n[dim]--- README (first 10 lines) ---[/dim]")

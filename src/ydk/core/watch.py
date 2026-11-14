@@ -240,7 +240,7 @@ class WatchManager:
         """
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            self._lock_file = open(self._lock_path, "r+" if self._lock_path.exists() else "w")  # noqa: SIM115
+            self._lock_file = open(self._lock_path, "r+" if self._lock_path.exists() else "w", encoding="utf-8")  # noqa: SIM115
         except OSError:
             self._lock_file = None
             return False

@@ -28,7 +28,7 @@ def _load_all_manifests(components_dir: Path) -> list[tuple[Path, dict[str, Any]
     if not components_dir.is_dir():
         return manifests
     for yaml_file in sorted(components_dir.rglob("*.yaml")):
-        data = yaml.safe_load(yaml_file.read_text())
+        data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
         if data and isinstance(data, dict) and "id" in data:
             manifests.append((yaml_file, data))
     return manifests
