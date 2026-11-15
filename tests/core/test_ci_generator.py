@@ -625,7 +625,7 @@ def test_gitlab_writes_only_gitlab_ci(tmp_path: Path, remote: str) -> None:
 def test_gitlab_jobs_shape(tmp_path: Path) -> None:
     targets = ["lint", "test", "scan"]
     parsed = _gitlab(tmp_path, extra=GITLAB_EXTRA)
-    assert parsed["stages"] == targets
+    assert parsed["stages"] == [*targets, "graphify"]
     assert "include" not in parsed
     assert "include:" not in (tmp_path / ".gitlab-ci.yml").read_text(encoding="utf-8")
     for t in targets:
@@ -634,7 +634,7 @@ def test_gitlab_jobs_shape(tmp_path: Path) -> None:
 
 
 def test_gitlab_default_targets_for_go(tmp_path: Path) -> None:
-    assert _gitlab(tmp_path)["stages"] == ["lint", "test"]
+    assert _gitlab(tmp_path)["stages"] == ["lint", "test", "graphify"]
 
 
 def test_gitlab_image_set(tmp_path: Path) -> None:
@@ -658,7 +658,7 @@ def test_gitlab_scan_gated(tmp_path: Path) -> None:
 def test_gitlab_no_scan_no_variables_or_rules(tmp_path: Path) -> None:
     parsed = _gitlab(tmp_path)
     assert "variables" not in parsed
-    assert all("rules" not in parsed[t] for t in parsed["stages"])
+    assert all("rules" not in parsed[t] for t in parsed["stages"] if t != "graphify")
 
 
 def test_gitlab_non_go_without_make_targets_raises(tmp_path: Path) -> None:

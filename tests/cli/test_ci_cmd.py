@@ -187,7 +187,7 @@ def test_gitlab_go_writes_gitlab_ci(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert ".gitlab-ci.yml" in result.output
     assert not (repo / ".github").exists()
     data = yaml.safe_load((repo / ".gitlab-ci.yml").read_text(encoding="utf-8"))
-    assert data["stages"] == ["lint", "test"]
+    assert data["stages"] == ["lint", "test", "graphify"]
     assert "include" not in data
 
 

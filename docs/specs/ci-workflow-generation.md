@@ -114,6 +114,22 @@ removing the bash copy.
 `retired: #12, #15 | none`, JSON via `--format json` as `{"retired": [12, 15]}`. The skill script becomes a thin wrapper over the package
 function (or is deleted and the skill calls the CLI). YDK's own `sync-linked-issues.yml` SHOULD switch to the CLI.
 
+### A7 — `ydk-graphify.yml` (graph update after merge)
+
+- **Trigger:** `push` with `paths-ignore: [graphify-out/**]`, plus `workflow_dispatch`. No per-PR job and no local hook:
+  per-PR rebuilds make sibling PRs conflict on `graph.json`, and UP-1 forbids direct pushes to the default branch.
+- **Permissions:** `contents: write`, `pull-requests: write`. **Concurrency:** `group: ydk-graphify`, `cancel-in-progress: false`.
+- **Job `graphify`:** `if: github.ref_name == github.event.repository.default_branch`. No-op when `graphify-out/` is
+  absent; else `pip install graphifyy`, `graphify update .`, exit 0 when `graphify-out` has no changes, otherwise commit
+  `chore(graphify): update graph` on `chore/graphify-update`, `git push --force-with-lease` (lease on the remote sha read via `ls-remote`), and `gh pr create` only when no open PR exists for that head.
+- **Token:** `${{ secrets.YDK_BOT_TOKEN || secrets.GITHUB_TOKEN }}`. The repo needs "Allow GitHub Actions to create
+  and approve pull requests" enabled, or a `YDK_BOT_TOKEN` PAT (which also lets the bot PR trigger checks).
+- **PR body** carries Summary, Spec refs, Verification Results (console block) and Test Plan; `ydk-pr-body.yml` and
+  `ydk-pr-checks.yml` skip only when head is `chore/graphify-update` and the PR author is `github-actions[bot]`. Install pins `graphifyy==0.9.97`.
+- **GitLab:** `ydk-graphify-update` job in a `graphify` stage of `.gitlab-ci.yml`, rules on push to `$CI_DEFAULT_BRANCH`
+  excluding `chore(graphify)` commit titles, `resource_group: graphify`, token variable `GRAPHIFY_BOT_TOKEN`, MR created via push options.
+  Written by `ydk init --remote gitlab` (requires resolvable `ci.make_targets`) and `ydk ci init --gitlab`.
+
 ### A6 — `ydk-delete-merged-branch.yml` (Phase 1)
 
 Verbatim copy of YDK's `delete-merged-branch.yml`: trigger `pull_request: [closed]`, `permissions: contents: write`,

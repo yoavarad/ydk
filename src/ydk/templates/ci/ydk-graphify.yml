@@ -1,0 +1,99 @@
+name: YDK Graphify
+
+# Runs AFTER merge (push to the default branch) so graph.json is rebuilt from the merged tree
+# and delivered as ONE bot PR (UP-1: no direct pushes; no per-PR graph.json merge conflicts).
+# Needs repo setting "Allow GitHub Actions to create and approve pull requests", or a
+# YDK_BOT_TOKEN secret (a PAT) so the bot PR also triggers the PR checks.
+
+on:
+  push:
+    paths-ignore:
+      - "graphify-out/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ydk-graphify
+  cancel-in-progress: false
+
+env:
+  GRAPHIFY_BRANCH: chore/graphify-update
+
+jobs:
+  graphify:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.YDK_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Check for existing graph
+        id: graph
+        run: |
+          if [ -d graphify-out ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No graphify-out directory; nothing to update."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.graph.outputs.present == 'true'
+        with:
+          python-version: "3.13"
+      - name: Install graphify
+        if: steps.graph.outputs.present == 'true'
+        run: pip install graphifyy==0.9.97
+      - name: Update graph
+        if: steps.graph.outputs.present == 'true'
+        run: graphify update .
+      - name: Open graph update PR
+        if: steps.graph.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.YDK_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -e
+          # Volatile noise is ignored: graphify-out/cache/ (mtime index) and dated scratch dirs.
+          list="$(mktemp)"
+          git status --porcelain -z --untracked-files=all -- graphify-out ':!graphify-out/cache' | grep -zvE '^.. graphify-out/[0-9]{4}-[0-9]{2}-[0-9]{2}/' | cut -z -c4- > "$list" || true
+          if [ ! -s "$list" ]; then
+            echo "Graph unchanged; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$GRAPHIFY_BRANCH"
+          xargs -0 git add -- < "$list"
+          git commit -m "chore(graphify): update graph"
+          # Lease on the sha we just saw (empty = branch must not exist yet).
+          remote_sha="$(git ls-remote --heads origin "refs/heads/$GRAPHIFY_BRANCH" | cut -f1)"
+          git push --force-with-lease="$GRAPHIFY_BRANCH:$remote_sha" origin "$GRAPHIFY_BRANCH"
+          if [ -n "$(gh pr list --head "$GRAPHIFY_BRANCH" --state open --json number --jq '.[].number')" ]; then
+            echo "PR for $GRAPHIFY_BRANCH already open; branch updated."
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/pr-body.md" <<'BODY'
+          ## Summary
+
+          Automated `graphify update .` after merge to the default branch. Only `graphify-out/` changes.
+
+          ## Spec refs
+
+          None: generated knowledge graph refresh.
+
+          ## Verification Results
+
+          ```console
+          $ graphify update .
+          graph rebuilt by the ydk-graphify workflow
+          ```
+
+          ## Test Plan
+
+          - [ ] Only files under `graphify-out/` changed
+          BODY
+          gh pr create --base "$DEFAULT_BRANCH" --head "$GRAPHIFY_BRANCH" \
+            --title "chore(graphify): update graph" --body-file "$RUNNER_TEMP/pr-body.md"
