@@ -95,6 +95,7 @@ The command reads `.ydk/config.yaml` from the current directory. It fails (writi
 | `.github/workflows/ydk-spec-integrity.yml` | `pull_request` touching the spec location or components path | `contents: read` | Runs `ydk component validate` |
 | `.github/workflows/ydk-delete-merged-branch.yml` | `pull_request`: closed | `contents: write` | Deletes the head branch after a merge (same-repo PRs only, never the default branch) |
 | `.github/workflows/ydk-sync.yml` | push to the default branch, `workflow_dispatch` | `contents: read`, `issues: write`, `pull-requests: read` | Runs `ydk task sync` then `ydk task sync-issues` after merges |
+| `.github/workflows/ydk-graphify.yml` | push to the default branch (`paths-ignore: graphify-out/**`), `workflow_dispatch` | `contents: write`, `pull-requests: write` | Runs `graphify update .` after merge and opens ONE bot PR from `chore/graphify-update` (no-op without a `graphify-out/` dir or changes); skipped by the PR body and PR checks workflows |
 | `.github/workflows/ci.yml` | `pull_request`, push to main, `workflow_dispatch` | `contents: read` | Stack CI, chosen by `project.stack` (see below) |
 | `.github/PULL_REQUEST_TEMPLATE.md` | n/a | n/a | PR template with Changes, Verification Proof, Spec refs and `Closes #` sections |
 
@@ -120,7 +121,13 @@ Because `--force` overwrites, local edits to generated files are lost; commit or
 
 ### Non-goals
 
-GitLab remotes, release workflows (`release.yml` is YDK-specific) and Dependabot configuration are not generated.
+Both jobs pin `graphifyy==0.9.97` (the PyPI package that provides the `graphify` command); bump the pin in `ydk-graphify.yml` and `gitlab-ci.yml.j2` together when upgrading graphify. The update is treated as a no-op when only `graphify-out/cache/` (a gitignored mtime index) or dated scratch directories (`graphify-out/YYYY-MM-DD/`) differ; those paths are never committed. The GitHub PR body and PR checks workflows skip a PR only when its head is `chore/graphify-update` AND its author is `github-actions[bot]`; a PR opened with `YDK_BOT_TOKEN` is authored by the token's owner, so the checks run on it normally (and pass).
+
+Graph updates run after merge, never per PR: every PR rebuilding `graphify-out/graph.json` would conflict with its siblings, and UP-1 forbids pushing to the default branch directly, so the workflow opens one bot PR instead. Setup: either enable "Allow GitHub Actions to create and approve pull requests" in the repository settings, or add a `YDK_BOT_TOKEN` secret (a PAT with `contents` and `pull_requests` write; the workflow falls back to `GITHUB_TOKEN`). PRs opened with `GITHUB_TOKEN` do not trigger other workflows, so required checks only run on the bot PR when `YDK_BOT_TOKEN` is set.
+
+On GitLab, `ydk init --remote gitlab` (and `ydk ci init --gitlab`) adds a `ydk-graphify-update` job in its own `graphify` stage. It runs only on pushes to `$CI_DEFAULT_BRANCH` whose commit title does not start with `chore(graphify)` or GitLab's default merge-commit title `Merge branch 'chore/graphify-update'...` (so merging the bot MR never retriggers it), requires a `GRAPHIFY_BOT_TOKEN` CI/CD variable (project access token with `api` and `write_repository`; mark it masked and protected), and pushes `chore/graphify-update` with `--force-with-lease`. The token is sent as a per-command `http.extraHeader`, never stored in the remote URL. Merge request push options are sent only when the GitLab API (`GRAPHIFY_BOT_TOKEN` as `PRIVATE-TOKEN`, via `curl`) reports no open MR for `chore/graphify-update`, so an open MR is never duplicated and a lingering branch whose MR was closed gets a fresh one. `graphify` and `ydk-graphify-update` cannot be used as `ci.make_targets` names.
+
+GitLab remotes (beyond the `.gitlab-ci.yml` above), release workflows (`release.yml` is YDK-specific) and Dependabot configuration are not generated.
 
 ## Local Git Hooks
 

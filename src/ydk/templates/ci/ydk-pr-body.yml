@@ -16,6 +16,7 @@ env:
 
 jobs:
   pr-body:
+    if: github.head_ref != 'chore/graphify-update' || github.event.pull_request.user.login != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

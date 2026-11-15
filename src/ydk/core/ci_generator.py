@@ -147,6 +147,7 @@ CI_TARGETS: list[CiTarget] = [
         purpose="Delete head branch after merge",
     ),
     CiTarget("ydk-sync.yml", "ydk-sync.yml", "Post-merge task and issue sync"),
+    CiTarget("ydk-graphify.yml", "ydk-graphify.yml", "Post-merge graphify graph update (bot PR)"),
 ]
 
 PYTHON_CI = CiTarget(template="ci-python.yml", output="ci.yml", purpose="stack CI (python)")
@@ -185,6 +186,8 @@ GITLAB_RESERVED = frozenset(
         "spec",
     }
 )
+
+GITLAB_GRAPHIFY_NAMES = frozenset({"graphify", "ydk-graphify-update"})  # stage and job added by the template
 
 MAKEFILE_MISSING_WARNING = "Makefile not found at the repo root; CI runs 'make {targets}'."
 MAKE_TARGET_MISSING_WARNING = "Makefile has no '{target}' target; CI runs 'make {target}'."
@@ -473,6 +476,9 @@ def generate_gitlab_ci(
     for t in targets:
         if t in GITLAB_RESERVED:
             msg = f"ci.make_targets: '{t}' is a reserved GitLab CI keyword and cannot be a job name."
+            raise CiConfigError(msg)
+        if t in GITLAB_GRAPHIFY_NAMES:
+            msg = f"ci.make_targets: '{t}' collides with the generated graphify stage/job."
             raise CiConfigError(msg)
         if yaml.safe_load(t) != t:
             msg = f"ci.make_targets: '{t}' is not a plain YAML string and cannot be a GitLab job name."

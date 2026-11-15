@@ -580,3 +580,32 @@ def test_create_github_labels_skips_existing(monkeypatch: pytest.MonkeyPatch) ->
     assert "epic" not in created
     assert "task" not in created
     assert "story" in created
+
+
+def test_init_gitlab_writes_gitlab_ci_with_graphify_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ydk init --remote gitlab writes .gitlab-ci.yml including the graphify job."""
+    import yaml
+
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["init", "--name", "p", "--remote", "gitlab", "--stack", "go"])
+    assert result.exit_code == 0, result.output
+    data = yaml.safe_load((tmp_path / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    assert data["ydk-graphify-update"]["stage"] == "graphify"
+    assert data["stages"][-1] == "graphify"
+    assert not (tmp_path / ".github" / "workflows").exists()
+
+
+def test_init_gitlab_without_make_targets_warns_and_continues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["init", "--name", "p", "--remote", "gitlab"])
+    assert result.exit_code == 0, result.output
+    assert "ci.make_targets" in result.output
+    assert not (tmp_path / ".gitlab-ci.yml").exists()
+
+
+def test_init_local_writes_no_ci_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["init", "--name", "p", "--remote", "local", "--stack", "go"])
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / ".gitlab-ci.yml").exists()
+    assert not (tmp_path / ".github" / "workflows").exists()

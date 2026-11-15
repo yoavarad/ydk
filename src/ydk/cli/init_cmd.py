@@ -20,7 +20,9 @@ from ydk.core.ci_generator import (
     _ISSUE_TEMPLATE_TASK,
     PR_TEMPLATE,
     SCAFFOLD_STATE_PATH,
+    CiConfigError,
     generate_ci,
+    generate_gitlab_ci,
     write_gitlab_templates,
 )
 from ydk.core.config import init_config
@@ -523,7 +525,14 @@ def init_command(
 
     # Create required GitHub labels if remote is github
     # Generate CI workflows for github remotes; never overwrite, even with `init --force`
-    ci_result = generate_ci(Path("."), force=False) if config.project.remote == "github" else None
+    ci_result = None
+    if config.project.remote == "github":
+        ci_result = generate_ci(Path("."), force=False)
+    elif config.project.remote == "gitlab":
+        try:
+            ci_result = generate_gitlab_ci(Path("."), force=False)
+        except CiConfigError as exc:
+            console.print(f"[yellow]Warning: .gitlab-ci.yml not generated: {exc}[/yellow]", soft_wrap=True)
 
     if config.project.remote == "github":
         _create_github_labels()
