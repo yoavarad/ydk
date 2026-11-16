@@ -1,3 +1,16 @@
+## v1.12.0 (2026-11-16)
+
+### Feat
+
+- **ci**: add post-merge graphify update workflow on init
+
+### Fix
+
+- **verifier**: merge manifest-only project override onto built-in plugin
+- **core**: cover watch lock open and guard script reads with utf-8
+- **verifications**: read plugin sources as UTF-8
+- **core**: explicit UTF-8 in core/cli file I/O
+
 ## v1.11.1 (2026-11-12)
 
 ### Fix
